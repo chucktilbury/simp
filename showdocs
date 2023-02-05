@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+
+if [ -z "$_PROJECT_NAME" ]; then
+    echo "Project is not initialized. Use the setup script."
+    exit
+fi
+
+echo $_PROJECT_LOC/docs/out/html/index.html
+if [ -f "$_PROJECT_LOC/docs/out/html/index.html" ]; then
+    firefox $_PROJECT_LOC/docs/out/html/index.html
+else
+    echo "Documentation not found. Run 'make docs' "
+fi
