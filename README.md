@@ -9,11 +9,15 @@ Simp is intended to be a general purpose application language that combines the 
 
 ## Features
 - Namespaces. 
-- Classes (single inheretance).
+- Classes as a user defined type. (single inheretance)
 - Exceptions.
 - Iterators.
 - No switch/case or for clauses.
 - Formatting strings is more or less automatic.
 - No pointers. 
 - Managed memory.
+- Overloaded functions.
+- Native list and hash.
+- Strong types.
+- Robust interface to external libraries.
 
