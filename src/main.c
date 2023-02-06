@@ -63,5 +63,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    printf("\nnum errors: %d\n\n", errors);
+
     return 0;
 }

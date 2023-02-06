@@ -1,0 +1,23 @@
+
+;---------------------------------------------------
+; This tests the simple syntax of having items in the namespace and multiple
+; namespaces.
+;---------------------------------------------------
+
+; namespace is required.
+namespace nname {
+
+    class cname ( asd.dfg ) {
+        int asdf
+        string posert
+
+        int some_int
+        int some_int = 1234
+        asd.dfg some_udef
+
+        ;---------------------------------------------------
+        int func() {}
+    }
+
+    int func() {}
+}

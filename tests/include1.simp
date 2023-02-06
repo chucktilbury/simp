@@ -1,0 +1,7 @@
+;-------------
+; include test
+;--------------
+
+include "include2.simp"
+
+namespace test1 {}

@@ -77,19 +77,33 @@ int yycolumn = 1;
 "break"     { return BREAK; }
 "continue"  { return CONTINUE; }
 "const"     { return CONST; }
-"import"    { return IMPORT; }
+"include"   { return INCLUDE; }
 "do"        { return DO; }
 "else"      { return ELSE; }
 "if"        { return IF; }
 "return"    { return RETURN; }
 "while"     { return WHILE; }
+
 "true"      { return TRUE; }
 "false"     { return FALSE; }
+
 "yield"     { return YIELD; }
 "exit"      { return EXIT; }
 "trace"     { return TRACE; }
 "print"     { return PRINT; }
 "type"      { return TYPE; }
+
+"list"      { return LIST; }
+"hash"      { return HASH; }
+
+"namespace" { return NAMESPACE; }
+"class"     { return CLASS; }
+
+"try"       { return TRY; }
+"except"    { return EXCEPT; }
+"raise"     { return RAISE; }
+
+"inline"    { return INLINE; }
 
 "integer"|"int"     { simp_lval.type = INT; return INT; }
 "unsigned"|"uint"   { simp_lval.type = UINT; return UINT; }
