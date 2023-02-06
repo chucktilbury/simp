@@ -1,0 +1,36 @@
+;------------------------------------------------------------------------------
+; This file tests the if/else clauses to verify that the syntax works as
+; expected.
+;------------------------------------------------------------------------------
+
+namespace obligatory {
+
+    nothing a_function() {
+
+        if(123 == 234) {
+            do_the_first_one()
+        }
+        else("blart" == "flarp") {
+            do_another()
+            if("nine" == 9) {
+                nope("always false")
+            }
+            else {
+                ; blank or missing expression is always true
+                do_this_always()
+            }
+        }
+
+        ; see if we pick up a new if clause properly
+        if(true) {
+            do_things()
+        }
+
+        if(false) {
+            {
+                ; this is an embedded block
+                do_things()
+            }
+        }
+    }
+}

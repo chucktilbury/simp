@@ -98,9 +98,9 @@ compound_name
     ;
 
 symbol_reference
-    : SYMBOL '[' expression ']' { PTRACE("symbol_reference:ARRAY"); }
-    | SYMBOL '(' expression_list ')' { PTRACE("symbol_reference:FUNC"); }
+    : SYMBOL '(' expression_list ')' { PTRACE("symbol_reference:FUNC"); }
     | SYMBOL '(' ')' { PTRACE("symbol_reference:FUNC()"); }
+    | SYMBOL '[' expression ']' { PTRACE("symbol_reference:ARRAY"); }
     | SYMBOL { PTRACE("symbol_reference:SYMBOL"); }
     ;
 
@@ -264,6 +264,17 @@ else_clause_list
     | else_clause_list else_clause { PTRACE("else_clause_list:else_clause_list else_clause"); }
     ;
 
+if_clause
+    : IF '(' expression ')' func_body { PTRACE("if_clause:IF (expression) func_body"); }
+    ;
+
+if_statement
+    : if_clause {}
+    | if_clause else_clause_final { PTRACE("if_statement:if_clause else_clause_final"); }
+    | if_clause else_clause_list { PTRACE("if_statement:if_clause else_clause_list"); }
+    | if_clause else_clause_list else_clause_final { PTRACE("if_statement:if_clause else_clause_list else_clause_final"); }
+    ;
+
 except_clause
     : EXCEPT '(' compound_name ')' func_body { PTRACE("except_clause:EXCEPT"); }
     ;
@@ -282,16 +293,6 @@ try_statement
     : TRY func_body except_clause_final { PTRACE("try_statement:final"); }
     | TRY func_body except_clause_list { PTRACE("try_statement:list"); }
     | TRY func_body except_clause_list except_clause_final { PTRACE("try_statement:list_final"); }
-    ;
-
-if_clause
-    : IF '(' expression ')' func_body { PTRACE("if_clause:IF (expression) func_body"); }
-    ;
-
-if_statement
-    : if_clause {}
-    | if_clause else_clause_final { PTRACE("if_statement:if_clause else_clause_final"); }
-    | if_clause else_clause_list else_clause_final { PTRACE("if_statement:if_clause else_clause_list else_clause_final"); }
     ;
 
 while_statement
@@ -353,16 +354,18 @@ raise_statement
     ;
 
 inline_statement
-    : INLINE '(' symbol_definition_list ')' '{' STRG '}' { PTRACE("inline_statement:"); }
+    : INLINE '(' expression_list ')' '{' STRG '}' { PTRACE("inline_statement:"); }
+    | INLINE '(' ')' '{' STRG '}' { PTRACE("inline_statement:()"); }
+    | INLINE '{' STRG '}' { PTRACE("inline_statement:()"); }
     ;
 
 assignment
-    : compound_name '=' expression { PTRACE("assignment:SYMBOL=expression"); }
-    | compound_name ADD_ASSIGN expression { PTRACE("assignment:SYMBOL ADD_ASSIGN expression"); }
-    | compound_name SUB_ASSIGN expression { PTRACE("assignment:SYMBOL SUB_ASSIGN expression"); }
-    | compound_name MUL_ASSIGN expression { PTRACE("assignment:SYMBOL MUL_ASSIGN expression"); }
-    | compound_name DIV_ASSIGN expression { PTRACE("assignment:SYMBOL DIV_ASSIGN expression"); }
-    | compound_name MOD_ASSIGN expression { PTRACE("assignment:SYMBOL MOD_ASSIGN expression"); }
+    : compound_reference '=' expression { PTRACE("assignment:SYMBOL=expression"); }
+    | compound_reference ADD_ASSIGN expression { PTRACE("assignment:SYMBOL ADD_ASSIGN expression"); }
+    | compound_reference SUB_ASSIGN expression { PTRACE("assignment:SYMBOL SUB_ASSIGN expression"); }
+    | compound_reference MUL_ASSIGN expression { PTRACE("assignment:SYMBOL MUL_ASSIGN expression"); }
+    | compound_reference DIV_ASSIGN expression { PTRACE("assignment:SYMBOL DIV_ASSIGN expression"); }
+    | compound_reference MOD_ASSIGN expression { PTRACE("assignment:SYMBOL MOD_ASSIGN expression"); }
     ;
 
 func_body_statement

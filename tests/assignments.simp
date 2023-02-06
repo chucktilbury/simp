@@ -1,0 +1,16 @@
+;------------------------------------------------------------------------------
+; This tests various kinds of assignments
+;------------------------------------------------------------------------------
+
+namespace obligatory {
+
+    nothing a_function() {
+
+        ; presumably these vars were defined somewhere
+        asd.wer = sdf.df_123[1].fun()
+        asd.wer = lkj.wer['asd']
+        asd.wer = func(asd.wer, 123, 12.023e-12).qwe
+        asd.wer = sdfkl[asd[sdd.qwe.func(kjdf['asd'])]]
+        asd[1] = sdf
+    }
+}

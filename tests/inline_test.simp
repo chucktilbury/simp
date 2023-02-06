@@ -1,0 +1,26 @@
+
+;------------------------------------------------------------------------------
+; The inline block is used to interface Simp code to external code written in
+; C. An inline block must be buried inside a function to provide an entry
+; point into the block. The types are converted to the analogous types in C
+; and the names are used in the C block. The code inside the quotes are copied
+; without any changes whatsoever.
+;------------------------------------------------------------------------------
+
+namespace some_interface {
+
+    nothing some_function(int some, string sdf, user.defined val = 1234) {
+
+        inline {"
+            this text is copied directly to the output
+        "}
+
+        inline(some, sdf, val) {"
+            this is a multi-line
+            string that
+            is
+            passed directly to the
+            output
+        "}
+    }
+}
