@@ -1,0 +1,13 @@
+;-----------------------
+; Test permutations of the if statement
+;-----------------------
+
+nothing func() {
+
+    ; BUG: The two expressions clash and over-write each other. If one or the
+    ; other are commented out, then the other works just fine.
+    if(not ((asd == 123) and wert())) {
+        int asf = 8080
+    }
+}
+

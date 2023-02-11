@@ -1,0 +1,21 @@
+123.123e-2 qwerty(0, 123)
+0x123 0
+;--------------------------------
+;   Generic expression test.
+;--------------------------------
+
+const int _plart_123 = ncase != 3
+
+;--------------------------------
+; This shows a bug where if there is an expression before the import
+; statement, then there is an incorrect parse and possibly a segfault, but
+; this is because some of the rules have not been implemented yet.
+; Specifically, the import statement does not return an acceptable value.
+;---------------------------------
+int zop
+import "../tests/tst2.notc"
+
+float plop = 100.123 + asdf()
+
+float symb() {}
+dd

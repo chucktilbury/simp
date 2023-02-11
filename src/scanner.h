@@ -1,28 +1,18 @@
-/**
- * @file scanner.h
- *
- * @brief Scanner header.
- *
- */
 #ifndef _SCANNER_H
 #define _SCANNER_H
 
-#include <stdio.h>
+#include "tokens.h"
 
-char* get_file_name();
-int get_line_no();
-int get_col_no();
-void open_file(const char* fname);
+void init_scanner(const char* fname);
+Token* crnt_token();
+void consume_token();
 
-/*
- * Defined by flex. Call one time to isolate a symbol and then use the global
- * symbol struct to access the symbol.
- */
-extern int yylex();
-extern int yyparse();
-extern FILE* yyin;
+#ifdef ENABLE_SCANNER_TRACE
+# define STRACE fprintf(stderr, "scanner\t%s()\t%s:%d:%d\n", \
+            __func__, get_file_name(), get_line_no(), get_col_no())
+#else
+# define STRACE
+#endif
 
-// void yyerror(char *s, ...);
-void yyerror(const char* s);
 
 #endif /* _SCANNER_H */

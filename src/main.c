@@ -5,42 +5,28 @@
 #include <string.h>
 #include <stdint.h>
 
+#include "ptrlst.h"
+#include "strptr.h"
+#include "memory.h"
 #include "scanner.h"
+
+#include "filebuf.h"
 #include "parser.h"
 
-int errors = 0;
+#include "errors.h"
 
-void syntax_error(const char* fmt, ...) {
+#include "scanner.h"
 
-    if(get_line_no() > 0)
-        fprintf(stderr, "%s:%d:%d syntax error, ",
-                get_file_name(), get_line_no(), get_col_no());
+
+void print_token(Token* tok) {
+
+    if(tok != NULL) {
+        printf("token name: \"%s\"\n", get_string_ptr(tok->str));
+        printf("      type: %s (%d)\n", tokToStr(tok->type), tok->type);
+        printf("      %s:%d:%d\n", get_file_name(), get_line_no(), get_col_no());
+    }
     else
-        fprintf(stderr, "syntax error, ");
-
-    va_list args;
-
-    va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-    fprintf(stderr, "\n");
-
-    errors++;
-}
-
-void __ferror(const char* func, int line, const char* fmt, ...) {
-
-    fprintf(stderr, "%s:%d: fatal error, ", func, line);
-
-    va_list args;
-
-    va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-    fprintf(stderr, "\n");
-
-    errors++;
-    exit(1);
+        printf("NULL token\n");
 }
 
 /**
@@ -56,14 +42,27 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    open_file(argv[1]);
+    void* data = parser(argv[1]);
 
-    if(simp_parse()) {
-        printf("parse fail: %d error(s)\n", errors);
-        return 1;
-    }
-
-    printf("\nnum errors: %d\n\n", errors);
+    // init_scanner(argv[1]);
+    // //open_file(argv[1]);
+    //
+    // //Module* mod = parse_all(argv[1]);
+    // Token* tok;
+    // while(1) {
+    //     tok = crnt_token();
+    //     print_token(tok);
+    //     consume_token();
+    //     if(tok->type == TOK_END_INPUT) {
+    //         print_token(tok);
+    //         break;
+    //     }
+    // }
+    //
+    //if(mod == NULL || get_num_errors() != 0) {
+    //    printf("parse fail: %d error(s)\n", get_num_errors());
+    //    return 1;
+    //}
 
     return 0;
 }
