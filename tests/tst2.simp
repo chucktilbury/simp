@@ -2,6 +2,8 @@
 ; comment
 namespace a_name {
 
+int func_name(int blart, asdf qwer, string lkj) {}
+
 class c1_name ( asd.dfg ) {}
 class c_name {}
 

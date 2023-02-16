@@ -11,6 +11,7 @@ add_executable(${PROJECT_NAME}
     cmdline.c
     strptr.c
     tokens.c
+    expressions.c
     #ast.c
     #dump.c
     #import.c

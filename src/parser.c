@@ -9,6 +9,7 @@
 #include "strptr.h"
 #include "parser.h"
 #include "ast.h"
+#include "expressions.h"
 
 /**
  * @brief Store a scope operator.
@@ -341,69 +342,6 @@ void* function_body() {
 }
 
 /**
- * @brief Read a list of function parameters separated by ',' characters and
- * surrounded by '()'. When this is entered, the '(' is the current token.
- *
- * function_param_list
- *   : variable_def
- *   | function_param_list ',' variable_def
- *   ;
- *
- * function_params
- *   : '(' ')'
- *   | '(' function_param_list ')'
- *   ;
- *
- * @return void*
- */
-void* function_params() {
-
-    PTRACE;
-
-    return NULL;
-}
-
-/**
- * @brief Read a complete function definition and return a pointer to it. When
- * this is entered, the '(' is the current token and the name and the data
- * type have already been read. The name can be a simple SYMBOL or it can be
- * a compound name. The function parameters can be simple variable definitions
- * or they be initialized with a value, but the value has to be known at
- * compile time. The body is parsed by another function.
- *
- * function_definition
- *   : type_spec compound_name parameter_spec func_body
- *   ;
- *
- * @param type
- * @param name
- * @return void*
- */
-void* function_definition(TypeSpec* type, CompoundName* name) {
-
-    PTRACE;
-
-    FunctionDef* ptr = _alloc_ds(FunctionDef);
-    ptr->ast.type = AST_FUNC_DEF;
-    ptr->type = type;
-    ptr->name = name;
-    ptr->parms = NULL;
-    ptr->body = NULL;
-    return ptr;
-}
-
-/**
- * @brief Read an expression object in "shunting yard" format so that it can
- * be written out later as a RPN expression.
- *
- * @return void*
- */
-void* get_expression() {
-
-    return NULL;
-}
-
-/**
  * @brief Read a variable definition and return a pointer to it. The name in
  * this data structure is a CompoundName, but it can only have one element in
  * it. This function takes care to verify that the name is properly formatted
@@ -432,8 +370,132 @@ void* variable_definition(TypeSpec* type, CompoundName* name) {
     GET_TOKEN(tok);
     if(tok->type == TOK_EQUAL) {
         consume_token();
-        ptr->expr = get_expression();
+        ptr->expr = expression();
     }
+
+    return ptr;
+}
+
+/**
+ * @brief Read a variable def where that is the only thing that is acceptable
+ * in this location.
+ *
+ * @return void*
+ */
+void* variable_param_def() {
+
+    PTRACE;
+    TypeSpec* type = type_spec();
+    if(type == NULL) {
+        syntax("expected type specification");
+        return NULL;
+    }
+
+    CompoundName* name = compound_name();
+    if(name == NULL) {
+        syntax("expected a name specification");
+        return NULL;
+    }
+
+    // return what ever variable definition returns, including the expression.
+    return variable_definition(type, name);
+}
+
+/**
+ * @brief Read a list of function parameters separated by ',' characters and
+ * surrounded by '()'. When this is entered, the '(' is the current token.
+ *
+ * function_param_list
+ *   : variable_def
+ *   | function_param_list ',' variable_def
+ *   ;
+ *
+ * function_params
+ *   : '(' ')'
+ *   | '(' function_param_list ')'
+ *   ;
+ *
+ * @return void*
+ */
+void* function_params() {
+
+    PTRACE;
+
+    Token* tok;
+    FuncDefParams* ptr = _alloc_ds(FuncDefParams);
+    ptr->ast.type = AST_FUNC_PARAMS;
+    ptr->list = create_ptr_list();
+
+    GET_TOKEN(tok);
+    // first token should be a '('
+    if(tok->type != TOK_OPAREN) {
+        syntax("expected function parameter list but got \"%s\"", tokToStr(tok->type));
+        return NULL;
+    }
+    consume_token();
+
+    GET_TOKEN(tok);
+    // next token is either a ')' or a variable definition
+    if(tok->type == TOK_CPAREN) {
+        consume_token();
+        return ptr; // empty parameter list
+    }
+
+    // next token is hopefully a variable definition
+    while(get_num_errors() == 0) {
+        VariableDef* var = variable_param_def();
+        if(var == NULL) {
+            syntax("invalid function parameter definition");
+            return NULL;
+        }
+        append_ptr_list(ptr->list, (void*)var);
+
+        // next token can be a ',' or a ')'
+        GET_TOKEN(tok);
+        if(tok->type == TOK_COMMA)
+            consume_token();
+        else if(tok->type == TOK_CPAREN) {
+            consume_token();
+            return ptr;
+        }
+        // else repeat the loop
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief Read a complete function definition and return a pointer to it. When
+ * this is entered, the '(' is the current token and the name and the data
+ * type have already been read. The name can be a simple SYMBOL or it can be
+ * a compound name. The function parameters can be simple variable definitions
+ * or they be initialized with a value, but the value has to be known at
+ * compile time. The body is parsed by another function.
+ *
+ * function_definition
+ *   : type_spec compound_name parameter_spec func_body
+ *   ;
+ *
+ * @param type
+ * @param name
+ * @return void*
+ */
+void* function_definition(TypeSpec* type, CompoundName* name) {
+
+    PTRACE;
+
+    FunctionDef* ptr = _alloc_ds(FunctionDef);
+    ptr->ast.type = AST_FUNC_DEF;
+    ptr->type = type;
+    ptr->name = name;
+
+    ptr->parms = function_params();
+    if(ptr->parms == NULL)
+        return NULL; // error message already issued.
+
+    ptr->body = function_body();
+    if(ptr->body == NULL)
+        return NULL; // error message already issued.
 
     return ptr;
 }
