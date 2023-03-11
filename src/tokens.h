@@ -85,6 +85,7 @@ typedef enum {
 
     TOK_COMMA,      // ","
     TOK_DOT,        // "."
+    TOK_POW,        // "^"
 
     // Generated tokens
     TOK_SYMBOL,     //  [a-zA-Z_][a-zA-Z_0-9]*

@@ -1,9 +1,22 @@
 {
     "cSpell.words": [
         "CCBRACE",
+        "charbuffer",
         "CPAREN",
+        "CPBRACE",
+        "CSBRACE",
+        "dquote",
+        "FNUM",
+        "INUM",
+        "isstopper",
+        "NEQU",
         "OCBRACE",
         "OPAREN",
-        "TTRACE"
+        "OPBRACE",
+        "OSBRACE",
+        "QSTRG",
+        "squote",
+        "TTRACE",
+        "xdigits"
     ]
 }

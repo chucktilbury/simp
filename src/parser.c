@@ -283,6 +283,9 @@ void* class_definition() {
 void* import_definition() {
 
     PTRACE;
+    consume_token(); // consume the import token
+    // current token is the quoted string.
+    consume_token(); // consume QSTRG
     return NULL;
 }
 

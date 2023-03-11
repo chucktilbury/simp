@@ -226,6 +226,10 @@ static void get_operator() {
 
     // current character is the first character of the operator
     switch(get_crnt_char()) {
+        case '^':
+            save_char();
+            crnt_tok.type = TOK_POW;
+            break;
         case '!':
             save_char();
             if(get_crnt_char() == '=') {
@@ -392,6 +396,7 @@ static void get_float_tail() {
     else
         get_digits();
 
+    /* Exponents are now handled with the '^' operator.
     ch = get_crnt_char();
     // check for an exponent
     if(ch == 'e' || ch == 'E') {
@@ -409,6 +414,7 @@ static void get_float_tail() {
                 get_digits();
         }
     }
+    */
 }
 
 /**

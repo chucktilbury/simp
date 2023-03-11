@@ -154,6 +154,7 @@ const char* tokToStr(TokenType t) {
         (t == TOK_CCBRACE)?     "}":
         (t == TOK_COMMA)?       ",":
         (t == TOK_DOT)?         ".":
+        (t == TOK_POW)?         "^":
         (t == TOK_SYMBOL)?      "SYMBOL":
         (t == TOK_INUM)?        "INTEGER":
         (t == TOK_FNUM)?        "FLOAT":
