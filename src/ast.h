@@ -28,72 +28,10 @@ typedef struct _tree_root_ {
     PtrLst* list;
 } TreeRoot;
 
-typedef struct _namespace_ {
-    Ast ast;
-    String name;
-    PtrLst* list;
-} Namespace;
-
-typedef struct _compound_name_ {
-    Ast ast;
-    PtrLst* symbol;
-    String str;
-    bool is_single;
-} CompoundName;
-
-typedef struct _type_spec_ {
-    Ast ast;
-    CompoundName* symbol; // NULL if it's a native type.
-    int type;
-    bool is_const;
-} TypeSpec;
-
-typedef struct _scope_operator_ {
-    Ast ast;
-    int type;
-} ScopeOperator;
-
-// TODO: add the guts of this.....
-typedef struct _expression_ {
-    Ast* ast;
-} Expression;
-
-typedef struct _variable_def_ {
-    Ast ast;
-    CompoundName* name;
-    TypeSpec* type;
-    Expression* expr;
-} VariableDef;
-
-typedef struct _function_body_ {
-    Ast ast;
-    PtrLst* list;
-} FunctionBody;
-
-// This is a list of VariableDef's
-typedef struct _func_def_params_ {
-    Ast ast;
-    PtrLst* list;
-} FuncDefParams;
-
-typedef struct _function_def_ {
-    Ast ast;
-    TypeSpec* type;
-    CompoundName* name;
-    PtrLst* parms;
-    FunctionBody* body;
-} FunctionDef;
-
-typedef struct _class_body_ {
-    Ast ast;
-    PtrLst* list;
-} ClassBody;
-
-typedef struct _class_def_ {
-    Ast ast;
-    String name;
-    CompoundName* parent_name;
-    ClassBody* body;
-} ClassDef;
+#include "reference.h"
+#include "expressions.h"
+#include "module.h"
+#include "function.h"
+#include "class.h"
 
 #endif /* _AST_H */

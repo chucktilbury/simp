@@ -12,6 +12,10 @@ add_executable(${PROJECT_NAME}
     strptr.c
     tokens.c
     expressions.c
+    module.c
+    reference.c
+    function.c
+    class.c
     #ast.c
     #dump.c
     #import.c

@@ -67,18 +67,19 @@
  *     ;
  *
  */
-#include <stdio.h>
-#include <stdlib.h>
-#include <stddef.h>
-
-#include "errors.h"
-#include "ptrlst.h"
-#include "memory.h"
-#include "scanner.h"
-#include "strptr.h"
+#include "common.h"
 #include "parser.h"
-#include "ast.h"
 
+// TODO: add the guts of this.....
+struct _expression_ {
+    Ast* ast;
+    PtrLst* list;
+};
+
+struct _expression_list_ {
+    Ast ast;
+    PtrLst* list;
+};
 
 /**
  * @brief Parse the primary precedence of the expression.
