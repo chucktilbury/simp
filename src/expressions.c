@@ -68,11 +68,13 @@
  *
  */
 #include "common.h"
-#include "parser.h"
+#include "scanner.h"
+#include "ast.h"
+#include "expressions.h"
 
 // TODO: add the guts of this.....
 struct _expression_ {
-    Ast* ast;
+    Ast ast;
     PtrLst* list;
 };
 

@@ -10,13 +10,20 @@ typedef enum {
     AST_IMPORT,
     AST_TYPE_SPEC,
     AST_SCOPE_OPERATOR,
-    AST_COMPOUND_NAME,
     AST_VAR_DEF,
     AST_FUNC_DEF,
     AST_FUNC_PARAMS,
     AST_FUNC_BODY,
     AST_CLASS_DEF,
     AST_CLASS_BODY,
+    AST_EXPRESSION,
+    AST_EXPR_LIST,
+    AST_NAME,   // appears in a compound_reference
+    AST_COMPOUND_NAME, // left side
+    AST_ARRAY_REF,
+    // AST_COMPOUND_REF_ELEM,
+    AST_FUNCTION_REF,
+    AST_COMPOUND_REF, // right side
 } AstType;
 
 typedef struct {

@@ -1,0 +1,15 @@
+
+;-----------------------------------------
+; Test the compound reference syntax.
+
+namespace name {
+
+    asd.fgf func() {
+        bacon.eggs += 123
+        return
+    }
+
+    int val = asdf(asd, asd, 123)
+    int blart = (asd123.ewr_qw)qwe . fn().(qwer.asd).asd[asd].asd
+
+}

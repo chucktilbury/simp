@@ -1,4 +1,6 @@
 #include "common.h"
+#include "scanner.h"
+#include "ast.h"
 #include "parser.h"
 
 

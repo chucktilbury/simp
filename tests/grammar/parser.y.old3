@@ -15,6 +15,27 @@
         } while(0)
 
 int errors = 0;
+// TODO:
+// 1. Structs with LH and RH syntax for references and assignment.
+// 2. Init a struct with static data.
+// 3. Structs can be nested.
+// 4. Syntax for list and hash definition and access with weak types.
+// 5. Syntax for string formatting? Revisit?
+// 6. Namespaces? Scopes?
+//
+// Might happen:
+// 1. Parsing imports for symbols instead of simple include.
+// 2. Use the linker.
+//
+// Sky Pie:
+// 1. Functions defined for structs.
+// 2. Non-local GOTO.
+//
+// To NOT do:
+// 1. Exceptions
+// 2. Classes
+// 3. Function pointers
+//
 
 %}
 

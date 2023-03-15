@@ -15,6 +15,27 @@
         } while(0)
 
 int errors = 0;
+// TODO:
+// 1. Structs with LH and RH syntax for references and assignment.
+// 2. Init a struct with static data.
+// 3. Structs can be nested.
+// 4. Syntax for list and hash definition and access with weak types.
+// 5. Syntax for string formatting? Revisit?
+// 6. Namespaces? Scopes?
+//
+// Might happen:
+// 1. Parsing imports for symbols instead of simple include.
+// 2. Use the linker.
+//
+// Sky Pie:
+// 1. Functions defined for structs.
+// 2. Non-local GOTO.
+//
+// To NOT do:
+// 1. Exceptions
+// 2. Classes
+// 3. Function pointers
+//
 
 %}
 
@@ -45,20 +66,6 @@ int errors = 0;
 %define parse.error verbose
 %locations
 
-%right '='
-%left OR
-%left AND
-%left EQU NEQU
-%left LORE GORE '<' '>'
-%left '+' '-'
-%left '*' '/' '%'
-%right '^'
-%left NEGATE
-%left '.'
-%left CAST
-
-%glr-parser
-
 %%
 
 module
@@ -80,29 +87,20 @@ module_item
     ;
 
 namespace_definition
-    : NAMESPACE SYMBOL '{' module_list '}' {TRACE("namespace_definition:NAMESPACE %s", $2);}
+    : NAMESPACE SYMBOL '{' module_list '}' {TRACE("namespace_definition:NAMESPACE");}
     ;
-
-compound_name
-    : SYMBOL { TRACE("compound_name: create %s", $1); }
-    | compound_name '.' SYMBOL { TRACE("compound_name: add %s", $3); }
 
 type_spec_list
     : type_spec
     | type_spec_list ',' type_spec
     ;
 
-func_type_spec
-    : type_definition { TRACE("func_type_spec:type_spec"); }
-    | NOTHING { TRACE("func_type_spec:NOTHING"); }
-    ;
-
 func_declaration
-    : func_type_spec SYMBOL '(' ')' { TRACE("func_declaration:%s()", $2); }
-    | func_type_spec SYMBOL '(' type_spec_list ')' { TRACE("func_declaration:%s(type_spec_list)", $2); }
+    : type_spec SYMBOL '(' ')' {}
+    | type_spec SYMBOL '(' type_spec_list ')' {}
 
 except_clause
-    : EXCEPT '(' compound_name ')' func_body
+    : EXCEPT '(' SYMBOL ')' func_body
     ;
 
 except_clause_final
@@ -139,16 +137,32 @@ class_body
 
 class_definition
     : CLASS SYMBOL class_body {}
-    | CLASS SYMBOL '(' compound_name ')' class_body {}
+    | CLASS SYMBOL '(' compound_symbol ')' class_body {}
     ;
 
 array_reference
-    : SYMBOL '[' expression ']' {TRACE("array_reference:%s", $1);}
+    : SYMBOL '[' expression ']' {TRACE("array_reference:");}
     ;
 
 function_reference
-    : SYMBOL '(' expression_list ')' {TRACE("function_reference:%s", $1);}
-    | SYMBOL '(' ')' {TRACE("function_reference:%s", $1);}
+    : SYMBOL '(' expression_list ')' {TRACE("function_reference:");}
+    | SYMBOL '(' ')' {TRACE("function_reference:");}
+    ;
+
+compound_symbol
+    : SYMBOL
+    | compound_symbol '.' SYMBOL {}
+    ;
+
+compound_refrence_element
+    : SYMBOL {TRACE("compound_element:SYMBOL");}
+    | array_reference {TRACE("compound_element:array_reference");}
+    | function_reference {}
+    ;
+
+compound_reference
+    : compound_refrence_element {TRACE("compound_name:compound_element");}
+    | compound_reference '.' compound_refrence_element {TRACE("compound_name:add");}
     ;
 
 type_definition
@@ -157,11 +171,11 @@ type_definition
     | FLOAT {TRACE("type_definition:FLOAT");}
     | STRING {TRACE("type_definition:STRING");}
     | BOOLEAN {TRACE("type_definition:BOOLEAN");}
-    | compound_name { TRACE("type_definition:compound_name");}
+    | compound_symbol {}
     ;
 
 dict_init_element
-    : STRG ':' expression {TRACE("dict_init_element:");}
+    : SYMBOL ':' expression {TRACE("dict_init_element:");}
     ;
 
 dict_list
@@ -172,6 +186,11 @@ dict_list
 type_spec
     : type_definition {TRACE("type_spec:type_definition");}
     | CONST type_definition {TRACE("type_spec:CONST");}
+    | NOTHING {TRACE("type_spec:NOTHING");}
+    ;
+
+cast_spec
+    : '(' type_spec ')' {TRACE("cast_spec:");}
     ;
 
 constant_expression
@@ -184,17 +203,17 @@ constant_expression
     ;
 
 symbol_decl
-    : type_spec SYMBOL {TRACE("symbol_decl:type_spec SYMBOL %s", $2);}
-    | type_spec SYMBOL '=' expression {TRACE("symbol_decl:type_spec SYMBOL %s =", $2);}
-    | LIST SYMBOL {TRACE("symbol_decl:LIST SYMBOL %s", $2);}
-    | DICT SYMBOL {TRACE("symbol_decl:DICT SYMBOL %s", $2);}
-    | LIST SYMBOL '=' '[' expression_list ']' {TRACE("symbol_decl:LIST SYMBOL %s =", $2);}
-    | DICT SYMBOL '=' '[' dict_list ']' {TRACE("symbol_decl:DICT SYMBOL %s=", $2);}
+    : type_spec SYMBOL {TRACE("symbol_decl:type_spec SYMBOL");}
+    | type_spec SYMBOL '=' expression {TRACE("symbol_decl:type_spec SYMBOL =");}
+    | LIST SYMBOL {TRACE("symbol_decl:LIST SYMBOL");}
+    | DICT SYMBOL {TRACE("symbol_decl:DICT SYMBOL");}
+    | LIST SYMBOL '=' '[' expression_list ']' {TRACE("symbol_decl:LIST SYMBOL =");}
+    | DICT SYMBOL '=' '[' dict_list ']' {TRACE("symbol_decl:DICT SYMBOL =");}
     ;
 
 symbol_decl_list
-    : symbol_decl {TRACE("symbol_decl_list: create");}
-    | symbol_decl_list ',' symbol_decl {TRACE("symbol_decl_list: add");}
+    : symbol_decl {TRACE("symbol_decl_list:");}
+    | symbol_decl_list ',' symbol_decl {TRACE("symbol_decl_list:");}
     ;
 
 struct_element
@@ -208,39 +227,68 @@ struct_list
     ;
 
 struct_definition
-    : STRUCT SYMBOL '{' '}' {TRACE("struct_definition:");}
-    | STRUCT SYMBOL '{' struct_list '}' {TRACE("struct_definition:");}
+    :   STRUCT SYMBOL '{' '}' {TRACE("struct_definition:");}
+    |   STRUCT SYMBOL '{' struct_list '}' {TRACE("struct_definition:");}
     ;
 
+    /*
+     * Expressions are arranged from lowest precidence to the highest. Each
+     * precidence level has its own rule that references the next higher
+     * level.
+     */
 expression
-    : expr_primary
-    | expression OR expression { TRACE("expression:or"); }
-    | expression AND expression { TRACE("expression:and"); }
-    | expression EQU expression { TRACE("expression:=="); }
-    | expression NEQU expression { TRACE("expression:!="); }
-    | expression LORE expression { TRACE("expression:<="); }
-    | expression GORE expression { TRACE("expression:>="); }
-    | expression '<' expression { TRACE("expression:<"); }
-    | expression '>' expression { TRACE("expression:>"); }
-    | expression '+' expression { TRACE("expression:+"); }
-    | expression '-' expression { TRACE("expression:-"); }
-    | expression '*' expression { TRACE("expression:*"); }
-    | expression '/' expression { TRACE("expression:/"); }
-    | expression '%' expression { TRACE("expression:%%"); }
-    | expression '^' expression { TRACE("expression:^"); }
-    | '-' expression %prec NEGATE {TRACE("expression unary:-");}
-    | '+' expression %prec NEGATE {TRACE("expression unary:+");}
-    | NOT expression %prec NEGATE {TRACE("expression unary:not");}
-    | expression '.' expression { TRACE("expression:."); }
-    | '(' compound_name ')' expression %prec CAST { TRACE("expression:cast"); }
-    | '(' expression ')' {TRACE("expression:()");}
+    : expr_or {TRACE("expression:");}
+    ;
+
+expr_or
+    : expr_and {TRACE("expr_or:and");}
+    | expr_or OR expr_and {TRACE("expr_or:or");}
+    ;
+
+expr_and
+    : expr_equality {TRACE("expr_and:=");}
+    | expr_and AND expr_equality {TRACE("expr_and:and");}
+    ;
+
+expr_equality
+    : expr_compare {TRACE("expr_equality:compare");}
+    | expr_equality EQU expr_compare {TRACE("expr_equality:==");}
+    | expr_equality NEQU expr_compare {TRACE("expr_equality:!=");}
+    ;
+
+expr_compare
+    : expr_term {TRACE("expr_compare:term");}
+    | expr_compare LORE expr_term {TRACE("expr_compare:<=");}
+    | expr_compare GORE expr_term {TRACE("expr_compare:>=");}
+    | expr_compare '<' expr_term {TRACE("expr_compare:<");}
+    | expr_compare '>' expr_term {TRACE("expr_compare:>");}
+    ;
+
+expr_term
+    : expr_factor {TRACE("expr_term:fact");}
+    | expr_term '+' expr_factor {TRACE("expr_term:+");}
+    | expr_term '-' expr_factor {TRACE("expr_term:-");}
+    ;
+
+expr_factor
+    : expr_unary {TRACE("expr_factor:unary");}
+    | expr_factor '*' expr_unary {TRACE("expr_factor:*");}
+    | expr_factor '/' expr_unary {TRACE("expr_factor:/");}
+    | expr_factor '%' expr_unary {TRACE("expr_factor:%%");}
+    ;
+
+expr_unary
+    : expr_primary {TRACE("expr_unary:primary");}
+    | '-' expr_unary {TRACE("expr_unary:-");}
+    | '+' expr_unary {TRACE("expr_unary:+");}
+    | NOT expr_unary {TRACE("expr_unary:not");}
+    | cast_spec expr_unary {TRACE("expr_unary:cast");}
     ;
 
 expr_primary
-    : constant_expression {TRACE("expr_primary:constant_expression");}
-    | function_reference {TRACE("expr_primary:function_reference");}
-    | array_reference {TRACE("expr_primary:array_reference");}
-    | SYMBOL {TRACE("expr_primary:SYMBOL %s", $1);}
+    : constant_expression {TRACE("expr_primary:const");}
+    | compound_reference {TRACE("expr_primary:compound");}
+    | '(' expression ')' {TRACE("expr_primary:()");}
     ;
 
 expression_list
@@ -249,8 +297,9 @@ expression_list
     ;
 
 func_definition
-    : func_type_spec SYMBOL '(' symbol_decl_list ')' func_body {TRACE("func_definition:");}
-    | func_type_spec SYMBOL '(' ')' func_body {TRACE("func_definition:");}
+    : type_spec SYMBOL '(' symbol_decl_list ')' func_body {TRACE("func_definition:");}
+    | type_spec SYMBOL '(' ')' func_body {TRACE("func_definition:");}
+    | type_spec SYMBOL func_body {TRACE("func_definition:");}
     ;
 
 func_body_statement_list
@@ -347,33 +396,33 @@ raise_statement
     ;
 
 assignment
-    : compound_name '=' expression {TRACE("assignment:=");}
-    | compound_name ADD_ASSIGN expression {TRACE("assignment:+=");}
-    | compound_name SUB_ASSIGN expression {TRACE("assignment:-=");}
-    | compound_name MUL_ASSIGN expression {TRACE("assignment:*=");}
-    | compound_name DIV_ASSIGN expression {TRACE("assignment:/=");}
-    | compound_name MOD_ASSIGN expression {TRACE("assignment:%%=");}
+    : compound_symbol '=' expression {TRACE("assignment:=");}
+    | compound_symbol ADD_ASSIGN expression {TRACE("assignment:+=");}
+    | compound_symbol SUB_ASSIGN expression {TRACE("assignment:-=");}
+    | compound_symbol MUL_ASSIGN expression {TRACE("assignment:*=");}
+    | compound_symbol DIV_ASSIGN expression {TRACE("assignment:/=");}
+    | compound_symbol MOD_ASSIGN expression {TRACE("assignment:%%=");}
     ;
 
 func_body_statement
-    : symbol_decl {TRACE("func_body_statement:symbol_decl");}
-    | assignment {TRACE("func_body_statement:assignment");}
-    | if_statement {TRACE("func_body_statement:if_statement");}
-    | while_statement {TRACE("func_body_statement:while_statement");}
-    | do_statement {TRACE("func_body_statement:do_statement");}
-    | function_reference {TRACE("func_body_statement:function_reference");}
-    | trace_statement {TRACE("func_body_statement:trace_statement");}
-    | return_statement {TRACE("func_body_statement:return_statement");}
-    | print_statement {TRACE("func_body_statement:print_statement");}
-    | exit_statement {TRACE("func_body_statement:exit_statement");}
-    | type_statement {TRACE("func_body_statement:type_statement");}
-    | break_statement {TRACE("func_body_statement:break_statement");}
-    | continue_statement {TRACE("func_body_statement:continue_statement");}
-    | yield_statement {TRACE("func_body_statement:yield_statement");}
-    | struct_definition {TRACE("func_body_statement:struct_definition");}
-    | func_body {TRACE("func_body_statement:func_body");}
-    | try_clause {TRACE("func_body_statement:try_clause");}
-    | raise_statement {TRACE("func_body_statement:raise_statement");}
+    : symbol_decl {TRACE(":");}
+    | assignment {TRACE(":");}
+    | if_statement {TRACE(":");}
+    | while_statement {TRACE(":");}
+    | do_statement {TRACE(":");}
+    | function_reference {TRACE(":");}
+    | trace_statement {TRACE(":");}
+    | return_statement {TRACE(":");}
+    | print_statement {TRACE(":");}
+    | exit_statement {TRACE(":");}
+    | type_statement {TRACE(":");}
+    | break_statement {TRACE(":");}
+    | continue_statement {TRACE(":");}
+    | yield_statement {TRACE(":");}
+    | struct_definition {TRACE(":");}
+    | func_body {TRACE(":");}
+    | try_clause {}
+    | raise_statement {}
     ;
 
 %%

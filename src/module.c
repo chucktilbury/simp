@@ -1,5 +1,6 @@
 #include "common.h"
-#include "parser.h"
+#include "scanner.h"
+#include "ast.h"
 #include "module.h"
 
 struct _namespace_ {

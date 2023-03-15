@@ -20,4 +20,4 @@ parser.c: parser.y
 	bison -dvo parser.c parser.y
 
 clean:
-	-rm -f parser.o scanner.o parser.c parser.h parser.output $(TARGET)
+	-rm -f parser.o scanner.o scanner.c parser.c parser.h parser.output $(TARGET)

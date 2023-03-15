@@ -3,7 +3,4 @@
 
 void* parser(const char* fname);
 
-#include "scanner.h"
-#include "ast.h"
-
 #endif

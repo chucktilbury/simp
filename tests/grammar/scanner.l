@@ -139,6 +139,13 @@ int yycolumn = 1;
         return SYMBOL;
     }
 
+    /*
+    [a-zA-Z_][a-zA-Z_0-9]*(\.[a-zA-Z_][a-zA-Z_0-9]*)+ {
+        yylval.symbol = (char*)strdup(yytext);
+        return COMPOUND;
+    }
+    */
+
 [0-9]+ {
         yylval.inum = (double)strtol(yytext, NULL, 10);
         return INUM;

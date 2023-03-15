@@ -1,8 +1,6 @@
 #ifndef _FUNCTION_H
 #define _FUNCTION_H
 
-#include "ast.h"
-
 typedef struct _function_body_ FunctionBody;
 typedef struct _func_def_params_ FuncDefParams;
 typedef struct _function_def_ FunctionDef;

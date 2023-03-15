@@ -5,7 +5,9 @@
  *
  */
 #include "common.h"
-#include "parser.h"
+#include "scanner.h"
+#include "ast.h"
+#include "reference.h"
 
 struct _compound_name_ {
     Ast ast;
@@ -28,10 +30,12 @@ struct _function_reference_ {
 
 struct _compound_reference_element_ {
     Ast ast;
+    void* element; // type is given by the element's AST.
 };
 
 struct _compound_reference_ {
     Ast ast;
+    PtrLst* list;
 };
 
 /**
@@ -89,12 +93,13 @@ void* compound_name() {
  * @brief Parse an array reference.
  *
  * array_reference
- *    : SYMBOL '[' expression ']' {TRACE("array_reference:");}
+ *    : SYMBOL '[' expression ']'
  *    ;
  *
  * @return void*
  */
 void* array_reference() {
+
 
     return NULL;
 }
@@ -104,8 +109,8 @@ void* array_reference() {
  * @brief Parse a reference to a function.
  *
  * function_reference
- *   : SYMBOL '(' expression_list ')' {TRACE("function_reference:");}
- *   | SYMBOL '(' ')' {TRACE("function_reference:");}
+ *   : SYMBOL '(' expression_list ')'
+ *   | SYMBOL '(' ')'
  *   ;
  *
  * @return void*
@@ -119,9 +124,10 @@ void* function_reference() {
  * @brief Recognize a compound reference element.
  *
  * compound_reference_element
- *   : SYMBOL {TRACE("compound_element:SYMBOL");}
- *   | array_reference {TRACE("compound_element:array_reference");}
- *   | function_reference {}
+ *   : SYMBOL
+ *   | SYMBOL '[' expression ']'
+ *   | SYMBOL '(' expression_list ')'
+ *   | SYMBOL '(' ')'
  *   ;
  *
  * @return void*
@@ -135,8 +141,8 @@ void* compound_reference_element() {
  * @brief A compound reference is a reference that is joined by '.'.
  *
  * compound_reference
- *   : compound_refrence_element {TRACE("compound_name:compound_element");}
- *   | compound_reference '.' compound_refrence_element {TRACE("compound_name:add");}
+ *   : compound_reference_element
+ *   | compound_reference '.' compound_reference_element
  *   ;
  *
  * @return void*
@@ -145,3 +151,4 @@ void* compound_reference() {
 
     return NULL;
 }
+

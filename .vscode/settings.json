@@ -16,7 +16,11 @@
         "OSBRACE",
         "QSTRG",
         "squote",
+        "STRPTR",
         "TTRACE",
         "xdigits"
-    ]
+    ],
+    "files.associations": {
+        "reference.h": "c"
+    }
 }

@@ -1,5 +1,6 @@
 #include "common.h"
 #include "scanner.h"
+#include "ast.h"
 #include "class.h"
 
 struct _class_body_ {

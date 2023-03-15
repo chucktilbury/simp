@@ -1,8 +1,6 @@
 #ifndef _MODULE_H
 #define _MODULE_H
 
-#include "ast.h"
-
 typedef struct _namespace_ Namespace;
 typedef struct _type_spec_ TypeSpec;
 typedef struct _scope_operator_ ScopeOperator;

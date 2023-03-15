@@ -1,6 +1,7 @@
 
 #include "common.h"
 #include "scanner.h"
+#include "ast.h"
 #include "function.h"
 
 struct _function_body_ {
