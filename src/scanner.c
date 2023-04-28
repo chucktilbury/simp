@@ -10,65 +10,10 @@
 #include "scanner.h"
 #include "filebuf.h"
 
+#include "keywords.h"
+
 // The current token
 static Token crnt_tok;
-#if 0
-// This is used to translate a string to a token value using binary search.
-static struct _token_list_ {
-    TokenType type;
-    const char* str;
-} token_list[] = {
-    // Note that this data structure **must** be in sorted order.
-    {TOK_AND,       "and"},
-    {TOK_BOOLEAN,   "bool"},
-    {TOK_BOOLEAN,   "boolean"},
-    {TOK_BREAK,     "break"},
-    {TOK_CATCH,     "catch"},
-    {TOK_CLASS,     "class"},
-    {TOK_CONST,     "const"},
-    {TOK_CONTINUE,  "continue"},
-    {TOK_DO,        "do"},
-    {TOK_ELSE,      "else"},
-    {TOK_EQU,       "equ"},
-    {TOK_EXIT,      "exit"},
-    {TOK_FALSE,     "false"},
-    {TOK_FLOAT,     "float"},
-    {TOK_HASH,      "hash"},
-    {TOK_IF,        "if"},
-    {TOK_IMPORT,    "import"},
-    {TOK_INLINE,    "inline"},
-    {TOK_INT,       "int"},
-    {TOK_INT,       "integer"},
-    {TOK_LIST,      "list"},
-    {TOK_NAMESPACE, "namespace"},
-    {TOK_NEQU,      "neq"},
-    {TOK_NOTHING,   "noth"},
-    {TOK_NOTHING,   "nothing"},
-    {TOK_NOT,       "not"},
-    {TOK_OR,        "or"},
-    {TOK_PRINT,     "print"},
-    {TOK_PRIVATE,   "private"},
-    {TOK_PROTECTED, "protected"},
-    {TOK_PUBLIC,    "public"},
-    {TOK_RAISE,     "raise"},
-    {TOK_RETURN,    "return"},
-    {TOK_STRING,    "strg"},
-    {TOK_STRING,    "string"},
-    {TOK_STRUCT,    "struct"},
-    {TOK_TRACE,     "trace"},
-    {TOK_TRUE,      "true"},
-    {TOK_TRY,       "try"},
-    {TOK_TYPE,      "type"},
-    {TOK_UINT,      "uint"},
-    {TOK_UINT,      "unsigned"},
-    {TOK_WHILE,     "while"},
-    {TOK_YIELD,     "yield"}
-};
-// number of items in the data structure list.
-#define NUM_TOK_LST (sizeof(token_list)/sizeof(struct _token_list_))
-#else
-#include "keywords.h"
-#endif
 
 /**
  * @brief Return whether this character can be at the end of something like a
