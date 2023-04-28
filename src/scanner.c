@@ -12,6 +12,7 @@
 
 // The current token
 static Token crnt_tok;
+#if 0
 // This is used to translate a string to a token value using binary search.
 static struct _token_list_ {
     TokenType type;
@@ -65,6 +66,9 @@ static struct _token_list_ {
 };
 // number of items in the data structure list.
 #define NUM_TOK_LST (sizeof(token_list)/sizeof(struct _token_list_))
+#else
+#include "keywords.h"
+#endif
 
 /**
  * @brief Return whether this character can be at the end of something like a

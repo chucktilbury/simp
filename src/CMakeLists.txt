@@ -21,6 +21,12 @@ add_executable(${PROJECT_NAME}
     #import.c
 )
 
+add_custom_target(
+    keywords.h ALL
+    python3 ${PROJECT_SOURCE_DIR}/sort.py ${PROJECT_SOURCE_DIR}/keywords.txt
+    DEPENDS ${PROJECT_SOURCE_DIR}/keywords.txt
+)
+
 target_link_libraries(${PROJECT_NAME}
     gc
 )
