@@ -1,0 +1,5 @@
+# Hashes of file build rules.
+c38c136816fa668867e4dc36c6587b11 CMakeFiles/format
+aadf6a6c8ce21d9574a6ddbf5239d29a docs/CMakeFiles/docs
+7cf5aedec5c79ce069c01ef27b98beaa src/parser/parser.c
+96f23fefe9251dcd81bc1fdd28831ee6 src/parser/scanner.c

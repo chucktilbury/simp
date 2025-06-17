@@ -1,0 +1,86 @@
+[
+{
+  "directory": "/home/chuck/Src/simp/build/src/common",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/common -I/home/chuck/Src/simp/build/src/common/../parser -I/home/chuck/Src/simp/src/common -I/home/chuck/Src/simp/src/common/../common -I/home/chuck/Src/simp/src/common/../master_list -I/home/chuck/Src/simp/src/common/../parser -I/home/chuck/Src/simp/src/common/../table_pass1 -I/home/chuck/Src/simp/src/common/../table_pass2 -I/home/chuck/Src/simp/src/common/../table_pass3 -I/home/chuck/Src/simp/src/common/../main -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/common.dir/alloc.c.o -c /home/chuck/Src/simp/src/common/alloc.c",
+  "file": "/home/chuck/Src/simp/src/common/alloc.c",
+  "output": "src/common/CMakeFiles/common.dir/alloc.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/common",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/common -I/home/chuck/Src/simp/build/src/common/../parser -I/home/chuck/Src/simp/src/common -I/home/chuck/Src/simp/src/common/../common -I/home/chuck/Src/simp/src/common/../master_list -I/home/chuck/Src/simp/src/common/../parser -I/home/chuck/Src/simp/src/common/../table_pass1 -I/home/chuck/Src/simp/src/common/../table_pass2 -I/home/chuck/Src/simp/src/common/../table_pass3 -I/home/chuck/Src/simp/src/common/../main -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/common.dir/array.c.o -c /home/chuck/Src/simp/src/common/array.c",
+  "file": "/home/chuck/Src/simp/src/common/array.c",
+  "output": "src/common/CMakeFiles/common.dir/array.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/common",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/common -I/home/chuck/Src/simp/build/src/common/../parser -I/home/chuck/Src/simp/src/common -I/home/chuck/Src/simp/src/common/../common -I/home/chuck/Src/simp/src/common/../master_list -I/home/chuck/Src/simp/src/common/../parser -I/home/chuck/Src/simp/src/common/../table_pass1 -I/home/chuck/Src/simp/src/common/../table_pass2 -I/home/chuck/Src/simp/src/common/../table_pass3 -I/home/chuck/Src/simp/src/common/../main -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/common.dir/fileio.c.o -c /home/chuck/Src/simp/src/common/fileio.c",
+  "file": "/home/chuck/Src/simp/src/common/fileio.c",
+  "output": "src/common/CMakeFiles/common.dir/fileio.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/common",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/common -I/home/chuck/Src/simp/build/src/common/../parser -I/home/chuck/Src/simp/src/common -I/home/chuck/Src/simp/src/common/../common -I/home/chuck/Src/simp/src/common/../master_list -I/home/chuck/Src/simp/src/common/../parser -I/home/chuck/Src/simp/src/common/../table_pass1 -I/home/chuck/Src/simp/src/common/../table_pass2 -I/home/chuck/Src/simp/src/common/../table_pass3 -I/home/chuck/Src/simp/src/common/../main -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/common.dir/hash.c.o -c /home/chuck/Src/simp/src/common/hash.c",
+  "file": "/home/chuck/Src/simp/src/common/hash.c",
+  "output": "src/common/CMakeFiles/common.dir/hash.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/common",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/common -I/home/chuck/Src/simp/build/src/common/../parser -I/home/chuck/Src/simp/src/common -I/home/chuck/Src/simp/src/common/../common -I/home/chuck/Src/simp/src/common/../master_list -I/home/chuck/Src/simp/src/common/../parser -I/home/chuck/Src/simp/src/common/../table_pass1 -I/home/chuck/Src/simp/src/common/../table_pass2 -I/home/chuck/Src/simp/src/common/../table_pass3 -I/home/chuck/Src/simp/src/common/../main -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/common.dir/pointer_list.c.o -c /home/chuck/Src/simp/src/common/pointer_list.c",
+  "file": "/home/chuck/Src/simp/src/common/pointer_list.c",
+  "output": "src/common/CMakeFiles/common.dir/pointer_list.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/common",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/common -I/home/chuck/Src/simp/build/src/common/../parser -I/home/chuck/Src/simp/src/common -I/home/chuck/Src/simp/src/common/../common -I/home/chuck/Src/simp/src/common/../master_list -I/home/chuck/Src/simp/src/common/../parser -I/home/chuck/Src/simp/src/common/../table_pass1 -I/home/chuck/Src/simp/src/common/../table_pass2 -I/home/chuck/Src/simp/src/common/../table_pass3 -I/home/chuck/Src/simp/src/common/../main -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/common.dir/string_list.c.o -c /home/chuck/Src/simp/src/common/string_list.c",
+  "file": "/home/chuck/Src/simp/src/common/string_list.c",
+  "output": "src/common/CMakeFiles/common.dir/string_list.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/common",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/common -I/home/chuck/Src/simp/build/src/common/../parser -I/home/chuck/Src/simp/src/common -I/home/chuck/Src/simp/src/common/../common -I/home/chuck/Src/simp/src/common/../master_list -I/home/chuck/Src/simp/src/common/../parser -I/home/chuck/Src/simp/src/common/../table_pass1 -I/home/chuck/Src/simp/src/common/../table_pass2 -I/home/chuck/Src/simp/src/common/../table_pass3 -I/home/chuck/Src/simp/src/common/../main -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/common.dir/string_buffer.c.o -c /home/chuck/Src/simp/src/common/string_buffer.c",
+  "file": "/home/chuck/Src/simp/src/common/string_buffer.c",
+  "output": "src/common/CMakeFiles/common.dir/string_buffer.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/common",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/common -I/home/chuck/Src/simp/build/src/common/../parser -I/home/chuck/Src/simp/src/common -I/home/chuck/Src/simp/src/common/../common -I/home/chuck/Src/simp/src/common/../master_list -I/home/chuck/Src/simp/src/common/../parser -I/home/chuck/Src/simp/src/common/../table_pass1 -I/home/chuck/Src/simp/src/common/../table_pass2 -I/home/chuck/Src/simp/src/common/../table_pass3 -I/home/chuck/Src/simp/src/common/../main -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/common.dir/trace.c.o -c /home/chuck/Src/simp/src/common/trace.c",
+  "file": "/home/chuck/Src/simp/src/common/trace.c",
+  "output": "src/common/CMakeFiles/common.dir/trace.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/common",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/common -I/home/chuck/Src/simp/build/src/common/../parser -I/home/chuck/Src/simp/src/common -I/home/chuck/Src/simp/src/common/../common -I/home/chuck/Src/simp/src/common/../master_list -I/home/chuck/Src/simp/src/common/../parser -I/home/chuck/Src/simp/src/common/../table_pass1 -I/home/chuck/Src/simp/src/common/../table_pass2 -I/home/chuck/Src/simp/src/common/../table_pass3 -I/home/chuck/Src/simp/src/common/../main -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/common.dir/cmdline.c.o -c /home/chuck/Src/simp/src/common/cmdline.c",
+  "file": "/home/chuck/Src/simp/src/common/cmdline.c",
+  "output": "src/common/CMakeFiles/common.dir/cmdline.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/parser",
+  "command": "/usr/bin/clang  -I/home/chuck/Src/simp/build/src/parser -I/home/chuck/Src/simp/src/parser -I/home/chuck/Src/simp/src/parser/../common -I/home/chuck/Src/simp/src/parser/../lists -I/home/chuck/Src/simp/src/parser/../render -I/home/chuck/Src/simp/src/parser/../parser -I/home/chuck/Src/simp/src/parser/../pgen -I/home/chuck/Src/simp/src/parser/../gc -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable -Wno-parentheses-equality -DUSE_TRACE -DENABLE_AST_DUMP -g -o CMakeFiles/parser.dir/parser.c.o -c /home/chuck/Src/simp/build/src/parser/parser.c",
+  "file": "/home/chuck/Src/simp/build/src/parser/parser.c",
+  "output": "src/parser/CMakeFiles/parser.dir/parser.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/parser",
+  "command": "/usr/bin/clang  -I/home/chuck/Src/simp/build/src/parser -I/home/chuck/Src/simp/src/parser -I/home/chuck/Src/simp/src/parser/../common -I/home/chuck/Src/simp/src/parser/../lists -I/home/chuck/Src/simp/src/parser/../render -I/home/chuck/Src/simp/src/parser/../parser -I/home/chuck/Src/simp/src/parser/../pgen -I/home/chuck/Src/simp/src/parser/../gc -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable -Wno-parentheses-equality -DUSE_TRACE -DENABLE_AST_DUMP -g -o CMakeFiles/parser.dir/scanner.c.o -c /home/chuck/Src/simp/build/src/parser/scanner.c",
+  "file": "/home/chuck/Src/simp/build/src/parser/scanner.c",
+  "output": "src/parser/CMakeFiles/parser.dir/scanner.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/parser",
+  "command": "/usr/bin/clang  -I/home/chuck/Src/simp/build/src/parser -I/home/chuck/Src/simp/src/parser -I/home/chuck/Src/simp/src/parser/../common -I/home/chuck/Src/simp/src/parser/../lists -I/home/chuck/Src/simp/src/parser/../render -I/home/chuck/Src/simp/src/parser/../parser -I/home/chuck/Src/simp/src/parser/../pgen -I/home/chuck/Src/simp/src/parser/../gc -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable -Wno-parentheses-equality -DUSE_TRACE -DENABLE_AST_DUMP -g -o CMakeFiles/parser.dir/ast.c.o -c /home/chuck/Src/simp/src/parser/ast.c",
+  "file": "/home/chuck/Src/simp/src/parser/ast.c",
+  "output": "src/parser/CMakeFiles/parser.dir/ast.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/parser",
+  "command": "/usr/bin/clang  -I/home/chuck/Src/simp/build/src/parser -I/home/chuck/Src/simp/src/parser -I/home/chuck/Src/simp/src/parser/../common -I/home/chuck/Src/simp/src/parser/../lists -I/home/chuck/Src/simp/src/parser/../render -I/home/chuck/Src/simp/src/parser/../parser -I/home/chuck/Src/simp/src/parser/../pgen -I/home/chuck/Src/simp/src/parser/../gc -g -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable -Wno-parentheses-equality -DUSE_TRACE -DENABLE_AST_DUMP -g -o CMakeFiles/parser.dir/tokens.c.o -c /home/chuck/Src/simp/src/parser/tokens.c",
+  "file": "/home/chuck/Src/simp/src/parser/tokens.c",
+  "output": "src/parser/CMakeFiles/parser.dir/tokens.c.o"
+},
+{
+  "directory": "/home/chuck/Src/simp/build/src/main",
+  "command": "/usr/bin/clang -DMEMORY_DEBUG -DUSE_ASSERTS -DUSE_TRACE -I/home/chuck/Src/simp/build/src/main -I/home/chuck/Src/simp/build/src/main/../parser -I/home/chuck/Src/simp/src/main -I/home/chuck/Src/simp/src/main/../common -I/home/chuck/Src/simp/src/main/../master_list -I/home/chuck/Src/simp/src/main/../parser -I/home/chuck/Src/simp/src/main/../table_pass1 -I/home/chuck/Src/simp/src/main/../table_pass2 -I/home/chuck/Src/simp/src/main/../table_pass3 -I/home/chuck/Src/simp/src/main/../main -I/home/chuck/Src/simp/build/src/parser -I/home/chuck/Src/simp/src/parser -I/home/chuck/Src/simp/src/parser/../common -I/home/chuck/Src/simp/src/parser/../lists -I/home/chuck/Src/simp/src/parser/../render -I/home/chuck/Src/simp/src/parser/../parser -I/home/chuck/Src/simp/src/parser/../pgen -I/home/chuck/Src/simp/src/parser/../gc -g   -Wall -Wextra -Wpedantic -pedantic -g -O0 -o CMakeFiles/simp.dir/main.c.o -c /home/chuck/Src/simp/src/main/main.c",
+  "file": "/home/chuck/Src/simp/src/main/main.c",
+  "output": "src/main/CMakeFiles/simp.dir/main.c.o"
+}
+]

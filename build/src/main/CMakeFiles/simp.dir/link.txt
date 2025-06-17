@@ -1,0 +1,1 @@
+/usr/bin/clang -g CMakeFiles/simp.dir/main.c.o -o /home/chuck/Src/simp/bin/simp   -L/usr/local/lib  -Wl,-rpath,/usr/local/lib /home/chuck/Src/simp/lib/libparser.a /home/chuck/Src/simp/lib/libcommon.a 
