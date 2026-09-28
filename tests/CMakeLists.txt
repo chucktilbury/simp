@@ -66,3 +66,45 @@ add_test(NAME simp_rejects_uninitialized_variable
         "-DEXPECTED_DIAGNOSTIC=variable 'value' may be uninitialized"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+add_test(NAME simp_compile_and_run_integer_control_flow
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_integer_control_flow.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_integer_control_flow"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_integer_control_flow.ll"
+        "-DEXPECTED_OUTPUT=9\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_utf8_string_format
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_string_format.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_string_format"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_string_format.ll"
+        "-DEXPECTED_OUTPUT=café\n\nvalue: 42\nsum 21 21\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_non_integer_formatted_value
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_string_format_value.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_string_format_value"
+        "-DEXPECTED_DIAGNOSTIC=formatted print arguments must have type int"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_malformed_format
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_malformed_format.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_malformed_format"
+        "-DEXPECTED_DIAGNOSTIC=placeholders are supported in formatted strings"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_string_condition
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_string_condition.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_string_condition"
+        "-DEXPECTED_DIAGNOSTIC=if condition must have type int"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)

@@ -88,6 +88,13 @@ int main() {
                          tokens[10].text == "a\n" && tokens[10].formattedString,
                      "escaped formatted string incorrect");
          }},
+        {"single-quoted strings are literal", [] {
+             simp::Lexer lexer("start { print('a\\n'); }", "single-quoted.simp");
+             const auto tokens = lexer.tokenize();
+             require(tokens[4].type == simp::TokenType::String, "single-quoted token missing");
+             require(tokens[4].text == "a\\n", "single-quoted backslash was interpreted");
+             require(!tokens[4].formattedString, "single-quoted token was marked formatted");
+         }},
         {"reserved keywords", [] {
              expectDiagnostic("start { int While = 0; }", "keywords are reserved");
          }},
@@ -118,9 +125,40 @@ int main() {
              }
              throw std::runtime_error("invalid character did not produce a diagnostic");
          }},
+        {"invalid UTF-8 string rejected", [] {
+             std::string source = "start { print(\"";
+             source.push_back(static_cast<char>(0xc0));
+             source += "\"); }";
+             try {
+                 simp::Lexer lexer(source, "invalid-utf8.simp");
+                 lexer.tokenize();
+             } catch (const simp::DiagnosticError& error) {
+                 require(std::string(error.what()).find("string literal is not valid UTF-8") !=
+                             std::string::npos,
+                         "invalid UTF-8 diagnostic was missing");
+                 return;
+             }
+             throw std::runtime_error("invalid UTF-8 string was accepted");
+         }},
         {"formatted print arity", [] {
-             expectDiagnostic("start { print(\"value: {}\", 1, 2); }",
-                              "one '{}' per value");
+             expectDiagnostic("start { print(\"value: {}\"(1, 2)); }",
+                              "one '{}' placeholder per argument");
+         }},
+        {"formatted print malformed brace", [] {
+             expectDiagnostic("start { print(\"value: {x}\"(1)); }",
+                              "only '{}' placeholders are supported");
+         }},
+        {"single-quoted string format arguments", [] {
+             expectDiagnostic("start { print('value: {}'(1)); }",
+                              "format arguments require a double-quoted string literal");
+         }},
+        {"string condition rejected", [] {
+             expectDiagnostic("start { if (\"not a condition\") { } }",
+                              "if condition must have type int");
+         }},
+        {"string equality rejected", [] {
+             expectDiagnostic("start { string a = \"a\"; print(a == \"a\"); }",
+                              "string equality is not implemented");
          }},
         {"semantic type mismatch", [] {
              expectDiagnostic("start { int value = \"wrong\"; }",

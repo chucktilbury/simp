@@ -2,7 +2,7 @@ START {
     int count = 3;
     string label = "count: {}";
     IF (count >= 2) {
-        print(label, count);
+        print(label);
     } ELSE {
         print("small");
     }

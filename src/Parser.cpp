@@ -47,6 +47,25 @@ const Token& Parser::consume(TokenType type, const char* expectation) {
     throw DiagnosticError(token.location, message);
 }
 
+void Parser::validateFormatString(const Expression& format, std::size_t argumentCount,
+                                  const Token& location) const {
+    std::size_t placeholders = 0;
+    for (std::size_t index = 0; index < format.value.size(); ++index) {
+        if (format.value[index] == '{') {
+            if (index + 1 >= format.value.size() || format.value[index + 1] != '}') {
+                error(location, "only '{}' placeholders are supported in formatted strings");
+            }
+            ++placeholders;
+            ++index;
+        } else if (format.value[index] == '}') {
+            error(location, "unmatched '}' in formatted string");
+        }
+    }
+    if (placeholders != argumentCount) {
+        error(location, "double-quoted format must have one '{}' placeholder per argument");
+    }
+}
+
 void Parser::trace(const char* action) const {
     if (traceOutput_ != nullptr) {
         *traceOutput_ << "[parser] " << action << " at " << current().location.line << ":"
@@ -144,28 +163,33 @@ Statement Parser::parsePrint() {
     statement.location = keyword.location;
     consume(TokenType::LeftParen, "'(' after print");
     if (!check(TokenType::RightParen)) {
-        do {
-            statement.expressions.push_back(parseExpression());
-        } while (match(TokenType::Comma));
-    }
-    consume(TokenType::RightParen, "')' after print arguments");
-    consume(TokenType::Semicolon, "';'");
-
-    if (!statement.expressions.empty()) {
-        const auto& format = *statement.expressions.front();
-        if (format.kind == ExpressionKind::String && format.formattedString) {
-            std::size_t placeholders = 0;
-            for (std::size_t index = 0; index + 1 < format.value.size(); ++index) {
-                if (format.value[index] == '{' && format.value[index + 1] == '}') {
-                    ++placeholders;
-                    ++index;
-                }
+        statement.expressions.push_back(parseExpression());
+        if (check(TokenType::LeftParen)) {
+            const auto& format = *statement.expressions.front();
+            if (format.kind != ExpressionKind::String || !format.formattedString) {
+                error(current(), "format arguments require a double-quoted string literal");
             }
-            if (placeholders != statement.expressions.size() - 1) {
-                error(keyword, "double-quoted print format must have one '{}' per value");
+            ++current_;
+            if (!check(TokenType::RightParen)) {
+                do {
+                    statement.expressions.push_back(parseExpression());
+                } while (match(TokenType::Comma));
+            }
+            consume(TokenType::RightParen, "')' after format arguments");
+            validateFormatString(format, statement.expressions.size() - 1, keyword);
+        } else {
+            if (match(TokenType::Comma)) {
+                error(previous(), "use double-quoted format-call syntax: print(\"{}\"(value));");
+            }
+            const auto& value = *statement.expressions.front();
+            if (value.kind == ExpressionKind::String && value.formattedString &&
+                value.value.find_first_of("{}") != std::string::npos) {
+                error(keyword, "formatted string requires expression arguments in parentheses");
             }
         }
     }
+    consume(TokenType::RightParen, "')' after print arguments");
+    consume(TokenType::Semicolon, "';'");
     return statement;
 }
 

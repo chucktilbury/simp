@@ -25,6 +25,8 @@ private:
     bool match(TokenType type);
     const Token& consume(TokenType type, const char* expectation);
     [[noreturn]] void error(const Token& token, const std::string& message) const;
+    void validateFormatString(const Expression& format, std::size_t argumentCount,
+                              const Token& location) const;
     void trace(const char* action) const;
 
     std::vector<Statement> parseBlock();

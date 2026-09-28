@@ -29,6 +29,49 @@ bool isIdentifierPart(char value) {
     return isIdentifierStart(value) || (value >= '0' && value <= '9');
 }
 
+bool isValidUtf8(const std::string& value) {
+    std::size_t index = 0;
+    while (index < value.size()) {
+        const auto lead = static_cast<unsigned char>(value[index]);
+        if (lead <= 0x7f) {
+            ++index;
+            continue;
+        }
+
+        std::size_t length = 0;
+        unsigned char secondMinimum = 0x80;
+        unsigned char secondMaximum = 0xbf;
+        if (lead >= 0xc2 && lead <= 0xdf) {
+            length = 2;
+        } else if (lead >= 0xe0 && lead <= 0xef) {
+            length = 3;
+            if (lead == 0xe0) secondMinimum = 0xa0;
+            if (lead == 0xed) secondMaximum = 0x9f;
+        } else if (lead >= 0xf0 && lead <= 0xf4) {
+            length = 4;
+            if (lead == 0xf0) secondMinimum = 0x90;
+            if (lead == 0xf4) secondMaximum = 0x8f;
+        } else {
+            return false;
+        }
+        if (index + length > value.size()) {
+            return false;
+        }
+        const auto second = static_cast<unsigned char>(value[index + 1]);
+        if (second < secondMinimum || second > secondMaximum) {
+            return false;
+        }
+        for (std::size_t offset = 2; offset < length; ++offset) {
+            const auto continuation = static_cast<unsigned char>(value[index + offset]);
+            if (continuation < 0x80 || continuation > 0xbf) {
+                return false;
+            }
+        }
+        index += length;
+    }
+    return true;
+}
+
 } // namespace
 
 const char* tokenTypeName(TokenType type) noexcept {
@@ -170,6 +213,9 @@ Token Lexer::scanString(char quote, SourceLocation location) {
         throw DiagnosticError(location, "unterminated string literal");
     }
     advance();
+    if (!isValidUtf8(value)) {
+        throw DiagnosticError(location, "string literal is not valid UTF-8");
+    }
     return makeToken(TokenType::String, std::move(value), std::move(location), quote == '"');
 }
 

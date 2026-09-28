@@ -15,6 +15,12 @@ ctest --test-dir build --output-on-failure
 ./bin/simp tests/functional/positive_integer_output.simp
 ./bin/positive_integer_output
 # Prints: 42
+./bin/simp tests/functional/positive_integer_control_flow.simp
+./bin/positive_integer_control_flow
+# Prints: 9
+./bin/simp tests/functional/positive_string_format.simp
+./bin/positive_string_format
+# Prints café and a blank line, then "value: 42" and "sum 21 21".
 ./bin/simp tests/functional/positive_integer_output.simp \
   --emit-llvm build/positive_integer_output.ll -o bin/positive_integer_output
 ```
@@ -58,12 +64,21 @@ and semantic errors.
 - Expressions include integer and string literals, identifiers, parentheses,
   unary `+`, `-`, `!`, arithmetic `+ - * / %`, and comparisons `== != < <= > >=`.
 - `if (condition) { ... }`, unconditional `else { ... }`, and
-  `while (condition) { ... }` are supported. An `else (condition)` form is
-  explicitly rejected.
-- `print(expr, ...);` accepts zero or more expressions. Arguments are parsed
-  into the AST; a double-quoted first argument uses basic `{}` formatting and
-  must have one placeholder per following value. Single-quoted strings are
-  literal and do not interpolate.
+  `while (condition) { ... }` execute in the LLVM backend. Conditions are
+  integer expressions; zero is false and nonzero is true. An
+  `else (condition)` form is explicitly rejected.
+- `print(expr);` prints one integer or string value followed by a newline.
+- Basic formatting uses a double-quoted literal followed by an expression list:
+  `print("value: {}"(value));`. Each `{}` substitutes exactly one integer
+  expression. Only `{}` placeholders are supported; unmatched braces,
+  non-integer substitutions, and argument-count mismatches are errors.
+- Single-quoted strings are raw literals: they have no escapes and cannot be
+  used with formatting arguments. Double-quoted strings support `\\`, `\"`,
+  `\n`, `\r`, and `\t`; their source bytes must be valid UTF-8.
+- String values are represented as a pointer and byte length. They are not
+  NUL-terminated. Direct string printing and formatting write their UTF-8 bytes
+  by explicit length. No concatenation, indexing, string comparisons, or
+  code-point operations are implemented.
 - `//` line comments and basic double-quoted escapes (`\\`, `\"`, `\n`, `\r`,
   `\t`) are accepted. Single-quoted strings have no escape processing.
 - Semantic analysis resolves lexical local names, rejects use before
@@ -79,18 +94,20 @@ the declarations and initialization state seen by semantic analysis.
 
 ## Executable backend subset
 
-The current backend compiles straight-line programs containing initialized or
-uninitialized `int` declarations, integer assignments, integer arithmetic and
-comparisons, and `print` with exactly one integer expression. The generated
-LLVM IR is textual IR using opaque pointers, then the configured Clang
-executable compiles and links it. The program entry returns zero.
+The backend emits textual LLVM IR using opaque pointers, then the configured
+Clang executable compiles and links it. It supports integer and string
+declarations/assignments, integer expressions and comparisons, integer
+`if`/`else` and `while`, single-value integer or string printing, and the
+limited `{}` integer formatting form described above. Strings store UTF-8
+bytes plus an explicit byte count; `fwrite` writes those bytes without
+requiring a terminator. The program entry returns zero.
 
-The parser and semantic analyzer accept more syntax than the backend can
-execute. In particular, `string` declarations/expressions, formatted or
-multiple-value print, `if`, and `while` currently produce an explicit
-backend-not-supported diagnostic instead of an executable. There is no
-runtime bounds or division-by-zero handling; signed division follows LLVM
-integer operation semantics.
+The parser and semantic analyzer accept more syntax than the backend executes.
+String comparisons and other non-integer formatted values produce precise
+backend/semantic errors. There is no string concatenation, object-to-string
+conversion, code-point-aware operation, full language runtime, or
+division-by-zero handling; signed division follows LLVM integer operation
+semantics.
 
 ## Deferred
 

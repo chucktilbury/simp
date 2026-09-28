@@ -71,6 +71,10 @@ ValueType SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                 throw DiagnosticError(expression.location,
                                       "comparison operands must have the same type");
             }
+            if (left == ValueType::String) {
+                throw DiagnosticError(expression.location,
+                                      "string equality is not implemented in this prototype");
+            }
             return ValueType::Integer;
         }
         if (operation == "<" || operation == "<=" || operation == ">" ||
@@ -165,10 +169,15 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
         }
         if (types.size() > 1) {
             const auto& format = *statement.expressions.front();
-            if (types.front() != ValueType::String ||
-                (format.kind == ExpressionKind::String && !format.formattedString)) {
+            if (format.kind != ExpressionKind::String || !format.formattedString) {
                 throw DiagnosticError(format.location,
-                                      "multiple print values require a double-quoted format string");
+                                      "formatted print requires a double-quoted string literal");
+            }
+            for (std::size_t index = 1; index < types.size(); ++index) {
+                if (types[index] != ValueType::Integer) {
+                    throw DiagnosticError(statement.expressions[index]->location,
+                                          "formatted print arguments must have type int");
+                }
             }
         }
         return;
