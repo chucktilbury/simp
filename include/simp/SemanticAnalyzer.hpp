@@ -11,6 +11,7 @@
 #include <iosfwd>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace simp {
@@ -25,7 +26,7 @@ struct SymbolInfo {
 
 class SemanticAnalyzer {
 public:
-    void analyze(const Program& program);
+    void analyze(Program& program);
     void dumpSymbolTable(std::ostream& output) const;
 
 private:
@@ -33,6 +34,19 @@ private:
 
     const ClassDeclaration* findClass(const std::string& name,
                                       const SourceLocation& location) const;
+    std::string resolveClassName(const std::string& name,
+                                 const std::vector<std::string>& namespacePath,
+                                 const SourceLocation& location) const;
+    bool hasNamespaceOrClass(const std::string& name,
+                             const std::vector<std::string>& namespacePath) const;
+    std::string qualify(const std::vector<std::string>& path,
+                        const std::string& name) const;
+    void normalizeType(std::string& type, const std::vector<std::string>& namespacePath,
+                       const SourceLocation& location) const;
+    void normalizeStatements(std::vector<Statement>& statements,
+                             const std::vector<std::string>& namespacePath);
+    void normalizeExpression(Expression& expression,
+                             const std::vector<std::string>& namespacePath);
     const FieldDeclaration* findField(const ClassDeclaration& declaration,
                                       const std::string& name) const;
     std::size_t countFields(const ClassDeclaration& declaration,
@@ -44,7 +58,7 @@ private:
     std::vector<std::string> virtualBaseNames(const ClassDeclaration& declaration) const;
     std::size_t accessibleMemberCount(const ClassDeclaration& declaration,
                                       const std::string& name, bool method) const;
-    bool resolveBaseQualifier(const Expression& receiver, const Expression*& root,
+    bool resolveBaseQualifier(Expression& receiver, Expression*& root,
                              const ClassDeclaration*& view,
                              std::vector<std::string>& path);
     bool memberAccessible(const ClassDeclaration& owner, const std::string& name,
@@ -54,23 +68,28 @@ private:
     bool isAssignable(const std::string& target, const std::string& source) const;
     bool isSubclassOf(const std::string& type, const std::string& base) const;
     std::vector<const FieldDeclaration*> inheritedFields(const ClassDeclaration& declaration) const;
-    std::string analyzeExpression(const Expression& expression,
+    std::string analyzeExpression(Expression& expression,
                                   const std::string& expectedType = {});
-    std::string analyzeLValue(const Expression& expression);
-    void analyzeStatements(const std::vector<Statement>& statements);
-    void analyzeStatement(const Statement& statement);
+    std::string analyzeLValue(Expression& expression);
+    void analyzeStatements(std::vector<Statement>& statements);
+    void analyzeStatement(Statement& statement);
     std::size_t findSymbolIndex(const std::string& name) const;
-    void analyzeMethod(const ClassDeclaration& owner, const MethodDeclaration& method);
+    void analyzeMethod(const ClassDeclaration& owner, MethodDeclaration& method);
     void validateType(const std::string& type, const SourceLocation& location,
                       bool allowVoid = false) const;
+    void validateExternalMethodType(const std::string& type, const SourceLocation& location,
+                                    bool allowVoid) const;
     std::vector<bool> initializationState() const;
     void restoreInitializationState(const std::vector<bool>& state);
 
     std::vector<Scope> scopes_;
     std::vector<SymbolInfo> symbols_;
+    std::unordered_set<std::string> namespaces_;
     std::unordered_map<std::string, const ClassDeclaration*> classes_;
+    std::unordered_map<std::string, OutOfLineMethodDefinition*> methodDefinitions_;
     const ClassDeclaration* currentClass_ = nullptr;
     const MethodDeclaration* currentMethod_ = nullptr;
+    std::vector<std::string> currentNamespace_;
 };
 
 } // namespace simp

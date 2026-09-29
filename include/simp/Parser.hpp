@@ -25,6 +25,7 @@ private:
     bool check(TokenType type) const;
     bool match(TokenType type);
     void skipNewlines();
+    bool startsOutOfLineDefinition() const;
     void consumeStatementTerminator();
     const Token& consume(TokenType type, const char* expectation);
     [[noreturn]] void error(const Token& token, const std::string& message) const;
@@ -33,6 +34,9 @@ private:
     void trace(const char* action) const;
 
     ClassDeclaration parseClass();
+    void parseNamespace(Program& program);
+    std::string parseQualifiedIdentifier(const char* expectation);
+    OutOfLineMethodDefinition parseOutOfLineMethodDefinition();
     MethodDeclaration parseMethod(const Token& typeOrName, const Token& methodName,
                                  bool constructor, const std::string& returnType = {});
     std::vector<Parameter> parseParameters();
@@ -60,6 +64,7 @@ private:
     std::vector<Token> tokens_;
     std::size_t current_ = 0;
     std::ostream* traceOutput_ = nullptr;
+    std::vector<std::string> namespacePath_;
 };
 
 } // namespace simp

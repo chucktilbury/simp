@@ -87,6 +87,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::MapType: return "'map'";
     case TokenType::AnyType: return "'any'";
     case TokenType::Class: return "'class'";
+    case TokenType::Namespace: return "'namespace'";
+    case TokenType::Include: return "'include'";
     case TokenType::Public: return "'public'";
     case TokenType::Protected: return "'protected'";
     case TokenType::Private: return "'private'";
@@ -105,6 +107,7 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Try: return "'try'";
     case TokenType::Except: return "'except'";
     case TokenType::Finally: return "'finally'";
+    case TokenType::From: return "'from'";
     case TokenType::LeftBrace: return "'{'";
     case TokenType::RightBrace: return "'}'";
     case TokenType::LeftParen: return "'('";
@@ -240,6 +243,8 @@ Token Lexer::scanIdentifierOrInteger() {
         {"print", TokenType::Print}, {"raise", TokenType::Raise},
         {"try", TokenType::Try}, {"except", TokenType::Except},
         {"finally", TokenType::Finally}, {"class", TokenType::Class},
+        {"namespace", TokenType::Namespace}, {"include", TokenType::Include},
+        {"from", TokenType::From},
         {"public", TokenType::Public}, {"protected", TokenType::Protected},
         {"private", TokenType::Private},
         {"virtual", TokenType::Virtual},

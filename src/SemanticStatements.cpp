@@ -11,13 +11,13 @@
 
 namespace simp {
 
-void SemanticAnalyzer::analyzeStatements(const std::vector<Statement>& statements) {
-    for (const auto& statement : statements) {
+void SemanticAnalyzer::analyzeStatements(std::vector<Statement>& statements) {
+    for (auto& statement : statements) {
         analyzeStatement(statement);
     }
 }
 
-void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
+void SemanticAnalyzer::analyzeStatement(Statement& statement) {
     switch (statement.kind) {
     case StatementKind::Declaration: {
         validateType(statement.declaredType, statement.location);

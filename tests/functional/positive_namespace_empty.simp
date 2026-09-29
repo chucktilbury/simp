@@ -1,0 +1,12 @@
+namespace Empty { }
+
+namespace Outer {
+    namespace Inner {
+        class Item {}
+    }
+}
+
+start {
+    Outer.Inner.Item item = Outer.Inner.Item()
+    print(42)
+}

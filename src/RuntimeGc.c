@@ -908,3 +908,46 @@ void *simp_array_slice(void *object, int32_t start, int32_t end, const char *fil
 size_t simp_gc_heap_count(void) {
     return object_count;
 }
+
+typedef struct SimpDemoNative {
+    const SimpClassMeta *metadata;
+    void *owner;
+    int32_t marker;
+} SimpDemoNative;
+
+static void require_demo_native_receiver(void *receiver) {
+    const SimpDemoNative *native = (const SimpDemoNative *)receiver;
+    if (native == NULL || native->metadata == NULL ||
+        native->metadata->name_length != sizeof("Native") - 1 ||
+        memcmp(native->metadata->name, "Native", sizeof("Native") - 1) != 0 ||
+        native->marker != 91) {
+        abort();
+    }
+}
+
+/* Every shim checks the receiver class and marker, so omitting or misordering
+ * the implicit receiver in generated calls fails the end-to-end test. */
+int32_t simp_method_demo_abs(void *receiver, int32_t value) {
+    require_demo_native_receiver(receiver);
+    return abs(value);
+}
+
+void simp_method_demo_ignore(void *receiver, int32_t value) {
+    require_demo_native_receiver(receiver);
+    (void)value;
+}
+
+int32_t simp_method_demo_string_length(void *receiver, SimpString text) {
+    require_demo_native_receiver(receiver);
+    return (int32_t)text.length;
+}
+
+SimpString simp_method_demo_string_identity(void *receiver, SimpString text) {
+    require_demo_native_receiver(receiver);
+    return text;
+}
+
+void *simp_method_demo_identity(void *receiver, void *object) {
+    require_demo_native_receiver(receiver);
+    return object;
+}

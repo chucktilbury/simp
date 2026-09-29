@@ -104,6 +104,33 @@ std::string CodeGenerator::llvmType(const std::string& type) const {
     return "ptr";
 }
 
+std::string CodeGenerator::externReturnLlvmType(const std::string& type) const {
+    // 'string' is the only extern-eligible type whose Simple-side LLVM
+    // representation (%SimpleString = { ptr, i64 }) is not itself the ABI form:
+    // a two-eightbyte all-INTEGER-class struct is returned by the x86-64 SysV
+    // C ABI as a literal (unnamed) two-scalar aggregate rather than the named
+    // struct type, matching what clang emits for an equivalent C struct return.
+    if (type == "string") return "{ ptr, i64 }";
+    return llvmType(type);
+}
+
+std::string CodeGenerator::externMethodDeclaration(const ClassDeclaration& owner,
+                                                   const MethodDeclaration& method) const {
+    std::string parameters;
+    parameters = "ptr";
+    for (const auto& parameter : method.parameters) {
+        parameters += ", ";
+        const auto& type = parameter.type;
+        if (type == "string") {
+            parameters += "ptr, i64";
+        } else {
+            parameters += llvmType(type);
+        }
+    }
+    return "declare " + externReturnLlvmType(method.returnType) + " @" +
+           method.externalSymbol + "(" + parameters + ") ; receiver: " + owner.name + "\n";
+}
+
 std::string CodeGenerator::methodSymbol(const std::string& className,
                                        const std::string& methodName) const {
     return "@simp." + className + "." + methodName;

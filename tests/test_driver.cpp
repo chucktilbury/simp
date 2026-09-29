@@ -445,6 +445,104 @@ int main() {
         {"functional reserved identifier", [] {
              runFunctional("negative_keyword_identifier.simp", "keywords are reserved");
          }},
+        {"out-of-line method body completes an in-class declaration", [] {
+             expectValid(
+                 "class Foo {\n  int compute(int x)\n}\n"
+                 "int Foo.compute(int x) {\n  return x * 2\n}\n"
+                 "start {\n  print(Foo().compute(5))\n}");
+         }},
+        {"external method validates and calls through ordinary method syntax", [] {
+             expectValid(
+                 "class Native {\n  int absolute(int value)\n}\n"
+                 "int Native.absolute(int value) from \"simp_method_demo_abs\"\n"
+                 "start {\n  print(Native().absolute(5))\n}");
+         }},
+        {"external method argument count is validated", [] {
+             expectDiagnostic(
+                 "class Native {\n  int absolute(int value)\n}\n"
+                 "int Native.absolute(int value) from \"simp_method_demo_abs\"\n"
+                 "start {\n  print(Native().absolute(1, 2))\n}",
+                 "method 'absolute' argument count mismatch");
+         }},
+        {"external method argument type is validated", [] {
+             expectDiagnostic(
+                 "class Native {\n  int absolute(int value)\n}\n"
+                 "int Native.absolute(int value) from \"simp_method_demo_abs\"\n"
+                 "start {\n  string text = \"x\"\n  print(Native().absolute(text))\n}",
+                 "method argument type does not match parameter 'value'");
+         }},
+        {"external method rejects 'any' parameters", [] {
+             expectDiagnostic(
+                 "class Native {\n  int use(any value)\n}\n"
+                 "int Native.use(any value) from \"symbol\"\n"
+                 "start {\n  print(1)\n}",
+                 "'any' is not supported in external method signatures");
+         }},
+        {"external method rejects 'any' returns", [] {
+             expectDiagnostic(
+                 "class Native {\n  any dynamicValue(int value)\n}\n"
+                 "any Native.dynamicValue(int value) from \"symbol\"\n"
+                 "start {\n  print(1)\n}",
+                 "'any' is not supported in external method signatures");
+         }},
+        {"external method requires a non-empty C symbol", [] {
+             expectDiagnostic(
+                 "class Native {\n  int value()\n}\n"
+                 "int Native.value() from \"\"\n"
+                 "start {\n  print(1)\n}",
+                 "native-bound method must name a non-empty C symbol");
+         }},
+        {"out-of-line method signature must match its declaration", [] {
+             expectDiagnostic(
+                 "class Native {\n  int absolute(int value)\n}\n"
+                 "string Native.absolute(string value) from \"symbol\"\n"
+                 "start {\n  print(1)\n}",
+                 "out-of-line definition signature does not match declaration");
+         }},
+        {"out-of-line method definition must be unique", [] {
+             expectDiagnostic(
+                 "class Native {\n  int absolute(int value)\n}\n"
+                 "int Native.absolute(int value) from \"symbol\"\n"
+                 "int Native.absolute(int value) from \"symbol\"\n"
+                 "start {\n  print(1)\n}",
+                 "duplicate out-of-line definition for method 'Native.absolute'");
+         }},
+        {"out-of-line methods require an in-class declaration", [] {
+             expectDiagnostic(
+                 "class Native {\n}\n"
+                 "int Native.absolute(int value) from \"symbol\"\n"
+                 "start {\n  print(1)\n}",
+                 "has no in-class declaration for method 'absolute'");
+         }},
+        {"bodyless method declarations require a definition", [] {
+             expectDiagnostic(
+                 "class Native {\n  int absolute(int value)\n}\n"
+                 "start {\n  print(1)\n}",
+                 "is declared but has no out-of-line definition");
+         }},
+        {"external symbols require ABI-compatible method signatures", [] {
+             expectDiagnostic(
+                 "class Native {\n"
+                 "  int integerValue(int value)\n"
+                 "  string stringValue(string value)\n"
+                 "}\n"
+                 "int Native.integerValue(int value) from \"same_symbol\"\n"
+                 "string Native.stringValue(string value) from \"same_symbol\"\n"
+                 "start {\n  print(1)\n}",
+                 "is reused with an incompatible method signature");
+         }},
+        {"legacy top-level extern declaration syntax is rejected", [] {
+             expectDiagnostic(
+                 "extern int c_abs(int value) from \"abs\"\n"
+                 "start {\n  print(1)\n}",
+                 "program must contain exactly one top-level 'start' block");
+         }},
+        {"functional out-of-line native method example compiles and runs", [] {
+             runFunctional("positive_extern_functions.simp");
+         }},
+        {"functional native method missing symbol fails at link time", [] {
+             runFunctional("negative_extern_missing_symbol.simp");
+         }},
         {"array literals accept mixed int, string, and class values", [] {
              expectValid(
                  "class Widget {\n  int id\n  Widget(int initial) { id = initial }\n}\n"
@@ -589,6 +687,76 @@ int main() {
               expectDiagnostic("start {\n map values = {}\n any key = \"x\"\n"
                                " any value = values[key]\n}",
                                "map keys must have type string");
+         }},
+         {"namespace keyword is case-insensitive and reserved", [] {
+              simp::Lexer lexer("NaMeSpAcE Foo { class Thing {} }\nstart {}",
+                                "namespace-keyword.simp");
+              const auto tokens = lexer.tokenize();
+              require(tokens.front().type == simp::TokenType::Namespace,
+                      "namespace keyword was not recognized case-insensitively");
+              expectDiagnostic("start {\n int Namespace = 1\n}",
+                               "keywords are reserved");
+         }},
+         {"namespace declarations require single identifiers and reopen", [] {
+              const auto program = parse(
+                  "namespace Alpha { namespace Beta { class First {} } }\n"
+                  "namespace Alpha { namespace Beta { class Second {} } }\n"
+                  "start {}");
+              require(program.classes.size() == 2 &&
+                          program.classes[0].name == "Alpha.Beta.First" &&
+                          program.classes[1].name == "Alpha.Beta.Second",
+                      "reopened nested namespace class paths were not merged");
+              expectDiagnostic("namespace Alpha.Beta { }\nstart {}",
+                               "expected '{' after namespace name");
+         }},
+         {"out-of-line methods resolve within their namespace", [] {
+              expectValid(
+                  "namespace Remote {\n"
+                  "  class Method { int value() }\n"
+                  "  int Method.value() { return 42 }\n"
+                  "}\n"
+                  "start { print(Remote.Method().value()) }");
+         }},
+         {"unqualified class names resolve through enclosing namespaces", [] {
+              const auto program = parse(
+                  "namespace Outer {\n"
+                  "  class Common {}\n"
+                  "  namespace Inner {\n"
+                  "    class Consumer {\n"
+                  "      Common dependency\n"
+                  "      Common create() { return Common() }\n"
+                  "    }\n"
+                  "  }\n"
+                  "}\n"
+                  "start {}");
+              require(program.classes[1].fields.front().type == "Outer.Common" &&
+                          program.classes[1].methods.front().returnType == "Outer.Common" &&
+                          program.classes[1].methods.front().body.front()
+                                  .expressions.front()->value == "Outer.Common",
+                      "unqualified nested type did not resolve to its enclosing namespace");
+         }},
+         {"qualified construction lowers to a constructor AST node", [] {
+              const auto program = parse(
+                  "namespace Foo { class Bar { int method() { return 42 } } }\n"
+                  "start { print(Foo.Bar().method()) }");
+              std::ostringstream output;
+              simp::dumpAst(program, output);
+              require(output.str().find("ConstructorCall [Foo.Bar]") != std::string::npos,
+                      "qualified constructor call was not resolved in the AST");
+         }},
+         {"namespace start declarations are rejected", [] {
+              expectDiagnostic("namespace Hidden { start {} }",
+                               "'start' cannot be declared inside a namespace");
+         }},
+         {"namespace statement bodies are rejected", [] {
+              expectDiagnostic("namespace Hidden { print(1) }",
+                               "namespace body may contain only namespace and class declarations");
+         }},
+         {"unresolved qualified class names are rejected", [] {
+              expectDiagnostic(
+                  "namespace Known { class Present {} }\n"
+                  "start { Known.Missing value = Known.Missing() }",
+                  "unknown qualified class 'Known.Missing'");
          }}
     };
 

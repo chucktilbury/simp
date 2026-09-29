@@ -86,6 +86,9 @@ private:
                                    const std::vector<std::string>& path) const;
     Value convertObjectValue(Value value, const std::string& expectedType,
                              const SourceLocation& location);
+    std::string externMethodDeclaration(const ClassDeclaration& owner,
+                                        const MethodDeclaration& method) const;
+    std::string externReturnLlvmType(const std::string& type) const;
     bool resolveBaseQualifier(const Expression& receiver, const Expression*& root,
                               const ClassDeclaration*& view,
                               std::vector<std::string>& path) const;
@@ -112,6 +115,7 @@ private:
 
     std::string targetTriple_;
     std::unordered_map<std::string, const ClassDeclaration*> classes_;
+    std::unordered_map<std::string, const OutOfLineMethodDefinition*> methodDefinitions_;
     const ClassDeclaration* currentClass_ = nullptr;
     const ClassDeclaration* currentFieldClass_ = nullptr;
     const MethodDeclaration* currentMethod_ = nullptr;
@@ -122,6 +126,7 @@ private:
     std::string stringGlobals_;
     std::string typeDefinitions_;
     std::string metadataGlobals_;
+    std::string externDeclarations_;
     std::vector<std::string> rootSlots_;
     std::size_t nextTemporary_ = 0;
     std::size_t nextVariable_ = 0;

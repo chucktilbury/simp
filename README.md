@@ -72,18 +72,31 @@ archive, for example:
 clang -Wno-override-module -x ir build/program.ll -x none \
   lib/libsimp_runtime.a -o bin/program
 ```
-The compiler reads one source file and reports source-located lexer, parser,
-and semantic errors.
+The compiler reads one source file, expands top-level textual includes, and
+reports source-located lexer, parser, and semantic errors.
 
 ## Implemented subset
 
 - Exactly one top-level `start { ... }` block is required. Duplicate or missing
-  blocks are errors; other top-level forms are rejected.
+  blocks are errors. Top-level and namespaced `class` declarations and
+  qualified out-of-line method definitions are supported before `start`;
+  free-standing function declarations are not.
+- `namespace Name { ... }` declares a namespace with a single identifier;
+  dotted names are not valid declaration syntax. Write nested namespaces by
+  physically nesting `namespace` blocks, and empty namespace bodies are legal.
+  Repeated paths in one compilation unit (including top-level
+  `include "path"` files) contribute to the same namespace. Qualified and
+  unqualified class references resolve the first component outward through
+  enclosing namespaces and each later component strictly as a child symbol;
+  namespaces do not inject names into other scopes.
+- `include "path"` textually includes a source file at its top-level directive.
+  Relative paths are resolved from the including file, and each canonical file
+  is included at most once per compilation unit. Include depth is limited to 16.
 - Reserved keywords are case-insensitive: `start`, `int`, `string`, `if`,
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
   `raise`, `try`, `except`, `finally`, `for`, `in`, `public`, `protected`,
-  `private`, `virtual`, `map`, and `dict`. `dict` is an alias for the `map`
-  type.
+  `private`, `virtual`, `from`, `map`, `dict`, `namespace`, and `include`.
+  `dict` is an alias for the `map` type.
   Every capitalization is reserved.
 - `int`, `string`, class-reference, `array`, `map`/`dict`, and `any` declarations
   (with optional initializer), assignment, `print`, `return`, and
@@ -207,6 +220,12 @@ and semantic errors.
   `class Diamond : Left, Right`; `virtual` marks a shared base at any depth,
   for example `class Left : virtual Root` or
   `class Root : virtual Ancestor`.
+
+  A regular method can be declared without a body in its class and defined
+  later as `ReturnType Class.method(params) { ... }`. The signatures must
+  match, and every bodyless method needs exactly one matching definition.
+  `from "<symbol>"` replaces the out-of-line body to bind a C implementation;
+  callers still use ordinary `receiver.method(args)` syntax.
 
   ```simple
   class Counter {
@@ -380,7 +399,95 @@ virtual-base construction order. If
 virtual-base construction throws, the partial complete object is marked failed
 and its destructor chain is not run.
 
-## Deferred
+## Out-of-line methods and native bindings
+
+Methods remain class members: a method signature is declared inside its class,
+then its body may be supplied later, qualified with the class name. A C
+binding uses `from "<symbol>"` instead of the out-of-line body. There is no
+top-level free-function declaration form and no `extern` keyword in this
+syntax.
+
+```simple
+class Native {
+    int absolute(int value)
+    int stringLength(string text)
+    string stringIdentity(string text)
+    array identityArray(array items)
+}
+
+int Native.absolute(int value) from "simp_method_demo_abs"
+int Native.stringLength(string text) from "simp_method_demo_string_length"
+string Native.stringIdentity(string text) from "simp_method_demo_string_identity"
+array Native.identityArray(array items) from "simp_method_demo_identity"
+
+class Doubler {
+    int compute(int x)
+}
+
+int Doubler.compute(int x) {
+    return x * 2
+}
+
+start {
+    Native native = Native()
+    print(native.absolute(0 - 7))       # 7; C shim calls libc abs()
+    print(native.stringLength("hello")) # 5
+    print(native.stringIdentity("hello")) # hello
+    array numbers = [1, 2, 3]
+    print(native.identityArray(numbers).length) # 3
+    print(Doubler().compute(5)) # 10
+}
+```
+
+- Exact forms:
+  - In-class declaration: `<returnType> <method>(<paramType> <paramName>, ...)`
+    with no body.
+  - Out-of-line Simple body:
+    `<returnType> <Class>.<method>(<paramType> <paramName>, ...) { ... }`
+  - C binding:
+    `<returnType> <Class>.<method>(<paramType> <paramName>, ...) from "<symbol>"`
+- A declaration must be paired with exactly one out-of-line definition.
+  The return type, parameter count, and parameter types must match; method
+  calls use ordinary `receiver.method(args)` syntax and validate argument
+  count/types against the class declaration. Constructors/destructors remain
+  defined in-class and cannot use `from`.
+- Native-bound methods are ordinary class methods to their callers. The
+  external implementation detail is not exposed at the call site. The
+  compiler emits an ordinary Simple method/dispatch entry as a wrapper around
+  the external symbol; the wrapper passes the implicit receiver pointer as
+  the **first C ABI argument**, followed by explicit parameters.
+- ABI mapping is currently x86-64 SysV: `int` is C `int` (`i32`); `string`
+  arguments scalarize to `(ptr, uint64_t length)` and string results use the
+  corresponding two-scalar aggregate; `array`, `map`, and class references
+  are single opaque pointers; `void` is C `void`. `any` is rejected for a
+  native-bound method because the backend does not implement its target-
+  specific aggregate ABI lowering. Strings are length-prefixed, not
+  NUL-terminated. The matching C `SimpString` structure and shim prototypes
+  are in `include/simp/RuntimeGc.h`.
+- Argument expressions reuse normal call evaluation and explicit GC rooting:
+  already-evaluated managed arguments remain rooted while later arguments
+  execute, and the receiver/parameters are rooted in the generated wrapper.
+  Managed return pointers are checked and rooted before the wrapper returns.
+  C code that allocates managed objects must use the runtime's root-frame API
+  for its own temporary references.
+- A missing `<symbol>` is diagnosed by the linker at link time, not by
+  semantic analysis. `tests/functional/positive_extern_functions.simp`
+  exercises `from` bindings for integer, string argument/return, array, and
+  class-reference values; its bundled C shims include a call to libc `abs()`.
+- Full module access through `import module_name as symbol` is intentionally
+  **not implemented in this milestone**. The example calls the class directly
+  in one source file; import-mediated module lookup/linking remains deferred
+  until the module registry and package workflow are designed. Once available,
+  the registry will designate one top-level class or namespace from the
+  module for `import module_name as symbol` to bind to `symbol`. For example,
+  `symbol.Foo().compute(5)` is valid when that designated namespace contains
+  class `Foo`; the method is invoked on a constructed instance, not as a
+  static or free function. Whether it has a Simple body or a C `from` binding
+  is invisible to the caller. Other limits:
+  no library search-path option, variadic methods, or non-x86-64-SysV ABI
+  lowering.
+
+
 
 LLVM 22.1.8, CMake 3.31.6, GCC 14.2, and Clang 22.1 were available when this
 prototype was extended. The implementation emits textual LLVM IR and invokes
@@ -390,7 +497,9 @@ current driver launches it through the host POSIX shell. Full language type
 checking and name-resolution rules, OOP beyond the supported single- and
 multiple-inheritance slices (including access to protected
 base members from further-derived classes),
-production GC features, modules and native libraries, inline C, GTK, package
-manager, IDE, and debugger remain deferred. Collection deletion, imports/includes,
-and the remaining semantics in the design notes are not
-implied to work.
+production GC features, import-mediated modules and external library
+configuration, inline C, GTK, package
+manager, IDE, and debugger remain deferred. Collection deletion, import
+processing, and package resolution remain unimplemented. The namespace and
+include behavior above is implemented; other design-note proposals may still
+be unsupported.

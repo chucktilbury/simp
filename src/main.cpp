@@ -17,6 +17,7 @@
 #include <iterator>
 #include <string>
 #include <system_error>
+#include <unordered_set>
 #include <vector>
 
 #include <sys/wait.h>
@@ -60,6 +61,77 @@ std::string defaultExecutablePath(const std::string& inputPath) {
     auto name = std::filesystem::path(inputPath).stem().string();
     if (name.empty()) name = "a.out";
     return (std::filesystem::path(".") / name).string();
+}
+
+std::vector<simp::Token> tokenizeWithIncludes(
+    const std::string& source, const std::filesystem::path& sourcePath,
+    std::unordered_set<std::string>& includedFiles, std::size_t depth, bool root) {
+    simp::Lexer lexer(source, sourcePath.string());
+    const auto tokens = lexer.tokenize();
+    std::vector<simp::Token> expanded;
+    std::size_t braceDepth = 0;
+    for (std::size_t index = 0; index + 1 < tokens.size(); ++index) {
+        const auto& token = tokens[index];
+        if (!root && token.type == simp::TokenType::Start) {
+            throw simp::DiagnosticError(token.location,
+                                        "included source cannot declare 'start'");
+        }
+        if (token.type == simp::TokenType::Include && braceDepth == 0) {
+            if (index + 1 >= tokens.size() - 1 ||
+                tokens[index + 1].type != simp::TokenType::String) {
+                throw simp::DiagnosticError(token.location,
+                                            "expected a quoted path after 'include'");
+            }
+            const auto& pathToken = tokens[++index];
+            const auto next = index + 1;
+            if (tokens[next].type != simp::TokenType::Newline &&
+                tokens[next].type != simp::TokenType::End) {
+                throw simp::DiagnosticError(tokens[next].location,
+                                            "expected newline after include path");
+            }
+
+            std::filesystem::path requested(pathToken.text);
+            if (requested.is_relative()) requested = sourcePath.parent_path() / requested;
+            std::error_code error;
+            const auto canonicalPath = std::filesystem::canonical(requested, error);
+            if (error) {
+                throw simp::DiagnosticError(pathToken.location,
+                                            "cannot resolve included source '" +
+                                                pathToken.text + "'");
+            }
+            const auto canonicalName = canonicalPath.string();
+            if (includedFiles.emplace(canonicalName).second) {
+                if (depth >= 16) {
+                    throw simp::DiagnosticError(token.location,
+                                                "maximum include depth of 16 exceeded");
+                }
+                std::ifstream included(canonicalPath);
+                if (!included) {
+                    throw simp::DiagnosticError(pathToken.location,
+                                                "cannot open included source '" +
+                                                    canonicalName + "'");
+                }
+                const std::string includedSource{
+                    std::istreambuf_iterator<char>(included),
+                    std::istreambuf_iterator<char>()};
+                auto includedTokens = tokenizeWithIncludes(
+                    includedSource, canonicalPath, includedFiles, depth + 1, false);
+                expanded.insert(expanded.end(),
+                                std::make_move_iterator(includedTokens.begin()),
+                                std::make_move_iterator(includedTokens.end()));
+            }
+            if (next < tokens.size() - 1) ++index;
+            if (expanded.empty() ||
+                expanded.back().type != simp::TokenType::Newline) {
+                expanded.push_back({simp::TokenType::Newline, "\n", token.location});
+            }
+            continue;
+        }
+        if (token.type == simp::TokenType::LeftBrace) ++braceDepth;
+        if (token.type == simp::TokenType::RightBrace && braceDepth > 0) --braceDepth;
+        expanded.push_back(token);
+    }
+    return expanded;
 }
 
 int buildExecutable(const std::string& irPath, const std::string& outputPath) {
@@ -149,13 +221,21 @@ int main(int argc, char** argv) {
 
     std::string temporaryIr;
     try {
-        simp::Lexer lexer(source, inputPath);
-        auto tokens = lexer.tokenize();
+        std::unordered_set<std::string> includedFiles;
+        std::error_code pathError;
+        const auto canonicalInput = std::filesystem::canonical(inputPath, pathError);
+        if (pathError) {
+            std::cerr << "simp: cannot resolve input file: " << inputPath << '\n';
+            return 2;
+        }
+        includedFiles.insert(canonicalInput.string());
+        auto tokens = tokenizeWithIncludes(source, inputPath, includedFiles, 0, true);
+        tokens.push_back({simp::TokenType::End, "", {inputPath, 1, 1}});
         if (verbose) {
             std::cerr << "[verbose] lexed " << (tokens.size() - 1) << " tokens\n";
         }
         simp::Parser parser(std::move(tokens), traceParser ? &std::cerr : nullptr);
-        const auto program = parser.parseProgram();
+        auto program = parser.parseProgram();
         simp::SemanticAnalyzer semanticAnalyzer;
         semanticAnalyzer.analyze(program);
         if (dump) {

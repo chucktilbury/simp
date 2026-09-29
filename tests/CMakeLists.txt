@@ -366,6 +366,55 @@ add_test(NAME simp_compile_and_run_secondary_bases
         "-DEXPECTED_OUTPUT=77\n77\n77\n77\n77\n4\n8\n12\n28\n28\n77\nDiamond\nRight\n8\nLeft\n4\nsecondary destructor failure\nsecondary constructor failure\n"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+
+function(add_namespace_run_test test_name fixture expected_output)
+    add_test(NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+            "-DCOMPILER=$<TARGET_FILE:simp>"
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/${fixture}"
+            "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${fixture}"
+            "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${fixture}.ll"
+            "-DEXPECTED_OUTPUT=${expected_output}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+    )
+endfunction()
+
+function(add_namespace_reject_test test_name fixture expected_diagnostic)
+    add_test(NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+            "-DCOMPILER=$<TARGET_FILE:simp>"
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/${fixture}"
+            "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${fixture}"
+            "-DEXPECTED_DIAGNOSTIC=${expected_diagnostic}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+    )
+endfunction()
+
+add_namespace_run_test(simp_namespace_single_class
+    positive_namespace_single.simp "42\n")
+add_namespace_run_test(simp_namespace_physical_nesting
+    positive_namespace_nested.simp "5\n")
+add_namespace_run_test(simp_namespace_empty_body
+    positive_namespace_empty.simp "42\n")
+add_namespace_run_test(simp_namespace_reopen
+    positive_namespace_reopen.simp "42\n")
+add_namespace_run_test(simp_namespace_distinct_short_names
+    positive_namespace_collisions.simp "42\n")
+add_namespace_run_test(simp_namespace_qualified_construction_and_call
+    positive_namespace_qualified_call.simp "42\n")
+add_namespace_run_test(simp_namespace_across_included_source
+    positive_namespace_include.simp "42\n")
+add_namespace_run_test(simp_namespace_out_of_line_method
+    positive_namespace_out_of_line.simp "42\n")
+add_namespace_reject_test(simp_rejects_namespace_start
+    negative_namespace_start.simp "'start' cannot be declared inside a namespace")
+add_namespace_reject_test(simp_rejects_namespace_statement
+    negative_namespace_statement.simp "namespace body may contain only namespace and class declarations")
+add_namespace_reject_test(simp_rejects_unresolved_namespace_reference
+    negative_namespace_unresolved.simp "unknown qualified class")
+add_namespace_reject_test(simp_rejects_dotted_namespace_declaration
+    negative_namespace_dotted.simp "expected '{' after namespace name")
+
 add_test(NAME simp_compile_and_run_public_inheritance
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
@@ -824,5 +873,87 @@ add_test(NAME simp_rejects_object_type_mismatch
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_object_type_mismatch.simp"
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_object_type_mismatch"
         "-DEXPECTED_DIAGNOSTIC=cannot initialize int variable with Counter"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_native_method_definitions
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_extern_functions.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_extern_functions"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_extern_functions.ll"
+        "-DEXPECTED_OUTPUT=7\n5\nhello\n3\n1\n42\n10\n"
+        "-DREQUIRE_GC_ROOTS=ON"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_native_method_argument_count_mismatch
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_extern_argument_count.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_extern_argument_count"
+        "-DEXPECTED_DIAGNOSTIC=method 'absolute' argument count mismatch"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_native_method_argument_type_mismatch
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_extern_argument_type.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_extern_argument_type"
+        "-DEXPECTED_DIAGNOSTIC=method argument type does not match parameter 'value'"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_native_method_any_parameter
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_extern_any_parameter.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_extern_any_parameter"
+        "-DEXPECTED_DIAGNOSTIC='any' is not supported in external method signatures"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_native_method_any_return
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_extern_any_return.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_extern_any_return"
+        "-DEXPECTED_DIAGNOSTIC='any' is not supported in external method signatures"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_duplicate_out_of_line_method_definition
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_extern_duplicate_name.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_extern_duplicate_name"
+        "-DEXPECTED_DIAGNOSTIC=duplicate out-of-line definition for method 'Native.absolute'"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_out_of_line_method_signature_mismatch
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_extern_signature_mismatch.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_extern_signature_mismatch"
+        "-DEXPECTED_DIAGNOSTIC=out-of-line definition signature does not match declaration"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_incompatible_native_symbol_signatures
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_extern_symbol_signature_conflict.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_extern_symbol_signature_conflict"
+        "-DEXPECTED_DIAGNOSTIC=is reused with an incompatible method signature"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_native_method_missing_symbol_at_link_time
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_extern_missing_symbol.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_extern_missing_symbol"
+        "-DEXPECTED_DIAGNOSTIC=undefined reference to .simp_symbol_that_does_not_exist."
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_method_declaration_without_definition
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_extern_missing_definition.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_extern_missing_definition"
+        "-DEXPECTED_DIAGNOSTIC=is declared but has no out-of-line definition"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )

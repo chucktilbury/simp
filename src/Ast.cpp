@@ -117,6 +117,30 @@ void dumpStatements(const std::vector<Statement>& statements, std::ostream& outp
 
 void dumpAst(const Program& program, std::ostream& output) {
     output << "Program\n";
+    for (const auto& declaration : program.namespaces) {
+        indent(output, 1);
+        output << "Namespace [";
+        for (std::size_t index = 0; index < declaration.path.size(); ++index) {
+            if (index != 0) output << ".";
+            output << declaration.path[index];
+        }
+        output << "]\n";
+    }
+    for (const auto& definition : program.outOfLineMethods) {
+        indent(output, 1);
+        output << "Out-of-line method [" << definition.className << "."
+               << definition.method.returnType << " " << definition.method.name << "(";
+        for (std::size_t index = 0; index < definition.method.parameters.size(); ++index) {
+            if (index != 0) output << ", ";
+            output << definition.method.parameters[index].type << " "
+                   << definition.method.parameters[index].name;
+        }
+        output << ")";
+        if (definition.method.externalBinding) {
+            output << " from \"" << definition.method.externalSymbol << "\"";
+        }
+        output << "]\n";
+    }
     for (const auto& declaration : program.classes) {
         indent(output, 1);
         output << "Class [" << declaration.name;
@@ -141,7 +165,8 @@ void dumpAst(const Program& program, std::ostream& output) {
         }
         for (const auto& method : declaration.methods) {
             indent(output, 2);
-            output << (method.constructor ? "Constructor [" : "Method [")
+            output << (method.constructor ? "Constructor [" :
+                       method.declarationOnly ? "Method declaration [" : "Method [")
                    << method.returnType << " " << method.name << "]\n";
             dumpStatements(method.body, output, 3);
         }

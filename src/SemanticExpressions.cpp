@@ -27,14 +27,27 @@ bool isDynamicValueType(const std::string& type) {
     return type == "any";
 }
 
+bool expressionNamePath(const Expression& expression, std::string& name) {
+    if (expression.kind == ExpressionKind::Identifier) {
+        name = expression.value;
+        return true;
+    }
+    if (expression.kind != ExpressionKind::Member || !expression.left ||
+        !expressionNamePath(*expression.left, name)) {
+        return false;
+    }
+    name += "." + expression.value;
+    return true;
+}
+
 } // namespace
 
-bool SemanticAnalyzer::resolveBaseQualifier(const Expression& receiver,
-                                           const Expression*& root,
+bool SemanticAnalyzer::resolveBaseQualifier(Expression& receiver,
+                                           Expression*& root,
                                            const ClassDeclaration*& view,
                                            std::vector<std::string>& path) {
     std::vector<std::string> reversed;
-    const Expression* cursor = &receiver;
+    Expression* cursor = &receiver;
     while (cursor->kind == ExpressionKind::Member) {
         reversed.push_back(cursor->value);
         cursor = cursor->left.get();
@@ -57,7 +70,7 @@ bool SemanticAnalyzer::resolveBaseQualifier(const Expression& receiver,
     return true;
 }
 
-std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
+std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                                 const std::string& expectedType) {
     (void)expectedType;
     switch (expression.kind) {
@@ -110,7 +123,7 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
                               "undefined variable '" + expression.value + "' or field");
     }
     case ExpressionKind::Member: {
-        const Expression* root = nullptr;
+        Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;
         std::vector<std::string> path;
         const bool qualified = resolveBaseQualifier(*expression.left, root, owner, path);
@@ -163,7 +176,7 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
     case ExpressionKind::ArrayLiteral: {
         // Arrays are heterogeneous bags. Collection references remain tagged values,
         // so nested arrays share the same precise GC tracing as maps.
-        for (const auto& element : expression.arguments) {
+        for (auto& element : expression.arguments) {
             const auto actualType = analyzeExpression(*element);
             const bool validElement = actualType == "int" || actualType == "string" ||
                                       actualType == "null" || actualType == "any" ||
@@ -179,7 +192,7 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
     }
     case ExpressionKind::MapLiteral: {
         for (std::size_t index = 0; index < expression.arguments.size(); index += 2) {
-            const auto& key = *expression.arguments[index];
+            auto& key = *expression.arguments[index];
             if (analyzeExpression(key) != "string") {
                 throw DiagnosticError(key.location,
                                       "map keys must have type string");
@@ -201,7 +214,7 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
     case ExpressionKind::Slice: {
         const auto collectionType = analyzeExpression(*expression.left);
         if (isArrayType(collectionType)) {
-            for (const auto& bound : expression.arguments) {
+            for (auto& bound : expression.arguments) {
                 if (analyzeExpression(*bound) != "int") {
                     throw DiagnosticError(bound->location,
                                           "array index and slice bounds must be int");
@@ -210,7 +223,7 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
             return expression.kind == ExpressionKind::Slice ? "array" : "any";
         }
         if (isMapType(collectionType) && expression.kind == ExpressionKind::Slice) {
-            for (const auto& bound : expression.arguments) {
+            for (auto& bound : expression.arguments) {
                 if (analyzeExpression(*bound) != "int") {
                     throw DiagnosticError(bound->location,
                                           "map index and slice bounds must be int");
@@ -219,7 +232,7 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
             return "map";
         }
         if (isMapType(collectionType) && expression.kind == ExpressionKind::Index) {
-            const auto& key = *expression.arguments.front();
+            auto& key = *expression.arguments.front();
             if (analyzeExpression(key) != "string") {
                 throw DiagnosticError(key.location,
                                       "map keys must have type string");
@@ -232,6 +245,8 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
                                   : "indexing requires an array or map");
     }
     case ExpressionKind::ConstructorCall: {
+        expression.value =
+            resolveClassName(expression.value, currentNamespace_, expression.location);
         const auto* owner = findClass(expression.value, expression.location);
         const MethodDeclaration* constructor = nullptr;
         for (const auto& method : owner->methods) {
@@ -307,11 +322,29 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
         return owner->name;
     }
     case ExpressionKind::Call: {
+        std::string qualifiedName;
+        if (expression.left &&
+            expressionNamePath(*expression.left, qualifiedName) &&
+            expression.left->kind == ExpressionKind::Member) {
+            std::string firstName;
+            auto firstDot = qualifiedName.find('.');
+            firstName = qualifiedName.substr(0, firstDot);
+            const bool localBinding = findSymbolIndex(firstName) != symbols_.size() ||
+                (currentClass_ != nullptr &&
+                 findField(*currentClass_, firstName) != nullptr);
+            if (!localBinding && hasNamespaceOrClass(firstName, currentNamespace_)) {
+                expression.value =
+                    resolveClassName(qualifiedName, currentNamespace_, expression.location);
+                expression.kind = ExpressionKind::ConstructorCall;
+                expression.left.reset();
+                return analyzeExpression(expression);
+            }
+        }
         if (expression.left->kind != ExpressionKind::Member) {
             throw DiagnosticError(expression.location, "only object method calls are supported");
         }
-        const auto& target = *expression.left;
-        const Expression* root = nullptr;
+        auto& target = *expression.left;
+        Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;
         std::vector<std::string> basePath;
         const bool qualified =
@@ -439,7 +472,7 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
     throw DiagnosticError(expression.location, "invalid expression");
 }
 
-std::string SemanticAnalyzer::analyzeLValue(const Expression& expression) {
+std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
     if (expression.kind == ExpressionKind::Identifier) {
         const auto index = findSymbolIndex(expression.value);
         if (index != symbols_.size()) {
@@ -479,7 +512,7 @@ std::string SemanticAnalyzer::analyzeLValue(const Expression& expression) {
             return "any";
         }
         if (isMapType(collectionType)) {
-            const auto& key = *expression.arguments.front();
+            auto& key = *expression.arguments.front();
             if (analyzeExpression(key) != "string") {
                 throw DiagnosticError(key.location,
                                       "map keys must have type string");
@@ -493,7 +526,7 @@ std::string SemanticAnalyzer::analyzeLValue(const Expression& expression) {
                               "slice expressions are copies and are not assignable");
     }
     if (expression.kind == ExpressionKind::Member) {
-        const Expression* root = nullptr;
+        Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;
         std::vector<std::string> path;
         const bool qualified = resolveBaseQualifier(*expression.left, root, owner, path);

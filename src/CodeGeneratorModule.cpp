@@ -148,8 +148,13 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     }
 }
 
-void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclaration& method,
+void CodeGenerator::emitMethod(const ClassDeclaration& owner,
+                               const MethodDeclaration& declaration,
                                const std::string& symbolOverride) {
+    const auto definition = methodDefinitions_.find(owner.name + "." + declaration.name);
+    const MethodDeclaration& method = definition == methodDefinitions_.end()
+                                         ? declaration
+                                         : definition->second->method;
     currentClass_ = &owner;
     currentFieldClass_ = &owner;
     currentMethod_ = &method;
@@ -247,7 +252,56 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
             instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
         }
     }
-    emitStatements(method.body);
+    if (method.externalBinding) {
+        std::string arguments = "ptr %this";
+        for (const auto& parameter : method.parameters) {
+            const auto argument = "%arg." + parameter.name;
+            arguments += ", ";
+            if (parameter.type == "string") {
+                const auto data = newTemporary();
+                const auto length = newTemporary();
+                instructions_ += "  " + data + " = extractvalue %SimpleString " + argument +
+                                 ", 0\n"
+                                 "  " + length + " = extractvalue %SimpleString " + argument +
+                                 ", 1\n";
+                arguments += "ptr " + data + ", i64 " + length;
+            } else {
+                arguments += llvmType(parameter.type) + " " + argument;
+            }
+        }
+        const auto external = "@" + method.externalSymbol;
+        if (method.returnType == "void") {
+            instructions_ += "  call void " + external + "(" + arguments + ")\n";
+            emitRootFramePop();
+            instructions_ += "  ret void\n";
+        } else if (method.returnType == "string") {
+            const auto raw = newTemporary();
+            const auto data = newTemporary();
+            const auto length = newTemporary();
+            const auto first = newTemporary();
+            const auto result = newTemporary();
+            instructions_ += "  " + raw + " = call { ptr, i64 } " + external + "(" +
+                             arguments + ")\n"
+                             "  " + data + " = extractvalue { ptr, i64 } " + raw + ", 0\n"
+                             "  " + length + " = extractvalue { ptr, i64 } " + raw + ", 1\n"
+                             "  " + first + " = insertvalue %SimpleString poison, ptr " + data +
+                             ", 0\n"
+                             "  " + result + " = insertvalue %SimpleString " + first + ", i64 " +
+                             length + ", 1\n";
+            emitRootFramePop();
+            instructions_ += "  ret %SimpleString " + result + "\n";
+        } else {
+            const auto result = newTemporary();
+            instructions_ += "  " + result + " = call " + llvmType(method.returnType) + " " +
+                             external + "(" + arguments + ")\n";
+            const auto rooted = rootObjectValue({method.returnType, result}, method.location);
+            emitRootFramePop();
+            instructions_ += "  ret " + llvmType(method.returnType) + " " + rooted.operand + "\n";
+        }
+        blockTerminated_ = true;
+    } else {
+        emitStatements(method.body);
+    }
     if (!blockTerminated_) {
         emitRootFramePop();
         instructions_ += "  ret void\n";
@@ -516,11 +570,30 @@ void CodeGenerator::emitMain(const Program& program) {
 
 std::string CodeGenerator::generate(const Program& program) {
     classes_.clear();
+    methodDefinitions_.clear();
     stringGlobals_.clear();
     typeDefinitions_.clear();
     metadataGlobals_.clear();
+    externDeclarations_.clear();
     instructions_.clear();
     nextString_ = 0;
+    std::unordered_set<std::string> declaredExternalSymbols;
+    for (const auto& definition : program.outOfLineMethods) {
+        methodDefinitions_.emplace(definition.className + "." + definition.method.name,
+                                   &definition);
+        if (definition.method.externalBinding &&
+            declaredExternalSymbols.insert(definition.method.externalSymbol).second) {
+            const auto owner = std::find_if(
+                program.classes.begin(), program.classes.end(),
+                [&definition](const ClassDeclaration& candidate) {
+                    return candidate.name == definition.className;
+                });
+            if (owner != program.classes.end()) {
+                externDeclarations_ +=
+                    externMethodDeclaration(*owner, definition.method);
+            }
+        }
+    }
     emitClassTypesAndMetadata(program);
     emitClassMethods(program);
     const auto methods = instructions_;
@@ -536,9 +609,9 @@ std::string CodeGenerator::generate(const Program& program) {
            << "@.simp.division.message = private unnamed_addr constant [16 x i8] c\"division by zero\"\n"
            << "@stdout = external global ptr\n"
            << stringGlobals_ << metadataGlobals_ << "\n"
+           << externDeclarations_
            << "declare i32 @printf(ptr, ...)\n"
-           << "declare i64 @fwrite(ptr, i64, i64, ptr)\n"
-           << "declare void @simp_gc_push_or_abort(ptr, ptr, i64)\n"
+           << "declare i64 @fwrite(ptr, i64, i64, ptr)\n"           << "declare void @simp_gc_push_or_abort(ptr, ptr, i64)\n"
            << "declare void @simp_gc_pop_or_abort(ptr)\n"
            << "declare ptr @simp_gc_alloc(ptr)\n"
            << "declare ptr @simp_gc_alloc_array(i64)\n"

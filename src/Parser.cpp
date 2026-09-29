@@ -35,6 +35,34 @@ bool Parser::match(TokenType type) {
     return true;
 }
 
+bool Parser::startsOutOfLineDefinition() const {
+    std::size_t afterType = current_;
+    switch (current().type) {
+    case TokenType::Identifier:
+        ++afterType;
+        while (afterType + 1 < tokens_.size() &&
+               tokens_[afterType].type == TokenType::Dot &&
+               tokens_[afterType + 1].type == TokenType::Identifier) {
+            afterType += 2;
+        }
+        break;
+    case TokenType::Int:
+    case TokenType::StringType:
+    case TokenType::ArrayType:
+    case TokenType::MapType:
+    case TokenType::AnyType:
+    case TokenType::Void:
+        ++afterType;
+        break;
+    default:
+        return false;
+    }
+    return afterType + 2 < tokens_.size() &&
+           tokens_[afterType].type == TokenType::Identifier &&
+           tokens_[afterType + 1].type == TokenType::Dot &&
+           tokens_[afterType + 2].type == TokenType::Identifier;
+}
+
 void Parser::skipNewlines() {
     while (match(TokenType::Newline)) {}
 }
@@ -91,8 +119,15 @@ void Parser::trace(const char* action) const {
 Program Parser::parseProgram() {
     Program program;
     skipNewlines();
-    while (check(TokenType::Class)) {
-        program.classes.push_back(parseClass());
+    while (check(TokenType::Class) || check(TokenType::Namespace) ||
+           startsOutOfLineDefinition()) {
+        if (check(TokenType::Class)) {
+            program.classes.push_back(parseClass());
+        } else if (check(TokenType::Namespace)) {
+            parseNamespace(program);
+        } else {
+            program.outOfLineMethods.push_back(parseOutOfLineMethodDefinition());
+        }
         skipNewlines();
     }
     if (!check(TokenType::Start)) {
@@ -111,6 +146,45 @@ Program Parser::parseProgram() {
         error(current(), "only one top-level 'start' block is allowed");
     }
     return program;
+}
+
+std::string Parser::parseQualifiedIdentifier(const char* expectation) {
+    std::string name = consume(TokenType::Identifier, expectation).text;
+    while (match(TokenType::Dot)) {
+        name += "." + consume(TokenType::Identifier, expectation).text;
+    }
+    return name;
+}
+
+void Parser::parseNamespace(Program& program) {
+    const auto keyword = consume(TokenType::Namespace, "'namespace'");
+    const auto name = consume(TokenType::Identifier, "namespace name").text;
+    skipNewlines();
+    consume(TokenType::LeftBrace, "'{' after namespace name");
+
+    const auto oldDepth = namespacePath_.size();
+    namespacePath_.push_back(name);
+    program.namespaces.push_back({namespacePath_, keyword.location});
+    while (!check(TokenType::RightBrace) && !check(TokenType::End)) {
+        skipNewlines();
+        if (check(TokenType::RightBrace) || check(TokenType::End)) break;
+        if (check(TokenType::Namespace)) {
+            parseNamespace(program);
+        } else if (check(TokenType::Class)) {
+            program.classes.push_back(parseClass());
+        } else if (check(TokenType::Start)) {
+            error(current(), "'start' cannot be declared inside a namespace");
+        } else if (check(TokenType::Include)) {
+            error(current(), "'include' is only allowed at top level");
+        } else if (startsOutOfLineDefinition()) {
+            program.outOfLineMethods.push_back(parseOutOfLineMethodDefinition());
+        } else {
+            error(current(), "namespace body may contain only namespace and class declarations");
+        }
+        skipNewlines();
+    }
+    consume(TokenType::RightBrace, "'}' after namespace body");
+    namespacePath_.resize(oldDepth);
 }
 
 std::vector<Statement> Parser::parseBlock() {
@@ -188,8 +262,17 @@ Statement Parser::parseDeclaration() {
 }
 
 Statement Parser::parseIdentifierStatement() {
-    if (current_ + 1 < tokens_.size() && current().type == TokenType::Identifier &&
-        tokens_[current_ + 1].type == TokenType::Identifier) {
+    std::size_t lookahead = current_;
+    if (tokens_[lookahead].type == TokenType::Identifier) {
+        ++lookahead;
+        while (lookahead + 1 < tokens_.size() &&
+               tokens_[lookahead].type == TokenType::Dot &&
+               tokens_[lookahead + 1].type == TokenType::Identifier) {
+            lookahead += 2;
+        }
+    }
+    if (lookahead < tokens_.size() &&
+        tokens_[lookahead].type == TokenType::Identifier) {
         return parseDeclaration();
     }
     auto expression = parseExpression();

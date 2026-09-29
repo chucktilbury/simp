@@ -74,6 +74,25 @@ typedef struct SimpRootFrame {
     void *const *slots;
 } SimpRootFrame;
 
+/* C-ABI mirror of the compiler's %SimpleString value ({ ptr, i64 }). Native
+ * method bindings that take or return a Simple 'string' exchange it using
+ * exactly this struct layout: a data
+ * pointer (NOT guaranteed NUL-terminated; use `length` bytes) followed by a
+ * byte length. See SIMPLE-LANGUAGE-NOTES.md, "Out-of-line methods and native
+ * bindings", for the method ABI. */
+typedef struct SimpString {
+    const char *data;
+    uint64_t length;
+} SimpString;
+
+/* Demonstration C shims for out-of-line native-bound methods. Every method
+ * receives its Simple receiver first, followed by its declared parameters. */
+int32_t simp_method_demo_abs(void *receiver, int32_t value);
+void simp_method_demo_ignore(void *receiver, int32_t value);
+int32_t simp_method_demo_string_length(void *receiver, SimpString text);
+SimpString simp_method_demo_string_identity(void *receiver, SimpString text);
+void *simp_method_demo_identity(void *receiver, void *object);
+
 /* Push/pop are LIFO; return 1 on success and 0 for an invalid operation. */
 int simp_gc_push(SimpRootFrame *frame, void *const *slots, uint64_t count);
 int simp_gc_pop(SimpRootFrame *frame);

@@ -14,6 +14,7 @@ ClassDeclaration Parser::parseClass() {
     const auto name = consume(TokenType::Identifier, "class name");
     ClassDeclaration declaration;
     declaration.name = name.text;
+    declaration.namespacePath = namespacePath_;
     declaration.location = keyword.location;
     if (match(TokenType::Colon)) {
         do {
@@ -30,14 +31,15 @@ ClassDeclaration Parser::parseClass() {
                     break;
                 }
             }
-            const auto base = consume(TokenType::Identifier, "base class name");
-            declaration.baseClassNames.push_back(base.text);
-            declaration.baseLocations.push_back(base.location);
+            const auto baseLocation = current().location;
+            const auto baseName = parseQualifiedIdentifier("base class name");
+            declaration.baseClassNames.push_back(baseName);
+            declaration.baseLocations.push_back(baseLocation);
             declaration.baseAccess.push_back(access);
             declaration.baseVirtual.push_back(isVirtual);
             if (declaration.baseClassNames.size() == 1) {
-                declaration.baseClassName = base.text;
-                declaration.baseLocation = base.location;
+                declaration.baseClassName = baseName;
+                declaration.baseLocation = baseLocation;
             }
         } while (match(TokenType::Comma));
     }
@@ -104,6 +106,44 @@ ClassDeclaration Parser::parseClass() {
     return declaration;
 }
 
+OutOfLineMethodDefinition Parser::parseOutOfLineMethodDefinition() {
+    const auto returnType = current();
+    const auto returnTypeName = parseType(true);
+    std::string className = consume(TokenType::Identifier, "class name before '.'").text;
+    consume(TokenType::Dot, "'.' between class and method name");
+    auto member = consume(TokenType::Identifier, "method name");
+    while (match(TokenType::Dot)) {
+        className += "." + member.text;
+        member = consume(TokenType::Identifier, "method name");
+    }
+    const auto& methodName = member;
+    if (methodName.text == className || methodName.text == "destroy") {
+        error(methodName, "constructors and destructors cannot be defined out-of-line");
+    }
+
+    OutOfLineMethodDefinition definition;
+    definition.className = std::move(className);
+    definition.namespacePath = namespacePath_;
+    definition.location = returnType.location;
+    auto& method = definition.method;
+    method.name = methodName.text;
+    method.returnType = returnTypeName;
+    method.location = returnType.location;
+    method.parameters = parseParameters();
+    skipNewlines();
+    if (match(TokenType::From)) {
+        const auto symbol = consume(TokenType::String, "external symbol string literal");
+        method.externalBinding = true;
+        method.externalSymbol = symbol.text;
+        consumeStatementTerminator();
+    } else if (check(TokenType::LeftBrace)) {
+        method.body = parseBlock();
+    } else {
+        error(current(), "expected method body or 'from \"<symbol>\"'");
+    }
+    return definition;
+}
+
 std::string Parser::parseType(bool allowVoid) {
     std::string type;
     if (match(TokenType::Int)) type = "int";
@@ -112,7 +152,12 @@ std::string Parser::parseType(bool allowVoid) {
     else if (match(TokenType::MapType)) type = "map";
     else if (match(TokenType::AnyType)) type = "any";
     else if (allowVoid && match(TokenType::Void)) type = "void";
-    else if (check(TokenType::Identifier)) type = tokens_[current_++].text;
+    else if (check(TokenType::Identifier)) {
+        type = tokens_[current_++].text;
+        while (match(TokenType::Dot)) {
+            type += "." + consume(TokenType::Identifier, "type name component").text;
+        }
+    }
     else error(current(), "expected type name");
     return type;
 }
@@ -143,7 +188,12 @@ MethodDeclaration Parser::parseMethod(const Token& typeOrName, const Token& meth
     method.location = typeOrName.location;
     method.constructor = constructor;
     method.parameters = parseParameters();
-    method.body = parseBlock();
+    if (check(TokenType::LeftBrace)) {
+        method.body = parseBlock();
+    } else {
+        method.declarationOnly = true;
+        consumeStatementTerminator();
+    }
     return method;
 }
 

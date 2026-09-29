@@ -1,0 +1,15 @@
+include "includes/namespace_fragment.simp"
+
+namespace Included {
+    class Local {
+        int value() {
+            return 2
+        }
+    }
+}
+
+start {
+    Included.Remote remote = Included.Remote()
+    Included.Local local = Included.Local()
+    print(remote.value() + local.value())
+}

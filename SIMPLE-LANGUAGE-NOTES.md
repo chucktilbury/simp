@@ -176,8 +176,65 @@ non-virtual bases also have no explicit constructors.
   enforces them for field/method access, construction, and base-constructor
   calls. Destructor declarations retain access metadata, and destruction runs
   all base destructors, including secondary-base subobjects.
-- Namespaces concatenate into symbol paths.
 - A name is a compile-time symbol-tree path, not merely a textual identifier.
+- Namespace declaration grammar is
+  `namespace <identifier> { <declaration>* }`. A namespace name is exactly
+  one identifier; dotted names are not valid namespace declaration syntax.
+  To declare a nested namespace, physically nest namespace blocks. Namespace
+  bodies may be empty and may contain namespace and `class` declarations, but
+  not `start` or function-body statements. A namespace introduces a named
+  scope; its Simple-visible names are qualified by the namespace path, but it
+  does not rename or qualify an external C linker symbol.
+- Namespace declarations may appear at program/global scope or inside another
+  namespace, but not inside a class or function body. For example:
+
+  ```simple
+  namespace Foo {
+      class Thing {
+          ...
+      }
+  }
+
+  namespace Foo {
+      namespace Bar {
+          class Baz {
+              ...
+          }
+      }
+  }
+  ```
+
+  An empty body such as `namespace Foo { }` is legal. Declarations in the
+  same namespace path within one compilation unit contribute to that
+  namespace, including when the path is reopened by nested blocks. Since
+  `include` textually adds source to the including unit, this can span files
+  included into that unit; it does not merge namespaces across independently
+  compiled units or imported modules.
+- Qualified references use dot-separated symbol paths, such as
+  `Foo.Bar().method()` for constructing a qualified class and calling an
+  instance method. Class methods remain instance methods; this syntax does not
+  add static methods. For any explicit qualified name, the first component is
+  resolved outward through lexical scopes, and each later component must
+  resolve as a child symbol of the preceding component.
+- An unqualified name follows the same rule: resolve its first component
+  outward through enclosing lexical scopes, including enclosing namespaces;
+  resolve any remaining components only within the preceding symbol. There is
+  no implicit import or `using` directive. An explicit `import` binds one
+  registry-designated class or namespace from a compiled module under a
+  required local symbol; imported members are not injected as unqualified
+  names. Import aliases are single identifiers; dotted qualification applies
+  to references, not namespace declaration names.
+- `start` must be declared exactly once in the unnamed/global scope. It cannot
+  be placed inside a namespace, and namespace contents cannot declare another
+  entry point.
+- The current compiler implements namespace parsing, per-compilation-unit
+  namespace merging, lexical name resolution, and qualified class construction
+  and method calls. Top-level textual includes participate in that same unit.
+- A namespace may contain class declarations. Methods, including methods
+  implemented by C symbols, are always members declared by a class.
+- `include` and `import` are top-level directives, not statements inside a
+  namespace, class, or function. Their exact syntax and distinct semantics
+  are specified below under "Include and import behavior."
 - Simple compilation is multi-pass: a name may be referenced before its
   definition, provided the name is defined somewhere in the program.
 - When resolving an explicit name, the first component is resolved outward through lexical scopes; subsequent components must resolve as child symbols.
@@ -368,11 +425,101 @@ module design. The program-entry examples use the single permitted top-level
 
 ### Include and import behavior
 
-- `include` copies the raw file into the current compilation unit.
-- Nested includes are limited to 16 levels; the root file is depth 0.
-- Exceeding the maximum is an error and stops compilation.
-- Importing a duplicate symbol into the same scope is an error.
-- Imports can be aliased so that an imported scope is referenced through the alias.
+`include` is textual source inclusion, while `import` names a registered
+compiled module and binds one designated class or namespace. They are not
+interchangeable.
+
+#### Textual source inclusion
+
+- Grammar: `include "<path>"`. The path is a quoted string literal; it is not
+  a module or namespace name.
+- `include` may appear only at top level, interspersed with top-level
+  `namespace`, `class`, out-of-line method definitions, and `import`
+  declarations before `start`.
+  It cannot appear inside a namespace, class, or function body. Included
+  source is subject to the same top-level grammar and cannot declare `start`.
+- The named Simple source is expanded at the directive's position, as if its
+  top-level source text had been pasted there. An included file's own
+  namespace blocks remain intact. All included declarations belong to the
+  including compilation unit and participate in the same multi-pass name
+  resolution; namespace declarations in different included files therefore
+  contribute to one namespace path.
+- An include path that is absolute is resolved directly. A relative path is
+  resolved first relative to the directory of the file containing that
+  directive, then through configured include-search directories in order.
+  The exact CLI for configuring search directories is deferred.
+- Inclusion is once per compilation unit, keyed by the canonical resolved
+  absolute file path. The root source file is marked included initially.
+  Re-including a file already encountered is a no-op; this also terminates
+  include cycles without manual include guards. Nested include depth is
+  limited to 16 (root source depth 0); exceeding the limit is a compilation
+  error.
+
+#### Compiled module imports
+
+- Grammar: `import <module_name> as <symbol>`. Both names are identifiers;
+  `module_name` is a registered module name, not a filename, source path, or
+  dotted Simple namespace path. `as <symbol>` is required. For example:
+
+  ```simple
+  import network as Net
+
+  start {
+      Net.Http.Client().get("/")
+  }
+  ```
+
+- In this example, the `network` registry entry designates a top-level
+  namespace (for example, `Network`) that contains a nested `Http` namespace
+  and a `Client` class. The alias `Net` refers to that namespace, so
+  `Net.Http.Client()` constructs a `Client`; `get` is then called on the
+  constructed instance.
+- An import is a top-level declaration, interspersed with other top-level
+  declarations before `start`; it is not permitted inside a namespace, class,
+  or function body. It does not paste or compile source text at the import
+  site. `module_name` is looked up in the external module registry or
+  configuration. Its registry entry designates exactly one importable
+  declaration from the module: either a top-level class or a top-level
+  namespace. The required `<symbol>` is bound in the importing file's scope
+  directly to that class or namespace; it is not a bag of all module exports.
+  An imported namespace may contain nested namespaces and classes, which are
+  accessed by further dotted qualification (for example,
+  `Net.Http.Client()`). An imported class is itself the alias and is
+  constructed through it (for example, after
+  `import network_client as Client`, call `Client(args).method()`).
+- Only classes and namespaces are importable units. A bare method or field
+  cannot be imported, and there is no import-everything operation. Simple has
+  no static or free functions: instance methods require constructing an
+  object before calling them, as in `Net.Http.Client().get("/")`.
+- Importing does not inject members as unqualified names and does not merge
+  the selected namespace into the caller's declarations. Imported namespaces
+  remain module-owned; namespace blocks in the caller do not reopen or extend
+  them.
+- `import` is the only mechanism that consults the external module registry
+  for module location and version/dependency resolution, and is the mechanism
+  for bringing in compiled/versioned external modules. The registry/config
+  entry records where the module and its build artifacts are located, its
+  version, the versions of libraries on which it depends, and which one
+  top-level class or namespace it designates for import. Import syntax does
+  not specify version constraints at the use site.
+- A namespace declaration uses one identifier at a time; nested paths are
+  written with physically nested blocks. These declarations create a Simple
+  namespace path in the current compilation unit and do not consult the
+  registry or create an alias. `include "file.simp"` textually adds source to
+  that unit, and included namespace blocks participate in its namespace
+  paths. In contrast, `import network as Net` resolves the registered module
+  and binds only its designated class or namespace under `Net`; it does not
+  textually merge source, import a generic export bag, or reopen a local
+  namespace.
+- A binding-name collision in the same scope is an error, including a
+  repeated import that would bind the same local name. Distinct aliases may
+  refer to the same module.
+
+These declarations finalize source/module syntax and name-binding behavior;
+they do not imply that include expansion, registry lookup, module
+compilation/linking, or package resolution is implemented. The registry
+configuration file's location convention and schema are deliberately left
+open.
 
 ## Runtime, destruction, garbage collection, and threads
 
@@ -458,20 +605,51 @@ inline {
     /* C code */
 }
 
-inline (n, msg) {
-    /* C code that captures Simple locals n and msg */
+inline (int n, string msg) {
+    printf("%s: %d\n", simp_string_cstr(msg), *n);
 }
 ```
 
-- `inline { ... }` contains C code with no capture list.
-- `inline (n, msg) { ... }` names enclosing Simple locals visible to the C code.
-- The programmer knows the captured values' types.
-- Inline C can call C functions such as `printf`.
-- Inline C can modify captured variables, and those modifications are visible afterward in Simple.
-- Inline C is intended to live in the enclosing function, ideally without an extra wrapper call.
-- Simple strings need an explicit C-string conversion when passed to APIs such as `printf` that require NUL-terminated input.
-
-The backend decision is deliberately tabled until a runnable prototype exists. The prototype should compare C-aware code generation for an enclosing function with linked helper/IR alternatives. LLVM IR is desired, and independently generated IR/bitcode can be linked, but raw C source cannot be embedded directly in LLVM IR. These are constraints and investigation directions, not a settled implementation architecture.
+- Grammar: `inline { <C source> }` or
+  `inline ( <type> <name> [, <type> <name> ...] ) { <C source> }`. These are
+  statements, not top-level declarations; they may appear wherever an
+  ordinary statement may appear inside a function body. The capture list is
+  optional. Capture types are `int`, `string`, `array`, `map`, or a declared
+  class type; `void` and `any` are not capture types. Every listed type must
+  exactly match an enclosing Simple local or parameter. Captures are by name,
+  cannot be duplicated, and only listed locals are available to the C block.
+- Captured locals are passed by address so C writes are visible to the Simple
+  code after the block. The generated shim parameters are `int *` for `int`,
+  `SimpString *` for `string` (using the matching struct from
+  `include/simp/RuntimeGc.h`), and `void **` for `array`, `map`, and class
+  references. Thus, for example, C reads or updates `n` through `*n`; a
+  reference capture's `void **` addresses the Simple reference slot.
+  Captures must preserve the language and runtime invariants of the value they
+  represent.
+- This is intentionally different from a C-bound method: its arguments
+  are passed by value according to their C ABI, while inline captures are mutable
+  references to the caller's local storage. A generated inline shim needs
+  addresses to make assignments in C observable afterward.
+- Inline C may call C functions such as `printf`. Simple strings are not
+  guaranteed to be NUL-terminated, so no implicit conversion is made. In
+  inline C, `simp_string_cstr(msg)` is the explicit conversion operation: it
+  accepts the captured `SimpString *`, makes a NUL-terminated C-string copy,
+  and returns a pointer valid only until the current inline block returns.
+  The C code must not retain that pointer beyond the block. For example,
+  `printf("%s", simp_string_cstr(msg));` is valid; passing `msg->data`
+  directly to an API that expects a NUL-terminated string is not. This
+  conversion is an inline-C support API, not a general implicit conversion
+  or a native-method ABI rule; the API contract is decided here but the helper is
+  not implemented.
+- Recommended backend direction (not implemented): compile each inline block
+  as a small generated C helper function, or shim, with the capture
+  parameters above. Declare and call that helper from generated LLVM using
+  the same C-callable mechanism used for native-bound methods, and compile/link the shim
+  through the existing C toolchain/link step. This reuses the established
+  `RuntimeGc.h`/`SimpString` conventions and native method ABI groundwork. It is
+  preferred over embedding raw C in LLVM IR or requiring C-aware generation
+  of the enclosing function; the extra helper call is accepted for this
+  initial design.
 
 ## Modules, packages, and priorities
 
@@ -496,7 +674,75 @@ Modules should feel callable like native Simple code. The current priority inven
 
 More modules are expected. The first GTK milestone should support callbacks and event handlers, not merely window/widget construction.
 
-## Compiler, testing, and tooling goals
+### Out-of-line methods and native C bindings (prototype milestone)
+
+Simple has no free-standing top-level function declarations. A method
+signature is declared inside its class and can receive either an ordinary
+Simple body outside the class or a C symbol binding in place of that body:
+
+```simple
+class Foo {
+    int compute(int x)
+    string echo(string value)
+}
+
+int Foo.compute(int x) {
+    return x * 2
+}
+
+string Foo.echo(string value) from "c_foo_echo"
+```
+
+- In-class bodyless methods are declarations, not definitions. Each must
+  match exactly one out-of-line definition. Definitions use the qualified
+  form `<returnType> <Class>.<method>(<paramType> <paramName>, ...) { ... }`
+  or replace the body with `from "<symbol>"`. Constructors and destructors
+  remain in-class and cannot use this out-of-line mechanism.
+- Return type, parameter count, and parameter types in a definition must
+  match the in-class declaration. Method calls use ordinary
+  `receiver.method(args)` syntax regardless of whether the implementation is
+  Simple or C.
+- `from "<symbol>"` names the linker-visible C function. The compiler emits
+  a regular Simple method wrapper and dispatch entry; the caller does not
+  mention `from` or any external-specific syntax. The implicit receiver is
+  passed to C as the first argument (`void *receiver`), followed by explicit
+  parameters. C code may ignore it or use it as an opaque reference.
+- The prototype ABI targets x86-64 SysV. `int` is C `int` (`i32`); `string`
+  is `SimpString { const char *data; uint64_t length; }` and is scalarized to
+  `(ptr, uint64_t)` for arguments and the corresponding two-scalar aggregate
+  for returns; `array`, `map`, and class references are opaque pointers;
+  `void` is supported for returns. Strings are length-prefixed, never assumed
+  NUL-terminated. `any` is rejected for native-bound signatures because its
+  target-specific aggregate ABI lowering is not implemented. C struct
+  layouts are declared in `include/simp/RuntimeGc.h`.
+- The wrapper roots its implicit receiver and all managed-reference
+  parameters for the duration of the C call. Ordinary call expression
+  evaluation likewise roots managed temporaries while subsequent arguments
+  are evaluated. A returned managed pointer is checked/rooted before the
+  wrapper returns. The native implementation must return a valid pointer
+  owned by or compatible with the Simple runtime when returning a managed
+  type. C code that allocates managed objects must use the runtime's own
+  root-frame API for native temporaries.
+- Unknown C symbols are reported by the linker at link time. Reusing one C
+  symbol across several methods is accepted only when the lowered return and
+  parameter ABI shapes match (including the receiver pointer).
+- The end-to-end test `tests/functional/positive_extern_functions.simp`
+  demonstrates integer, string-argument/string-return, array, and
+  class-reference methods. Its bundled C shims include a real call to libc
+  `abs()`. The receiver is why the sample binds a C shim rather than binding
+  libc `abs` directly.
+- This is not yet a compiled module system. In a future module build, a
+  caller obtains exported classes/methods through `import module_name as
+  symbol`, then calls them normally (for example,
+  `symbol.Foo().compute(5)`); it never calls a bare C symbol or writes `from`.
+  Import/module-registry lookup and cross-module linking are deliberately
+  deferred. The prototype's one-file integration test calls its class
+  directly to validate the method ABI without pretending imports work.
+- Also deferred: library search-path configuration, variadic methods,
+  `any` at the native boundary, and ABI lowering for targets other than
+  x86-64 SysV.
+
+
 
 ### Compiler and command-line interface
 
@@ -571,6 +817,11 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   behavior described above is the current agreed direction.
 - Same-process pthread-style threading is required.
 - External modules consist of external libraries plus Simple interfaces and are versioned as packages.
+- The prototype supports bodyless method declarations inside classes,
+  matching out-of-line method bodies, and out-of-line method definitions that
+  use `from "<symbol>"` for a C binding. Native bindings are still class
+  methods; their C ABI receives the implicit `this` pointer first. The
+  prototype does not implement the module registry/import workflow.
 - The listed module priorities, examples, testing expectations, source-size guidance, documentation expectations, and CLI/tooling goals are project requirements.
 - The grammar proposals must be reconciled with examples and priorities before becoming a specification.
 
@@ -587,11 +838,28 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - Production GC integration with active threads, including registration and
   safe-point coordination, remains open. The current prototype runtime is
   single-threaded and cannot safely be used by concurrent threads.
-- The inline-C backend strategy, including enclosing-function C-aware code generation versus helper/IR linkage.
-- The final LLVM pipeline and how captured locals are represented.
+- The inline-C shim and capture ABI described above are recommended but not
+  implemented; validation of the generated-C build/link integration remains
+  deferred.
+- The runtime-safe rules and APIs for mutating captured strings and managed
+  reference slots, and whether inline C may call GC-capable runtime code;
+  these determine how managed captures are rooted and how such calls behave.
+- The `simp_string_cstr` storage/cleanup implementation, which must honor its
+  finalized inline-block lifetime contract.
+- The CLI/environment configuration for include search directories; the
+  external module-registry/configuration file's location convention and
+  schema, including fields for registered module name, module/build-artifact
+  location, module version, dependency-library versions, and the designated
+  importable top-level class or namespace; package layout, module
+  interface/binary formats, dependency resolution, and package-version
+  constraints.
 - The module creation, binding-generation, build, link, and versioning workflow in executable detail.
 - Whether and where SWIG is used.
 - The full set of future standard/external modules.
+- The module creation, binding-generation, build, link, and versioning workflow
+  in executable detail, including the registry schema used by `import`.
+- Library search paths, variadic native-bound methods, `any` values across
+  the native boundary, and ABI support beyond x86-64 SysV.
 - Package-manager, IDE, and LLDB/GDB integration details.
 
 Until these questions are resolved through examples and a runnable prototype, this document should be read as a design record and project guide rather than as a final language specification.

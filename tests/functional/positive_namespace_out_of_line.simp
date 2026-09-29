@@ -1,0 +1,13 @@
+namespace Remote {
+    class Method {
+        int value()
+    }
+
+    int Method.value() {
+        return 42
+    }
+}
+
+start {
+    print(Remote.Method().value())
+}

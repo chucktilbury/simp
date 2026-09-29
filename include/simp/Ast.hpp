@@ -74,11 +74,15 @@ struct MethodDeclaration {
     std::vector<Statement> body;
     bool constructor = false;
     bool destructor = false;
+    bool declarationOnly = false;
+    bool externalBinding = false;
+    std::string externalSymbol;
     AccessLevel access = AccessLevel::Public;
 };
 
 struct ClassDeclaration {
     std::string name;
+    std::vector<std::string> namespacePath;
     std::string baseClassName;
     SourceLocation location;
     SourceLocation baseLocation;
@@ -90,9 +94,23 @@ struct ClassDeclaration {
     std::vector<MethodDeclaration> methods;
 };
 
+struct OutOfLineMethodDefinition {
+    std::string className;
+    std::vector<std::string> namespacePath;
+    MethodDeclaration method;
+    SourceLocation location;
+};
+
+struct NamespaceDeclaration {
+    std::vector<std::string> path;
+    SourceLocation location;
+};
+
 struct Program {
     SourceLocation location;
+    std::vector<NamespaceDeclaration> namespaces;
     std::vector<ClassDeclaration> classes;
+    std::vector<OutOfLineMethodDefinition> outOfLineMethods;
     std::vector<Statement> statements;
 };
 

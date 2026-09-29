@@ -45,19 +45,289 @@ bool containsSuperCall(const Statement& statement) {
 
 } // namespace
 
-void SemanticAnalyzer::analyze(const Program& program) {
-    scopes_.clear();
-    symbols_.clear();
-    classes_.clear();
-    currentClass_ = nullptr;
-    currentMethod_ = nullptr;
-    for (const auto& declaration : program.classes) {
-        if (!classes_.emplace(declaration.name, &declaration).second) {
-            throw DiagnosticError(declaration.location,
-                                  "duplicate class '" + declaration.name + "'");
+std::string SemanticAnalyzer::qualify(const std::vector<std::string>& path,
+                                      const std::string& name) const {
+    std::string result;
+    for (const auto& component : path) {
+        if (!result.empty()) result += ".";
+        result += component;
+    }
+    if (!name.empty()) {
+        if (!result.empty()) result += ".";
+        result += name;
+    }
+    return result;
+}
+
+bool SemanticAnalyzer::hasNamespaceOrClass(
+    const std::string& name, const std::vector<std::string>& namespacePath) const {
+    for (std::size_t depth = namespacePath.size() + 1; depth > 0; --depth) {
+        const auto prefixLength = depth - 1;
+        const std::vector<std::string> prefix(
+            namespacePath.begin(),
+            namespacePath.begin() + static_cast<std::ptrdiff_t>(prefixLength));
+        const auto candidate = qualify(prefix, name);
+        if (namespaces_.find(candidate) != namespaces_.end() ||
+            classes_.find(candidate) != classes_.end()) {
+            return true;
         }
     }
-    for (const auto& declaration : program.classes) {
+    return false;
+}
+
+std::string SemanticAnalyzer::resolveClassName(
+    const std::string& name, const std::vector<std::string>& namespacePath,
+    const SourceLocation& location) const {
+    std::vector<std::string> components;
+    std::size_t begin = 0;
+    while (begin < name.size()) {
+        const auto end = name.find('.', begin);
+        components.push_back(name.substr(
+            begin, end == std::string::npos ? std::string::npos : end - begin));
+        begin = end == std::string::npos ? name.size() : end + 1;
+    }
+    if (components.empty()) {
+        throw DiagnosticError(location, "unknown class '" + name + "'");
+    }
+
+    std::string candidate;
+    bool firstFound = false;
+    for (std::size_t depth = namespacePath.size() + 1; depth > 0; --depth) {
+        const auto prefixLength = depth - 1;
+        const std::vector<std::string> prefix(
+            namespacePath.begin(),
+            namespacePath.begin() + static_cast<std::ptrdiff_t>(prefixLength));
+        candidate = qualify(prefix, components.front());
+        if (namespaces_.find(candidate) != namespaces_.end() ||
+            classes_.find(candidate) != classes_.end()) {
+            firstFound = true;
+            break;
+        }
+    }
+    if (!firstFound) {
+        throw DiagnosticError(location, "unknown class '" + name + "'");
+    }
+    for (std::size_t index = 1; index < components.size(); ++index) {
+        candidate += "." + components[index];
+        if (namespaces_.find(candidate) == namespaces_.end() &&
+            classes_.find(candidate) == classes_.end()) {
+            throw DiagnosticError(location, "unknown qualified class '" + name + "'");
+        }
+    }
+    const auto found = classes_.find(candidate);
+    if (found == classes_.end()) {
+        throw DiagnosticError(location, "qualified name '" + name + "' is not a class");
+    }
+    return candidate;
+}
+
+void SemanticAnalyzer::normalizeType(
+    std::string& type, const std::vector<std::string>& namespacePath,
+    const SourceLocation& location) const {
+    if (type == "int" || type == "string" || type == "array" || type == "map" ||
+        type == "any" || type == "void") {
+        return;
+    }
+    if (type.find('.') == std::string::npos &&
+        !hasNamespaceOrClass(type, namespacePath)) {
+        throw DiagnosticError(location, "unknown type or class '" + type + "'");
+    }
+    type = resolveClassName(type, namespacePath, location);
+}
+
+void SemanticAnalyzer::normalizeExpression(
+    Expression& expression, const std::vector<std::string>& namespacePath) {
+    if (expression.kind == ExpressionKind::ConstructorCall) {
+        expression.value = resolveClassName(expression.value, namespacePath,
+                                             expression.location);
+    }
+    if (expression.left) normalizeExpression(*expression.left, namespacePath);
+    if (expression.right) normalizeExpression(*expression.right, namespacePath);
+    for (auto& argument : expression.arguments) {
+        normalizeExpression(*argument, namespacePath);
+    }
+}
+
+void SemanticAnalyzer::normalizeStatements(
+    std::vector<Statement>& statements, const std::vector<std::string>& namespacePath) {
+    for (auto& statement : statements) {
+        if (statement.kind == StatementKind::Declaration) {
+            normalizeType(statement.declaredType, namespacePath, statement.location);
+        }
+        if (statement.kind == StatementKind::SuperConstructorCall) {
+            statement.name = resolveClassName(statement.name, namespacePath,
+                                               statement.location);
+        }
+        if (statement.target) normalizeExpression(*statement.target, namespacePath);
+        for (auto& expression : statement.expressions) {
+            normalizeExpression(*expression, namespacePath);
+        }
+        normalizeStatements(statement.body, namespacePath);
+        normalizeStatements(statement.alternate, namespacePath);
+        normalizeStatements(statement.cleanup, namespacePath);
+    }
+}
+
+void SemanticAnalyzer::analyze(Program& program) {
+    scopes_.clear();
+    symbols_.clear();
+    namespaces_.clear();
+    classes_.clear();
+    methodDefinitions_.clear();
+    currentClass_ = nullptr;
+    currentMethod_ = nullptr;
+    currentNamespace_.clear();
+
+    const auto registerNamespacePath = [this](const std::vector<std::string>& path) {
+        for (std::size_t length = 1; length <= path.size(); ++length) {
+            namespaces_.insert(qualify(std::vector<std::string>(
+                path.begin(), path.begin() + static_cast<std::ptrdiff_t>(length)), ""));
+        }
+    };
+    for (const auto& declaration : program.namespaces) {
+        registerNamespacePath(declaration.path);
+    }
+    for (auto& declaration : program.classes) {
+        registerNamespacePath(declaration.namespacePath);
+        const auto fullName = qualify(declaration.namespacePath, declaration.name);
+        if (!classes_.emplace(fullName, &declaration).second) {
+            throw DiagnosticError(declaration.location,
+                                  "duplicate class '" + fullName + "'");
+        }
+    }
+    for (const auto& classEntry : classes_) {
+        if (namespaces_.find(classEntry.first) != namespaces_.end()) {
+            throw DiagnosticError(classEntry.second->location,
+                                  "class '" + classEntry.first +
+                                      "' conflicts with a namespace of the same name");
+        }
+    }
+
+    for (auto& declaration : program.classes) {
+        declaration.name = qualify(declaration.namespacePath, declaration.name);
+        for (std::size_t index = 0; index < declaration.baseClassNames.size(); ++index) {
+            declaration.baseClassNames[index] =
+                resolveClassName(declaration.baseClassNames[index],
+                                 declaration.namespacePath,
+                                 declaration.baseLocations[index]);
+        }
+        if (!declaration.baseClassNames.empty()) {
+            declaration.baseClassName = declaration.baseClassNames.front();
+        }
+        for (auto& field : declaration.fields) {
+            normalizeType(field.type, declaration.namespacePath, field.location);
+        }
+        for (auto& method : declaration.methods) {
+            normalizeType(method.returnType, declaration.namespacePath, method.location);
+            for (auto& parameter : method.parameters) {
+                normalizeType(parameter.type, declaration.namespacePath, parameter.location);
+            }
+            normalizeStatements(method.body, declaration.namespacePath);
+        }
+    }
+    for (auto& definition : program.outOfLineMethods) {
+        definition.className = resolveClassName(definition.className,
+                                                definition.namespacePath,
+                                                definition.location);
+        const auto* owner = classes_.at(definition.className);
+        normalizeType(definition.method.returnType, owner->namespacePath,
+                      definition.method.location);
+        for (auto& parameter : definition.method.parameters) {
+            normalizeType(parameter.type, owner->namespacePath, parameter.location);
+        }
+        normalizeStatements(definition.method.body, owner->namespacePath);
+    }
+    normalizeStatements(program.statements, {});
+
+    const auto methodKey = [](const std::string& className, const std::string& methodName) {
+        return className + "." + methodName;
+    };
+    std::unordered_map<std::string, std::string> externalSymbolSignatures;
+    const auto abiCategory = [](const std::string& type) {
+        if (type == "int") return std::string("i32");
+        if (type == "string") return std::string("ptr,i64");
+        if (type == "void") return std::string("void");
+        return std::string("ptr");
+    };
+    for (auto& definition : program.outOfLineMethods) {
+        const auto classFound = classes_.find(definition.className);
+        if (classFound == classes_.end()) {
+            throw DiagnosticError(definition.location,
+                                  "out-of-line definition names unknown class '" +
+                                      definition.className + "'");
+        }
+        const auto declaration = std::find_if(
+            classFound->second->methods.begin(), classFound->second->methods.end(),
+            [&definition](const MethodDeclaration& candidate) {
+                return candidate.name == definition.method.name;
+            });
+        if (declaration == classFound->second->methods.end()) {
+            throw DiagnosticError(definition.location,
+                                  "class '" + definition.className +
+                                      "' has no in-class declaration for method '" +
+                                      definition.method.name + "'");
+        }
+        if (!declaration->declarationOnly) {
+            throw DiagnosticError(definition.location,
+                                  "method '" + definition.className + "." +
+                                      definition.method.name +
+                                      "' already has an in-class definition");
+        }
+        const auto key = methodKey(definition.className, definition.method.name);
+        if (!methodDefinitions_.emplace(key, &definition).second) {
+            throw DiagnosticError(definition.location,
+                                  "duplicate out-of-line definition for method '" + key + "'");
+        }
+        if (definition.method.returnType != declaration->returnType ||
+            definition.method.parameters.size() != declaration->parameters.size()) {
+            throw DiagnosticError(definition.location,
+                                  "out-of-line definition signature does not match declaration "
+                                  "of '" + key + "'");
+        }
+        for (std::size_t index = 0; index < declaration->parameters.size(); ++index) {
+            if (definition.method.parameters[index].type != declaration->parameters[index].type) {
+                throw DiagnosticError(definition.method.parameters[index].location,
+                                      "out-of-line definition signature does not match declaration "
+                                      "of '" + key + "'");
+            }
+        }
+        if (definition.method.externalBinding) {
+            if (definition.method.externalSymbol.empty()) {
+                throw DiagnosticError(definition.location,
+                                      "native-bound method must name a non-empty C symbol");
+            }
+            validateExternalMethodType(definition.method.returnType, definition.location, true);
+            std::string signature = "ptr;" + abiCategory(definition.method.returnType);
+            std::unordered_set<std::string> parameterNames;
+            for (const auto& parameter : definition.method.parameters) {
+                validateExternalMethodType(parameter.type, parameter.location, false);
+                if (!parameterNames.emplace(parameter.name).second) {
+                    throw DiagnosticError(parameter.location,
+                                          "duplicate parameter '" + parameter.name + "'");
+                }
+                signature += ";" + abiCategory(parameter.type);
+            }
+            const auto existing =
+                externalSymbolSignatures.find(definition.method.externalSymbol);
+            if (existing != externalSymbolSignatures.end() && existing->second != signature) {
+                throw DiagnosticError(definition.location,
+                                      "external symbol '" +
+                                          definition.method.externalSymbol +
+                                          "' is reused with an incompatible method signature");
+            }
+            externalSymbolSignatures.emplace(definition.method.externalSymbol, signature);
+        }
+    }
+    for (auto& declaration : program.classes) {
+        for (auto& method : declaration.methods) {
+            if (method.declarationOnly &&
+                methodDefinitions_.find(methodKey(declaration.name, method.name)) ==
+                    methodDefinitions_.end()) {
+                throw DiagnosticError(method.location,
+                                      "method '" + declaration.name + "." + method.name +
+                                          "' is declared but has no out-of-line definition");
+            }
+        }
         std::unordered_set<std::string> directBases;
         for (std::size_t index = 0; index < declaration.baseClassNames.size(); ++index) {
             const auto& baseName = declaration.baseClassNames[index];
@@ -170,13 +440,17 @@ void SemanticAnalyzer::analyze(const Program& program) {
             }
         }
     }
-    for (const auto& declaration : program.classes) {
-        for (const auto& method : declaration.methods) {
-            analyzeMethod(declaration, method);
+    for (auto& declaration : program.classes) {
+        for (auto& method : declaration.methods) {
+            const auto definition = methodDefinitions_.find(methodKey(declaration.name, method.name));
+            analyzeMethod(declaration, definition == methodDefinitions_.end()
+                                           ? method
+                                           : definition->second->method);
         }
     }
     currentClass_ = nullptr;
     currentMethod_ = nullptr;
+    currentNamespace_.clear();
     scopes_.emplace_back();
     analyzeStatements(program.statements);
     scopes_.pop_back();
@@ -194,11 +468,26 @@ void SemanticAnalyzer::validateType(const std::string& type, const SourceLocatio
     }
 }
 
+void SemanticAnalyzer::validateExternalMethodType(const std::string& type,
+                                                  const SourceLocation& location,
+                                                  bool allowVoid) const {
+    if (type == "any") {
+        // The dynamic 'any' representation is a four-word tagged struct. Passing
+        // it by value across a real C ABI boundary requires target-specific
+        // struct classification (register vs. hidden-pointer passing) that the
+        // backend does not implement yet; see SIMPLE-LANGUAGE-NOTES.md.
+        throw DiagnosticError(location,
+                              "'any' is not supported in external method signatures");
+    }
+    validateType(type, location, allowVoid);
+}
+
 const ClassDeclaration* SemanticAnalyzer::findClass(const std::string& name,
                                                     const SourceLocation& location) const {
-    const auto found = classes_.find(name);
+    auto found = classes_.find(name);
     if (found == classes_.end()) {
-        throw DiagnosticError(location, "unknown class '" + name + "'");
+        const auto resolved = resolveClassName(name, currentNamespace_, location);
+        found = classes_.find(resolved);
     }
     return found->second;
 }
@@ -229,7 +518,11 @@ void SemanticAnalyzer::restoreInitializationState(const std::vector<bool>& state
 }
 
 void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
-                                     const MethodDeclaration& method) {
+                                     MethodDeclaration& method) {
+    currentNamespace_ = owner.namespacePath;
+    if (method.externalBinding) {
+        return;
+    }
     std::size_t leadingCalls = 0;
     if (method.constructor) {
         const auto virtualBases = virtualBaseNames(owner);
