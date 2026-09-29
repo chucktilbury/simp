@@ -6,9 +6,10 @@
 #include "simp/Ast.hpp"
 #include "simp/CodeGenerator.hpp"
 #include "simp/Diagnostic.hpp"
-#include "simp/Lexer.hpp"
+#include "simp/ModuleRegistry.hpp"
 #include "simp/Parser.hpp"
 #include "simp/SemanticAnalyzer.hpp"
+#include "simp/SourceLoader.hpp"
 
 #include <cstdlib>
 #include <filesystem>
@@ -63,86 +64,17 @@ std::string defaultExecutablePath(const std::string& inputPath) {
     return (std::filesystem::path(".") / name).string();
 }
 
-std::vector<simp::Token> tokenizeWithIncludes(
-    const std::string& source, const std::filesystem::path& sourcePath,
-    std::unordered_set<std::string>& includedFiles, std::size_t depth, bool root) {
-    simp::Lexer lexer(source, sourcePath.string());
-    const auto tokens = lexer.tokenize();
-    std::vector<simp::Token> expanded;
-    std::size_t braceDepth = 0;
-    for (std::size_t index = 0; index + 1 < tokens.size(); ++index) {
-        const auto& token = tokens[index];
-        if (!root && token.type == simp::TokenType::Start) {
-            throw simp::DiagnosticError(token.location,
-                                        "included source cannot declare 'start'");
-        }
-        if (token.type == simp::TokenType::Include && braceDepth == 0) {
-            if (index + 1 >= tokens.size() - 1 ||
-                tokens[index + 1].type != simp::TokenType::String) {
-                throw simp::DiagnosticError(token.location,
-                                            "expected a quoted path after 'include'");
-            }
-            const auto& pathToken = tokens[++index];
-            const auto next = index + 1;
-            if (tokens[next].type != simp::TokenType::Newline &&
-                tokens[next].type != simp::TokenType::End) {
-                throw simp::DiagnosticError(tokens[next].location,
-                                            "expected newline after include path");
-            }
-
-            std::filesystem::path requested(pathToken.text);
-            if (requested.is_relative()) requested = sourcePath.parent_path() / requested;
-            std::error_code error;
-            const auto canonicalPath = std::filesystem::canonical(requested, error);
-            if (error) {
-                throw simp::DiagnosticError(pathToken.location,
-                                            "cannot resolve included source '" +
-                                                pathToken.text + "'");
-            }
-            const auto canonicalName = canonicalPath.string();
-            if (includedFiles.emplace(canonicalName).second) {
-                if (depth >= 16) {
-                    throw simp::DiagnosticError(token.location,
-                                                "maximum include depth of 16 exceeded");
-                }
-                std::ifstream included(canonicalPath);
-                if (!included) {
-                    throw simp::DiagnosticError(pathToken.location,
-                                                "cannot open included source '" +
-                                                    canonicalName + "'");
-                }
-                const std::string includedSource{
-                    std::istreambuf_iterator<char>(included),
-                    std::istreambuf_iterator<char>()};
-                auto includedTokens = tokenizeWithIncludes(
-                    includedSource, canonicalPath, includedFiles, depth + 1, false);
-                expanded.insert(expanded.end(),
-                                std::make_move_iterator(includedTokens.begin()),
-                                std::make_move_iterator(includedTokens.end()));
-            }
-            if (next < tokens.size() - 1) ++index;
-            if (expanded.empty() ||
-                expanded.back().type != simp::TokenType::Newline) {
-                expanded.push_back({simp::TokenType::Newline, "\n", token.location});
-            }
-            continue;
-        }
-        if (token.type == simp::TokenType::LeftBrace) ++braceDepth;
-        if (token.type == simp::TokenType::RightBrace && braceDepth > 0) --braceDepth;
-        expanded.push_back(token);
-    }
-    return expanded;
-}
-
-int buildExecutable(const std::string& irPath, const std::string& outputPath) {
+int buildExecutable(const std::vector<std::string>& irPaths, const std::string& outputPath) {
     const auto parent = std::filesystem::path(outputPath).parent_path();
     if (!parent.empty()) {
         std::filesystem::create_directories(parent);
     }
-    const std::string command = shellQuote(SIMP_CLANG_EXECUTABLE) +
-                                " -Wno-override-module -x ir " + shellQuote(irPath) +
-                                " -x none " + shellQuote(SIMP_GC_RUNTIME_LIBRARY) +
-                                " -o " + shellQuote(outputPath);
+    std::string command = shellQuote(SIMP_CLANG_EXECUTABLE) + " -Wno-override-module";
+    for (const auto& irPath : irPaths) {
+        command += " -x ir " + shellQuote(irPath);
+    }
+    command += " -x none " + shellQuote(SIMP_GC_RUNTIME_LIBRARY) +
+               " -o " + shellQuote(outputPath);
     const int status = std::system(command.c_str());
     if (status == -1) {
         std::cerr << "simp: could not start clang\n";
@@ -219,7 +151,7 @@ int main(int argc, char** argv) {
     const std::string source((std::istreambuf_iterator<char>(input)),
                              std::istreambuf_iterator<char>());
 
-    std::string temporaryIr;
+    std::vector<std::string> temporaryIrPaths;
     try {
         std::unordered_set<std::string> includedFiles;
         std::error_code pathError;
@@ -229,13 +161,19 @@ int main(int argc, char** argv) {
             return 2;
         }
         includedFiles.insert(canonicalInput.string());
-        auto tokens = tokenizeWithIncludes(source, inputPath, includedFiles, 0, true);
+        auto tokens = simp::tokenizeWithIncludes(
+            source, inputPath, includedFiles, 0, true);
         tokens.push_back({simp::TokenType::End, "", {inputPath, 1, 1}});
         if (verbose) {
             std::cerr << "[verbose] lexed " << (tokens.size() - 1) << " tokens\n";
         }
         simp::Parser parser(std::move(tokens), traceParser ? &std::cerr : nullptr);
         auto program = parser.parseProgram();
+        const auto* configuredRegistry = std::getenv("SIMP_MODULE_REGISTRY");
+        const auto registryPath = configuredRegistry == nullptr
+                                      ? std::filesystem::current_path() / "simp-modules.tsv"
+                                      : std::filesystem::path(configuredRegistry);
+        const auto modules = simp::loadImportedModules(program, registryPath);
         simp::SemanticAnalyzer semanticAnalyzer;
         semanticAnalyzer.analyze(program);
         if (dump) {
@@ -256,24 +194,33 @@ int main(int argc, char** argv) {
                                     : requestedOutput;
         simp::CodeGenerator codeGenerator(SIMP_TARGET_TRIPLE);
         const auto ir = codeGenerator.generate(program);
+        std::vector<std::string> moduleIrPaths;
+        for (const auto& module : modules) {
+            simp::CodeGenerator moduleGenerator(SIMP_TARGET_TRIPLE);
+            const auto moduleIr = moduleGenerator.generate(program, module.name);
+            const auto moduleIrPath = outputPath + ".simp.module." +
+                                      std::to_string(moduleIrPaths.size()) + ".tmp.ll";
+            writeFile(moduleIrPath, moduleIr);
+            temporaryIrPaths.push_back(moduleIrPath);
+            moduleIrPaths.push_back(moduleIrPath);
+        }
+        std::vector<std::string> linkInputs;
         if (irOutput.empty()) {
-            temporaryIr = outputPath + ".simp.tmp.ll";
-            writeFile(temporaryIr, ir);
-            if (buildExecutable(temporaryIr, outputPath) != 0) {
-                std::error_code ignored;
-                std::filesystem::remove(temporaryIr, ignored);
-                return 1;
-            }
+            const auto importerIrPath = outputPath + ".simp.tmp.ll";
+            writeFile(importerIrPath, ir);
+            temporaryIrPaths.push_back(importerIrPath);
+            linkInputs.push_back(importerIrPath);
         } else {
             writeFile(irOutput, ir);
-            if (buildExecutable(irOutput, outputPath) != 0) {
-                return 1;
-            }
+            linkInputs.push_back(irOutput);
         }
-        if (!temporaryIr.empty()) {
+        linkInputs.insert(linkInputs.end(), moduleIrPaths.begin(), moduleIrPaths.end());
+        const int buildResult = buildExecutable(linkInputs, outputPath);
+        for (const auto& temporary : temporaryIrPaths) {
             std::error_code ignored;
-            std::filesystem::remove(temporaryIr, ignored);
+            std::filesystem::remove(temporary, ignored);
         }
+        if (buildResult != 0) return 1;
         if (verbose) {
             std::cerr << "[verbose] semantic analysis succeeded; LLVM IR compiled by clang\n";
         } else if (!dump && !dumpSymbols) {
@@ -284,9 +231,9 @@ int main(int argc, char** argv) {
         return 1;
     } catch (const std::exception& error) {
         std::cerr << "simp: " << error.what() << '\n';
-        if (!temporaryIr.empty()) {
+        for (const auto& temporary : temporaryIrPaths) {
             std::error_code ignored;
-            std::filesystem::remove(temporaryIr, ignored);
+            std::filesystem::remove(temporary, ignored);
         }
         return 1;
     }

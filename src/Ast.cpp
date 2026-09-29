@@ -117,6 +117,10 @@ void dumpStatements(const std::vector<Statement>& statements, std::ostream& outp
 
 void dumpAst(const Program& program, std::ostream& output) {
     output << "Program\n";
+    for (const auto& import : program.imports) {
+        indent(output, 1);
+        output << "Import [" << import.moduleName << " as " << import.alias << "]\n";
+    }
     for (const auto& declaration : program.namespaces) {
         indent(output, 1);
         output << "Namespace [";

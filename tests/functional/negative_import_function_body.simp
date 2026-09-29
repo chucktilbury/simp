@@ -1,0 +1,3 @@
+start {
+    import network as Net
+}

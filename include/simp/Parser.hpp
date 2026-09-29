@@ -18,6 +18,7 @@ class Parser {
 public:
     explicit Parser(std::vector<Token> tokens, std::ostream* traceOutput = nullptr);
     Program parseProgram();
+    Program parseModule();
 
 private:
     const Token& current() const;
@@ -35,6 +36,7 @@ private:
 
     ClassDeclaration parseClass();
     void parseNamespace(Program& program);
+    ImportDeclaration parseImport();
     std::string parseQualifiedIdentifier(const char* expectation);
     OutOfLineMethodDefinition parseOutOfLineMethodDefinition();
     MethodDeclaration parseMethod(const Token& typeOrName, const Token& methodName,

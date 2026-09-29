@@ -82,6 +82,8 @@ struct MethodDeclaration {
 
 struct ClassDeclaration {
     std::string name;
+    std::string moduleName;
+    bool importedModule = false;
     std::vector<std::string> namespacePath;
     std::string baseClassName;
     SourceLocation location;
@@ -96,6 +98,7 @@ struct ClassDeclaration {
 
 struct OutOfLineMethodDefinition {
     std::string className;
+    std::string moduleName;
     std::vector<std::string> namespacePath;
     MethodDeclaration method;
     SourceLocation location;
@@ -103,11 +106,22 @@ struct OutOfLineMethodDefinition {
 
 struct NamespaceDeclaration {
     std::vector<std::string> path;
+    std::string moduleName;
+    SourceLocation location;
+};
+
+struct ImportDeclaration {
+    std::string moduleName;
+    std::string alias;
+    std::string importerModule;
+    std::string exportedName;
+    bool exportsNamespace = false;
     SourceLocation location;
 };
 
 struct Program {
     SourceLocation location;
+    std::vector<ImportDeclaration> imports;
     std::vector<NamespaceDeclaration> namespaces;
     std::vector<ClassDeclaration> classes;
     std::vector<OutOfLineMethodDefinition> outOfLineMethods;

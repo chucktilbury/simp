@@ -95,7 +95,8 @@ reports source-located lexer, parser, and semantic errors.
 - Reserved keywords are case-insensitive: `start`, `int`, `string`, `if`,
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
   `raise`, `try`, `except`, `finally`, `for`, `in`, `public`, `protected`,
-  `private`, `virtual`, `from`, `map`, `dict`, `namespace`, and `include`.
+  `private`, `virtual`, `from`, `map`, `dict`, `namespace`, `include`,
+  `import`, and `as`.
   `dict` is an alias for the `map` type.
   Every capitalization is reserved.
 - `int`, `string`, class-reference, `array`, `map`/`dict`, and `any` declarations
@@ -474,18 +475,21 @@ start {
   semantic analysis. `tests/functional/positive_extern_functions.simp`
   exercises `from` bindings for integer, string argument/return, array, and
   class-reference values; its bundled C shims include a call to libc `abs()`.
-- Full module access through `import module_name as symbol` is intentionally
-  **not implemented in this milestone**. The example calls the class directly
-  in one source file; import-mediated module lookup/linking remains deferred
-  until the module registry and package workflow are designed. Once available,
-  the registry will designate one top-level class or namespace from the
-  module for `import module_name as symbol` to bind to `symbol`. For example,
-  `symbol.Foo().compute(5)` is valid when that designated namespace contains
-  class `Foo`; the method is invoked on a constructed instance, not as a
-  static or free function. Whether it has a Simple body or a C `from` binding
-  is invisible to the caller. Other limits:
-  no library search-path option, variadic methods, or non-x86-64-SysV ABI
-  lowering.
+- Compiled module imports are implemented using
+  `import <module_name> as <symbol>`. The registry defaults to
+  `simp-modules.tsv` in the compiler's current working directory; set
+  `SIMP_MODULE_REGISTRY` to select another file. Each tab-separated,
+  six-field row records module name, Simple source path, version, comma-
+  separated `dependency=version` values, export kind (`class` or `namespace`),
+  and the one designated top-level export name. Relative source paths are
+  relative to the registry file. Module source is compiled to a separate LLVM
+  IR unit and linked with the importer; dependencies between Simple modules
+  are resolved recursively. Versions are recorded as metadata, not enforced
+  constraints, and external binary-library resolution remains deferred.
+  Imported declarations are available only through their aliases: a namespace
+  alias can qualify nested types (`Net.Http.Client().get("/")`), while a class
+  alias is constructed directly (`Client(args).method()`). The import grammar
+  and scoping behavior are specified in `SIMPLE-LANGUAGE-NOTES.md`.
 
 
 
@@ -497,9 +501,8 @@ current driver launches it through the host POSIX shell. Full language type
 checking and name-resolution rules, OOP beyond the supported single- and
 multiple-inheritance slices (including access to protected
 base members from further-derived classes),
-production GC features, import-mediated modules and external library
-configuration, inline C, GTK, package
-manager, IDE, and debugger remain deferred. Collection deletion, import
-processing, and package resolution remain unimplemented. The namespace and
-include behavior above is implemented; other design-note proposals may still
-be unsupported.
+production GC features, external binary-library configuration, inline C, GTK,
+package manager, IDE, and debugger remain deferred. Collection deletion and
+package resolution remain unimplemented. Namespace, include, and compiled
+source-module import behavior is implemented; other design-note proposals may
+still be unsupported.

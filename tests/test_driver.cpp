@@ -141,6 +141,32 @@ int main() {
         {"reserved keywords", [] {
              expectDiagnostic("start {\n int While = 0\n}", "keywords are reserved");
          }},
+        {"import keyword is case-insensitive and reserved", [] {
+             simp::Lexer lexer("IMPORT network AS Net\nstart {}", "import-keyword.simp");
+             const auto tokens = lexer.tokenize();
+             require(tokens[0].type == simp::TokenType::Import &&
+                         tokens[2].type == simp::TokenType::As,
+                     "import keywords were not recognized case-insensitively");
+         }},
+        {"top-level import syntax is represented in the AST", [] {
+             simp::Lexer lexer("import network as Net\nstart {}", "import.simp");
+             auto program = simp::Parser(lexer.tokenize()).parseProgram();
+             require(program.imports.size() == 1 &&
+                         program.imports.front().moduleName == "network" &&
+                         program.imports.front().alias == "Net",
+                     "import module name or alias missing from AST");
+         }},
+        {"import requires an alias", [] {
+             expectDiagnostic("import network\nstart {}", "expected 'as' after module name");
+         }},
+        {"import is rejected in declaration and function bodies", [] {
+             expectDiagnostic("namespace Hidden { import network as Net }\nstart {}",
+                              "'import' is only allowed at top level");
+             expectDiagnostic("class Hidden { import network as Net }\nstart {}",
+                              "'import' is only allowed at top level");
+             expectDiagnostic("start { import network as Net }",
+                              "'import' is only allowed at top level");
+         }},
         {"create is no longer a reserved keyword", [] {
              simp::Lexer lexer("start {\n int create = 1\n print(create)\n}", "identifier.simp");
              const auto tokens = lexer.tokenize();

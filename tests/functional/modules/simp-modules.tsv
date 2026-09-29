@@ -1,0 +1,4 @@
+# module<TAB>source<TAB>version<TAB>dependency-library-versions<TAB>export-kind<TAB>export-name
+network	network.simp	1.0.0	http=2.1.0	namespace	Network
+greeting	greeting.simp	1.2.0		class	Greeter
+wrapper	wrapper.simp	1.0.0		class	Wrapper

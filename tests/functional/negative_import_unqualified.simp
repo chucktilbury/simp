@@ -1,0 +1,5 @@
+import network as Net
+
+start {
+    Network.Http.Client()
+}

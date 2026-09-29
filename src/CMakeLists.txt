@@ -50,12 +50,14 @@ add_library(simp_frontend
     CodeGeneratorStatements.cpp
     Diagnostic.cpp
     Lexer.cpp
+    ModuleRegistry.cpp
     Parser.cpp
     ParserClass.cpp
     SemanticAnalyzer.cpp
     SemanticInheritance.cpp
     SemanticExpressions.cpp
     SemanticStatements.cpp
+    SourceLoader.cpp
 )
 target_link_libraries(simp_frontend PUBLIC simp_headers)
 set_target_properties(simp_frontend PROPERTIES

@@ -1,0 +1,5 @@
+namespace Hidden {
+    import network as Net
+}
+
+start {}

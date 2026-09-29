@@ -319,6 +319,19 @@ void CodeGenerator::emitClassMethods(const Program& program) {
     std::string functions;
     std::string finalizers;
     for (const auto& owner : program.classes) {
+        if (owner.moduleName != generatingModule_) {
+            for (const auto& method : owner.methods) {
+                std::string signature = "ptr";
+                if (method.constructor) signature += ", i1";
+                for (const auto& parameter : method.parameters) {
+                    signature += ", " + llvmType(parameter.type);
+                }
+                functions += "declare " + llvmType(method.returnType) + " " +
+                             methodSymbol(owner.name, method.name) + "(" + signature + ")\n";
+            }
+            functions += "declare void @simp.finalize." + owner.name + "(ptr)\n";
+            continue;
+        }
         for (const auto& method : owner.methods) {
             emitMethod(owner, method);
             functions += instructions_;
@@ -370,7 +383,7 @@ void CodeGenerator::emitClassMethods(const Program& program) {
                 }
                 const auto rootAddress = "%root.addr";
                 const std::string root = "%root";
-                std::string thunk = "define " + returnType + " " + thunkName + "(" +
+                std::string thunk = "define private " + returnType + " " + thunkName + "(" +
                                     signature + ") {\nentry:\n"
                                     "  " + rootAddress +
                                     " = getelementptr inbounds %Class." + view.second->name +
@@ -401,6 +414,7 @@ void CodeGenerator::emitClassMethods(const Program& program) {
         }
     }
     for (const auto& dynamicOwner : program.classes) {
+        if (dynamicOwner.moduleName != generatingModule_) continue;
         struct DestructorCall {
             const ClassDeclaration* owner;
             const MethodDeclaration* method;
@@ -568,7 +582,9 @@ void CodeGenerator::emitMain(const Program& program) {
                     "  ret i32 0\n}\n";
 }
 
-std::string CodeGenerator::generate(const Program& program) {
+std::string CodeGenerator::generate(const Program& program,
+                                    const std::string& moduleName) {
+    generatingModule_ = moduleName;
     classes_.clear();
     methodDefinitions_.clear();
     stringGlobals_.clear();
@@ -597,8 +613,11 @@ std::string CodeGenerator::generate(const Program& program) {
     emitClassTypesAndMetadata(program);
     emitClassMethods(program);
     const auto methods = instructions_;
-    emitMain(program);
-    const auto main = instructions_;
+    std::string main;
+    if (moduleName.empty()) {
+        emitMain(program);
+        main = instructions_;
+    }
 
     std::ostringstream module;
     module << "source_filename = \"simple\"\n"
@@ -646,7 +665,7 @@ std::string CodeGenerator::generate(const Program& program) {
            << "declare void @simp_exception_rethrow(ptr) noreturn\n"
            << "declare i32 @setjmp(ptr) returns_twice\n"
            << "declare void @abort()\n\n"
-           << "define void @simp.require_nonnull(ptr %object, ptr %file, i64 %file_length, i64 %line, i64 %column) {\n"
+           << "define private void @simp.require_nonnull(ptr %object, ptr %file, i64 %file_length, i64 %line, i64 %column) {\n"
            << "entry:\n"
            << "  %isnull = icmp eq ptr %object, null\n"
            << "  br i1 %isnull, label %fail, label %ok\n"

@@ -333,8 +333,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 (currentClass_ != nullptr &&
                  findField(*currentClass_, firstName) != nullptr);
             if (!localBinding && hasNamespaceOrClass(firstName, currentNamespace_)) {
-                expression.value =
-                    resolveClassName(qualifiedName, currentNamespace_, expression.location);
+                expression.value = qualifiedName;
                 expression.kind = ExpressionKind::ConstructorCall;
                 expression.left.reset();
                 return analyzeExpression(expression);

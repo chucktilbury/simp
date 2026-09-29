@@ -1,0 +1,82 @@
+#include "simp/SourceLoader.hpp"
+
+#include "simp/Diagnostic.hpp"
+#include "simp/Lexer.hpp"
+
+#include <fstream>
+#include <iterator>
+#include <system_error>
+
+namespace simp {
+
+std::vector<Token> tokenizeWithIncludes(
+    const std::string& source, const std::filesystem::path& sourcePath,
+    std::unordered_set<std::string>& includedFiles, std::size_t depth, bool root) {
+    Lexer lexer(source, sourcePath.string());
+    const auto tokens = lexer.tokenize();
+    std::vector<Token> expanded;
+    std::size_t braceDepth = 0;
+    for (std::size_t index = 0; index + 1 < tokens.size(); ++index) {
+        const auto& token = tokens[index];
+        if (!root && token.type == TokenType::Start) {
+            throw DiagnosticError(token.location,
+                                  "included source cannot declare 'start'");
+        }
+        if (token.type == TokenType::Include && braceDepth == 0) {
+            if (index + 1 >= tokens.size() - 1 ||
+                tokens[index + 1].type != TokenType::String) {
+                throw DiagnosticError(token.location,
+                                      "expected a quoted path after 'include'");
+            }
+            const auto& pathToken = tokens[++index];
+            const auto next = index + 1;
+            if (tokens[next].type != TokenType::Newline &&
+                tokens[next].type != TokenType::End) {
+                throw DiagnosticError(tokens[next].location,
+                                      "expected newline after include path");
+            }
+
+            std::filesystem::path requested(pathToken.text);
+            if (requested.is_relative()) requested = sourcePath.parent_path() / requested;
+            std::error_code error;
+            const auto canonicalPath = std::filesystem::canonical(requested, error);
+            if (error) {
+                throw DiagnosticError(pathToken.location,
+                                      "cannot resolve included source '" +
+                                          pathToken.text + "'");
+            }
+            const auto canonicalName = canonicalPath.string();
+            if (includedFiles.emplace(canonicalName).second) {
+                if (depth >= 16) {
+                    throw DiagnosticError(token.location,
+                                          "maximum include depth of 16 exceeded");
+                }
+                std::ifstream included(canonicalPath);
+                if (!included) {
+                    throw DiagnosticError(pathToken.location,
+                                          "cannot open included source '" +
+                                              canonicalName + "'");
+                }
+                const std::string includedSource{
+                    std::istreambuf_iterator<char>(included),
+                    std::istreambuf_iterator<char>()};
+                auto includedTokens = tokenizeWithIncludes(
+                    includedSource, canonicalPath, includedFiles, depth + 1, false);
+                expanded.insert(expanded.end(),
+                                std::make_move_iterator(includedTokens.begin()),
+                                std::make_move_iterator(includedTokens.end()));
+            }
+            if (next < tokens.size() - 1) ++index;
+            if (expanded.empty() || expanded.back().type != TokenType::Newline) {
+                expanded.push_back({TokenType::Newline, "\n", token.location});
+            }
+            continue;
+        }
+        if (token.type == TokenType::LeftBrace) ++braceDepth;
+        if (token.type == TokenType::RightBrace && braceDepth > 0) --braceDepth;
+        expanded.push_back(token);
+    }
+    return expanded;
+}
+
+} // namespace simp

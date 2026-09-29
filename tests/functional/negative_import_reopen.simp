@@ -1,0 +1,7 @@
+import network as Net
+
+namespace Net {
+    class Local {}
+}
+
+start {}

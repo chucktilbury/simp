@@ -31,6 +31,10 @@ public:
 
 private:
     using Scope = std::unordered_map<std::string, std::size_t>;
+    struct ImportBinding {
+        std::string qualifiedName;
+        std::string moduleName;
+    };
 
     const ClassDeclaration* findClass(const std::string& name,
                                       const SourceLocation& location) const;
@@ -41,6 +45,7 @@ private:
                              const std::vector<std::string>& namespacePath) const;
     std::string qualify(const std::vector<std::string>& path,
                         const std::string& name) const;
+    const std::unordered_map<std::string, ImportBinding>& activeImports() const;
     void normalizeType(std::string& type, const std::vector<std::string>& namespacePath,
                        const SourceLocation& location) const;
     void normalizeStatements(std::vector<Statement>& statements,
@@ -85,11 +90,15 @@ private:
     std::vector<Scope> scopes_;
     std::vector<SymbolInfo> symbols_;
     std::unordered_set<std::string> namespaces_;
+    std::unordered_map<std::string, std::string> namespaceOwners_;
     std::unordered_map<std::string, const ClassDeclaration*> classes_;
     std::unordered_map<std::string, OutOfLineMethodDefinition*> methodDefinitions_;
     const ClassDeclaration* currentClass_ = nullptr;
     const MethodDeclaration* currentMethod_ = nullptr;
     std::vector<std::string> currentNamespace_;
+    std::string currentModule_;
+    std::unordered_map<std::string,
+        std::unordered_map<std::string, ImportBinding>> importAliases_;
 };
 
 } // namespace simp

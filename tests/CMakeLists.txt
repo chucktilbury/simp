@@ -415,6 +415,54 @@ add_namespace_reject_test(simp_rejects_unresolved_namespace_reference
 add_namespace_reject_test(simp_rejects_dotted_namespace_declaration
     negative_namespace_dotted.simp "expected '{' after namespace name")
 
+function(add_import_run_test test_name fixture expected_output)
+    add_test(NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+            "-DCOMPILER=$<TARGET_FILE:simp>"
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/${fixture}"
+            "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${fixture}"
+            "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${fixture}.ll"
+            "-DEXPECTED_OUTPUT=${expected_output}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+    )
+    set_tests_properties("${test_name}" PROPERTIES
+        ENVIRONMENT "SIMP_MODULE_REGISTRY=${CMAKE_CURRENT_SOURCE_DIR}/functional/modules/simp-modules.tsv"
+    )
+endfunction()
+
+function(add_import_reject_test test_name fixture expected_diagnostic)
+    add_test(NAME "${test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+            "-DCOMPILER=$<TARGET_FILE:simp>"
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/${fixture}"
+            "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${fixture}"
+            "-DEXPECTED_DIAGNOSTIC=${expected_diagnostic}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+    )
+    set_tests_properties("${test_name}" PROPERTIES
+        ENVIRONMENT "SIMP_MODULE_REGISTRY=${CMAKE_CURRENT_SOURCE_DIR}/functional/modules/simp-modules.tsv"
+    )
+endfunction()
+
+add_import_run_test(simp_import_namespace_and_link
+    positive_import_namespace.simp "/\n")
+add_import_run_test(simp_import_class_and_link
+    positive_import_class.simp "42\n")
+add_import_run_test(simp_import_transitive_module_and_link
+    positive_import_transitive.simp "42\n")
+add_import_reject_test(simp_rejects_import_in_namespace
+    negative_import_namespace_body.simp "'import' is only allowed at top level")
+add_import_reject_test(simp_rejects_import_in_class
+    negative_import_class_body.simp "'import' is only allowed at top level")
+add_import_reject_test(simp_rejects_import_in_function
+    negative_import_function_body.simp "'import' is only allowed at top level")
+add_import_reject_test(simp_rejects_unregistered_module
+    negative_import_unregistered.simp "module 'missing_module' is not registered")
+add_import_reject_test(simp_rejects_reopening_imported_namespace
+    negative_import_reopen.simp "import alias 'Net' conflicts with a local declaration")
+add_import_reject_test(simp_rejects_unqualified_imported_names
+    negative_import_unqualified.simp "undefined variable 'Network' or field")
+
 add_test(NAME simp_compile_and_run_public_inheritance
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"

@@ -25,6 +25,8 @@ enum class TokenType {
     Class,
     Namespace,
     Include,
+    Import,
+    As,
     Public,
     Protected,
     Private,

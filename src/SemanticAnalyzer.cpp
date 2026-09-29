@@ -59,16 +59,34 @@ std::string SemanticAnalyzer::qualify(const std::vector<std::string>& path,
     return result;
 }
 
+const std::unordered_map<std::string, SemanticAnalyzer::ImportBinding>&
+SemanticAnalyzer::activeImports() const {
+    static const std::unordered_map<std::string, ImportBinding> empty;
+    const auto found = importAliases_.find(currentModule_);
+    return found == importAliases_.end() ? empty : found->second;
+}
+
 bool SemanticAnalyzer::hasNamespaceOrClass(
     const std::string& name, const std::vector<std::string>& namespacePath) const {
+    const auto visible = [this](const std::string& candidate) {
+        const auto classFound = classes_.find(candidate);
+        if (classFound != classes_.end()) {
+            return classFound->second->moduleName == currentModule_;
+        }
+        const auto namespaceFound = namespaceOwners_.find(candidate);
+        return namespaceFound != namespaceOwners_.end() &&
+               namespaceFound->second == currentModule_;
+    };
     for (std::size_t depth = namespacePath.size() + 1; depth > 0; --depth) {
         const auto prefixLength = depth - 1;
         const std::vector<std::string> prefix(
             namespacePath.begin(),
             namespacePath.begin() + static_cast<std::ptrdiff_t>(prefixLength));
         const auto candidate = qualify(prefix, name);
-        if (namespaces_.find(candidate) != namespaces_.end() ||
-            classes_.find(candidate) != classes_.end()) {
+        if (visible(candidate)) {
+            return true;
+        }
+        if (prefixLength == 0 && activeImports().find(name) != activeImports().end()) {
             return true;
         }
     }
@@ -91,17 +109,34 @@ std::string SemanticAnalyzer::resolveClassName(
     }
 
     std::string candidate;
+    std::string resolvedOwner = currentModule_;
     bool firstFound = false;
+    const auto visible = [this](const std::string& candidate,
+                                const std::string& owner) {
+        const auto classFound = classes_.find(candidate);
+        if (classFound != classes_.end()) return classFound->second->moduleName == owner;
+        const auto namespaceFound = namespaceOwners_.find(candidate);
+        return namespaceFound != namespaceOwners_.end() &&
+               namespaceFound->second == owner;
+    };
     for (std::size_t depth = namespacePath.size() + 1; depth > 0; --depth) {
         const auto prefixLength = depth - 1;
         const std::vector<std::string> prefix(
             namespacePath.begin(),
             namespacePath.begin() + static_cast<std::ptrdiff_t>(prefixLength));
         candidate = qualify(prefix, components.front());
-        if (namespaces_.find(candidate) != namespaces_.end() ||
-            classes_.find(candidate) != classes_.end()) {
+        if (visible(candidate, currentModule_)) {
             firstFound = true;
             break;
+        }
+        if (prefixLength == 0) {
+            const auto imported = activeImports().find(components.front());
+            if (imported != activeImports().end()) {
+                candidate = imported->second.qualifiedName;
+                resolvedOwner = imported->second.moduleName;
+                firstFound = true;
+                break;
+            }
         }
     }
     if (!firstFound) {
@@ -109,8 +144,7 @@ std::string SemanticAnalyzer::resolveClassName(
     }
     for (std::size_t index = 1; index < components.size(); ++index) {
         candidate += "." + components[index];
-        if (namespaces_.find(candidate) == namespaces_.end() &&
-            classes_.find(candidate) == classes_.end()) {
+        if (!visible(candidate, resolvedOwner)) {
             throw DiagnosticError(location, "unknown qualified class '" + name + "'");
         }
     }
@@ -137,10 +171,7 @@ void SemanticAnalyzer::normalizeType(
 
 void SemanticAnalyzer::normalizeExpression(
     Expression& expression, const std::vector<std::string>& namespacePath) {
-    if (expression.kind == ExpressionKind::ConstructorCall) {
-        expression.value = resolveClassName(expression.value, namespacePath,
-                                             expression.location);
-    }
+    (void)namespacePath;
     if (expression.left) normalizeExpression(*expression.left, namespacePath);
     if (expression.right) normalizeExpression(*expression.right, namespacePath);
     for (auto& argument : expression.arguments) {
@@ -172,23 +203,73 @@ void SemanticAnalyzer::analyze(Program& program) {
     scopes_.clear();
     symbols_.clear();
     namespaces_.clear();
+    namespaceOwners_.clear();
     classes_.clear();
     methodDefinitions_.clear();
+    importAliases_.clear();
     currentClass_ = nullptr;
     currentMethod_ = nullptr;
     currentNamespace_.clear();
+    currentModule_.clear();
 
-    const auto registerNamespacePath = [this](const std::vector<std::string>& path) {
+    for (const auto& import : program.imports) {
+        if (import.exportedName.empty()) {
+            throw DiagnosticError(import.location,
+                                  "import '" + import.moduleName +
+                                      "' was not resolved through the module registry");
+        }
+        auto& aliases = importAliases_[import.importerModule];
+        if (!aliases.emplace(import.alias,
+                             ImportBinding{import.exportedName, import.moduleName}).second) {
+            throw DiagnosticError(import.location,
+                                  "duplicate import alias '" + import.alias + "'");
+        }
+    }
+    for (const auto& import : program.imports) {
+        const auto conflict = std::find_if(
+            program.classes.begin(), program.classes.end(),
+            [&import](const ClassDeclaration& declaration) {
+                return declaration.moduleName == import.importerModule &&
+                       declaration.namespacePath.empty() &&
+                       declaration.name == import.alias;
+            });
+        const auto namespaceConflict = std::find_if(
+            program.namespaces.begin(), program.namespaces.end(),
+            [&import](const NamespaceDeclaration& declaration) {
+                return declaration.moduleName == import.importerModule &&
+                       declaration.path.size() == 1 &&
+                       declaration.path.front() == import.alias;
+            });
+        if (conflict != program.classes.end() || namespaceConflict != program.namespaces.end()) {
+            throw DiagnosticError(import.location,
+                                  "import alias '" + import.alias +
+                                      "' conflicts with a local declaration");
+        }
+    }
+
+    const auto registerNamespacePath = [this](const std::vector<std::string>& path,
+                                              const std::string& owner,
+                                              const SourceLocation& location) {
         for (std::size_t length = 1; length <= path.size(); ++length) {
-            namespaces_.insert(qualify(std::vector<std::string>(
-                path.begin(), path.begin() + static_cast<std::ptrdiff_t>(length)), ""));
+            const auto name = qualify(std::vector<std::string>(
+                path.begin(), path.begin() + static_cast<std::ptrdiff_t>(length)), "");
+            const auto existing = namespaceOwners_.find(name);
+            if (existing != namespaceOwners_.end() && existing->second != owner) {
+                throw DiagnosticError(location,
+                                      "namespace '" + name +
+                                          "' cannot be shared across compilation units");
+            }
+            namespaces_.insert(name);
+            namespaceOwners_.emplace(name, owner);
         }
     };
     for (const auto& declaration : program.namespaces) {
-        registerNamespacePath(declaration.path);
+        registerNamespacePath(declaration.path, declaration.moduleName, declaration.location);
     }
     for (auto& declaration : program.classes) {
-        registerNamespacePath(declaration.namespacePath);
+        currentModule_ = declaration.moduleName;
+        registerNamespacePath(declaration.namespacePath, declaration.moduleName,
+                              declaration.location);
         const auto fullName = qualify(declaration.namespacePath, declaration.name);
         if (!classes_.emplace(fullName, &declaration).second) {
             throw DiagnosticError(declaration.location,
@@ -204,6 +285,7 @@ void SemanticAnalyzer::analyze(Program& program) {
     }
 
     for (auto& declaration : program.classes) {
+        currentModule_ = declaration.moduleName;
         declaration.name = qualify(declaration.namespacePath, declaration.name);
         for (std::size_t index = 0; index < declaration.baseClassNames.size(); ++index) {
             declaration.baseClassNames[index] =
@@ -226,10 +308,17 @@ void SemanticAnalyzer::analyze(Program& program) {
         }
     }
     for (auto& definition : program.outOfLineMethods) {
+        currentModule_ = definition.moduleName;
         definition.className = resolveClassName(definition.className,
                                                 definition.namespacePath,
                                                 definition.location);
         const auto* owner = classes_.at(definition.className);
+        if (owner->moduleName != definition.moduleName) {
+            throw DiagnosticError(definition.location,
+                                  "cannot define methods for class '" +
+                                      definition.className +
+                                      "' outside its compilation unit");
+        }
         normalizeType(definition.method.returnType, owner->namespacePath,
                       definition.method.location);
         for (auto& parameter : definition.method.parameters) {
@@ -237,6 +326,7 @@ void SemanticAnalyzer::analyze(Program& program) {
         }
         normalizeStatements(definition.method.body, owner->namespacePath);
     }
+    currentModule_.clear();
     normalizeStatements(program.statements, {});
 
     const auto methodKey = [](const std::string& className, const std::string& methodName) {
@@ -319,6 +409,7 @@ void SemanticAnalyzer::analyze(Program& program) {
         }
     }
     for (auto& declaration : program.classes) {
+        currentModule_ = declaration.moduleName;
         for (auto& method : declaration.methods) {
             if (method.declarationOnly &&
                 methodDefinitions_.find(methodKey(declaration.name, method.name)) ==
@@ -441,6 +532,7 @@ void SemanticAnalyzer::analyze(Program& program) {
         }
     }
     for (auto& declaration : program.classes) {
+        currentModule_ = declaration.moduleName;
         for (auto& method : declaration.methods) {
             const auto definition = methodDefinitions_.find(methodKey(declaration.name, method.name));
             analyzeMethod(declaration, definition == methodDefinitions_.end()
@@ -448,6 +540,7 @@ void SemanticAnalyzer::analyze(Program& program) {
                                            : definition->second->method);
         }
     }
+    currentModule_.clear();
     currentClass_ = nullptr;
     currentMethod_ = nullptr;
     currentNamespace_.clear();

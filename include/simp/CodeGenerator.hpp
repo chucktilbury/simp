@@ -18,7 +18,8 @@ namespace simp {
 class CodeGenerator {
 public:
     explicit CodeGenerator(std::string targetTriple);
-    std::string generate(const Program& program);
+    std::string generate(const Program& program,
+                         const std::string& moduleName = {});
 
 private:
     struct Binding {
@@ -135,6 +136,7 @@ private:
     std::size_t nextLabel_ = 0;
     std::size_t nextString_ = 0;
     bool blockTerminated_ = false;
+    std::string generatingModule_;
 };
 
 } // namespace simp

@@ -228,8 +228,9 @@ non-virtual bases also have no explicit constructors.
   be placed inside a namespace, and namespace contents cannot declare another
   entry point.
 - The current compiler implements namespace parsing, per-compilation-unit
-  namespace merging, lexical name resolution, and qualified class construction
-  and method calls. Top-level textual includes participate in that same unit.
+  namespace merging, lexical name resolution, qualified class construction,
+  compiled module imports, and method calls. Top-level textual includes
+  participate in their including unit.
 - A namespace may contain class declarations. Methods, including methods
   implemented by C symbols, are always members declared by a class.
 - `include` and `import` are top-level directives, not statements inside a
@@ -268,7 +269,8 @@ non-virtual bases also have no explicit constructors.
 
 Keywords are case-insensitive and reserved under every capitalization. For
 example, `while`, `While`, and `wHiLe` are the same keyword, so `int While = 0`
-is a syntax error. The collection loop words `for` and `in` are reserved too.
+is a syntax error. The import words `import` and `as`, and collection loop
+words `for` and `in`, are reserved too.
 
 In the current prototype subset, simple statements are terminated by a
 newline or a closing block brace. Newlines inside parentheses and array
@@ -515,11 +517,29 @@ interchangeable.
   repeated import that would bind the same local name. Distinct aliases may
   refer to the same module.
 
-These declarations finalize source/module syntax and name-binding behavior;
-they do not imply that include expansion, registry lookup, module
-compilation/linking, or package resolution is implemented. The registry
-configuration file's location convention and schema are deliberately left
-open.
+#### Module registry and compilation
+
+- The registry is a UTF-8, tab-separated file named `simp-modules.tsv` in the
+  compiler's current working directory. Set `SIMP_MODULE_REGISTRY` to use a
+  different registry path. Relative source paths are resolved relative to the
+  registry file.
+- Each non-comment row has exactly six tab-separated fields:
+  `module-name`, `source-path`, `version`, `dependency-library-versions`,
+  `export-kind`, and `export-name`. Lines beginning with `#` and empty lines
+  are ignored. The module name and export name are identifiers; export kind
+  is `class` or `namespace`. Dependency library versions are a comma-separated
+  list of `name=version` pairs, or an empty field when there are none.
+- A registry entry points to a Simple source file. The compiler parses and
+  analyzes that file as a declaration-only module (it cannot contain `start`),
+  emits a separate LLVM IR translation unit for its methods, and links that
+  IR with the importing program's IR. Module imports are resolved recursively.
+  Registry version and dependency-version strings are recorded and validated
+  as manifest metadata; version constraints and external binary-library
+  resolution are not part of this compiler workflow.
+- The implementation performs registry lookup, designated-export validation,
+  alias-scoped qualified-name resolution, module IR generation/linking, and
+  diagnostics for malformed or missing registry entries. Imported declarations
+  remain module-owned and are not visible except through their import aliases.
 
 ## Runtime, destruction, garbage collection, and threads
 
@@ -731,13 +751,10 @@ string Foo.echo(string value) from "c_foo_echo"
   class-reference methods. Its bundled C shims include a real call to libc
   `abs()`. The receiver is why the sample binds a C shim rather than binding
   libc `abs` directly.
-- This is not yet a compiled module system. In a future module build, a
-  caller obtains exported classes/methods through `import module_name as
-  symbol`, then calls them normally (for example,
-  `symbol.Foo().compute(5)`); it never calls a bare C symbol or writes `from`.
-  Import/module-registry lookup and cross-module linking are deliberately
-  deferred. The prototype's one-file integration test calls its class
-  directly to validate the method ABI without pretending imports work.
+- Compiled module imports are implemented with registry-selected class or
+  namespace exports. Imported methods, including methods backed by C `from`
+  definitions, are called through ordinary instance-method syntax; callers
+  do not name C symbols directly.
 - Also deferred: library search-path configuration, variadic methods,
   `any` at the native boundary, and ABI lowering for targets other than
   x86-64 SysV.
@@ -821,7 +838,7 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   matching out-of-line method bodies, and out-of-line method definitions that
   use `from "<symbol>"` for a C binding. Native bindings are still class
   methods; their C ABI receives the implicit `this` pointer first. The
-  prototype does not implement the module registry/import workflow.
+  compiler implements source-module registry lookup and import linking.
 - The listed module priorities, examples, testing expectations, source-size guidance, documentation expectations, and CLI/tooling goals are project requirements.
 - The grammar proposals must be reconciled with examples and priorities before becoming a specification.
 
@@ -846,18 +863,11 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   these determine how managed captures are rooted and how such calls behave.
 - The `simp_string_cstr` storage/cleanup implementation, which must honor its
   finalized inline-block lifetime contract.
-- The CLI/environment configuration for include search directories; the
-  external module-registry/configuration file's location convention and
-  schema, including fields for registered module name, module/build-artifact
-  location, module version, dependency-library versions, and the designated
-  importable top-level class or namespace; package layout, module
-  interface/binary formats, dependency resolution, and package-version
-  constraints.
-- The module creation, binding-generation, build, link, and versioning workflow in executable detail.
+- The CLI/environment configuration for include search directories; package
+  layout, prebuilt module binary formats, external binary-library resolution,
+  and package-version constraints.
 - Whether and where SWIG is used.
 - The full set of future standard/external modules.
-- The module creation, binding-generation, build, link, and versioning workflow
-  in executable detail, including the registry schema used by `import`.
 - Library search paths, variadic native-bound methods, `any` values across
   the native boundary, and ABI support beyond x86-64 SysV.
 - Package-manager, IDE, and LLDB/GDB integration details.

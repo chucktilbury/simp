@@ -50,6 +50,9 @@ ClassDeclaration Parser::parseClass() {
         if (check(TokenType::RightBrace) || check(TokenType::End)) {
             break;
         }
+        if (check(TokenType::Import)) {
+            error(current(), "'import' is only allowed at top level");
+        }
         if ((check(TokenType::Public) || check(TokenType::Protected) ||
              check(TokenType::Private)) &&
             current_ + 1 < tokens_.size() &&

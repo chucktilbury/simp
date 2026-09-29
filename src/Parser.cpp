@@ -119,9 +119,11 @@ void Parser::trace(const char* action) const {
 Program Parser::parseProgram() {
     Program program;
     skipNewlines();
-    while (check(TokenType::Class) || check(TokenType::Namespace) ||
+    while (check(TokenType::Import) || check(TokenType::Class) || check(TokenType::Namespace) ||
            startsOutOfLineDefinition()) {
-        if (check(TokenType::Class)) {
+        if (check(TokenType::Import)) {
+            program.imports.push_back(parseImport());
+        } else if (check(TokenType::Class)) {
             program.classes.push_back(parseClass());
         } else if (check(TokenType::Namespace)) {
             parseNamespace(program);
@@ -148,6 +150,37 @@ Program Parser::parseProgram() {
     return program;
 }
 
+Program Parser::parseModule() {
+    Program program;
+    skipNewlines();
+    while (!check(TokenType::End)) {
+        if (check(TokenType::Import)) {
+            program.imports.push_back(parseImport());
+        } else if (check(TokenType::Class)) {
+            program.classes.push_back(parseClass());
+        } else if (check(TokenType::Namespace)) {
+            parseNamespace(program);
+        } else if (startsOutOfLineDefinition()) {
+            program.outOfLineMethods.push_back(parseOutOfLineMethodDefinition());
+        } else if (check(TokenType::Start)) {
+            error(current(), "imported module source cannot declare 'start'");
+        } else {
+            error(current(), "module source may contain only imports and declarations");
+        }
+        skipNewlines();
+    }
+    return program;
+}
+
+ImportDeclaration Parser::parseImport() {
+    const auto keyword = consume(TokenType::Import, "'import'");
+    const auto module = consume(TokenType::Identifier, "module name");
+    consume(TokenType::As, "'as' after module name");
+    const auto alias = consume(TokenType::Identifier, "import alias");
+    consumeStatementTerminator();
+    return {module.text, alias.text, {}, {}, false, keyword.location};
+}
+
 std::string Parser::parseQualifiedIdentifier(const char* expectation) {
     std::string name = consume(TokenType::Identifier, expectation).text;
     while (match(TokenType::Dot)) {
@@ -164,7 +197,7 @@ void Parser::parseNamespace(Program& program) {
 
     const auto oldDepth = namespacePath_.size();
     namespacePath_.push_back(name);
-    program.namespaces.push_back({namespacePath_, keyword.location});
+    program.namespaces.push_back({namespacePath_, {}, keyword.location});
     while (!check(TokenType::RightBrace) && !check(TokenType::End)) {
         skipNewlines();
         if (check(TokenType::RightBrace) || check(TokenType::End)) break;
@@ -176,6 +209,8 @@ void Parser::parseNamespace(Program& program) {
             error(current(), "'start' cannot be declared inside a namespace");
         } else if (check(TokenType::Include)) {
             error(current(), "'include' is only allowed at top level");
+        } else if (check(TokenType::Import)) {
+            error(current(), "'import' is only allowed at top level");
         } else if (startsOutOfLineDefinition()) {
             program.outOfLineMethods.push_back(parseOutOfLineMethodDefinition());
         } else {
@@ -204,6 +239,9 @@ std::vector<Statement> Parser::parseBlock() {
 
 Statement Parser::parseStatement() {
     trace("parse statement");
+    if (check(TokenType::Import)) {
+        error(current(), "'import' is only allowed at top level");
+    }
     if (check(TokenType::Int) || check(TokenType::StringType) || check(TokenType::ArrayType) ||
         check(TokenType::MapType) || check(TokenType::AnyType) || check(TokenType::Void)) {
         return parseDeclaration();

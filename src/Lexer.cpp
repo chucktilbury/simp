@@ -89,6 +89,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Class: return "'class'";
     case TokenType::Namespace: return "'namespace'";
     case TokenType::Include: return "'include'";
+    case TokenType::Import: return "'import'";
+    case TokenType::As: return "'as'";
     case TokenType::Public: return "'public'";
     case TokenType::Protected: return "'protected'";
     case TokenType::Private: return "'private'";
@@ -244,6 +246,7 @@ Token Lexer::scanIdentifierOrInteger() {
         {"try", TokenType::Try}, {"except", TokenType::Except},
         {"finally", TokenType::Finally}, {"class", TokenType::Class},
         {"namespace", TokenType::Namespace}, {"include", TokenType::Include},
+        {"import", TokenType::Import}, {"as", TokenType::As},
         {"from", TokenType::From},
         {"public", TokenType::Public}, {"protected", TokenType::Protected},
         {"private", TokenType::Private},

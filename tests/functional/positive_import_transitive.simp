@@ -1,0 +1,5 @@
+import wrapper as Wrap
+
+start {
+    print(Wrap().answer())
+}
