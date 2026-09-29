@@ -30,6 +30,7 @@ CodeGenerator::Value CodeGenerator::rootObjectValue(Value value) {
     if (classes_.find(value.type) == classes_.end() || value.operand == "null") {
         return value;
     }
+    instructions_ += "  call void @simp_gc_require_alive(ptr " + value.operand + ")\n";
     const auto slot = "%root." + std::to_string(nextRoot_++);
     entryAllocas_ += "  " + slot + " = alloca ptr\n";
     instructions_ += "  store ptr " + value.operand + ", ptr " + slot + "\n";
@@ -194,6 +195,28 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         }
         emitNullCheck(receiver.operand);
         if (!qualified) owner = found->second;
+        if (target.value == "destroy") {
+            if (qualified) {
+                throw DiagnosticError(target.location,
+                                      "qualified destructor calls are not supported");
+            }
+            const MethodDeclaration* destructor = nullptr;
+            for (const auto& candidate : owner->methods) {
+                if (candidate.destructor) {
+                    destructor = &candidate;
+                    break;
+                }
+            }
+            if (destructor == nullptr) {
+                throw DiagnosticError(target.location,
+                                      "class '" + owner->name + "' has no destructor");
+            }
+            instructions_ += "  call void @simp_gc_begin_destroy(ptr " +
+                             receiver.operand + ")\n";
+            instructions_ += "  call void " + methodSymbol(owner->name, destructor->name) +
+                             "(ptr " + receiver.operand + ")\n";
+            return {"void", ""};
+        }
         const auto* method = findMethod(*owner, target.value);
         if (method == nullptr) {
             throw DiagnosticError(target.location,

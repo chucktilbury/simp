@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <iostream>
 
 namespace simp {
 
@@ -172,6 +173,44 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
             const auto receiverType = analyzeExpression(*target.left);
             owner = findClass(receiverType, target.location);
         }
+        if (target.value == "destroy") {
+            if (qualified) {
+                throw DiagnosticError(target.location,
+                                      "qualified destructor calls are not supported");
+            }
+            const MethodDeclaration* destructor = nullptr;
+            for (const auto& candidate : owner->methods) {
+                if (candidate.destructor) {
+                    destructor = &candidate;
+                    break;
+                }
+            }
+            if (destructor == nullptr) {
+                throw DiagnosticError(target.location,
+                                      "class '" + owner->name + "' has no destructor");
+            }
+            const bool hasInheritance = !owner->baseClassNames.empty() ||
+                std::any_of(classes_.begin(), classes_.end(), [this, owner](const auto& entry) {
+                    return entry.first != owner->name &&
+                           isSubclassOf(entry.first, owner->name);
+                });
+            if (hasInheritance) {
+                throw DiagnosticError(target.location,
+                                      "explicit destruction of inherited object types is not supported");
+            }
+            if (!memberAccessible(*owner, destructor->name, true)) {
+                throw DiagnosticError(target.location,
+                                      "destructor for class '" + owner->name +
+                                          "' is not accessible here");
+            }
+            if (!expression.arguments.empty()) {
+                throw DiagnosticError(expression.location, "destructor takes no arguments");
+            }
+            std::cerr << target.location.file << ":" << target.location.line << ":"
+                      << target.location.column
+                      << ": warning: explicit destructor call does not reclaim the object\n";
+            return "void";
+        }
         if (qualified) {
             auto* pathOwner = classes_.at(analyzeExpression(*root));
             for (const auto& baseName : basePath) {
@@ -204,10 +243,6 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
         if (method == nullptr) {
             throw DiagnosticError(target.location,
                                   "class '" + owner->name + "' has no method '" + target.value + "'");
-        }
-        if (method->destructor) {
-            throw DiagnosticError(target.location,
-                                  "destructor execution is not supported by this prototype");
         }
         if (!qualified) {
             std::string declaringName;

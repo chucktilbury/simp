@@ -74,7 +74,14 @@ ClassDeclaration Parser::parseClass() {
         }
         const auto member = consume(TokenType::Identifier, "field or method name");
         if (check(TokenType::LeftParen)) {
+            if (member.text == "destroy" && typeName != "void") {
+                error(member, "destructor must be declared void");
+            }
             auto method = parseMethod(type, member, false);
+            if (member.text == "destroy") {
+                method.destructor = true;
+                method.returnType = "void";
+            }
             method.access = memberAccess;
             declaration.methods.push_back(std::move(method));
         } else {

@@ -203,6 +203,8 @@ std::string CodeGenerator::generate(const Program& program) {
            << "declare void @simp_gc_push_or_abort(ptr, ptr, i64)\n"
            << "declare void @simp_gc_pop_or_abort(ptr)\n"
            << "declare ptr @simp_gc_alloc(ptr)\n"
+           << "declare void @simp_gc_require_alive(ptr)\n"
+           << "declare void @simp_gc_begin_destroy(ptr)\n"
            << "declare void @abort()\n\n"
            << "define void @simp.require_nonnull(ptr %object) {\n"
            << "entry:\n"

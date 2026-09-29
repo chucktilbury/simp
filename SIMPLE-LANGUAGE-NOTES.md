@@ -106,7 +106,12 @@ is not implemented.
 
 The prototype spells construction as `ClassName(args)`, matching the
 class-named constructor rule above. `destroy` is the destructor name, but
-destructor execution is not implemented. `super.Base(args)` is the explicit
+the prototype supports explicit zero-argument `void destroy()` calls. An
+explicit call warns, marks the object destroyed before invocation, and
+executes at most once; another call or later use of the object aborts at
+runtime. Explicit destruction is currently rejected for classes participating
+in inheritance because destructor chaining and dynamic-type destructor choice
+are not defined by this slice. `super.Base(args)` is the explicit
 primary-base constructor spelling. Multiple direct bases are laid out as
 distinct subobjects in declared order; for example,
 `diamond.Left.Root.value` selects one of two `Root` subobjects in a diamond.
@@ -238,10 +243,22 @@ module design. The program-entry examples use the single permitted top-level
   invoking a destructor does not force the GC to reclaim the object's memory
   immediately.
 
-The behavior of using an object after its destructor has run, including
-whether resurrection is possible, remains undecided. GC timing and memory
-reclamation are also separate from the caller-controlled timing of explicit
-cleanup.
+The current prototype implements only explicit, zero-argument `void
+destroy()` calls for classes outside inheritance hierarchies and
+destroyed-object checks. The heap records destroyed state,
+marks the object before calling the destructor (so reentrant or repeated
+destruction aborts), and generated object-value uses validate that the object
+is still live. GC finalizer fallback is deferred: the collector currently
+reclaims unreachable objects without invoking destructors. Safe finalization
+needs a defined policy for destructors that allocate or resurrect references
+and a non-reentrant collector finalization phase; do not rely on fallback
+cleanup in this prototype.
+- Any use of an object after its destructor has run raises an exception. If
+  that exception is uncaught, the program aborts.
+
+Whether object resurrection is possible remains undecided. GC timing and
+memory reclamation are also separate from the caller-controlled timing of
+explicit cleanup.
 
 ### Threads
 
@@ -371,6 +388,8 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - The compiler is implemented in C++, using LLVM's C++ APIs and safer compiler
   data structures; the runtime/native-module ABI remains C-compatible where
   appropriate.
+- Any use of an object after its destructor has run raises an exception; if
+  uncaught, the program aborts.
 - The class, inheritance, access, namespace/path, multi-pass name-resolution,
   keyword, string, collection, include/import, destructor, and inline-C
   behavior described above is the current agreed direction.
@@ -385,7 +404,7 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - Exact nullability-flow analysis and all conversion syntax.
 - Whether string length is measured in bytes or Unicode code points.
 - Advanced Unicode semantics beyond current UTF-8 support.
-- Object-use-after-destruction and resurrection semantics.
+- Whether object resurrection is possible.
 - GC timing and memory reclamation policy; neither is determined by explicitly
   invoking a destructor. The prototype currently collects before each object
   allocation; that cadence is not a final language/runtime policy.

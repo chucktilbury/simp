@@ -44,6 +44,8 @@ void simp_gc_pop_or_abort(SimpRootFrame *frame);
 
 /* Collect before allocating; the returned object's header and fields are zeroed. */
 void *simp_gc_alloc(const SimpClassMeta *metadata);
+void simp_gc_require_alive(void *object);
+void simp_gc_begin_destroy(void *object);
 void simp_gc_collect(void);
 size_t simp_gc_heap_count(void);
 

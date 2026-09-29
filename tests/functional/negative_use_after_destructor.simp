@@ -1,0 +1,14 @@
+class Resource {
+    int value
+    Resource(int initial) {
+        value = initial
+    }
+    void destroy() {
+    }
+}
+
+start {
+    Resource resource = Resource(1)
+    resource.destroy()
+    print(resource.value)
+}

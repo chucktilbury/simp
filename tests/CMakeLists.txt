@@ -238,7 +238,37 @@ add_test(NAME simp_rejects_private_destructor
         "-DCOMPILER=$<TARGET_FILE:simp>"
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_destructor.simp"
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_destructor"
-        "-DEXPECTED_DIAGNOSTIC=method 'destroy' is not accessible"
+        "-DEXPECTED_DIAGNOSTIC=destructor for class 'Hidden' is not accessible here"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_explicit_destructor
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_explicit_destructor.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_explicit_destructor"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_explicit_destructor.ll"
+        "-DEXPECTED_OUTPUT=42\n"
+        "-DEXPECT_WARNING=warning: explicit destructor call"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_double_destructor_call
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_double_destructor.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_double_destructor"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_double_destructor.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_use_after_destructor
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_use_after_destructor.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_use_after_destructor"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_use_after_destructor.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_private_super_constructor

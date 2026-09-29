@@ -8,6 +8,7 @@
 #include "simp/Diagnostic.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <ostream>
 #include <unordered_set>
 
@@ -82,6 +83,11 @@ void SemanticAnalyzer::analyze(const Program& program) {
             validateType(field.type, field.location);
         }
         for (const auto& method : declaration.methods) {
+            if (method.destructor &&
+                (method.returnType != "void" || !method.parameters.empty())) {
+                throw DiagnosticError(method.location,
+                                      "destructor must return void and take no parameters");
+            }
             validateType(method.returnType, method.location, true);
             for (const auto& parameter : method.parameters) {
                 validateType(parameter.type, parameter.location);

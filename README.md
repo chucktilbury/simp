@@ -132,9 +132,11 @@ and semantic errors.
   }
   ```
 
-  Constructors are named exactly after their class. `destroy` is the designated
-  destructor name, but destructor execution is not implemented in this
-  prototype. Direct bases have distinct, non-shared subobjects in declared
+  Constructors are named exactly after their class. A class may declare a
+  zero-argument `void destroy()` method; an explicit `object.destroy()` warns,
+  invokes it once, and marks the object unusable. Further object use or another
+  destruction attempt aborts at runtime. Explicit destruction is currently
+  limited to classes outside an inheritance hierarchy. Direct bases have distinct, non-shared subobjects in declared
   order; fields are flattened depth-first through those paths. Ambiguous
   inherited fields must be qualified, for example
   `diamond.Left.Root.value`; unqualified ambiguous fields or methods are
@@ -167,9 +169,9 @@ and semantic errors.
   private members are not accessible to further-derived classes. Protected
   members are accessible in their declaring class and derived-class method
   bodies. Constructors are
-  checked at object creation and at `super.Base(...)`; destructors retain and
-  enforce their declared access when referenced, but destructor execution is
-  not implemented.   Protected access currently checks the enclosing class
+  checked at object creation and at `super.Base(...)`; destructor access is
+  checked on explicit invocation. GC finalizer fallback is not implemented:
+  unreachable objects are reclaimed without calling `destroy()`. Protected access currently checks the enclosing class
   relationship but not C++'s additional receiver-expression restriction for
   protected members. There are no friends, overloads, or access labels on
   individual declarations outside the section syntax.

@@ -13,6 +13,7 @@ typedef struct HeapNode {
     struct HeapNode *next;
     void *object;
     int marked;
+    int destroyed;
 } HeapNode;
 
 static HeapNode *heap = NULL;
@@ -88,6 +89,24 @@ void simp_gc_pop_or_abort(SimpRootFrame *frame) {
     if (!simp_gc_pop(frame)) {
         abort();
     }
+}
+
+void simp_gc_require_alive(void *object) {
+    if (object == NULL) {
+        return;
+    }
+    HeapNode *node = find_object(object);
+    if (node == NULL || node->destroyed) {
+        abort();
+    }
+}
+
+void simp_gc_begin_destroy(void *object) {
+    HeapNode *node = find_object(object);
+    if (node == NULL || node->destroyed) {
+        abort();
+    }
+    node->destroyed = 1;
 }
 
 void simp_gc_collect(void) {
@@ -177,6 +196,7 @@ void *simp_gc_alloc(const SimpClassMeta *metadata) {
     memcpy(object, &metadata, sizeof(metadata));
     node->object = object;
     node->marked = 0;
+    node->destroyed = 0;
     node->next = heap;
     heap = node;
     ++object_count;

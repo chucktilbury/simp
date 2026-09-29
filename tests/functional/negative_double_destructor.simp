@@ -1,0 +1,10 @@
+class Resource {
+    void destroy() {
+    }
+}
+
+start {
+    Resource resource = Resource()
+    resource.destroy()
+    resource.destroy()
+}
