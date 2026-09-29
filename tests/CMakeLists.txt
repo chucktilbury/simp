@@ -496,7 +496,56 @@ add_test(NAME simp_rejects_parameterized_virtual_base
         "-DCOMPILER=$<TARGET_FILE:simp>"
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_virtual_base_constructor_args.simp"
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_virtual_base_constructor_args"
-        "-DEXPECTED_DIAGNOSTIC=virtual base 'Root' constructor must take no arguments"
+        "-DEXPECTED_DIAGNOSTIC=most-derived constructor must initialize virtual base 'Root'"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_parameterized_virtual_base
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_parameterized_virtual_base.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_parameterized_virtual_base"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_parameterized_virtual_base.ll"
+        "-DEXPECTED_OUTPUT=Root:42\nLeft+\nRight+\nDiamond+\n42\n42\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_missing_virtual_base_initializer
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_virtual_base_missing_initializer.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_virtual_base_missing_initializer"
+        "-DEXPECTED_DIAGNOSTIC=most-derived constructor must initialize virtual base 'Root'"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_duplicate_virtual_base_initializer
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_virtual_base_duplicate_initializer.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_virtual_base_duplicate_initializer"
+        "-DEXPECTED_DIAGNOSTIC=virtual base 'Root' is initialized more than once"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_virtual_base_initializer_type
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_virtual_base_initializer_type.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_virtual_base_initializer_type"
+        "-DEXPECTED_DIAGNOSTIC=virtual base constructor argument type does not match"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_virtual_base_initializer_order
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_virtual_base_initializer_order.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_virtual_base_initializer_order"
+        "-DEXPECTED_DIAGNOSTIC=virtual base initializers must precede direct base"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_intermediate_virtual_base_initializer
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_virtual_base_initializer_in_intermediate.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_virtual_base_initializer_in_intermediate"
+        "-DEXPECTED_DIAGNOSTIC=virtual base initializers are only allowed in most-derived classes"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_nonroot_virtual_base
@@ -512,7 +561,7 @@ add_test(NAME simp_rejects_explicit_virtual_base_initialization
         "-DCOMPILER=$<TARGET_FILE:simp>"
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_virtual_base_explicit_super.simp"
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_virtual_base_explicit_super"
-        "-DEXPECTED_DIAGNOSTIC=virtual base constructors are initialized automatically"
+        "-DEXPECTED_DIAGNOSTIC=virtual base constructors must use super.virtual"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_incompatible_override

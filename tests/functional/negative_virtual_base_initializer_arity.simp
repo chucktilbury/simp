@@ -1,0 +1,14 @@
+class Root {
+    Root(int value) {
+    }
+}
+
+class Leaf : virtual Root {
+    Leaf() {
+        super.virtual Root()
+    }
+}
+
+start {
+    Leaf leaf = Leaf()
+}

@@ -171,11 +171,20 @@ and semantic errors.
   `diamond.Left.Root.value`; unqualified ambiguous fields or methods are
   compile-time errors. `super.Base(args)` initializes a direct non-virtual base;
   required non-virtual base constructors must be called once, in declared-base
-  order, before the constructor body. Virtual bases are initialized once by the
-  complete object, before non-virtual bases. A virtual base may not itself have
-  bases, and its explicit constructor must take no arguments; forwarding
-  virtual-base constructor arguments is unsupported. Implicit upcasts adjust
-  to the unique accessible base
+  order, after any virtual-base initializers and before the constructor body.
+  A most-derived constructor supplies a virtual base's arguments with
+  `super.virtual Base(args)`, for example `super.virtual Root(seed)`. Such
+  initializers must be direct leading statements, precede direct-base calls,
+  and follow virtual-base construction order. Each parameterized virtual base
+  must be initialized exactly once by the complete object's constructor; a
+  missing initializer is an error when that class is constructed. A no-argument
+  virtual base constructor is called automatically when omitted. Duplicate
+  initializers, wrong argument counts or types, and names that are not virtual
+  bases are errors. A constructor in a class that is itself used as a base in
+  the program may not declare `super.virtual`; only most-derived classes may
+  do so. Intermediate constructors cannot forward or override those arguments.
+  A virtual base may not itself have bases.
+  Implicit upcasts adjust to the unique accessible base
   subobject; ambiguous conversions are errors. Virtual dispatch uses per-view
   metadata and adjusts `this` to the selected implementation's subobject.
   The first declared base retains the primary designation and first layout

@@ -94,6 +94,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         blockTerminated_ = true;
         return;
     case StatementKind::SuperConstructorCall: {
+        if (statement.virtualBaseInitializer) return;
         const auto base = classes_.find(statement.name);
         if (base == classes_.end()) {
             throw DiagnosticError(statement.location, "unknown base class '" + statement.name + "'");
@@ -114,7 +115,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         instructions_ += "  " + basePointer + " = getelementptr inbounds %Class." +
                          currentClass_->name + ", ptr %this, i32 0, i32 " +
                          std::to_string(baseIndex + 2) + "\n";
-        std::string arguments = "ptr " + basePointer;
+        std::string arguments = "ptr " + basePointer + ", i1 false";
         for (std::size_t index = 0; index < statement.expressions.size(); ++index) {
             const auto value = emitExpression(*statement.expressions[index],
                                               constructor->parameters[index].type);

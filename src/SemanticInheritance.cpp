@@ -261,6 +261,26 @@ std::size_t SemanticAnalyzer::countMethods(const ClassDeclaration& declaration,
     return visit(visit, declaration, false);
 }
 
+std::vector<std::string> SemanticAnalyzer::virtualBaseNames(
+    const ClassDeclaration& declaration) const {
+    std::vector<std::string> result;
+    std::unordered_set<std::string> seen;
+    const auto visit = [this, &result, &seen](const auto& self,
+                                              const ClassDeclaration& current) -> void {
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto& baseName = current.baseClassNames[index];
+            if (current.baseVirtual[index]) {
+                if (seen.emplace(baseName).second) result.push_back(baseName);
+            } else {
+                const auto base = classes_.find(baseName);
+                if (base != classes_.end()) self(self, *base->second);
+            }
+        }
+    };
+    visit(visit, declaration);
+    return result;
+}
+
 bool SemanticAnalyzer::isSubclassOf(const std::string& type, const std::string& base) const {
     const auto found = classes_.find(type);
     if (found == classes_.end()) return false;

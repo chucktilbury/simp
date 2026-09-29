@@ -71,13 +71,6 @@ void SemanticAnalyzer::analyze(const Program& program) {
                     throw DiagnosticError(declaration.baseLocations[index],
                                           "virtual bases must be root classes with no bases");
                 }
-                for (const auto& method : base->methods) {
-                    if (method.constructor && !method.parameters.empty()) {
-                        throw DiagnosticError(method.location,
-                                              "virtual base '" + baseName +
-                                                  "' constructor must take no arguments");
-                    }
-                }
             }
         }
         std::unordered_set<std::string> path{declaration.name};
@@ -242,49 +235,95 @@ void SemanticAnalyzer::restoreInitializationState(const std::vector<bool>& state
 void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                                      const MethodDeclaration& method) {
     std::size_t leadingCalls = 0;
-    if (method.constructor && !owner.baseClassNames.empty()) {
+    if (method.constructor) {
+        const auto virtualBases = virtualBaseNames(owner);
+        std::vector<const Statement*> virtualInitializers(virtualBases.size(), nullptr);
         std::vector<std::size_t> requiredBases;
         for (std::size_t index = 0; index < owner.baseClassNames.size(); ++index) {
             if (!owner.baseVirtual[index]) requiredBases.push_back(index);
         }
         std::size_t nextBase = 0;
+        std::size_t nextVirtualBase = 0;
+        bool directBaseInitializationStarted = false;
         for (const auto& statement : method.body) {
             if (statement.kind != StatementKind::SuperConstructorCall) break;
-            const auto directBase = std::find(owner.baseClassNames.begin(),
-                                              owner.baseClassNames.end(), statement.name);
-            if (directBase != owner.baseClassNames.end() &&
-                owner.baseVirtual[static_cast<std::size_t>(
-                    std::distance(owner.baseClassNames.begin(), directBase))]) {
-                throw DiagnosticError(statement.location,
-                                      "virtual base constructors are initialized automatically; "
-                                      "do not call super." + statement.name);
-            }
-            const auto found = std::find_if(
-                requiredBases.begin() + static_cast<std::ptrdiff_t>(nextBase),
-                requiredBases.end(), [&owner, &statement](std::size_t index) {
-                    return owner.baseClassNames[index] == statement.name;
-                });
-            if (found == requiredBases.end()) {
-                throw DiagnosticError(statement.location,
-                                      "base constructors must be initialized once in declared order");
-            }
-            const auto foundIndex = static_cast<std::size_t>(
-                std::distance(requiredBases.begin(), found));
-            for (std::size_t offset = nextBase; offset < foundIndex; ++offset) {
-                const auto baseIndex = requiredBases[offset];
-                const auto* skipped = findClass(owner.baseClassNames[baseIndex],
-                                                owner.baseLocations[baseIndex]);
-                if (std::any_of(skipped->methods.begin(), skipped->methods.end(),
-                                [](const MethodDeclaration& candidate) {
-                                    return candidate.constructor;
-                                })) {
-                    throw DiagnosticError(method.location,
-                                          "derived constructor must initialize base '" +
-                                              skipped->name + "' with super." +
-                                              skipped->name + "(...)");
+            if (statement.virtualBaseInitializer) {
+                if (directBaseInitializationStarted) {
+                    throw DiagnosticError(statement.location,
+                                          "virtual base initializers must precede direct base "
+                                          "constructor calls");
                 }
+                const bool hasDerivedClass = std::any_of(
+                    classes_.begin(), classes_.end(),
+                    [this, &owner](const auto& entry) {
+                        return entry.first != owner.name &&
+                               isSubclassOf(entry.first, owner.name);
+                    });
+                if (hasDerivedClass) {
+                    throw DiagnosticError(
+                        statement.location,
+                        "virtual base initializers are only allowed in most-derived classes");
+                }
+                const auto found = std::find(virtualBases.begin(), virtualBases.end(),
+                                             statement.name);
+                if (found == virtualBases.end()) {
+                    throw DiagnosticError(statement.location,
+                                          "super.virtual must name a virtual base of class '" +
+                                              owner.name + "'");
+                }
+                const auto foundIndex = static_cast<std::size_t>(
+                    std::distance(virtualBases.begin(), found));
+                if (virtualInitializers[foundIndex] != nullptr) {
+                    throw DiagnosticError(statement.location,
+                                          "virtual base '" + statement.name +
+                                              "' is initialized more than once");
+                }
+                if (foundIndex < nextVirtualBase) {
+                    throw DiagnosticError(statement.location,
+                                          "virtual base initializers must follow virtual-base "
+                                          "construction order");
+                }
+                virtualInitializers[foundIndex] = &statement;
+                nextVirtualBase = foundIndex + 1;
+            } else {
+                directBaseInitializationStarted = true;
+                const auto directBase = std::find(owner.baseClassNames.begin(),
+                                                  owner.baseClassNames.end(), statement.name);
+                if (directBase != owner.baseClassNames.end() &&
+                    owner.baseVirtual[static_cast<std::size_t>(
+                        std::distance(owner.baseClassNames.begin(), directBase))]) {
+                    throw DiagnosticError(statement.location,
+                                          "virtual base constructors must use super.virtual " +
+                                              statement.name + "(...)");
+                }
+                const auto found = std::find_if(
+                    requiredBases.begin() + static_cast<std::ptrdiff_t>(nextBase),
+                    requiredBases.end(), [&owner, &statement](std::size_t index) {
+                        return owner.baseClassNames[index] == statement.name;
+                    });
+                if (found == requiredBases.end()) {
+                    throw DiagnosticError(statement.location,
+                                          "base constructors must be initialized once in "
+                                          "declared order");
+                }
+                const auto foundIndex = static_cast<std::size_t>(
+                    std::distance(requiredBases.begin(), found));
+                for (std::size_t offset = nextBase; offset < foundIndex; ++offset) {
+                    const auto baseIndex = requiredBases[offset];
+                    const auto* skipped = findClass(owner.baseClassNames[baseIndex],
+                                                    owner.baseLocations[baseIndex]);
+                    if (std::any_of(skipped->methods.begin(), skipped->methods.end(),
+                                    [](const MethodDeclaration& candidate) {
+                                        return candidate.constructor;
+                                    })) {
+                        throw DiagnosticError(method.location,
+                                              "derived constructor must initialize base '" +
+                                                  skipped->name + "' with super." +
+                                                  skipped->name + "(...)");
+                    }
+                }
+                nextBase = foundIndex + 1;
             }
-            nextBase = foundIndex + 1;
             ++leadingCalls;
         }
         for (std::size_t offset = nextBase; offset < requiredBases.size(); ++offset) {
@@ -318,7 +357,8 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                                             StatementKind::SuperConstructorCall;
         if (containsSuperCall(method.body[index]) && !directLeadingSuper) {
             throw DiagnosticError(method.body[index].location,
-                                  "super calls must initialize direct bases first and in declared order");
+                                  "super initializers must be direct leading constructor "
+                                  "statements");
         }
         const bool finalDirectReturn = index + 1 == method.body.size() &&
                                        method.body[index].kind == StatementKind::Return;

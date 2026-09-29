@@ -47,6 +47,49 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
             throw DiagnosticError(statement.location,
                                   "super call must name the direct base class and appear in its constructor");
         }
+        if (statement.virtualBaseInitializer) {
+            const auto virtualBases = virtualBaseNames(*currentClass_);
+            if (std::find(virtualBases.begin(), virtualBases.end(), statement.name) ==
+                virtualBases.end()) {
+                throw DiagnosticError(statement.location,
+                                      "super.virtual must name a virtual base of class '" +
+                                          currentClass_->name + "'");
+            }
+            const auto* base = findClass(statement.name, statement.location);
+            const MethodDeclaration* constructor = nullptr;
+            for (const auto& candidate : base->methods) {
+                if (candidate.constructor) {
+                    constructor = &candidate;
+                    break;
+                }
+            }
+            if (constructor != nullptr &&
+                !memberAccessible(*base, constructor->name, true)) {
+                throw DiagnosticError(statement.location,
+                                      "base constructor for class '" + base->name +
+                                          "' is not accessible here");
+            }
+            const std::size_t expectedCount =
+                constructor == nullptr ? 0 : constructor->parameters.size();
+            if (statement.expressions.size() != expectedCount) {
+                throw DiagnosticError(statement.location,
+                                      "virtual base constructor argument count does not match "
+                                      "class '" + statement.name + "'");
+            }
+            for (std::size_t index = 0; index < statement.expressions.size(); ++index) {
+                const auto actual = analyzeExpression(*statement.expressions[index]);
+                const auto expected = constructor->parameters[index].type;
+                if (!isAssignable(expected, actual) &&
+                    !(actual == "null" &&
+                      classes_.find(expected) != classes_.end())) {
+                    throw DiagnosticError(statement.expressions[index]->location,
+                                          "virtual base constructor argument type does not match "
+                                          "parameter '" +
+                                              constructor->parameters[index].name + "'");
+                }
+            }
+            return;
+        }
         const auto basePosition = std::find(currentClass_->baseClassNames.begin(),
                                             currentClass_->baseClassNames.end(),
                                             statement.name);
@@ -58,8 +101,8 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
             std::distance(currentClass_->baseClassNames.begin(), basePosition));
         if (currentClass_->baseVirtual[baseIndex]) {
             throw DiagnosticError(statement.location,
-                                  "virtual base constructors are initialized automatically; "
-                                  "do not call super." + statement.name);
+                                  "virtual base constructors must use super.virtual " +
+                                      statement.name + "(...)");
         }
         const auto* base = findClass(statement.name, statement.location);
         const MethodDeclaration* constructor = nullptr;

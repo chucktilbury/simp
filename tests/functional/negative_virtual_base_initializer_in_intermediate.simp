@@ -5,9 +5,15 @@ class Root {
 
 class Left : virtual Root {
     Left() {
+        super.virtual Root(1)
+    }
+}
+
+class Diamond : Left {
+    Diamond() {
+        super.Left()
     }
 }
 
 start {
-    Left left = Left()
 }

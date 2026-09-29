@@ -120,13 +120,29 @@ finalized again. `super.Base(args)` initializes a named direct non-virtual base.
 non-virtual base constructors must be called once in declared order before the
 derived constructor body. A supported shared base is marked with
 `class Left : virtual Root` (the access and `virtual` modifiers may appear in
-either order). Virtual bases are restricted to root classes with no bases and
-must have either no explicit constructor or a zero-argument constructor.
-Virtual-base constructors are initialized once by the complete object in
+either order). Virtual bases are restricted to root classes with no bases.
+The most-derived constructor supplies arguments with a leading
+`super.virtual Root(args)` statement. Its initializer must precede every
+`super.Base(args)` call; initializer statements follow depth-first,
+left-to-right virtual-base construction order. Each parameterized virtual base
+must have exactly one such initializer when that class is constructed as a
+complete object. Omitting an initializer is allowed for a virtual base with a
+zero-argument constructor, which is then invoked automatically. Duplicate
+initializers, an unknown/non-virtual base, an incorrect argument count or type,
+or an initializer outside the direct leading constructor-initializer sequence
+is rejected. The initializer expression is checked in the declaring
+constructor's parameter/field scope.
+
+Construction carries a hidden complete-object flag through constructor calls.
+The complete object's virtual-base constructors run once, in
 depth-first, left-to-right base-declaration order, before direct non-virtual
-bases; intermediate constructors do not initialize them again and cannot
-forward arguments. A thrown exception during this phase fails construction and
-suppresses the partial object's destructor chain.
+bases. Only a class that is not used as a base by another class in the program
+may declare a virtual-base initializer; trying to initialize from an
+intermediate class is rejected. This keeps argument ownership statically
+unambiguous: only a most-derived class supplies them, and ordinary
+`super.Base(...)` calls never forward them. A thrown exception during
+virtual-base initialization fails construction and suppresses the partial
+object's destructor chain.
 
 Multiple direct non-virtual bases are distinct subobjects in declared order.
 All qualified paths to a shared virtual root, such as

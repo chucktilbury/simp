@@ -70,7 +70,9 @@ void dumpStatement(const Statement& statement, std::ostream& output, int depth) 
     case StatementKind::Return: output << "Return\n"; break;
     case StatementKind::Expression: output << "Expression statement\n"; break;
     case StatementKind::SuperConstructorCall:
-        output << "Super constructor [" << statement.name << "]\n";
+        output << (statement.virtualBaseInitializer ? "Super virtual constructor [" :
+                                                       "Super constructor [")
+               << statement.name << "]\n";
         break;
     case StatementKind::Raise: output << "Raise\n"; break;
     case StatementKind::Try: output << "Try\n"; break;

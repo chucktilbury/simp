@@ -41,6 +41,7 @@ struct Statement {
     std::string declaredType;
     std::unique_ptr<Expression> target;
     std::vector<std::unique_ptr<Expression>> expressions;
+    bool virtualBaseInitializer = false;
     std::vector<Statement> body;
     std::vector<Statement> alternate;
     std::vector<Statement> cleanup;

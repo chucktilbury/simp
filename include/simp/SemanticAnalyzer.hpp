@@ -41,6 +41,7 @@ private:
                                         const std::string& name) const;
     std::size_t countMethods(const ClassDeclaration& declaration,
                              const std::string& name) const;
+    std::vector<std::string> virtualBaseNames(const ClassDeclaration& declaration) const;
     std::size_t accessibleMemberCount(const ClassDeclaration& declaration,
                                       const std::string& name, bool method) const;
     bool resolveBaseQualifier(const Expression& receiver, const Expression*& root,

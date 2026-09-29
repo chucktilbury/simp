@@ -141,6 +141,18 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                 throw DiagnosticError(expression.location,
                                       "class '" + owner->name + "' has no constructor");
             }
+            for (const auto& baseName : virtualBaseNames(*owner)) {
+                const auto* base = findClass(baseName, expression.location);
+                for (const auto& method : base->methods) {
+                    if (method.constructor && !method.parameters.empty()) {
+                        throw DiagnosticError(
+                            expression.location,
+                            "class '" + owner->name +
+                                "' needs an explicit constructor to initialize virtual base '" +
+                                baseName + "'");
+                    }
+                }
+            }
             return owner->name;
         }
         if (constructor->parameters.size() != expression.arguments.size()) {
@@ -155,6 +167,30 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                 throw DiagnosticError(expression.arguments[index]->location,
                                       "constructor argument type does not match parameter '" +
                                           constructor->parameters[index].name + "'");
+            }
+        }
+        const auto virtualBases = virtualBaseNames(*owner);
+        for (const auto& baseName : virtualBases) {
+            const auto* base = findClass(baseName, expression.location);
+            const MethodDeclaration* baseConstructor = nullptr;
+            for (const auto& method : base->methods) {
+                if (method.constructor) {
+                    baseConstructor = &method;
+                    break;
+                }
+            }
+            if (baseConstructor == nullptr || baseConstructor->parameters.empty()) continue;
+            const bool initialized = std::any_of(
+                constructor->body.begin(), constructor->body.end(),
+                [&baseName](const Statement& statement) {
+                    return statement.kind == StatementKind::SuperConstructorCall &&
+                           statement.virtualBaseInitializer && statement.name == baseName;
+                });
+            if (!initialized) {
+                throw DiagnosticError(
+                    expression.location,
+                    "most-derived constructor must initialize virtual base '" + baseName +
+                        "' with super.virtual " + baseName + "(...)");
             }
         }
         return owner->name;

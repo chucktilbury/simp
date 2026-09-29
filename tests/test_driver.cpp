@@ -164,6 +164,19 @@ int main() {
              require(output.str().find("Super constructor [Base]") != std::string::npos,
                      "explicit base constructor missing from AST");
          }},
+        {"virtual base initializer syntax", [] {
+             const auto program = parse(
+                 "class Root { Root(int value) {} }\n"
+                 "class Leaf : virtual Root {\n"
+                 "  Leaf(int value) { super.virtual Root(value) }\n"
+                 "}\n"
+                 "start { Leaf leaf = Leaf(1) }");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             require(output.str().find("Super virtual constructor [Root]") !=
+                         std::string::npos,
+                     "virtual base initializer missing from AST");
+         }},
         {"virtual base syntax is retained in AST", [] {
              const auto program = parse(
                  "class Root {}\n"
@@ -341,9 +354,45 @@ int main() {
         {"functional virtual-base construction and shared identity", [] {
              runFunctional("positive_virtual_base_inheritance.simp");
          }},
+        {"functional parameterized virtual-base arguments in a diamond", [] {
+             runFunctional("positive_parameterized_virtual_base.simp");
+         }},
         {"functional parameterized virtual base rejected", [] {
              runFunctional("negative_virtual_base_constructor_args.simp",
-                           "virtual base 'Root' constructor must take no arguments");
+                           "most-derived constructor must initialize virtual base 'Root'");
+         }},
+        {"functional missing virtual-base initializer rejected", [] {
+             runFunctional("negative_virtual_base_missing_initializer.simp",
+                           "most-derived constructor must initialize virtual base 'Root'");
+         }},
+        {"functional duplicate virtual-base initializer rejected", [] {
+             runFunctional("negative_virtual_base_duplicate_initializer.simp",
+                           "virtual base 'Root' is initialized more than once");
+         }},
+        {"functional virtual-base initializer type checked", [] {
+             runFunctional("negative_virtual_base_initializer_type.simp",
+                           "virtual base constructor argument type does not match");
+         }},
+        {"functional virtual-base initializer arity checked", [] {
+             runFunctional("negative_virtual_base_initializer_arity.simp",
+                           "virtual base constructor argument count does not match");
+         }},
+        {"functional virtual-base initializer order checked", [] {
+             runFunctional("negative_virtual_base_initializer_order.simp",
+                           "virtual base initializers must precede direct base");
+         }},
+        {"functional intermediate virtual-base initializer rejected", [] {
+             runFunctional("negative_virtual_base_initializer_in_intermediate.simp",
+                           "virtual base initializers are only allowed in most-derived classes");
+         }},
+        {"virtual-base initializer rejected outside constructors", [] {
+             expectDiagnostic(
+                 "class Root { Root(int value) {} }\n"
+                 "class Leaf : virtual Root {\n"
+                 "  void method() { super.virtual Root(1) }\n"
+                 "}\n"
+                 "start {}",
+                 "super initializers must be direct leading constructor statements");
          }},
         {"functional non-root virtual base rejected", [] {
              runFunctional("negative_virtual_base_nonroot.simp",
@@ -351,7 +400,7 @@ int main() {
          }},
         {"functional explicit virtual-base constructor call rejected", [] {
              runFunctional("negative_virtual_base_explicit_super.simp",
-                           "virtual base constructors are initialized automatically");
+                           "virtual base constructors must use super.virtual");
          }},
          {"functional exception binding is read-only", [] {
               runFunctional("negative_exception_binding_assignment.simp",

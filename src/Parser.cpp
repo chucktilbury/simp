@@ -228,6 +228,7 @@ Statement Parser::parseSuperConstructorCall() {
     statement.kind = StatementKind::SuperConstructorCall;
     statement.location = keyword.location;
     consume(TokenType::Dot, "'.' after super");
+    statement.virtualBaseInitializer = match(TokenType::Virtual);
     statement.name = consume(TokenType::Identifier, "base class name after super.").text;
     consume(TokenType::LeftParen, "'(' after base class name");
     if (!check(TokenType::RightParen)) {

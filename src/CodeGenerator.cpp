@@ -230,20 +230,22 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         if (constructor != nullptr || !virtualConstructors.empty()) {
             instructions_ += "  call void @simp_gc_begin_construction(ptr " + object + ")\n";
         }
-        for (const auto& virtualConstructor : virtualConstructors) {
-            const auto virtualAddress = newTemporary();
-            instructions_ += "  " + virtualAddress + " = getelementptr inbounds %Class." +
-                             owner->name + ", ptr " + object + ", i32 0, i32 " +
-                             std::to_string(virtualBaseStorageIndex(
-                                 *owner, virtualConstructor.first->name)) +
-                             "\n  call void " +
-                             methodSymbol(virtualConstructor.first->name,
-                                          virtualConstructor.second) +
-                             "(ptr " + virtualAddress + ")\n";
+        if (constructor == nullptr) {
+            for (const auto& virtualConstructor : virtualConstructors) {
+                const auto virtualAddress = newTemporary();
+                instructions_ += "  " + virtualAddress + " = getelementptr inbounds %Class." +
+                                 owner->name + ", ptr " + object + ", i32 0, i32 " +
+                                 std::to_string(virtualBaseStorageIndex(
+                                     *owner, virtualConstructor.first->name)) +
+                                 "\n  call void " +
+                                 methodSymbol(virtualConstructor.first->name,
+                                              virtualConstructor.second) +
+                                 "(ptr " + virtualAddress + ", i1 false)\n";
+            }
         }
         for (const auto& method : owner->methods) {
             if (!method.constructor) continue;
-            std::string arguments = "ptr " + object;
+            std::string arguments = "ptr " + object + ", i1 true";
             for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
                 const auto value = emitExpression(*expression.arguments[index],
                                                   method.parameters[index].type);

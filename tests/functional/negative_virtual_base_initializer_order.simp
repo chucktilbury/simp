@@ -8,6 +8,12 @@ class Left : virtual Root {
     }
 }
 
+class Leaf : Left {
+    Leaf() {
+        super.Left()
+        super.virtual Root(1)
+    }
+}
+
 start {
-    Left left = Left()
 }

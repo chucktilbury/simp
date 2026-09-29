@@ -175,6 +175,9 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
     scopes_.emplace_back();
 
     std::string signature = "ptr %this";
+    if (method.constructor) {
+        signature += ", i1 %simp.initialize.virtual.bases";
+    }
     const auto thisPointer = "%v" + std::to_string(nextVariable_++);
     entryAllocas_ += "  " + thisPointer + " = alloca ptr\n";
     rootSlots_.push_back(thisPointer);
@@ -195,6 +198,58 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
     const auto symbol = symbolOverride.empty() ? methodSymbol(owner.name, method.name)
                                                : symbolOverride;
     const auto returnType = llvmType(method.returnType);
+    if (method.constructor) {
+        const auto virtualBases = virtualBaseNames(owner);
+        if (!virtualBases.empty()) {
+            const auto initializeLabel = freshLabel("virtual.initialize");
+            const auto endLabel = freshLabel("virtual.initialize.end");
+            instructions_ += "  br i1 %simp.initialize.virtual.bases, label %" +
+                             initializeLabel + ", label %" + endLabel + "\n" +
+                             initializeLabel + ":\n";
+            for (const auto& baseName : virtualBases) {
+                const auto* base = classes_.at(baseName);
+                const MethodDeclaration* constructor = nullptr;
+                for (const auto& candidate : base->methods) {
+                    if (candidate.constructor) {
+                        constructor = &candidate;
+                        break;
+                    }
+                }
+                if (constructor == nullptr) continue;
+                const Statement* initializer = nullptr;
+                for (const auto& candidate : method.body) {
+                    if (candidate.kind == StatementKind::SuperConstructorCall &&
+                        candidate.virtualBaseInitializer && candidate.name == baseName) {
+                        initializer = &candidate;
+                        break;
+                    }
+                }
+                const auto basePointer = newTemporary();
+                instructions_ += "  " + basePointer +
+                                 " = getelementptr inbounds %Class." + owner.name +
+                                 ", ptr %this, i32 0, i32 " +
+                                 std::to_string(virtualBaseStorageIndex(owner, baseName)) +
+                                 "\n";
+                std::string arguments = "ptr " + basePointer + ", i1 false";
+                if (initializer != nullptr) {
+                    for (std::size_t index = 0;
+                         index < initializer->expressions.size(); ++index) {
+                        const auto value = emitExpression(
+                            *initializer->expressions[index],
+                            constructor->parameters[index].type);
+                        const auto converted = convertObjectValue(
+                            value, constructor->parameters[index].type,
+                            initializer->expressions[index]->location);
+                        arguments += ", " + llvmType(constructor->parameters[index].type) +
+                                     " " + converted.operand;
+                    }
+                }
+                instructions_ += "  call void " + methodSymbol(baseName, constructor->name) +
+                                 "(" + arguments + ")\n";
+            }
+            instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
+        }
+    }
     emitStatements(method.body);
     if (!blockTerminated_) {
         emitRootFramePop();
