@@ -1,0 +1,7 @@
+start {
+  try {
+    raise "original source"
+  } finally {
+    print("finally before rethrow")
+  }
+}

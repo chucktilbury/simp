@@ -45,10 +45,12 @@ void simp_gc_pop_or_abort(SimpRootFrame *frame);
 
 /* Collect before allocating; the returned object's header and fields are zeroed. */
 void *simp_gc_alloc(const SimpClassMeta *metadata);
-void simp_gc_require_alive(void *object);
+void simp_gc_require_alive(void *object, const char *file, uint64_t file_length,
+                           uint64_t line, uint64_t column);
 void simp_gc_begin_construction(void *object);
 void simp_gc_end_construction(void *object);
-void simp_gc_begin_destroy(void *object);
+void simp_gc_begin_destroy(void *object, const char *file, uint64_t file_length,
+                            uint64_t line, uint64_t column);
 void simp_gc_end_destroy(void *object);
 void simp_gc_collect(void);
 size_t simp_gc_heap_count(void);
@@ -60,7 +62,10 @@ void *simp_exception_frame_buffer(void *frame);
 void simp_exception_push(void *frame);
 void simp_exception_pop(void *frame);
 void simp_exception_clear(void *frame);
-void simp_exception_raise(const char *message, uint64_t length);
+const char *simp_exception_take_message(void *frame);
+uint64_t simp_exception_message_length(void *frame);
+void simp_exception_raise(const char *message, uint64_t length, const char *file,
+                          uint64_t file_length, uint64_t line, uint64_t column);
 void simp_exception_rethrow(void *frame);
 
 #ifdef __cplusplus

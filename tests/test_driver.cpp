@@ -187,6 +187,13 @@ int main() {
                          output.str().find("Finally") != std::string::npos,
                      "exception constructs missing from AST");
          }},
+        {"except may bind a read-only exception string", [] {
+             const auto program = parse(
+                 "start {\n try { raise \"message\" } except error { print(error) }\n}");
+             require(program.statements.front().hasExceptionBinding &&
+                         program.statements.front().name == "error",
+                     "except binding missing from AST");
+         }},
         {"try requires a handler or finally", [] {
              expectDiagnostic("start { try { print(1) } }",
                               "requires an 'except' or 'finally' block");
@@ -309,6 +316,10 @@ int main() {
              runFunctional("negative_adjacent_statements.simp",
                            "expected newline after statement");
          }},
+         {"functional exception binding is read-only", [] {
+              runFunctional("negative_exception_binding_assignment.simp",
+                            "exception binding 'message' is read-only");
+          }},
         {"functional missing start", [] {
              runFunctional("negative_missing_start.simp", "exactly one top-level 'start' block");
          }},

@@ -26,11 +26,17 @@ std::string CodeGenerator::newTemporary() {
     return "%t" + std::to_string(nextTemporary_++);
 }
 
-CodeGenerator::Value CodeGenerator::rootObjectValue(Value value) {
+CodeGenerator::Value CodeGenerator::rootObjectValue(Value value,
+                                                     const SourceLocation& location) {
     if (classes_.find(value.type) == classes_.end() || value.operand == "null") {
         return value;
     }
-    instructions_ += "  call void @simp_gc_require_alive(ptr " + value.operand + ")\n";
+    const auto file = internString(location.file);
+    instructions_ += "  call void @simp_gc_require_alive(ptr " + value.operand +
+                     ", ptr " + file + ", i64 " +
+                     std::to_string(location.file.size()) + ", i64 " +
+                     std::to_string(location.line) + ", i64 " +
+                     std::to_string(location.column) + ")\n";
     const auto slot = "%root." + std::to_string(nextRoot_++);
     entryAllocas_ += "  " + slot + " = alloca ptr\n";
     instructions_ += "  store ptr " + value.operand + ", ptr " + slot + "\n";
@@ -54,8 +60,13 @@ std::string CodeGenerator::methodSymbol(const std::string& className,
     return "@simp." + className + "." + methodName;
 }
 
-void CodeGenerator::emitNullCheck(const std::string& pointer) {
-    instructions_ += "  call void @simp.require_nonnull(ptr " + pointer + ")\n";
+void CodeGenerator::emitNullCheck(const std::string& pointer,
+                                 const SourceLocation& location) {
+    const auto file = internString(location.file);
+    instructions_ += "  call void @simp.require_nonnull(ptr " + pointer + ", ptr " +
+                     file + ", i64 " + std::to_string(location.file.size()) +
+                     ", i64 " + std::to_string(location.line) + ", i64 " +
+                     std::to_string(location.column) + ")\n";
 }
 
 CodeGenerator::Value CodeGenerator::emitIntegerExpression(const Expression& expression) {
@@ -122,7 +133,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto result = newTemporary();
         instructions_ += "  " + result + " = load " + llvmType(binding.type) + ", ptr " +
                          pointer + "\n";
-        return rootObjectValue({binding.type, result});
+        return rootObjectValue({binding.type, result}, expression.location);
     }
     case ExpressionKind::Member: {
         const Expression* root = nullptr;
@@ -134,7 +145,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         if (classes_.find(receiver.type) == classes_.end()) {
             throw DiagnosticError(expression.location, "member receiver is not an object");
         }
-        emitNullCheck(receiver.operand);
+        emitNullCheck(receiver.operand, expression.location);
         if (!qualified) owner = classes_.at(receiver.type);
         std::size_t fieldIndex = 0;
         const auto* field = findField(*owner, expression.value, fieldIndex);
@@ -152,7 +163,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto result = newTemporary();
         instructions_ += "  " + result + " = load " + llvmType(field->type) + ", ptr " +
                          address + "\n";
-        return rootObjectValue({field->type, result});
+        return rootObjectValue({field->type, result}, expression.location);
     }
     case ExpressionKind::ConstructorCall: {
         const auto found = classes_.find(expression.value);
@@ -163,8 +174,8 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto object = newTemporary();
         instructions_ += "  " + object + " = call ptr @simp_gc_alloc(ptr @.simp.class.meta." +
                          owner->name + ")\n";
-        rootObjectValue({owner->name, object});
-        emitNullCheck(object);
+        rootObjectValue({owner->name, object}, expression.location);
+        emitNullCheck(object, expression.location);
         const MethodDeclaration* constructor = nullptr;
         for (const auto& method : owner->methods) {
             if (method.constructor) {
@@ -204,28 +215,48 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         if (found == classes_.end()) {
             throw DiagnosticError(target.location, "method receiver is not an object");
         }
-        emitNullCheck(receiver.operand);
+        emitNullCheck(receiver.operand, target.location);
         if (!qualified) owner = found->second;
         if (target.value == "destroy") {
             if (qualified) {
                 throw DiagnosticError(target.location,
                                       "qualified destructor calls are not supported");
             }
-            const MethodDeclaration* destructor = nullptr;
-            for (const auto& candidate : owner->methods) {
-                if (candidate.destructor) {
-                    destructor = &candidate;
-                    break;
+            const auto findDestructor = [this](const auto& self,
+                                               const ClassDeclaration& declaration)
+                -> const MethodDeclaration* {
+                for (const auto& candidate : declaration.methods) {
+                    if (candidate.destructor) return &candidate;
                 }
-            }
+                for (const auto& baseName : declaration.baseClassNames) {
+                    const auto base = classes_.find(baseName);
+                    if (base != classes_.end()) {
+                        if (const auto* inherited = self(self, *base->second))
+                            return inherited;
+                    }
+                }
+                return nullptr;
+            };
+            const auto* destructor = findDestructor(findDestructor, *owner);
             if (destructor == nullptr) {
                 throw DiagnosticError(target.location,
                                       "class '" + owner->name + "' has no destructor");
             }
-            instructions_ += "  call void @simp_gc_begin_destroy(ptr " +
-                             receiver.operand + ")\n";
-            instructions_ += "  call void " + methodSymbol(owner->name, destructor->name) +
-                             "(ptr " + receiver.operand + ")\n";
+            const auto file = internString(target.location.file);
+            instructions_ += "  call void @simp_gc_begin_destroy(ptr " + receiver.operand +
+                             ", ptr " + file + ", i64 " +
+                             std::to_string(target.location.file.size()) + ", i64 " +
+                             std::to_string(target.location.line) + ", i64 " +
+                             std::to_string(target.location.column) + ")\n";
+            const auto metadata = newTemporary();
+            const auto finalizerAddress = newTemporary();
+            const auto finalizer = newTemporary();
+            instructions_ += "  " + metadata + " = load ptr, ptr " + receiver.operand + "\n"
+                             "  " + finalizerAddress +
+                             " = getelementptr inbounds %SimpleClassMeta, ptr " + metadata +
+                             ", i32 0, i32 8\n"
+                             "  " + finalizer + " = load ptr, ptr " + finalizerAddress + "\n"
+                             "  call void " + finalizer + "(ptr " + receiver.operand + ")\n";
             instructions_ += "  call void @simp_gc_end_destroy(ptr " +
                              receiver.operand + ")\n";
             return {"void", ""};
@@ -265,7 +296,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto result = newTemporary();
         instructions_ += "  " + result + " = call " + llvmType(method->returnType) + " " +
                          function + "(" + arguments + ")\n";
-        return rootObjectValue({method->returnType, result});
+        return rootObjectValue({method->returnType, result}, expression.location);
     }
     case ExpressionKind::Unary: {
         const auto operand = emitIntegerExpression(*expression.left);
@@ -299,7 +330,11 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              "  br i1 " + zero + ", label %" + failureLabel +
                              ", label %" + successLabel + "\n"
                              + failureLabel + ":\n"
-                             "  call void @simp_exception_raise(ptr @.simp.division.message, i64 16)\n"
+                             "  call void @simp_exception_raise(ptr @.simp.division.message, i64 16, ptr " +
+                             internString(expression.location.file) + ", i64 " +
+                             std::to_string(expression.location.file.size()) + ", i64 " +
+                             std::to_string(expression.location.line) + ", i64 " +
+                             std::to_string(expression.location.column) + ")\n"
                              "  unreachable\n"
                              + successLabel + ":\n";
             const char* instruction = operation == "/" ? "sdiv" : "srem";

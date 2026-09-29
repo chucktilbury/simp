@@ -81,9 +81,18 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         const auto objectSize = "ptrtoint (ptr getelementptr (%Class." + owner.name +
                                ", ptr null, i32 1) to i64)";
         const auto offsetPointer = referenceFields.empty() ? "null" : offsets;
-        const auto hasDestructor = std::any_of(
-            owner.methods.begin(), owner.methods.end(),
-            [](const MethodDeclaration& method) { return method.destructor; });
+        const auto containsDestructor = [this](const auto& self,
+                                               const ClassDeclaration& declaration) -> bool {
+            if (std::any_of(declaration.methods.begin(), declaration.methods.end(),
+                            [](const MethodDeclaration& method) { return method.destructor; }))
+                return true;
+            for (const auto& baseName : declaration.baseClassNames) {
+                const auto base = classes_.find(baseName);
+                if (base != classes_.end() && self(self, *base->second)) return true;
+            }
+            return false;
+        };
+        const auto hasDestructor = containsDestructor(containsDestructor, owner);
         metadataGlobals_ += "@.simp.class.meta." + owner.name +
                             " = private constant %SimpleClassMeta { ptr " + className +
                             ", i64 " + std::to_string(owner.name.size()) + ", i64 " +
@@ -97,8 +106,13 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     }
 }
 
-void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclaration& method) {
-    currentClass_ = &owner;
+void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclaration& method,
+                               const ClassDeclaration* layoutOwner,
+                               const std::string& symbolOverride,
+                               std::size_t fieldOffset) {
+    currentClass_ = layoutOwner == nullptr ? &owner : layoutOwner;
+    currentFieldClass_ = &owner;
+    currentFieldOffset_ = fieldOffset;
     currentMethod_ = &method;
     scopes_.clear();
     scopes_.emplace_back();
@@ -115,7 +129,8 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
     for (const auto& field : owner.fields) {
         std::size_t index = 0;
         (void)findField(owner, field.name, index);
-        scopes_.front().emplace(field.name, Binding{field.type, "%this", index, true});
+        scopes_.front().emplace(field.name,
+                                Binding{field.type, "%this", index, true, false});
     }
     scopes_.emplace_back();
 
@@ -136,7 +151,8 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
         functionPrologue_ += "  store " + llvmType(parameter.type) + " " + argument +
                              ", ptr " + pointer + "\n";
     }
-    const auto symbol = methodSymbol(owner.name, method.name);
+    const auto symbol = symbolOverride.empty() ? methodSymbol(owner.name, method.name)
+                                               : symbolOverride;
     const auto returnType = llvmType(method.returnType);
     emitStatements(method.body);
     if (!blockTerminated_) {
@@ -148,6 +164,8 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
                     ") {\nentry:\n" + entryAllocas_ + rootFrameInitialization() +
                     functionPrologue_ + rootFramePush() + body + "}\n\n";
     currentClass_ = nullptr;
+    currentFieldClass_ = nullptr;
+    currentFieldOffset_ = 0;
     currentMethod_ = nullptr;
 }
 
@@ -158,20 +176,113 @@ void CodeGenerator::emitClassMethods(const Program& program) {
         for (const auto& method : owner.methods) {
             emitMethod(owner, method);
             functions += instructions_;
-            if (method.destructor) {
-                finalizers += "define void @simp.finalize." + owner.name +
-                              "(ptr %object) {\nentry:\n"
-                              "  call void " + methodSymbol(owner.name, method.name) +
-                              "(ptr %object)\n"
-                              "  ret void\n}\n\n";
+        }
+    }
+    for (const auto& dynamicOwner : program.classes) {
+        struct DestructorCall {
+            const ClassDeclaration* owner;
+            const MethodDeclaration* method;
+            std::vector<std::string> path;
+        };
+        std::vector<DestructorCall> chain;
+        const auto collect = [this, &chain](const auto& self,
+                                            const ClassDeclaration& declaration,
+                                            std::vector<std::string> path) -> void {
+            for (const auto& method : declaration.methods) {
+                if (method.destructor) chain.push_back({&declaration, &method, path});
+            }
+            for (auto base = declaration.baseClassNames.rbegin();
+                 base != declaration.baseClassNames.rend(); ++base) {
+                const auto found = classes_.find(*base);
+                if (found == classes_.end()) continue;
+                auto basePath = path;
+                basePath.push_back(*base);
+                self(self, *found->second, std::move(basePath));
+            }
+        };
+        collect(collect, dynamicOwner, {});
+        if (chain.empty()) continue;
+        for (std::size_t index = 0; index < chain.size(); ++index) {
+            const auto& call = chain[index];
+            const auto symbol = "@simp.destroy." + dynamicOwner.name + "." +
+                                std::to_string(index) + "." + call.owner->name;
+            emitMethod(*call.owner, *call.method, &dynamicOwner, symbol,
+                       basePathFieldOffset(dynamicOwner, call.path));
+            functions += instructions_;
+        }
+        std::string finalizerBlocks;
+        std::string finalizerAllocas;
+        for (std::size_t index = 0; index < chain.size(); ++index) {
+            const auto suffix = dynamicOwner.name + "." + std::to_string(index);
+            const auto size = "%simp.destroy.size." + suffix;
+            const auto frame = "%simp.destroy.frame." + suffix;
+            const auto buffer = "%simp.destroy.buffer." + suffix;
+            const auto result = "%simp.destroy.result." + suffix;
+            const auto normal = "%simp.destroy.normal." + suffix;
+            const auto invoke = "destroy.invoke." + suffix;
+            const auto caught = "destroy.caught." + suffix;
+            const auto keep = "destroy.keep." + suffix;
+            const auto discard = "destroy.discard." + suffix;
+            const auto next = "destroy.next." + suffix;
+            finalizerAllocas += "  " + size + " = call i64 @simp_exception_frame_size()\n"
+                                "  " + frame + " = alloca i8, i64 " + size + ", align 16\n";
+            finalizerBlocks += invoke + ":\n"
+                               "  call void @simp_exception_frame_init(ptr " + frame + ")\n"
+                               "  " + buffer + " = call ptr @simp_exception_frame_buffer(ptr " +
+                               frame + ")\n"
+                               "  " + result + " = call i32 @setjmp(ptr " + buffer + ") #0\n"
+                               "  " + normal + " = icmp eq i32 " + result + ", 0\n"
+                               "  br i1 " + normal + ", label %" + invoke + ".body, label %" +
+                               caught + "\n"
+                               + invoke + ".body:\n"
+                               "  call void @simp_exception_push(ptr " + frame + ")\n"
+                               "  call void @simp.destroy." + dynamicOwner.name + "." +
+                               std::to_string(index) + "." + chain[index].owner->name +
+                               "(ptr %object)\n"
+                               "  call void @simp_exception_pop(ptr " + frame + ")\n"
+                               "  br label %" + next + "\n"
+                               + caught + ":\n"
+                               "  %simp.already.failed." + suffix +
+                               " = load i1, ptr %simp.has.exception\n"
+                               "  br i1 %simp.already.failed." + suffix + ", label %" + discard +
+                               ", label %" + keep + "\n"
+                               + keep + ":\n"
+                               "  store ptr " + frame + ", ptr %simp.first.exception\n"
+                               "  store i1 true, ptr %simp.has.exception\n"
+                               "  br label %" + next + "\n"
+                               + discard + ":\n"
+                               "  call void @simp_exception_clear(ptr " + frame + ")\n"
+                               "  br label %" + next + "\n"
+                               + next + ":\n";
+            if (index + 1 < chain.size()) {
+                finalizerBlocks += "  br label %destroy.invoke." + dynamicOwner.name + "." +
+                                   std::to_string(index + 1) + "\n";
             }
         }
+        finalizers += "define void @simp.finalize." + dynamicOwner.name +
+                      "(ptr %object) {\nentry:\n"
+                      "  %simp.has.exception = alloca i1\n"
+                      "  %simp.first.exception = alloca ptr\n"
+                      "  store i1 false, ptr %simp.has.exception\n"
+                      "  store ptr null, ptr %simp.first.exception\n" +
+                      finalizerAllocas + "  br label %destroy.invoke." +
+                      dynamicOwner.name + ".0\n" + finalizerBlocks +
+                      "  %simp.any.exception = load i1, ptr %simp.has.exception\n"
+                      "  br i1 %simp.any.exception, label %destroy.rethrow, label %destroy.done\n"
+                      "destroy.rethrow:\n"
+                      "  %simp.saved.frame = load ptr, ptr %simp.first.exception\n"
+                      "  call void @simp_exception_rethrow(ptr %simp.saved.frame)\n"
+                      "  unreachable\n"
+                      "destroy.done:\n"
+                      "  ret void\n}\n\n";
     }
     instructions_ = std::move(functions) + std::move(finalizers);
 }
 
 void CodeGenerator::emitMain(const Program& program) {
     currentClass_ = nullptr;
+    currentFieldClass_ = nullptr;
+    currentFieldOffset_ = 0;
     currentMethod_ = nullptr;
     scopes_.clear();
     scopes_.emplace_back();
@@ -220,10 +331,10 @@ std::string CodeGenerator::generate(const Program& program) {
            << "declare void @simp_gc_push_or_abort(ptr, ptr, i64)\n"
            << "declare void @simp_gc_pop_or_abort(ptr)\n"
            << "declare ptr @simp_gc_alloc(ptr)\n"
-           << "declare void @simp_gc_require_alive(ptr)\n"
+           << "declare void @simp_gc_require_alive(ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_begin_construction(ptr)\n"
            << "declare void @simp_gc_end_construction(ptr)\n"
-           << "declare void @simp_gc_begin_destroy(ptr)\n"
+           << "declare void @simp_gc_begin_destroy(ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_end_destroy(ptr)\n"
            << "declare i64 @simp_exception_frame_size()\n"
            << "declare void @simp_exception_frame_init(ptr)\n"
@@ -231,16 +342,18 @@ std::string CodeGenerator::generate(const Program& program) {
            << "declare void @simp_exception_push(ptr)\n"
            << "declare void @simp_exception_pop(ptr)\n"
            << "declare void @simp_exception_clear(ptr)\n"
-           << "declare void @simp_exception_raise(ptr, i64) noreturn\n"
+           << "declare ptr @simp_exception_take_message(ptr)\n"
+           << "declare i64 @simp_exception_message_length(ptr)\n"
+           << "declare void @simp_exception_raise(ptr, i64, ptr, i64, i64, i64) noreturn\n"
            << "declare void @simp_exception_rethrow(ptr) noreturn\n"
            << "declare i32 @setjmp(ptr) returns_twice\n"
            << "declare void @abort()\n\n"
-           << "define void @simp.require_nonnull(ptr %object) {\n"
+           << "define void @simp.require_nonnull(ptr %object, ptr %file, i64 %file_length, i64 %line, i64 %column) {\n"
            << "entry:\n"
            << "  %isnull = icmp eq ptr %object, null\n"
            << "  br i1 %isnull, label %fail, label %ok\n"
            << "fail:\n"
-           << "  call void @simp_exception_raise(ptr @.simp.null.message, i64 14)\n"
+           << "  call void @simp_exception_raise(ptr @.simp.null.message, i64 14, ptr %file, i64 %file_length, i64 %line, i64 %column)\n"
            << "  unreachable\n"
            << "ok:\n"
            << "  ret void\n"

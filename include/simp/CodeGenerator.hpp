@@ -25,6 +25,7 @@ private:
         std::string pointer;
         std::size_t fieldIndex = 0;
         bool field = false;
+        bool readOnly = false;
     };
     struct Value {
         std::string type;
@@ -34,14 +35,17 @@ private:
 
     void emitClassTypesAndMetadata(const Program& program);
     void emitClassMethods(const Program& program);
-    void emitMethod(const ClassDeclaration& owner, const MethodDeclaration& method);
+    void emitMethod(const ClassDeclaration& owner, const MethodDeclaration& method,
+                    const ClassDeclaration* layoutOwner = nullptr,
+                    const std::string& symbolOverride = {},
+                    std::size_t fieldOffset = 0);
     void emitMain(const Program& program);
     void emitStatements(const std::vector<Statement>& statements);
     void emitStatement(const Statement& statement);
     void emitTry(const Statement& statement);
     Value emitExpression(const Expression& expression, const std::string& expectedType = {});
     Value emitIntegerExpression(const Expression& expression);
-    Value rootObjectValue(Value value);
+    Value rootObjectValue(Value value, const SourceLocation& location);
     std::string rootFrameInitialization() const;
     std::string rootFramePush() const;
     void emitRootFramePop();
@@ -67,13 +71,15 @@ private:
     std::string internString(const std::string& bytes);
     void emitStringBytes(const std::string& bytes);
     void emitPrint(const Statement& statement);
-    void emitNullCheck(const std::string& pointer);
+    void emitNullCheck(const std::string& pointer, const SourceLocation& location);
     [[noreturn]] void unsupported(const SourceLocation& location, const std::string& feature) const;
 
     std::string targetTriple_;
     std::unordered_map<std::string, const ClassDeclaration*> classes_;
     const ClassDeclaration* currentClass_ = nullptr;
+    const ClassDeclaration* currentFieldClass_ = nullptr;
     const MethodDeclaration* currentMethod_ = nullptr;
+    std::size_t currentFieldOffset_ = 0;
     std::vector<Scope> scopes_;
     std::string instructions_;
     std::string entryAllocas_;

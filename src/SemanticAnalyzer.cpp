@@ -85,18 +85,6 @@ void SemanticAnalyzer::analyze(const Program& program) {
                 pending.push_back(findClass(baseName, ancestor->baseLocations[index]));
             }
         }
-        const bool declaresDestructor = std::any_of(
-            declaration.methods.begin(), declaration.methods.end(),
-            [](const MethodDeclaration& method) { return method.destructor; });
-        if (declaresDestructor &&
-            (!declaration.baseClassNames.empty() ||
-             std::any_of(classes_.begin(), classes_.end(), [this, &declaration](const auto& entry) {
-                 return entry.first != declaration.name &&
-                        isSubclassOf(entry.first, declaration.name);
-             }))) {
-            throw DiagnosticError(declaration.location,
-                                  "destructors in inheritance hierarchies are not supported");
-        }
         for (const auto& field : declaration.fields) {
             validateType(field.type, field.location);
         }

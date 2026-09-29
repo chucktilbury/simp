@@ -44,7 +44,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
             const bool qualified = resolveBaseQualifier(*statement.target->left, root, owner,
                                                         basePath);
             const auto receiver = emitExpression(qualified ? *root : *statement.target->left);
-            emitNullCheck(receiver.operand);
+            emitNullCheck(receiver.operand, statement.target->location);
             if (!qualified) owner = classes_.at(receiver.type);
             std::size_t fieldIndex = 0;
             (void)findField(*owner, statement.target->value, fieldIndex);
@@ -163,12 +163,16 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         const auto value = emitExpression(*statement.expressions.front(), "string");
         const auto data = newTemporary();
         const auto length = newTemporary();
+        const auto file = internString(statement.location.file);
         instructions_ += "  " + data + " = extractvalue %SimpleString " + value.operand +
                          ", 0\n"
                          "  " + length + " = extractvalue %SimpleString " + value.operand +
                          ", 1\n"
                          "  call void @simp_exception_raise(ptr " + data + ", i64 " + length +
-                         ")\n"
+                         ", ptr " + file + ", i64 " +
+                         std::to_string(statement.location.file.size()) + ", i64 " +
+                         std::to_string(statement.location.line) + ", i64 " +
+                         std::to_string(statement.location.column) + ")\n"
                          "  unreachable\n";
         blockTerminated_ = true;
         return;

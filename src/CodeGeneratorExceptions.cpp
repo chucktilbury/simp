@@ -42,8 +42,29 @@ void CodeGenerator::emitTry(const Statement& statement) {
     instructions_ += exceptionLabel + ":\n";
     blockTerminated_ = false;
     if (statement.hasAlternate) {
-        instructions_ += "  call void @simp_exception_clear(ptr " + frame + ")\n";
-        if (statement.hasCleanup) {
+        std::string caughtStringSlot;
+        if (statement.hasExceptionBinding) {
+            const auto length = newTemporary();
+            const auto message = newTemporary();
+            const auto stringFirst = newTemporary();
+            const auto stringValue = newTemporary();
+            const auto messageSlot = "%v" + std::to_string(nextVariable_++);
+            entryAllocas_ += "  " + messageSlot + " = alloca %SimpleString\n";
+            instructions_ += "  " + length +
+                             " = call i64 @simp_exception_message_length(ptr " + frame + ")\n"
+                             "  " + message +
+                             " = call ptr @simp_exception_take_message(ptr " + frame + ")\n"
+                             "  " + stringFirst + " = insertvalue %SimpleString poison, ptr " +
+                             message + ", 0\n"
+                             "  " + stringValue + " = insertvalue %SimpleString " + stringFirst +
+                             ", i64 " + length + ", 1\n"
+                             "  store %SimpleString " + stringValue + ", ptr " +
+                             messageSlot + "\n";
+            caughtStringSlot = messageSlot;
+        } else {
+            instructions_ += "  call void @simp_exception_clear(ptr " + frame + ")\n";
+        }
+        if (statement.hasCleanup || statement.hasExceptionBinding) {
             const auto catchNumber = nextExceptionFrame_++;
             const auto catchFrame = "%simp.exception.frame." + std::to_string(catchNumber);
             const auto catchSize = "%simp.exception.size." + std::to_string(catchNumber);
@@ -69,6 +90,11 @@ void CodeGenerator::emitTry(const Statement& statement) {
                              + catchBodyLabel + ":\n"
                              "  call void @simp_exception_push(ptr " + catchFrame + ")\n";
             scopes_.emplace_back();
+            if (statement.hasExceptionBinding) {
+                scopes_.back().emplace(
+                    statement.name,
+                    Binding{"string", caughtStringSlot, 0, false, true});
+            }
             blockTerminated_ = false;
             emitStatements(statement.alternate);
             const bool catchTerminated = blockTerminated_;
@@ -79,6 +105,9 @@ void CodeGenerator::emitTry(const Statement& statement) {
             }
             instructions_ += catchErrorLabel + ":\n";
             blockTerminated_ = false;
+            if (statement.hasExceptionBinding) {
+                instructions_ += "  call void @simp_exception_clear(ptr " + frame + ")\n";
+            }
             scopes_.emplace_back();
             emitStatements(statement.cleanup);
             scopes_.pop_back();
@@ -90,11 +119,19 @@ void CodeGenerator::emitTry(const Statement& statement) {
             instructions_ += catchDoneLabel + ":\n";
             blockTerminated_ = false;
             scopes_.emplace_back();
-            emitStatements(statement.cleanup);
+            if (statement.hasExceptionBinding) {
+                instructions_ += "  call void @simp_exception_clear(ptr " + frame + ")\n";
+            }
+            if (statement.hasCleanup) emitStatements(statement.cleanup);
             scopes_.pop_back();
             if (!blockTerminated_) instructions_ += "  br label %" + endLabel + "\n";
         } else {
             scopes_.emplace_back();
+            if (statement.hasExceptionBinding) {
+                scopes_.back().emplace(
+                    statement.name,
+                    Binding{"string", caughtStringSlot, 0, false, true});
+            }
             blockTerminated_ = false;
             emitStatements(statement.alternate);
             scopes_.pop_back();

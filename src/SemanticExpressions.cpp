@@ -178,27 +178,27 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                 throw DiagnosticError(target.location,
                                       "qualified destructor calls are not supported");
             }
-            const MethodDeclaration* destructor = nullptr;
-            for (const auto& candidate : owner->methods) {
-                if (candidate.destructor) {
-                    destructor = &candidate;
-                    break;
+            const auto findDestructor = [this](const auto& self,
+                                               const ClassDeclaration& declaration)
+                -> const MethodDeclaration* {
+                for (const auto& candidate : declaration.methods) {
+                    if (candidate.destructor) return &candidate;
                 }
-            }
+                for (const auto& baseName : declaration.baseClassNames) {
+                    const auto base = classes_.find(baseName);
+                    if (base != classes_.end()) {
+                        if (const auto* inherited = self(self, *base->second))
+                            return inherited;
+                    }
+                }
+                return nullptr;
+            };
+            const auto* destructor = findDestructor(findDestructor, *owner);
             if (destructor == nullptr) {
                 throw DiagnosticError(target.location,
                                       "class '" + owner->name + "' has no destructor");
             }
-            const bool hasInheritance = !owner->baseClassNames.empty() ||
-                std::any_of(classes_.begin(), classes_.end(), [this, owner](const auto& entry) {
-                    return entry.first != owner->name &&
-                           isSubclassOf(entry.first, owner->name);
-                });
-            if (hasInheritance) {
-                throw DiagnosticError(target.location,
-                                      "explicit destruction of inherited object types is not supported");
-            }
-            if (!memberAccessible(*owner, destructor->name, true)) {
+            if (accessibleMemberCount(*owner, "destroy", true) == 0) {
                 throw DiagnosticError(target.location,
                                       "destructor for class '" + owner->name +
                                           "' is not accessible here");

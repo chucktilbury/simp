@@ -67,7 +67,6 @@ add_executable(simp main.cpp)
 target_link_libraries(simp PRIVATE simp_frontend)
 target_compile_definitions(simp PRIVATE
     SIMP_CLANG_EXECUTABLE="${SIMP_CLANG_EXECUTABLE}"
-    SIMP_DEFAULT_OUTPUT_DIRECTORY="${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
     SIMP_GC_RUNTIME_LIBRARY="$<TARGET_FILE:simp_runtime>"
     SIMP_TARGET_TRIPLE="${SIMP_TARGET_TRIPLE}"
 )

@@ -50,6 +50,16 @@ set_target_properties(simp_gc_runtime_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
 )
 add_test(NAME simp_gc_runtime_lifecycle COMMAND simp_gc_runtime_tests)
+add_test(NAME simp_default_output_uses_working_directory
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_integer_output.simp"
+        "-DWORKING_DIRECTORY=${CMAKE_CURRENT_BINARY_DIR}/default_output_working_directory"
+        "-DOUTPUT_NAME=positive_integer_output"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/default_output_working_directory/explicit.ll"
+        "-DEXPECTED_OUTPUT=42\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DefaultOutputDirectoryTest.cmake"
+)
 add_test(NAME simp_cli_accepts_program
     COMMAND $<TARGET_FILE:simp> "${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_control_flow.simp" --check-only --dump-ast
 )
@@ -290,12 +300,13 @@ add_test(NAME simp_rejects_finalizer_allocation
         "-DEXPECT_RUNTIME_FAILURE=ON"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
-add_test(NAME simp_rejects_destructor_inheritance
+add_test(NAME simp_compile_and_run_inherited_destructors
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
-        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_destructor_inheritance.simp"
-        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_destructor_inheritance"
-        "-DEXPECTED_DIAGNOSTIC=destructors in inheritance hierarchies are not supported"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_inherited_destructors.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_inherited_destructors"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_inherited_destructors.ll"
+        "-DEXPECTED_OUTPUT=11\n10\n31\n30\n3\n2\n1\n6\n5\n4\nbase after derived error\nderived destructor failure\ncaught repeated destruction\ndiamond\nroot subobject\nroot subobject\n51\n50\n"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_compile_and_run_runtime_exceptions
@@ -315,7 +326,46 @@ add_test(NAME simp_reports_uncaught_runtime_exception
         "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_uncaught_exception.ll"
         "-DEXPECTED_OUTPUT="
         "-DEXPECT_RUNTIME_FAILURE=ON"
-        "-DEXPECT_RUNTIME_DIAGNOSTIC=simp: uncaught runtime exception: uncaught sentinel"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=simp: uncaught runtime exception at .*negative_uncaught_exception.simp:2:3: uncaught sentinel"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_exception_bindings
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_exception_binding.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_exception_binding"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_exception_binding.ll"
+        "-DEXPECTED_OUTPUT=raised detail\nfinally after bound exception\nretained detail\ndivision by zero\nnull reference\nreplacement detail\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_uncaught_runtime_operator_location
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_uncaught_division.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_uncaught_division"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_uncaught_division.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=simp: uncaught runtime exception at .*negative_uncaught_division.simp:2:11: division by zero"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_original_exception_location_after_reraise
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_uncaught_reraise.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_uncaught_reraise"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_uncaught_reraise.ll"
+        "-DEXPECTED_OUTPUT=finally before rethrow\n"
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=simp: uncaught runtime exception at .*negative_uncaught_reraise.simp:3:5: original source"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_writing_exception_binding
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_exception_binding_assignment.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_exception_binding_assignment"
+        "-DEXPECTED_DIAGNOSTIC=exception binding 'message' is read-only"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_private_super_constructor

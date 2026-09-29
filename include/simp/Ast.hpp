@@ -37,6 +37,7 @@ struct Statement {
     StatementKind kind = StatementKind::Block;
     SourceLocation location;
     std::string name;
+    bool hasExceptionBinding = false;
     std::string declaredType;
     std::unique_ptr<Expression> target;
     std::vector<std::unique_ptr<Expression>> expressions;

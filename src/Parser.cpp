@@ -331,6 +331,10 @@ Statement Parser::parseTry() {
     skipNewlines();
     if (match(TokenType::Except)) {
         statement.hasAlternate = true;
+        if (match(TokenType::Identifier)) {
+            statement.name = previous().text;
+            statement.hasExceptionBinding = true;
+        }
         skipNewlines();
         statement.alternate = parseBlock();
         skipNewlines();

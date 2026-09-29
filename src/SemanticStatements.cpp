@@ -80,6 +80,14 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
     }
     case StatementKind::Assignment: {
         const auto targetType = analyzeLValue(*statement.target);
+        if (statement.target->kind == ExpressionKind::Identifier) {
+            const auto index = findSymbolIndex(statement.target->value);
+            if (index != symbols_.size() && symbols_[index].readOnly) {
+                throw DiagnosticError(statement.target->location,
+                                      "exception binding '" + statement.target->value +
+                                          "' is read-only");
+            }
+        }
         const auto valueType = analyzeExpression(*statement.expressions.front());
         if (!isAssignable(targetType, valueType) &&
             !(valueType == "null" && classes_.find(targetType) != classes_.end())) {
@@ -164,6 +172,16 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
         if (statement.hasAlternate) {
             restoreInitializationState(before);
             scopes_.emplace_back();
+            if (statement.hasExceptionBinding) {
+                if (scopes_.back().find(statement.name) != scopes_.back().end()) {
+                    throw DiagnosticError(statement.location,
+                                          "exception binding '" + statement.name +
+                                              "' is already declared in this scope");
+                }
+                const auto index = symbols_.size();
+                symbols_.push_back({statement.name, "string", true, statement.location, true});
+                scopes_.back().emplace(statement.name, index);
+            }
             analyzeStatements(statement.alternate);
             scopes_.pop_back();
             const auto exceptState = initializationState();

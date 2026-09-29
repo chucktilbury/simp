@@ -20,6 +20,7 @@ struct SymbolInfo {
     std::string type;
     bool initialized = false;
     SourceLocation location;
+    bool readOnly = false;
 };
 
 class SemanticAnalyzer {

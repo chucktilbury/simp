@@ -78,6 +78,10 @@ if(NOT run_result EQUAL 0)
             message(FATAL_ERROR
                 "Expected runtime diagnostic '${EXPECT_RUNTIME_DIAGNOSTIC}', got:\n${run_stderr}")
         endif()
+        if(NOT program_output STREQUAL EXPECTED_OUTPUT)
+            message(FATAL_ERROR
+                "Expected output '${EXPECTED_OUTPUT}' before runtime failure, got '${program_output}'")
+        endif()
         return()
     endif()
     message(FATAL_ERROR "Compiled Simple program exited ${run_result}:\n${run_stderr}")

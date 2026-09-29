@@ -101,9 +101,9 @@ CodeGenerator::Binding CodeGenerator::findVariable(const std::string& name,
         const auto found = scope->find(name);
         if (found != scope->end()) return found->second;
     }
-    if (currentClass_ != nullptr) {
+    if (currentFieldClass_ != nullptr) {
         std::size_t index = 0;
-        if (const auto* field = findField(*currentClass_, name, index)) {
+        if (const auto* field = findField(*currentFieldClass_, name, index)) {
             return {field->type, "%this", index, true};
         }
     }
@@ -115,7 +115,8 @@ std::string CodeGenerator::emitAddress(const Binding& binding, const SourceLocat
     const auto pointer = newTemporary();
     const auto classType = "%Class." + currentClass_->name;
     instructions_ += "  " + pointer + " = getelementptr inbounds " + classType +
-                     ", ptr %this, i32 0, i32 " + std::to_string(binding.fieldIndex + 1) + "\n";
+                     ", ptr %this, i32 0, i32 " +
+                     std::to_string(binding.fieldIndex + currentFieldOffset_ + 1) + "\n";
     (void)location;
     return pointer;
 }

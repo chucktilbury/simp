@@ -30,8 +30,17 @@ typedef struct SimpExceptionFrame {
     HeapNode *saved_constructions;
     size_t message_length;
     char *message;
+    size_t file_length;
+    char *file;
+    uint64_t line;
+    uint64_t column;
     int has_exception;
 } SimpExceptionFrame;
+
+typedef struct RetainedExceptionMessage {
+    struct RetainedExceptionMessage *next;
+    char *bytes;
+} RetainedExceptionMessage;
 
 _Static_assert(alignof(SimpExceptionFrame) <= 16,
                "generated exception frames require at most 16-byte alignment");
@@ -44,13 +53,34 @@ static SimpExceptionFrame *active_exception = NULL;
 static size_t object_count = 0;
 static int collecting = 0;
 static int running_destructor = 0;
+static RetainedExceptionMessage *retained_exception_messages = NULL;
+static int retained_message_cleanup_registered = 0;
 
 static HeapNode *find_object(const void *object);
 
-static void uncaught_exception(const char *message, size_t length) {
-    fputs("simp: uncaught runtime exception: ", stderr);
+static void release_retained_exception_messages(void) {
+    while (retained_exception_messages != NULL) {
+        RetainedExceptionMessage *message = retained_exception_messages;
+        retained_exception_messages = message->next;
+        free(message->bytes);
+        free(message);
+    }
+}
+
+static void uncaught_exception(const char *message, size_t length,
+                               const char *file, size_t file_length,
+                               uint64_t line, uint64_t column) {
+    fputs("simp: uncaught runtime exception", stderr);
+    if (file != NULL) {
+        fputs(" at ", stderr);
+        if (file_length != 0) fwrite(file, 1, file_length, stderr);
+        fprintf(stderr, ":%llu:%llu", (unsigned long long)line,
+                (unsigned long long)column);
+    }
+    fputs(": ", stderr);
     if (length != 0) fwrite(message, 1, length, stderr);
     fputc('\n', stderr);
+    fflush(stdout);
     fflush(stderr);
     abort();
 }
@@ -71,30 +101,49 @@ void simp_gc_end_construction(void *object) {
     node->construct_previous = NULL;
 }
 
-static void raise_exception(const char *message, uint64_t length, char *owned_message) {
-    if ((message == NULL && length != 0) || length > (uint64_t)SIZE_MAX) abort();
+static void raise_exception(const char *message, uint64_t length,
+                            const char *file, uint64_t file_length,
+                            uint64_t line, uint64_t column,
+                            char *owned_message, char *owned_file) {
+    if ((message == NULL && length != 0) || length > (uint64_t)SIZE_MAX ||
+        (file == NULL && file_length != 0) || file_length > (uint64_t)SIZE_MAX) abort();
     if (collecting || running_destructor) {
         free(owned_message);
+        free(owned_file);
         static const char finalizer_message[] =
             "exceptions cannot escape a GC finalizer";
-        uncaught_exception(finalizer_message, sizeof(finalizer_message) - 1);
+        uncaught_exception(finalizer_message, sizeof(finalizer_message) - 1,
+                           NULL, 0, 0, 0);
     }
     if (active_exception == NULL) {
-        uncaught_exception(message == NULL ? "" : message, (size_t)length);
+        uncaught_exception(message == NULL ? "" : message, (size_t)length,
+                           file, (size_t)file_length, line, column);
     }
     SimpExceptionFrame *frame = active_exception;
     char *copy = length == 0 ? NULL : (char *)malloc((size_t)length);
-    if (length != 0 && copy == NULL) {
+    char *file_copy = file_length == 0 ? NULL : (char *)malloc((size_t)file_length);
+    if ((length != 0 && copy == NULL) || (file_length != 0 && file_copy == NULL)) {
         free(owned_message);
+        free(owned_file);
+        free(copy);
+        free(file_copy);
         static const char allocation_message[] =
             "out of memory while raising runtime exception";
-        uncaught_exception(allocation_message, sizeof(allocation_message) - 1);
+        uncaught_exception(allocation_message, sizeof(allocation_message) - 1,
+                           NULL, 0, 0, 0);
     }
     if (length != 0) memcpy(copy, message, (size_t)length);
+    if (file_length != 0) memcpy(file_copy, file, (size_t)file_length);
     free(owned_message);
+    free(owned_file);
     free(frame->message);
+    free(frame->file);
     frame->message = copy;
     frame->message_length = (size_t)length;
+    frame->file = file_copy;
+    frame->file_length = (size_t)file_length;
+    frame->line = line;
+    frame->column = column;
     frame->has_exception = 1;
     active_exception = frame->previous;
     frame->previous = NULL;
@@ -140,6 +189,11 @@ void simp_exception_push(void *storage) {
     free(frame->message);
     frame->message = NULL;
     frame->message_length = 0;
+    free(frame->file);
+    frame->file = NULL;
+    frame->file_length = 0;
+    frame->line = 0;
+    frame->column = 0;
     frame->has_exception = 0;
     active_exception = frame;
 }
@@ -152,6 +206,11 @@ void simp_exception_pop(void *storage) {
     if (frame->has_exception) abort();
     free(frame->message);
     frame->message = NULL;
+    free(frame->file);
+    frame->file = NULL;
+    frame->file_length = 0;
+    frame->line = 0;
+    frame->column = 0;
 }
 
 void simp_exception_clear(void *storage) {
@@ -159,12 +218,43 @@ void simp_exception_clear(void *storage) {
     if (frame == NULL) abort();
     free(frame->message);
     frame->message = NULL;
+    free(frame->file);
+    frame->file = NULL;
+    frame->file_length = 0;
+    frame->line = 0;
+    frame->column = 0;
     frame->message_length = 0;
     frame->has_exception = 0;
 }
 
-void simp_exception_raise(const char *message, uint64_t length) {
-    raise_exception(message, length, NULL);
+const char *simp_exception_take_message(void *storage) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL || !frame->has_exception) abort();
+    if (frame->message == NULL) return "";
+    RetainedExceptionMessage *retained =
+        (RetainedExceptionMessage *)malloc(sizeof(*retained));
+    if (retained == NULL) abort();
+    retained->bytes = frame->message;
+    retained->next = retained_exception_messages;
+    retained_exception_messages = retained;
+    if (!retained_message_cleanup_registered) {
+        if (atexit(release_retained_exception_messages) != 0) abort();
+        retained_message_cleanup_registered = 1;
+    }
+    frame->message = NULL;
+    frame->message_length = 0;
+    return retained->bytes;
+}
+
+uint64_t simp_exception_message_length(void *storage) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL || !frame->has_exception) abort();
+    return (uint64_t)frame->message_length;
+}
+
+void simp_exception_raise(const char *message, uint64_t length, const char *file,
+                          uint64_t file_length, uint64_t line, uint64_t column) {
+    raise_exception(message, length, file, file_length, line, column, NULL, NULL);
 }
 
 void simp_exception_rethrow(void *storage) {
@@ -172,10 +262,19 @@ void simp_exception_rethrow(void *storage) {
     if (frame == NULL || !frame->has_exception) abort();
     char *message = frame->message;
     const uint64_t length = (uint64_t)frame->message_length;
+    char *file = frame->file;
+    const uint64_t file_length = (uint64_t)frame->file_length;
+    const uint64_t line = frame->line;
+    const uint64_t column = frame->column;
     frame->message = NULL;
     frame->message_length = 0;
+    frame->file = NULL;
+    frame->file_length = 0;
+    frame->line = 0;
+    frame->column = 0;
     frame->has_exception = 0;
-    raise_exception(message, length, message);
+    raise_exception(message, length, file, file_length, line, column,
+                    message, file);
 }
 
 static int valid_reference_offset(const SimpClassMeta *metadata, uint64_t offset) {
@@ -249,20 +348,26 @@ void simp_gc_pop_or_abort(SimpRootFrame *frame) {
     }
 }
 
-void simp_gc_require_alive(void *object) {
+void simp_gc_require_alive(void *object, const char *file, uint64_t file_length,
+                           uint64_t line, uint64_t column) {
     if (object == NULL) {
         return;
     }
     HeapNode *node = find_object(object);
-    if (node == NULL) simp_exception_raise("invalid object reference", 24);
+    if (node == NULL)
+        simp_exception_raise("invalid object reference", 24, file, file_length, line, column);
     if (node->destroyed && !node->destroying)
-        simp_exception_raise("object has been destroyed", 25);
+        simp_exception_raise("object has been destroyed", 25, file, file_length, line, column);
 }
 
-void simp_gc_begin_destroy(void *object) {
+void simp_gc_begin_destroy(void *object, const char *file, uint64_t file_length,
+                           uint64_t line, uint64_t column) {
     HeapNode *node = find_object(object);
-    if (node == NULL) simp_exception_raise("invalid object reference", 24);
-    if (node->destroyed) simp_exception_raise("object has already been destroyed", 32);
+    if (node == NULL)
+        simp_exception_raise("invalid object reference", 24, file, file_length, line, column);
+    if (node->destroyed)
+        simp_exception_raise("object has already been destroyed", 32,
+                             file, file_length, line, column);
     node->destroyed = 1;
     node->destroying = 1;
     node->destroy_previous = destroy_stack;

@@ -12,22 +12,22 @@ The root CMake project integrates the header, compiler, and test subprojects:
 cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
-./bin/simp tests/functional/positive_integer_output.simp
+./bin/simp tests/functional/positive_integer_output.simp -o bin/positive_integer_output
 ./bin/positive_integer_output
 # Prints: 42
-./bin/simp tests/functional/positive_integer_control_flow.simp
+./bin/simp tests/functional/positive_integer_control_flow.simp -o bin/positive_integer_control_flow
 ./bin/positive_integer_control_flow
 # Prints: 9
-./bin/simp tests/functional/positive_string_format.simp
+./bin/simp tests/functional/positive_string_format.simp -o bin/positive_string_format
 ./bin/positive_string_format
 # Prints café and a blank line, then "value: 42" and "sum 21 21".
-./bin/simp tests/functional/positive_class_counter.simp
+./bin/simp tests/functional/positive_class_counter.simp -o bin/positive_class_counter
 ./bin/positive_class_counter
 # Prints: 42, then 42
-./bin/simp tests/functional/positive_gc_object_graph.simp
+./bin/simp tests/functional/positive_gc_object_graph.simp -o bin/positive_gc_object_graph
 ./bin/positive_gc_object_graph
 # Prints: 1, 64, and 77 after repeated collections.
-./bin/simp tests/functional/positive_multiple_inheritance.simp
+./bin/simp tests/functional/positive_multiple_inheritance.simp -o bin/positive_multiple_inheritance
 ./bin/positive_multiple_inheritance
 # Prints: 7, 7, 10, 20, and 3; the two Root subobjects hold separate Node references.
 ./bin/simp tests/functional/positive_integer_output.simp \
@@ -58,7 +58,10 @@ Useful options are `--verbose` (`-v`), `--trace-parser`, `--dump-ast`,
 `--dump-symbols`, and `--check-only` (run parsing and semantic checks without
 code generation). LLVM IR is compiled to a native executable by the installed
 Clang driver; `--emit-llvm FILE` additionally saves the generated IR.
-Executables default to `bin/<input-basename>`; `-o FILE` selects another path.
+Executables default to `./<input-basename>` in the compiler's current working
+directory; `-o FILE` selects another path. For example, running
+`../bin/simp ../tests/functional/positive_gc_object_graph.simp` from `build/`
+creates `build/positive_gc_object_graph`.
 The emitted IR uses the GC runtime ABI; link it manually with the runtime
 archive, for example:
 
@@ -89,16 +92,17 @@ and semantic errors.
   integer expressions; zero is false and nonzero is true. An
   `else (condition)` form is explicitly rejected.
 - `raise "message"` throws a runtime exception. `try { ... } except { ... }`
-  catches any exception; `finally { ... }` is optional and runs after normal
+  catches any exception. `except error { ... }` additionally binds its message
+  as a read-only `string` named `error`, visible only in that handler.
+  `finally { ... }` is optional and runs after normal
   completion or while an exception propagates. `try` must include `except`,
-  `finally`, or both. `except` is catch-all and does not bind or inspect the
-  exception. Exceptions raised inside `except` still run its paired `finally`;
-  an exception raised inside `finally` propagates outward.
+  `finally`, or both. Exceptions raised inside `except` still run its paired
+  `finally`; an exception raised inside `finally` propagates outward.
 - Null dereferences, use of explicitly destroyed objects, repeated destruction,
   and integer division/remainder by zero raise catchable runtime exceptions.
-  An uncaught exception prints `simp: uncaught runtime exception: <message>` to
-  standard error and aborts (nonzero process status). Runtime invariant failures
-  and exceptions escaping GC finalizers remain fatal.
+  An uncaught exception prints its source file, line, column, and message to
+  standard error, then aborts (nonzero process status). Runtime invariant
+  failures and exceptions escaping GC finalizers remain fatal.
 - `print(expr)` prints one integer or string value followed by a newline.
 - Basic formatting uses a double-quoted literal followed by an expression list:
   `print("value: {}"(value))`. Each `{}` substitutes exactly one integer
@@ -146,12 +150,15 @@ and semantic errors.
 
   Constructors are named exactly after their class. A class may declare a
   zero-argument `void destroy()` method; an explicit `object.destroy()` warns,
-  invokes it once, and marks the object unusable. Further object use or another
-  destruction attempt raises a catchable runtime exception. Explicit
-  destruction is currently
-  limited to classes outside an inheritance hierarchy. The GC invokes
-  `destroy()` once for unreachable objects not already explicitly destroyed;
-  finalizer allocation aborts, and inheritance destructors are unsupported.
+  invokes the destructor chain once, and marks the object unusable. Further
+  object use or another destruction attempt raises a catchable runtime
+  exception. Destructors execute from the most-derived class through bases in
+  reverse declaration/depth-first construction order, including distinct
+  secondary-base subobjects. Explicit destruction and GC finalization use the
+  same chain. A destructor error cannot make an object eligible for a second
+  destructor run; explicit destruction continues through the remaining bases
+  before propagating the first destructor exception. Finalizer allocation
+  aborts.
   Direct bases have distinct, non-shared subobjects in declared
   order; fields are flattened depth-first through those paths. Ambiguous
   inherited fields must be qualified, for example
@@ -245,14 +252,17 @@ String comparisons and other non-integer formatted values produce precise
 backend/semantic errors. Exception handling uses direct LLVM `setjmp` calls
 paired with the C runtime's `longjmp`; generated frames snapshot and restore
 the precise GC root chain and explicitly running destructor chain before
-catching. Catch clauses are untyped and have no exception binding or stack
-trace. Returns from inside `try`/`except`/`finally` are rejected. Exceptions
+catching. Catch clauses are untyped; an optional read-only string binding
+exposes the message, and uncaught diagnostics include the original raise or
+runtime-check location (there is no stack trace). Returns from inside
+`try`/`except`/`finally` are rejected. Exceptions
 cannot escape a GC finalizer; finalizer exceptions and collector invariant
 failures remain fatal. This is a single-threaded host-C ABI implementation,
 not LLVM landing-pad or cross-platform exception support. There is no string
 concatenation, object-to-string conversion, or code-point-aware operation.
-The collector has limited finalizers for non-inherited classes, but
-no weak references, multithreading,
+Caught exception messages are retained until process exit so a bound string
+copied into a longer-lived variable or object field remains valid.
+The collector has finalizers for inherited classes, but no weak references, multithreading,
 incremental/concurrent collection, or configurable allocation threshold.
 Generated roots conservatively include every object-typed slot in a function,
 but do not scan non-reference values or the native stack. This small runtime

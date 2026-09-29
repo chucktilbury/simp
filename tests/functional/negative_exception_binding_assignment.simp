@@ -1,0 +1,7 @@
+start {
+  try {
+    raise "read only"
+  } except message {
+    message = "changed"
+  }
+}

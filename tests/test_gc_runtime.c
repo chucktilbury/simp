@@ -158,7 +158,7 @@ int main(void) {
 
     rooted = (FinalizeNode *)simp_gc_alloc(&finalize_metadata);
     rooted->value = 73;
-    simp_gc_begin_destroy(rooted);
+    simp_gc_begin_destroy(rooted, "runtime-test.simp", 17, 4, 2);
     simp_gc_end_destroy(rooted);
     rooted = NULL;
     simp_gc_collect();

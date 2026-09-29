@@ -56,6 +56,12 @@ void writeFile(const std::string& path, const std::string& contents) {
     }
 }
 
+std::string defaultExecutablePath(const std::string& inputPath) {
+    auto name = std::filesystem::path(inputPath).stem().string();
+    if (name.empty()) name = "a.out";
+    return (std::filesystem::path(".") / name).string();
+}
+
 int buildExecutable(const std::string& irPath, const std::string& outputPath) {
     const auto parent = std::filesystem::path(outputPath).parent_path();
     if (!parent.empty()) {
@@ -165,17 +171,12 @@ int main(int argc, char** argv) {
             return 0;
         }
 
+        const auto outputPath = requestedOutput.empty()
+                                    ? defaultExecutablePath(inputPath)
+                                    : requestedOutput;
         simp::CodeGenerator codeGenerator(SIMP_TARGET_TRIPLE);
         const auto ir = codeGenerator.generate(program);
         if (irOutput.empty()) {
-            auto outputPath = requestedOutput;
-            if (outputPath.empty()) {
-                auto name = std::filesystem::path(inputPath).stem().string();
-                if (name.empty()) {
-                    name = "a.out";
-                }
-                outputPath = (std::filesystem::path(SIMP_DEFAULT_OUTPUT_DIRECTORY) / name).string();
-            }
             temporaryIr = outputPath + ".simp.tmp.ll";
             writeFile(temporaryIr, ir);
             if (buildExecutable(temporaryIr, outputPath) != 0) {
@@ -185,14 +186,6 @@ int main(int argc, char** argv) {
             }
         } else {
             writeFile(irOutput, ir);
-            auto outputPath = requestedOutput;
-            if (outputPath.empty()) {
-                auto name = std::filesystem::path(inputPath).stem().string();
-                if (name.empty()) {
-                    name = "a.out";
-                }
-                outputPath = (std::filesystem::path(SIMP_DEFAULT_OUTPUT_DIRECTORY) / name).string();
-            }
             if (buildExecutable(irOutput, outputPath) != 0) {
                 return 1;
             }
@@ -204,10 +197,6 @@ int main(int argc, char** argv) {
         if (verbose) {
             std::cerr << "[verbose] semantic analysis succeeded; LLVM IR compiled by clang\n";
         } else if (!dump && !dumpSymbols) {
-            const auto outputPath = requestedOutput.empty()
-                                        ? (std::filesystem::path(SIMP_DEFAULT_OUTPUT_DIRECTORY) /
-                                           std::filesystem::path(inputPath).stem()).string()
-                                        : requestedOutput;
             std::cout << "simp: built " << outputPath << '\n';
         }
     } catch (const simp::DiagnosticError& diagnostic) {
