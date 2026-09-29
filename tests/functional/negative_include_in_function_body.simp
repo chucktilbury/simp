@@ -1,0 +1,3 @@
+start {
+    include "missing.simp"
+}

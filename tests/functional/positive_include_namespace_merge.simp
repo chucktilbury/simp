@@ -1,0 +1,9 @@
+include "include_parts/namespace_left.simp"
+include "include_parts/namespace_right.simp"
+
+start {
+    Library.Left left = Library.Left()
+    Library.Right right = Library.Right()
+    print(left.answer())
+    print(right.answer())
+}

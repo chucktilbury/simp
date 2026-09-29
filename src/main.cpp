@@ -12,6 +12,7 @@
 #include "simp/SourceLoader.hpp"
 
 #include <cstdlib>
+#include <charconv>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -27,7 +28,8 @@ namespace {
 
 void printUsage(std::ostream& output) {
     output << "Usage: simp [--verbose] [--trace-parser] [--dump-ast] [--dump-symbols] "
-              "[--check-only] [--emit-llvm FILE] [-o FILE] <source.simp>\n";
+              "[--check-only] [--max-include-depth N] [--emit-llvm FILE] [-o FILE] "
+              "<source.simp>\n";
 }
 
 std::string shellQuote(const std::string& value) {
@@ -100,6 +102,7 @@ int main(int argc, char** argv) {
     std::string requestedOutput;
     std::string irOutput;
     std::string inputPath;
+    std::size_t maximumIncludeDepth = 16;
 
     for (int index = 1; index < argc; ++index) {
         const std::string argument = argv[index];
@@ -117,6 +120,19 @@ int main(int argc, char** argv) {
             dumpSymbols = true;
         } else if (argument == "--check-only") {
             checkOnly = true;
+        } else if (argument == "--max-include-depth") {
+            if (index + 1 >= argc) {
+                std::cerr << "simp: --max-include-depth requires a non-negative integer\n";
+                return 2;
+            }
+            const std::string value = argv[++index];
+            std::size_t parsed = 0;
+            const auto result = std::from_chars(value.data(), value.data() + value.size(), parsed);
+            if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+                std::cerr << "simp: --max-include-depth requires a non-negative integer\n";
+                return 2;
+            }
+            maximumIncludeDepth = parsed;
         } else if (argument == "-o" || argument == "--emit-llvm") {
             if (index + 1 >= argc) {
                 std::cerr << "simp: " << argument << " requires a file path\n";
@@ -162,7 +178,7 @@ int main(int argc, char** argv) {
         }
         includedFiles.insert(canonicalInput.string());
         auto tokens = simp::tokenizeWithIncludes(
-            source, inputPath, includedFiles, 0, true);
+            source, inputPath, includedFiles, 0, true, maximumIncludeDepth);
         tokens.push_back({simp::TokenType::End, "", {inputPath, 1, 1}});
         if (verbose) {
             std::cerr << "[verbose] lexed " << (tokens.size() - 1) << " tokens\n";

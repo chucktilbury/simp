@@ -1,0 +1,3 @@
+include "missing_include_file.simp"
+
+start {}

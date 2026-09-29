@@ -59,8 +59,9 @@ front-end archive in the project-root `bin/` and `lib/`, respectively.
 
 Useful options are `--verbose` (`-v`), `--trace-parser`, `--dump-ast`,
 `--dump-symbols`, and `--check-only` (run parsing and semantic checks without
-code generation). LLVM IR is compiled to a native executable by the installed
-Clang driver; `--emit-llvm FILE` additionally saves the generated IR.
+code generation). `--max-include-depth N` sets the maximum nested textual
+include depth (default: 16). LLVM IR is compiled to a native executable by the
+installed Clang driver; `--emit-llvm FILE` additionally saves the generated IR.
 Executables default to `./<input-basename>` in the compiler's current working
 directory; `-o FILE` selects another path. For example, running
 `../bin/simp ../tests/functional/positive_gc_object_graph.simp` from `build/`

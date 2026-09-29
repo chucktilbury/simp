@@ -1,0 +1,6 @@
+include "include_parts/relative/entry.simp"
+
+start {
+    RelativeValue value = RelativeValue()
+    print(value.answer())
+}

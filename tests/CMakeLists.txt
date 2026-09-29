@@ -1005,3 +1005,108 @@ add_test(NAME simp_rejects_method_declaration_without_definition
         "-DEXPECTED_DIAGNOSTIC=is declared but has no out-of-line definition"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+add_test(NAME simp_compile_and_run_include_basic
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_include_basic.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_basic"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_basic.ll"
+        "-DEXPECTED_OUTPUT=42\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_include_namespace_merge
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_include_namespace_merge.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_namespace_merge"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_namespace_merge.ll"
+        "-DEXPECTED_OUTPUT=17\n25\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_include_once
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_include_once.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_once"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_once.ll"
+        "-DEXPECTED_OUTPUT=7\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_include_cycle
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_include_cycle.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_cycle"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_cycle.ll"
+        "-DEXPECTED_OUTPUT=9\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_include_relative_path
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_include_relative_path.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_relative_path"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_include_relative_path.ll"
+        "-DEXPECTED_OUTPUT=33\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_include_in_class_body
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_include_in_class_body.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_include_in_class_body"
+        "-DEXPECTED_DIAGNOSTIC='include' is only allowed at top level"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_include_in_function_body
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_include_in_function_body.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_include_in_function_body"
+        "-DEXPECTED_DIAGNOSTIC='include' is only allowed at top level"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_include_in_namespace_body
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_include_in_namespace_body.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_include_in_namespace_body"
+        "-DEXPECTED_DIAGNOSTIC='include' is only allowed at top level"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_include_max_depth
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_include_max_depth.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_include_max_depth"
+        "-DEXPECTED_DIAGNOSTIC=maximum include depth of 16 exceeded"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_include_max_depth_flag
+    COMMAND "$<TARGET_FILE:simp>" --check-only --max-include-depth 17
+        "${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_include_max_depth.simp"
+)
+add_test(NAME simp_rejects_include_start
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_include_start.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_include_start"
+        "-DEXPECTED_DIAGNOSTIC=included source cannot declare 'start'"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_include_after_start
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_include_after_start.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_include_after_start"
+        "-DEXPECTED_DIAGNOSTIC='include' must appear before top-level 'start'"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_include_missing_file
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_include_missing_file.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_include_missing_file"
+        "-DEXPECTED_DIAGNOSTIC=cannot resolve included source"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)

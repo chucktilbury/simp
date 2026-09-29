@@ -1,0 +1,3 @@
+include "include_parts/with_start.simp"
+
+start {}

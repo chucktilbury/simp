@@ -119,10 +119,12 @@ void Parser::trace(const char* action) const {
 Program Parser::parseProgram() {
     Program program;
     skipNewlines();
-    while (check(TokenType::Import) || check(TokenType::Class) || check(TokenType::Namespace) ||
-           startsOutOfLineDefinition()) {
+    while (check(TokenType::Import) || check(TokenType::Include) || check(TokenType::Class) ||
+           check(TokenType::Namespace) || startsOutOfLineDefinition()) {
         if (check(TokenType::Import)) {
             program.imports.push_back(parseImport());
+        } else if (check(TokenType::Include)) {
+            error(current(), "'include' must be expanded before parsing");
         } else if (check(TokenType::Class)) {
             program.classes.push_back(parseClass());
         } else if (check(TokenType::Namespace)) {
@@ -241,6 +243,9 @@ Statement Parser::parseStatement() {
     trace("parse statement");
     if (check(TokenType::Import)) {
         error(current(), "'import' is only allowed at top level");
+    }
+    if (check(TokenType::Include)) {
+        error(current(), "'include' is only allowed at top level");
     }
     if (check(TokenType::Int) || check(TokenType::StringType) || check(TokenType::ArrayType) ||
         check(TokenType::MapType) || check(TokenType::AnyType) || check(TokenType::Void)) {

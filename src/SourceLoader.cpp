@@ -5,17 +5,23 @@
 
 #include <fstream>
 #include <iterator>
+#include <sstream>
 #include <system_error>
+#include <utility>
 
 namespace simp {
 
 std::vector<Token> tokenizeWithIncludes(
     const std::string& source, const std::filesystem::path& sourcePath,
-    std::unordered_set<std::string>& includedFiles, std::size_t depth, bool root) {
+    std::unordered_set<std::string>& includedFiles, std::size_t depth, bool root,
+    std::size_t maximumIncludeDepth,
+    std::vector<std::filesystem::path> includeChain) {
+    if (includeChain.empty()) includeChain.push_back(sourcePath);
     Lexer lexer(source, sourcePath.string());
     const auto tokens = lexer.tokenize();
     std::vector<Token> expanded;
     std::size_t braceDepth = 0;
+    bool sawStart = false;
     for (std::size_t index = 0; index + 1 < tokens.size(); ++index) {
         const auto& token = tokens[index];
         if (!root && token.type == TokenType::Start) {
@@ -23,10 +29,15 @@ std::vector<Token> tokenizeWithIncludes(
                                   "included source cannot declare 'start'");
         }
         if (token.type == TokenType::Include && braceDepth == 0) {
-            if (index + 1 >= tokens.size() - 1 ||
-                tokens[index + 1].type != TokenType::String) {
+            if (sawStart) {
                 throw DiagnosticError(token.location,
-                                      "expected a quoted path after 'include'");
+                                      "'include' must appear before top-level 'start'");
+            }
+            if (index + 1 >= tokens.size() - 1 ||
+                tokens[index + 1].type != TokenType::String ||
+                !tokens[index + 1].formattedString) {
+                throw DiagnosticError(token.location,
+                                      "expected a double-quoted path after 'include'");
             }
             const auto& pathToken = tokens[++index];
             const auto next = index + 1;
@@ -38,6 +49,8 @@ std::vector<Token> tokenizeWithIncludes(
 
             std::filesystem::path requested(pathToken.text);
             if (requested.is_relative()) requested = sourcePath.parent_path() / requested;
+            // Configured include-search directories are deferred; only the includer's
+            // directory is searched for relative paths.
             std::error_code error;
             const auto canonicalPath = std::filesystem::canonical(requested, error);
             if (error) {
@@ -47,9 +60,19 @@ std::vector<Token> tokenizeWithIncludes(
             }
             const auto canonicalName = canonicalPath.string();
             if (includedFiles.emplace(canonicalName).second) {
-                if (depth >= 16) {
+                if (depth >= maximumIncludeDepth) {
+                    auto chain = includeChain;
+                    chain.push_back(canonicalPath);
+                    std::ostringstream chainText;
+                    for (std::size_t chainIndex = 0; chainIndex < chain.size(); ++chainIndex) {
+                        if (chainIndex != 0) chainText << " -> ";
+                        chainText << chain[chainIndex].string();
+                    }
                     throw DiagnosticError(token.location,
-                                          "maximum include depth of 16 exceeded");
+                                          "maximum include depth of " +
+                                              std::to_string(maximumIncludeDepth) +
+                                              " exceeded (include chain: " +
+                                              chainText.str() + ")");
                 }
                 std::ifstream included(canonicalPath);
                 if (!included) {
@@ -60,8 +83,11 @@ std::vector<Token> tokenizeWithIncludes(
                 const std::string includedSource{
                     std::istreambuf_iterator<char>(included),
                     std::istreambuf_iterator<char>()};
+                auto childChain = includeChain;
+                childChain.push_back(canonicalPath);
                 auto includedTokens = tokenizeWithIncludes(
-                    includedSource, canonicalPath, includedFiles, depth + 1, false);
+                    includedSource, canonicalPath, includedFiles, depth + 1, false,
+                    maximumIncludeDepth, std::move(childChain));
                 expanded.insert(expanded.end(),
                                 std::make_move_iterator(includedTokens.begin()),
                                 std::make_move_iterator(includedTokens.end()));
@@ -72,6 +98,7 @@ std::vector<Token> tokenizeWithIncludes(
             }
             continue;
         }
+        if (token.type == TokenType::Start && braceDepth == 0) sawStart = true;
         if (token.type == TokenType::LeftBrace) ++braceDepth;
         if (token.type == TokenType::RightBrace && braceDepth > 0) --braceDepth;
         expanded.push_back(token);
