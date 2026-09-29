@@ -156,6 +156,14 @@ is default-constructible only if its bases also have no explicit constructors.
 
 Keywords are case-insensitive and reserved under every capitalization. For example, `while`, `While`, and `wHiLe` are the same keyword, so `int While = 0` is a syntax error.
 
+In the current prototype subset, simple statements are terminated by a
+newline or a closing block brace. Newlines inside parentheses are treated as
+whitespace, allowing wrapped expressions and argument lists. Adjacent simple
+statements on one line are not supported. The lexer recognizes `;`, `#`, and
+`//` as single-line comment introducers and `/* ... */` as a block comment;
+block-comment newlines continue to terminate statements. A semicolon never
+acts as a statement terminator.
+
 ## Syntax and examples
 
 The following forms capture established examples and intended syntax. They are illustrative and do not by themselves settle every grammar detail.
@@ -163,7 +171,9 @@ The following forms capture established examples and intended syntax. They are i
 Constructors use the class name; destructors use `destroy`. For example, a
 `Window` constructor is written `Window(...)`, and a base constructor call is
 written `super.Base(args)`. Any earlier grammar production that used `create`
-as constructor syntax is superseded.
+as constructor syntax is superseded. The implemented subset accepts newline
+statement boundaries; semicolons begin comments rather than terminating
+statements.
 
 ### Strings
 

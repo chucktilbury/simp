@@ -35,6 +35,20 @@ bool Parser::match(TokenType type) {
     return true;
 }
 
+void Parser::skipNewlines() {
+    while (match(TokenType::Newline)) {}
+}
+
+void Parser::consumeStatementTerminator() {
+    if (match(TokenType::Newline)) {
+        skipNewlines();
+        return;
+    }
+    if (!check(TokenType::RightBrace) && !check(TokenType::End)) {
+        error(current(), "expected newline after statement");
+    }
+}
+
 const Token& Parser::consume(TokenType type, const char* expectation) {
     if (check(type)) {
         return tokens_[current_++];
@@ -76,8 +90,10 @@ void Parser::trace(const char* action) const {
 
 Program Parser::parseProgram() {
     Program program;
+    skipNewlines();
     while (check(TokenType::Class)) {
         program.classes.push_back(parseClass());
+        skipNewlines();
     }
     if (!check(TokenType::Start)) {
         error(current(), "program must contain exactly one top-level 'start' block");
@@ -87,6 +103,7 @@ Program Parser::parseProgram() {
     trace("enter start block");
     ++current_;
     program.statements = parseBlock();
+    skipNewlines();
     if (check(TokenType::Start)) {
         error(current(), "program contains more than one top-level 'start' block");
     }
@@ -97,9 +114,14 @@ Program Parser::parseProgram() {
 }
 
 std::vector<Statement> Parser::parseBlock() {
+    skipNewlines();
     consume(TokenType::LeftBrace, "'{'");
     std::vector<Statement> statements;
     while (!check(TokenType::RightBrace) && !check(TokenType::End)) {
+        skipNewlines();
+        if (check(TokenType::RightBrace) || check(TokenType::End)) {
+            break;
+        }
         statements.push_back(parseStatement());
     }
     consume(TokenType::RightBrace, "'}'");
@@ -151,7 +173,7 @@ Statement Parser::parseDeclaration() {
     if (match(TokenType::Equal)) {
         statement.expressions.push_back(parseExpression());
     }
-    consume(TokenType::Semicolon, "';'");
+    consumeStatementTerminator();
     return statement;
 }
 
@@ -167,7 +189,7 @@ Statement Parser::parseIdentifierStatement() {
         statement.location = expression->location;
         statement.target = std::move(expression);
         statement.expressions.push_back(parseExpression());
-        consume(TokenType::Semicolon, "';'");
+        consumeStatementTerminator();
         return statement;
     }
     if (expression->kind != ExpressionKind::Call) {
@@ -177,7 +199,7 @@ Statement Parser::parseIdentifierStatement() {
     statement.kind = StatementKind::Expression;
     statement.location = expression->location;
     statement.expressions.push_back(std::move(expression));
-    consume(TokenType::Semicolon, "';'");
+    consumeStatementTerminator();
     return statement;
 }
 
@@ -186,10 +208,11 @@ Statement Parser::parseReturn() {
     Statement statement;
     statement.kind = StatementKind::Return;
     statement.location = keyword.location;
-    if (!check(TokenType::Semicolon)) {
+    if (!check(TokenType::Newline) && !check(TokenType::RightBrace) &&
+        !check(TokenType::End)) {
         statement.expressions.push_back(parseExpression());
     }
-    consume(TokenType::Semicolon, "';' after return");
+    consumeStatementTerminator();
     return statement;
 }
 
@@ -207,7 +230,7 @@ Statement Parser::parseSuperConstructorCall() {
         } while (match(TokenType::Comma));
     }
     consume(TokenType::RightParen, "')' after base constructor arguments");
-    consume(TokenType::Semicolon, "';' after base constructor call");
+    consumeStatementTerminator();
     return statement;
 }
 
@@ -234,7 +257,7 @@ Statement Parser::parsePrint() {
             validateFormatString(format, statement.expressions.size() - 1, keyword);
         } else {
             if (match(TokenType::Comma)) {
-                error(previous(), "use double-quoted format-call syntax: print(\"{}\"(value));");
+                error(previous(), "use double-quoted format-call syntax: print(\"{}\"(value))");
             }
             const auto& value = *statement.expressions.front();
             if (value.kind == ExpressionKind::String && value.formattedString &&
@@ -244,7 +267,7 @@ Statement Parser::parsePrint() {
         }
     }
     consume(TokenType::RightParen, "')' after print arguments");
-    consume(TokenType::Semicolon, "';'");
+    consumeStatementTerminator();
     return statement;
 }
 
@@ -256,7 +279,9 @@ Statement Parser::parseIf() {
     consume(TokenType::LeftParen, "'(' after if");
     statement.expressions.push_back(parseExpression());
     consume(TokenType::RightParen, "')' after if condition");
+    skipNewlines();
     statement.body = parseBlock();
+    skipNewlines();
     if (match(TokenType::Else)) {
         statement.hasAlternate = true;
         if (check(TokenType::LeftParen)) {
@@ -275,6 +300,7 @@ Statement Parser::parseWhile() {
     consume(TokenType::LeftParen, "'(' after while");
     statement.expressions.push_back(parseExpression());
     consume(TokenType::RightParen, "')' after while condition");
+    skipNewlines();
     statement.body = parseBlock();
     return statement;
 }

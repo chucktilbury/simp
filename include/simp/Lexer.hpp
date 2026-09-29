@@ -22,7 +22,7 @@ private:
     bool atEnd() const noexcept;
     char peek(std::size_t offset = 0) const noexcept;
     char advance() noexcept;
-    void skipTrivia();
+    void skipTrivia(std::vector<Token>& tokens, std::size_t parenthesisDepth);
     Token scanIdentifierOrInteger();
     Token scanString(char quote, SourceLocation location);
     Token makeToken(TokenType type, std::string text, SourceLocation location,

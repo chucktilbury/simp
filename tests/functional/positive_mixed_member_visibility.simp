@@ -1,16 +1,16 @@
 class HiddenPath {
-    int marker;
+    int marker
 }
 
 class VisiblePath {
-    int marker;
+    int marker
 }
 
 class MixedPaths : private HiddenPath, public VisiblePath {
 }
 
 start {
-    MixedPaths value = MixedPaths();
-    value.marker = 9;
-    print(value.marker);
+    MixedPaths value = MixedPaths()
+    value.marker = 9
+    print(value.marker)
 }

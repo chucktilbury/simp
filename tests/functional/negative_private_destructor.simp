@@ -5,6 +5,6 @@ class Hidden {
 }
 
 start {
-    Hidden hidden = Hidden();
-    hidden.destroy();
+    Hidden hidden = Hidden()
+    hidden.destroy()
 }

@@ -76,17 +76,20 @@ and semantic errors.
 - Reserved keywords are case-insensitive: `start`, `int`, `string`, `if`,
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
   `public`, `protected`, and `private`. Every capitalization is reserved.
-- `int` and `string` declarations (with optional initializer) and identifier
-  assignment use semicolon-terminated statements.
+- `int` and `string` declarations (with optional initializer), identifier
+  assignment, `print`, `return`, and `super.Base(...)` statements end at a
+  newline or closing brace. Newlines inside parentheses are treated as
+  whitespace. Semicolons do not terminate statements: `;`, `#`, and `//`
+  begin single-line comments, while `/* ... */` is a block comment.
 - Expressions include integer and string literals, identifiers, parentheses,
   unary `+`, `-`, `!`, arithmetic `+ - * / %`, and comparisons `== != < <= > >=`.
 - `if (condition) { ... }`, unconditional `else { ... }`, and
   `while (condition) { ... }` execute in the LLVM backend. Conditions are
   integer expressions; zero is false and nonzero is true. An
   `else (condition)` form is explicitly rejected.
-- `print(expr);` prints one integer or string value followed by a newline.
+- `print(expr)` prints one integer or string value followed by a newline.
 - Basic formatting uses a double-quoted literal followed by an expression list:
-  `print("value: {}"(value));`. Each `{}` substitutes exactly one integer
+  `print("value: {}"(value))`. Each `{}` substitutes exactly one integer
   expression. Only `{}` placeholders are supported; unmatched braces,
   non-integer substitutions, and argument-count mismatches are errors.
 - Single-quoted strings are raw literals: they have no escapes and cannot be
@@ -96,7 +99,8 @@ and semantic errors.
   NUL-terminated. Direct string printing and formatting write their UTF-8 bytes
   by explicit length. No concatenation, indexing, string comparisons, or
   code-point operations are implemented.
-- `//` line comments and basic double-quoted escapes (`\\`, `\"`, `\n`, `\r`,
+- `;`, `#`, and `//` line comments, `/* ... */` block comments, and basic
+  double-quoted escapes (`\\`, `\"`, `\n`, `\r`,
   `\t`) are accepted. Single-quoted strings have no escape processing.
 - Semantic analysis resolves lexical local names, rejects use before
   initialization and undeclared identifiers, checks `int`/`string`
@@ -112,14 +116,19 @@ and semantic errors.
 
   ```simple
   class Counter {
-      int value;
-      Counter(int initial) { value = initial; }
-      int add(int amount) { value = value + amount; return value; }
+      int value
+      Counter(int initial) {
+          value = initial
+      }
+      int add(int amount) {
+          value = value + amount
+          return value
+      }
   }
   start {
-      Counter counter = Counter(40);
-      print(counter.add(2));
-      print(counter.value);
+      Counter counter = Counter(40)
+      print(counter.add(2))
+      print(counter.value)
   }
   ```
 

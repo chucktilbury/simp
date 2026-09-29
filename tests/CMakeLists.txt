@@ -57,6 +57,23 @@ add_test(NAME simp_cli_rejects_conditional_else
     COMMAND $<TARGET_FILE:simp> "${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_conditional_else.simp"
 )
 set_tests_properties(simp_cli_rejects_conditional_else PROPERTIES WILL_FAIL TRUE)
+add_test(NAME simp_cli_rejects_adjacent_statements
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_adjacent_statements.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_adjacent_statements"
+        "-DEXPECTED_DIAGNOSTIC=expected newline after statement"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_newline_statements
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_newline_statements.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_newline_statements"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_newline_statements.ll"
+        "-DEXPECTED_OUTPUT=42\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
 
 add_test(NAME simp_compile_and_run_integer_program
     COMMAND "${CMAKE_COMMAND}"

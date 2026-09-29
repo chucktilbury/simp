@@ -34,6 +34,10 @@ ClassDeclaration Parser::parseClass() {
     consume(TokenType::LeftBrace, "'{' after class name");
     AccessLevel memberAccess = AccessLevel::Public;
     while (!check(TokenType::RightBrace) && !check(TokenType::End)) {
+        skipNewlines();
+        if (check(TokenType::RightBrace) || check(TokenType::End)) {
+            break;
+        }
         if ((check(TokenType::Public) || check(TokenType::Protected) ||
              check(TokenType::Private)) &&
             current_ + 1 < tokens_.size() &&
@@ -75,7 +79,7 @@ ClassDeclaration Parser::parseClass() {
             declaration.methods.push_back(std::move(method));
         } else {
             if (typeName == "void") error(type, "fields cannot have type void");
-            consume(TokenType::Semicolon, "';' after field declaration");
+            consumeStatementTerminator();
             declaration.fields.push_back({typeName, member.text, type.location, memberAccess});
         }
     }

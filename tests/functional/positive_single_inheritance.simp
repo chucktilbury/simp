@@ -1,64 +1,64 @@
 class Node {
-    int value;
+    int value
 
     Node(int initial) {
-        value = initial;
+        value = initial
     }
 }
 
 class Base {
-    Node item;
+    Node item
 
     Base(Node initial) {
-        item = initial;
+        item = initial
     }
 
     int read() {
-        return item.value;
+        return item.value
     }
 }
 
 class Child : Base {
-    int extra;
+    int extra
 
     Child(Node initial, int amount) {
-        super.Base(initial);
-        extra = amount;
+        super.Base(initial)
+        extra = amount
     }
 
     int combined() {
-        return item.value + extra;
+        return item.value + extra
     }
 
     int read() {
-        return item.value + extra;
+        return item.value + extra
     }
 }
 
 class Grandchild : Child {
-    int last;
+    int last
 
     Grandchild(Node initial, int amount, int finalAmount) {
-        super.Child(initial, amount);
-        last = finalAmount;
+        super.Child(initial, amount)
+        last = finalAmount
     }
 
     int total() {
-        return item.value + extra + last;
+        return item.value + extra + last
     }
 
     int read() {
-        return item.value + extra + last;
+        return item.value + extra + last
     }
 }
 
 start {
-    Grandchild child = Grandchild(Node(40), 2, 7);
-    Base base = child;
-    Node unrelated = Node(5);
-    print(base.read());
-    print(child.read());
-    print(child.total());
-    print(child.item.value);
-    print(unrelated.value);
+    Grandchild child = Grandchild(Node(40), 2, 7)
+    Base base = child
+    Node unrelated = Node(5)
+    print(base.read())
+    print(child.read())
+    print(child.total())
+    print(child.item.value)
+    print(unrelated.value)
 }

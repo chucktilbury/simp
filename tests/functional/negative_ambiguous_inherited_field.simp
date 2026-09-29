@@ -1,5 +1,5 @@
 class Root {
-    int value;
+    int value
 }
 
 class Left : Root {
@@ -12,6 +12,6 @@ class Diamond : Left, Right {
 }
 
 start {
-    Diamond diamond = Diamond();
-    print(diamond.value);
+    Diamond diamond = Diamond()
+    print(diamond.value)
 }

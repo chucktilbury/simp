@@ -1,4 +1,4 @@
 start {
-    int answer = 40 + 2;
-    print(answer);
+    int answer = 40 + 2
+    print(answer)
 }

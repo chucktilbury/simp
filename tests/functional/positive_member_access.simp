@@ -1,37 +1,37 @@
 class AccessBase {
     public:
-    int publicValue;
+    int publicValue
     int publicMethod() {
-        return publicValue;
+        return publicValue
     }
 
     protected:
-    int protectedValue;
+    int protectedValue
     int protectedMethod() {
-        return protectedValue;
+        return protectedValue
     }
 
     private:
-    int privateValue;
+    int privateValue
     int privateMethod() {
-        return privateValue;
+        return privateValue
     }
 
     public:
     int readPrivate() {
-        return privateValue;
+        return privateValue
     }
 
     int readPrivateMethod(AccessBase self) {
-        return self.privateMethod();
+        return self.privateMethod()
     }
 }
 
 class AccessChild : public AccessBase {
     public:
     int readProtected(AccessChild self) {
-        self.protectedValue = 7;
-        return self.protectedMethod();
+        self.protectedValue = 7
+        return self.protectedMethod()
     }
 }
 
@@ -44,20 +44,20 @@ class ProtectedCtorBase {
 class ProtectedCtorChild : public ProtectedCtorBase {
     public:
     ProtectedCtorChild() {
-        super.ProtectedCtorBase();
+        super.ProtectedCtorBase()
     }
 }
 
 start {
-    AccessBase base = AccessBase();
-    base.publicValue = 42;
-    print(base.publicMethod());
-    print(base.readPrivate());
-    print(base.readPrivateMethod(base));
+    AccessBase base = AccessBase()
+    base.publicValue = 42
+    print(base.publicMethod())
+    print(base.readPrivate())
+    print(base.readPrivateMethod(base))
 
-    AccessChild child = AccessChild();
-    print(child.readProtected(child));
+    AccessChild child = AccessChild()
+    print(child.readProtected(child))
 
-    ProtectedCtorChild constructed = ProtectedCtorChild();
-    print(1);
+    ProtectedCtorChild constructed = ProtectedCtorChild()
+    print(1)
 }

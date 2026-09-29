@@ -1,12 +1,12 @@
 START {
-    int count = 3;
-    string label = "count: {}";
+    int count = 3
+    string label = "count: {}"
     IF (count >= 2) {
-        print(label);
+        print(label)
     } ELSE {
-        print("small");
+        print("small")
     }
     while (count > 0) {
-        count = count - 1;
+        count = count - 1
     }
 }

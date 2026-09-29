@@ -1,12 +1,12 @@
 class Primary {
     int read() {
-        return 1;
+        return 1
     }
 }
 
 class Secondary {
     int read() {
-        return 2;
+        return 2
     }
 }
 
@@ -14,6 +14,6 @@ class Combined : Primary, Secondary {
 }
 
 start {
-    Combined combined = Combined();
-    print(combined.Secondary.read());
+    Combined combined = Combined()
+    print(combined.Secondary.read())
 }

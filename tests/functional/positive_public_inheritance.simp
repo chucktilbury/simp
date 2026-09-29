@@ -1,5 +1,5 @@
 class Base {
-    int value;
+    int value
 }
 
 class PublicChild : public Base {
@@ -7,34 +7,34 @@ class PublicChild : public Base {
 
 class ProtectedChild : protected Base {
     int readValue() {
-        return value;
+        return value
     }
 }
 
 class PrivateChild : private Base {
     int readValue() {
-        return value;
+        return value
     }
 }
 
 class ProtectedGrandchild : public ProtectedChild {
     int readAgain() {
-        return value;
+        return value
     }
 }
 
 start {
-    PublicChild child = PublicChild();
-    child.value = 42;
-    print(child.value);
+    PublicChild child = PublicChild()
+    child.value = 42
+    print(child.value)
 
-    ProtectedChild protectedChild = ProtectedChild();
-    print(protectedChild.readValue());
+    ProtectedChild protectedChild = ProtectedChild()
+    print(protectedChild.readValue())
 
-    PrivateChild privateChild = PrivateChild();
-    print(privateChild.readValue());
+    PrivateChild privateChild = PrivateChild()
+    print(privateChild.readValue())
 
-    ProtectedGrandchild protectedGrandchild = ProtectedGrandchild();
-    print(protectedGrandchild.readAgain());
+    ProtectedGrandchild protectedGrandchild = ProtectedGrandchild()
+    print(protectedGrandchild.readAgain())
 
 }

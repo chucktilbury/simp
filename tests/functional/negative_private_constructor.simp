@@ -5,5 +5,5 @@ class Hidden {
 }
 
 start {
-    Hidden hidden = Hidden(1);
+    Hidden hidden = Hidden(1)
 }

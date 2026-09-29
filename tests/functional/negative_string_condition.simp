@@ -1,5 +1,5 @@
 start {
     if ("not an integer") {
-        print(1);
+        print(1)
     }
 }

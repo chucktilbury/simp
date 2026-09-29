@@ -1,9 +1,9 @@
 start {
-    string greeting = "café\n";
-    string copy;
-    copy = greeting;
-    int value = 42;
-    print(copy);
-    print("value: {}"(value));
-    print("sum {} {}"(20 + 1, 21));
+    string greeting = "café\n"
+    string copy
+    copy = greeting
+    int value = 42
+    print(copy)
+    print("value: {}"(value))
+    print("sum {} {}"(20 + 1, 21))
 }

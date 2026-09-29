@@ -24,6 +24,8 @@ private:
     const Token& previous() const;
     bool check(TokenType type) const;
     bool match(TokenType type);
+    void skipNewlines();
+    void consumeStatementTerminator();
     const Token& consume(TokenType type, const char* expectation);
     [[noreturn]] void error(const Token& token, const std::string& message) const;
     void validateFormatString(const Expression& format, std::size_t argumentCount,

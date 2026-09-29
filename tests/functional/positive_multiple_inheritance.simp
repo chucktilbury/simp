@@ -1,58 +1,58 @@
 class Node {
-    int value;
+    int value
 
     Node(int initial) {
-        value = initial;
+        value = initial
     }
 }
 
 class Root {
-    Node item;
-    int value;
+    Node item
+    int value
 
     int read() {
-        return value;
+        return value
     }
 }
 
 class Left : Root {
-    int left;
+    int left
 
     int sum() {
-        return value + left;
+        return value + left
     }
 }
 
 class Right : Root {
-    int right;
+    int right
 
     int sumRight() {
-        return value + right;
+        return value + right
     }
 }
 
 class Diamond : Left, Right {
-    int extra;
+    int extra
 
     int sum() {
-        return left + extra;
+        return left + extra
     }
 }
 
 start {
-    Diamond diamond = Diamond();
-    diamond.Left.Root.item = Node(10);
-    diamond.Right.Root.item = Node(20);
-    diamond.Left.Root.value = 10;
-    diamond.Right.Root.value = 20;
-    diamond.Left.left = 2;
-    diamond.Right.right = 3;
-    diamond.extra = 5;
+    Diamond diamond = Diamond()
+    diamond.Left.Root.item = Node(10)
+    diamond.Right.Root.item = Node(20)
+    diamond.Left.Root.value = 10
+    diamond.Right.Root.value = 20
+    diamond.Left.left = 2
+    diamond.Right.right = 3
+    diamond.extra = 5
 
-    Left leftView = diamond;
-    print(leftView.sum());
-    print(diamond.Left.sum());
-    print(diamond.Left.Root.item.value);
-    print(diamond.Right.Root.item.value);
-    print(diamond.Right.right);
+    Left leftView = diamond
+    print(leftView.sum())
+    print(diamond.Left.sum())
+    print(diamond.Left.Root.item.value)
+    print(diamond.Right.Root.item.value)
+    print(diamond.Right.right)
 }

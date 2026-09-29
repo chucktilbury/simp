@@ -1,5 +1,5 @@
 class Base {
-    int value;
+    int value
 }
 
 class PrivateChild : private Base {
@@ -7,7 +7,7 @@ class PrivateChild : private Base {
 
 class Grandchild : public PrivateChild {
     int readValue() {
-        return value;
+        return value
     }
 }
 

@@ -77,37 +77,76 @@ void runFunctional(const std::string& filename, const std::string& expectedError
 int main() {
     const std::vector<Test> tests{
         {"lexer keywords and strings", [] {
-             simp::Lexer lexer("StArT { INT n = 12; string s = \"a\\n\"; }", "lexer.simp");
+             simp::Lexer lexer("StArT {\n INT n = 12\n string s = \"a\\n\"\n}", "lexer.simp");
              const auto tokens = lexer.tokenize();
              require(tokens[0].type == simp::TokenType::Start, "START keyword not recognized");
-             require(tokens[2].type == simp::TokenType::Int, "INT keyword not recognized");
-             require(tokens[4].type == simp::TokenType::Equal, "assignment token missing");
-             require(tokens[5].type == simp::TokenType::Integer && tokens[5].text == "12",
+             require(tokens[3].type == simp::TokenType::Int, "INT keyword not recognized");
+             require(tokens[5].type == simp::TokenType::Equal, "assignment token missing");
+             require(tokens[6].type == simp::TokenType::Integer && tokens[6].text == "12",
                      "integer token incorrect");
-             require(tokens[10].type == simp::TokenType::String &&
-                         tokens[10].text == "a\n" && tokens[10].formattedString,
+             require(tokens[11].type == simp::TokenType::String &&
+                         tokens[11].text == "a\n" && tokens[11].formattedString,
                      "escaped formatted string incorrect");
          }},
         {"single-quoted strings are literal", [] {
-             simp::Lexer lexer("start { print('a\\n'); }", "single-quoted.simp");
+             simp::Lexer lexer("start {\n print('a\\n')\n}", "single-quoted.simp");
              const auto tokens = lexer.tokenize();
-             require(tokens[4].type == simp::TokenType::String, "single-quoted token missing");
-             require(tokens[4].text == "a\\n", "single-quoted backslash was interpreted");
-             require(!tokens[4].formattedString, "single-quoted token was marked formatted");
+             require(tokens[5].type == simp::TokenType::String, "single-quoted token missing");
+             require(tokens[5].text == "a\\n", "single-quoted backslash was interpreted");
+             require(!tokens[5].formattedString, "single-quoted token was marked formatted");
+         }},
+        {"semicolon line comments", [] {
+             simp::Lexer lexer("start {\n print(1) ; comment to newline\n print(2)\n}",
+                               "semicolon-comment.simp");
+             const auto tokens = lexer.tokenize();
+             std::size_t integers = 0;
+             for (const auto& token : tokens) {
+                 if (token.type == simp::TokenType::Integer) ++integers;
+             }
+             require(integers == 2, "semicolon comment swallowed the following line");
+         }},
+        {"hash line comments", [] {
+             simp::Lexer lexer("start {\n # comment\n print(2)\n}", "hash-comment.simp");
+             const auto tokens = lexer.tokenize();
+             bool foundPrint = false;
+             for (const auto& token : tokens) foundPrint |= token.type == simp::TokenType::Print;
+             require(foundPrint,
+                     "hash comment did not preserve the following line");
+         }},
+        {"slash line comments", [] {
+             simp::Lexer lexer("start {\n // comment\n print(2)\n}", "slash-comment.simp");
+             const auto tokens = lexer.tokenize();
+             bool foundPrint = false;
+             for (const auto& token : tokens) foundPrint |= token.type == simp::TokenType::Print;
+             require(foundPrint,
+                     "slash comment did not preserve the following line");
+         }},
+        {"block comments preserve statement boundaries", [] {
+             simp::Lexer lexer("start {\n int value = 1 /* comment\ncontinued */\n print(value)\n}",
+                               "block-comment.simp");
+             const auto tokens = lexer.tokenize();
+             std::size_t newlines = 0;
+             for (const auto& token : tokens) {
+                 if (token.type == simp::TokenType::Newline) ++newlines;
+             }
+             require(newlines >= 3, "block comment swallowed statement-boundary newlines");
+         }},
+        {"unterminated block comment diagnostic", [] {
+             expectDiagnostic("start {\n /* comment", "unterminated block comment");
          }},
         {"reserved keywords", [] {
-             expectDiagnostic("start { int While = 0; }", "keywords are reserved");
+             expectDiagnostic("start {\n int While = 0\n}", "keywords are reserved");
          }},
         {"create is no longer a reserved keyword", [] {
-             simp::Lexer lexer("start { int create = 1; print(create); }", "identifier.simp");
+             simp::Lexer lexer("start {\n int create = 1\n print(create)\n}", "identifier.simp");
              const auto tokens = lexer.tokenize();
-             require(tokens[3].type == simp::TokenType::Identifier &&
-                         tokens[3].text == "create",
+             require(tokens[4].type == simp::TokenType::Identifier &&
+                         tokens[4].text == "create",
                      "create should be lexed as an identifier");
          }},
         {"class-name constructor syntax", [] {
              const auto program = parse(
-                 "class Box { Box() {} } start { Box box = Box(); }");
+                 "class Box { Box() {} }\nstart { Box box = Box() }");
              std::ostringstream output;
              simp::dumpAst(program, output);
              require(output.str().find("ConstructorCall [Box]") != std::string::npos,
@@ -115,9 +154,9 @@ int main() {
          }},
         {"single inheritance and base constructor syntax", [] {
              const auto program = parse(
-                 "class Base { Base(int value) {} } "
-                 "class Child : Base { Child(int value) { super.Base(value); } } "
-                 "start { Child child = Child(1); }");
+                 "class Base { Base(int value) {} }\n"
+                 "class Child : Base { Child(int value) { super.Base(value) } }\n"
+                 "start { Child child = Child(1) }");
              std::ostringstream output;
              simp::dumpAst(program, output);
              require(output.str().find("Class [Child : public Base]") != std::string::npos,
@@ -126,13 +165,41 @@ int main() {
                      "explicit base constructor missing from AST");
          }},
         {"parser precedence and AST", [] {
-             const auto program = parse("start { int x = 1 + 2 * 3; print(x); }");
+             const auto program = parse("start {\n int x = 1 + 2 * 3\n print(x)\n}");
              require(program.statements.size() == 2, "expected declaration and print");
              std::ostringstream output;
              simp::dumpAst(program, output);
              const auto tree = output.str();
              require(tree.find("Binary [+]") != std::string::npos, "addition absent from AST");
              require(tree.find("Binary [*]") != std::string::npos, "multiplication absent from AST");
+         }},
+        {"newline statement boundaries", [] {
+             const auto program = parse(
+                 "class Base {\n"
+                 "  int value\n"
+                 "  Base(int initial) {\n"
+                 "    value = initial\n"
+                 "  }\n"
+                 "}\n"
+                 "class Child : Base {\n"
+                 "  Child(int initial) {\n"
+                 "    super.Base(initial)\n"
+                 "  }\n"
+                 "  int read() {\n"
+                 "    return value\n"
+                 "  }\n"
+                 "}\n"
+                 "start {\n"
+                 "  Child child = Child(40)\n"
+                 "  child.value = child.read() + 2\n"
+                 "  print(child.value)\n"
+                 "}");
+             require(program.statements.size() == 3,
+                     "expected semicolon-free declarations, assignment, and print");
+         }},
+        {"adjacent statements without a boundary are rejected", [] {
+             expectDiagnostic("start {\n int first = 1 int second = 2\n}",
+                              "expected newline after statement");
          }},
         {"parser trace", [] {
              simp::Lexer lexer("start {}", "trace.simp");
@@ -168,15 +235,15 @@ int main() {
              throw std::runtime_error("invalid UTF-8 string was accepted");
          }},
         {"formatted print arity", [] {
-             expectDiagnostic("start { print(\"value: {}\"(1, 2)); }",
+             expectDiagnostic("start {\n print(\"value: {}\"(1, 2))\n}",
                               "one '{}' placeholder per argument");
          }},
         {"formatted print malformed brace", [] {
-             expectDiagnostic("start { print(\"value: {x}\"(1)); }",
+             expectDiagnostic("start {\n print(\"value: {x}\"(1))\n}",
                               "only '{}' placeholders are supported");
          }},
         {"single-quoted string format arguments", [] {
-             expectDiagnostic("start { print('value: {}'(1)); }",
+             expectDiagnostic("start {\n print('value: {}'(1))\n}",
                               "format arguments require a double-quoted string literal");
          }},
         {"string condition rejected", [] {
@@ -184,35 +251,42 @@ int main() {
                               "if condition must have type int");
          }},
         {"string equality rejected", [] {
-             expectDiagnostic("start { string a = \"a\"; print(a == \"a\"); }",
+             expectDiagnostic("start {\n string a = \"a\"\n print(a == \"a\")\n}",
                               "string equality is not implemented");
          }},
         {"semantic type mismatch", [] {
-             expectDiagnostic("start { int value = \"wrong\"; }",
+             expectDiagnostic("start {\n int value = \"wrong\"\n}",
                               "cannot initialize int variable with string");
          }},
         {"semantic assignment type mismatch", [] {
-             expectDiagnostic("start { int value = 1; value = \"wrong\"; }",
+             expectDiagnostic("start {\n int value = 1\n value = \"wrong\"\n}",
                               "cannot assign string to int variable 'value'");
          }},
         {"semantic undefined variable", [] {
-             expectDiagnostic("start { print(missing); }", "undefined variable 'missing'");
+             expectDiagnostic("start {\n print(missing)\n}", "undefined variable 'missing'");
          }},
         {"semantic definite initialization", [] {
-             expectDiagnostic("start { int value; print(value); }",
+             expectDiagnostic("start {\n int value\n print(value)\n}",
                               "variable 'value' may be uninitialized");
          }},
         {"semantic branch initialization", [] {
-             expectDiagnostic("start { int value; if (1) { value = 1; } print(value); }",
+             expectDiagnostic("start {\n int value\n if (1) { value = 1 }\n print(value)\n}",
                               "variable 'value' may be uninitialized");
          }},
         {"semantic initialized in both branches", [] {
              const auto program = parse(
-                 "start { int value; if (1) { value = 1; } else { value = 2; } print(value); }");
+                 "start {\n int value\n if (1) { value = 1 } else { value = 2 }\n print(value)\n}");
              require(program.statements.size() == 3, "expected declaration, if, and print");
          }},
         {"functional valid control flow", [] {
              runFunctional("positive_control_flow.simp");
+         }},
+        {"functional newline-only statements", [] {
+             runFunctional("positive_newline_statements.simp");
+         }},
+        {"functional adjacent statements rejected", [] {
+             runFunctional("negative_adjacent_statements.simp",
+                           "expected newline after statement");
          }},
         {"functional missing start", [] {
              runFunctional("negative_missing_start.simp", "exactly one top-level 'start' block");

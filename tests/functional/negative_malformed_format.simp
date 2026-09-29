@@ -1,4 +1,4 @@
 start {
-    int value = 1;
-    print("value: {x}"(value));
+    int value = 1
+    print("value: {x}"(value))
 }

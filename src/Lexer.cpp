@@ -102,7 +102,7 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Comma: return "','";
     case TokenType::Dot: return "'.'";
     case TokenType::Colon: return "':'";
-    case TokenType::Semicolon: return "';'";
+    case TokenType::Newline: return "newline";
     case TokenType::Plus: return "'+'";
     case TokenType::Minus: return "'-'";
     case TokenType::Star: return "'*'";
@@ -152,17 +152,52 @@ Token Lexer::makeToken(TokenType type, std::string text, SourceLocation location
     return {type, std::move(text), std::move(location), formattedString};
 }
 
-void Lexer::skipTrivia() {
+void Lexer::skipTrivia(std::vector<Token>& tokens, std::size_t parenthesisDepth) {
     for (;;) {
-        while (!atEnd() && std::isspace(static_cast<unsigned char>(peek())) != 0) {
+        while (!atEnd() && peek() != '\n' &&
+               std::isspace(static_cast<unsigned char>(peek())) != 0) {
             advance();
         }
-        if (peek() != '/' || peek(1) != '/') {
-            return;
+        if (peek() == ';' || peek() == '#') {
+            while (!atEnd() && peek() != '\n') {
+                advance();
+            }
+            continue;
         }
-        while (!atEnd() && peek() != '\n') {
+        if (peek() == '/' && peek(1) == '/') {
+            while (!atEnd() && peek() != '\n') {
+                advance();
+            }
+            continue;
+        }
+        if (peek() == '/' && peek(1) == '*') {
+            const auto commentLocation = currentLocation();
             advance();
+            advance();
+            bool closed = false;
+            while (!atEnd()) {
+                if (peek() == '*' && peek(1) == '/') {
+                    advance();
+                    advance();
+                    closed = true;
+                    break;
+                }
+                if (peek() == '\n') {
+                    const auto newlineLocation = currentLocation();
+                    advance();
+                    if (parenthesisDepth == 0) {
+                        tokens.push_back(makeToken(TokenType::Newline, "\n", newlineLocation));
+                    }
+                } else {
+                    advance();
+                }
+            }
+            if (!closed) {
+                throw DiagnosticError(commentLocation, "unterminated block comment");
+            }
+            continue;
         }
+        return;
     }
 }
 
@@ -236,13 +271,21 @@ Token Lexer::scanString(char quote, SourceLocation location) {
 
 std::vector<Token> Lexer::tokenize() {
     std::vector<Token> tokens;
+    std::size_t parenthesisDepth = 0;
     while (!atEnd()) {
-        skipTrivia();
+        skipTrivia(tokens, parenthesisDepth);
         if (atEnd()) {
             break;
         }
         const auto location = currentLocation();
         const char value = peek();
+        if (value == '\n') {
+            advance();
+            if (parenthesisDepth == 0) {
+                tokens.push_back(makeToken(TokenType::Newline, "\n", location));
+            }
+            continue;
+        }
         if (isIdentifierStart(value) || (value >= '0' && value <= '9')) {
             tokens.push_back(scanIdentifierOrInteger());
             continue;
@@ -251,7 +294,6 @@ std::vector<Token> Lexer::tokenize() {
             tokens.push_back(scanString(value, location));
             continue;
         }
-
         advance();
         TokenType type;
         switch (value) {
@@ -262,7 +304,6 @@ std::vector<Token> Lexer::tokenize() {
         case ',': type = TokenType::Comma; break;
         case '.': type = TokenType::Dot; break;
         case ':': type = TokenType::Colon; break;
-        case ';': type = TokenType::Semicolon; break;
         case '+': type = TokenType::Plus; break;
         case '-': type = TokenType::Minus; break;
         case '*': type = TokenType::Star; break;
@@ -282,6 +323,11 @@ std::vector<Token> Lexer::tokenize() {
             break;
         default:
             throw DiagnosticError(location, "unexpected character");
+        }
+        if (type == TokenType::LeftParen) {
+            ++parenthesisDepth;
+        } else if (type == TokenType::RightParen && parenthesisDepth > 0) {
+            --parenthesisDepth;
         }
         std::string text(1, value);
         if (type == TokenType::BangEqual || type == TokenType::EqualEqual ||

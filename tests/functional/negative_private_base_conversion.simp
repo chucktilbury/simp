@@ -5,6 +5,6 @@ class PrivateChild : private Base {
 }
 
 start {
-    PrivateChild child = PrivateChild();
-    Base base = child;
+    PrivateChild child = PrivateChild()
+    Base base = child
 }

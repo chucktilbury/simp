@@ -2,17 +2,17 @@ class Base {
     Base() {}
 
     int value(int input) {
-        return input;
+        return input
     }
 }
 
 class Child : Base {
     Child() {
-        super.Base();
+        super.Base()
     }
 
     string value(int input) {
-        return "wrong";
+        return "wrong"
     }
 }
 

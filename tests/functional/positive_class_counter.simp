@@ -1,24 +1,24 @@
 class Counter {
-    int value;
+    int value
 
     Counter(int initial) {
-        value = initial;
+        value = initial
     }
 
     int add(int amount) {
-        value = value + amount;
-        return value;
+        value = value + amount
+        return value
     }
 
     int get() {
-        return value;
+        return value
     }
 }
 
 start {
-    Counter counter = null;
-    counter = Counter(40);
-    print(counter.add(2));
-    print(counter.get());
-    print(counter.value);
+    Counter counter = null
+    counter = Counter(40)
+    print(counter.add(2))
+    print(counter.get())
+    print(counter.value)
 }

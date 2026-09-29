@@ -1,8 +1,8 @@
 class Counter {
-    int value;
+    int value
 }
 
 start {
-    Counter counter = Counter();
-    print(counter.missing());
+    Counter counter = Counter()
+    print(counter.missing())
 }

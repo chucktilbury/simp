@@ -1,4 +1,4 @@
 start {
-    string value = "not an integer";
-    print("value: {}"(value));
+    string value = "not an integer"
+    print("value: {}"(value))
 }

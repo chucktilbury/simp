@@ -11,6 +11,6 @@ class Diamond : Left, Right {
 }
 
 start {
-    Diamond diamond = Diamond();
-    Root root = diamond;
+    Diamond diamond = Diamond()
+    Root root = diamond
 }
