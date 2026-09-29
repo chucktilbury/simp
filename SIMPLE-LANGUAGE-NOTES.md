@@ -659,9 +659,10 @@ inline (int n, string msg) {
   `printf("%s", simp_string_cstr(msg));` is valid; passing `msg->data`
   directly to an API that expects a NUL-terminated string is not. This
   conversion is an inline-C support API, not a general implicit conversion
-  or a native-method ABI rule; the API contract is decided here but the helper is
-  not implemented.
-- Recommended backend direction (not implemented): compile each inline block
+  or a native-method ABI rule. The runtime keeps each copy in a thread-local
+  per-shim arena; the generated shim starts and releases that arena around the
+  raw body, so multiple conversions in one block remain valid until it returns.
+- Backend implementation: compile each inline block
   as a small generated C helper function, or shim, with the capture
   parameters above. Declare and call that helper from generated LLVM using
   the same C-callable mechanism used for native-bound methods, and compile/link the shim
@@ -669,7 +670,9 @@ inline (int n, string msg) {
   `RuntimeGc.h`/`SimpString` conventions and native method ABI groundwork. It is
   preferred over embedding raw C in LLVM IR or requiring C-aware generation
   of the enclosing function; the extra helper call is accepted for this
-  initial design.
+  initial design. Shim symbols are derived from the inline statement's source
+  file and location, allowing separate translation units to refer to the same
+  block without name collisions.
 
 ## Modules, packages, and priorities
 

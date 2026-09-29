@@ -12,6 +12,48 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef struct InlineCStringBuffer {
+    struct InlineCStringBuffer *next;
+    char *bytes;
+} InlineCStringBuffer;
+
+static _Thread_local InlineCStringBuffer *inline_cstring_buffers = NULL;
+
+void simp_inline_cstr_end(void) {
+    while (inline_cstring_buffers != NULL) {
+        InlineCStringBuffer *buffer = inline_cstring_buffers;
+        inline_cstring_buffers = buffer->next;
+        free(buffer->bytes);
+        free(buffer);
+    }
+}
+
+void simp_inline_cstr_begin(void) {
+    simp_inline_cstr_end();
+}
+
+const char *simp_string_cstr(const SimpString *text) {
+    if (text == NULL || text->length > (uint64_t)(SIZE_MAX - 1) ||
+        (text->length != 0 && text->data == NULL)) {
+        abort();
+    }
+    InlineCStringBuffer *buffer =
+        (InlineCStringBuffer *)malloc(sizeof(InlineCStringBuffer));
+    if (buffer == NULL) abort();
+    buffer->bytes = (char *)malloc((size_t)text->length + 1);
+    if (buffer->bytes == NULL) {
+        free(buffer);
+        abort();
+    }
+    if (text->length != 0) {
+        memcpy(buffer->bytes, text->data, (size_t)text->length);
+    }
+    buffer->bytes[text->length] = '\0';
+    buffer->next = inline_cstring_buffers;
+    inline_cstring_buffers = buffer;
+    return buffer->bytes;
+}
+
 typedef struct HeapNode {
     struct HeapNode *next;
     struct HeapNode *destroy_previous;

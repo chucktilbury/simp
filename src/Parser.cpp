@@ -134,6 +134,9 @@ Program Parser::parseProgram() {
         }
         skipNewlines();
     }
+    if (check(TokenType::Inline)) {
+        error(current(), "'inline' is only allowed inside a function or method body");
+    }
     if (!check(TokenType::Start)) {
         error(current(), "program must contain exactly one top-level 'start' block");
     }
@@ -147,6 +150,9 @@ Program Parser::parseProgram() {
         error(current(), "program contains more than one top-level 'start' block");
     }
     if (!check(TokenType::End)) {
+        if (check(TokenType::Inline)) {
+            error(current(), "'inline' is only allowed inside a function or method body");
+        }
         error(current(), "only one top-level 'start' block is allowed");
     }
     return program;
@@ -166,6 +172,8 @@ Program Parser::parseModule() {
             program.outOfLineMethods.push_back(parseOutOfLineMethodDefinition());
         } else if (check(TokenType::Start)) {
             error(current(), "imported module source cannot declare 'start'");
+        } else if (check(TokenType::Inline)) {
+            error(current(), "'inline' is only allowed inside a function or method body");
         } else {
             error(current(), "module source may contain only imports and declarations");
         }
@@ -209,6 +217,8 @@ void Parser::parseNamespace(Program& program) {
             program.classes.push_back(parseClass());
         } else if (check(TokenType::Start)) {
             error(current(), "'start' cannot be declared inside a namespace");
+        } else if (check(TokenType::Inline)) {
+            error(current(), "'inline' is only allowed inside a function or method body");
         } else if (check(TokenType::Include)) {
             error(current(), "'include' is only allowed at top level");
         } else if (check(TokenType::Import)) {
@@ -246,6 +256,9 @@ Statement Parser::parseStatement() {
     }
     if (check(TokenType::Include)) {
         error(current(), "'include' is only allowed at top level");
+    }
+    if (check(TokenType::Inline)) {
+        return parseInlineC();
     }
     if (check(TokenType::Int) || check(TokenType::StringType) || check(TokenType::ArrayType) ||
         check(TokenType::MapType) || check(TokenType::AnyType) || check(TokenType::Void)) {
@@ -286,6 +299,28 @@ Statement Parser::parseStatement() {
         return parseSuperConstructorCall();
     }
     error(current(), std::string("expected statement, found ") + tokenTypeName(current().type));
+}
+
+Statement Parser::parseInlineC() {
+    const auto keyword = consume(TokenType::Inline, "'inline'");
+    Statement statement;
+    statement.kind = StatementKind::InlineC;
+    statement.location = keyword.location;
+    if (match(TokenType::LeftParen)) {
+        if (!check(TokenType::RightParen)) {
+            do {
+                const auto location = current().location;
+                const auto type = parseType(true);
+                const auto name = consume(TokenType::Identifier, "capture name");
+                statement.inlineCaptures.push_back({type, name.text, location});
+            } while (match(TokenType::Comma));
+        }
+        consume(TokenType::RightParen, "')' after inline capture list");
+    }
+    const auto& body = consume(TokenType::InlineBody, "inline C block body");
+    statement.inlineSource = body.text;
+    consumeStatementTerminator();
+    return statement;
 }
 
 Statement Parser::parseDeclaration() {

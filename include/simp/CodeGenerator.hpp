@@ -10,6 +10,7 @@
 #include <iosfwd>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -20,6 +21,7 @@ public:
     explicit CodeGenerator(std::string targetTriple);
     std::string generate(const Program& program,
                          const std::string& moduleName = {});
+    const std::unordered_map<std::string, std::string>& inlineShims() const noexcept;
 
 private:
     struct Binding {
@@ -107,6 +109,8 @@ private:
     void emitStringBytes(const std::string& bytes);
     void emitPrint(const Statement& statement);
     void emitPrintDynamicValue(const Value& value);
+    void emitInlineC(const Statement& statement);
+    std::string inlineSymbol(const Statement& statement) const;
     void emitNullCheck(const std::string& pointer, const SourceLocation& location);
     bool isArrayType(const std::string& type) const;
     bool isMapType(const std::string& type) const;
@@ -128,6 +132,9 @@ private:
     std::string typeDefinitions_;
     std::string metadataGlobals_;
     std::string externDeclarations_;
+    std::string inlineDeclarations_;
+    std::unordered_set<std::string> declaredInlineSymbols_;
+    std::unordered_map<std::string, std::string> inlineShims_;
     std::vector<std::string> rootSlots_;
     std::size_t nextTemporary_ = 0;
     std::size_t nextVariable_ = 0;

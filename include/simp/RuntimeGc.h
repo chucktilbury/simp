@@ -85,6 +85,12 @@ typedef struct SimpString {
     uint64_t length;
 } SimpString;
 
+/* Inline-C support. The returned copy remains valid until the generated inline
+ * shim ends; do not retain it after that block returns. */
+const char *simp_string_cstr(const SimpString *text);
+void simp_inline_cstr_begin(void);
+void simp_inline_cstr_end(void);
+
 /* Demonstration C shims for out-of-line native-bound methods. Every method
  * receives its Simple receiver first, followed by its declared parameters. */
 int32_t simp_method_demo_abs(void *receiver, int32_t value);

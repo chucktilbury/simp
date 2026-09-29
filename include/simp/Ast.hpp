@@ -31,7 +31,13 @@ struct Expression {
 
 enum class StatementKind {
     Declaration, Assignment, Print, If, While, Block, Return, Expression, SuperConstructorCall,
-    Raise, Try, ForEach
+    Raise, Try, ForEach, InlineC
+};
+
+struct InlineCapture {
+    std::string type;
+    std::string name;
+    SourceLocation location;
 };
 
 struct Statement {
@@ -41,6 +47,8 @@ struct Statement {
     std::string keyName;
     bool hasExceptionBinding = false;
     std::string declaredType;
+    std::string inlineSource;
+    std::vector<InlineCapture> inlineCaptures;
     std::unique_ptr<Expression> target;
     std::vector<std::unique_ptr<Expression>> expressions;
     bool virtualBaseInitializer = false;

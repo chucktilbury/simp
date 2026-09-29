@@ -1,0 +1,5 @@
+start {
+    inline (int missing) {
+        (void)missing;
+    }
+}

@@ -8,8 +8,65 @@
 #include "simp/Diagnostic.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <iomanip>
+#include <sstream>
 
 namespace simp {
+
+std::string CodeGenerator::inlineSymbol(const Statement& statement) const {
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (const unsigned char value : statement.location.file) {
+        hash ^= value;
+        hash *= 1099511628211ULL;
+    }
+    for (const auto value : {statement.location.line, statement.location.column}) {
+        hash ^= static_cast<std::uint64_t>(value);
+        hash *= 1099511628211ULL;
+    }
+    std::ostringstream name;
+    name << "simp_inline_" << std::hex << hash;
+    return name.str();
+}
+
+void CodeGenerator::emitInlineC(const Statement& statement) {
+    const auto symbol = inlineSymbol(statement);
+    std::string llvmArguments;
+    std::string cParameters;
+    for (const auto& capture : statement.inlineCaptures) {
+        const auto binding = findVariable(capture.name, capture.location);
+        if (!llvmArguments.empty()) {
+            llvmArguments += ", ";
+            cParameters += ", ";
+        }
+        llvmArguments += "ptr " + binding.pointer;
+        if (capture.type == "int") {
+            cParameters += "int *" + capture.name;
+        } else if (capture.type == "string") {
+            cParameters += "SimpString *" + capture.name;
+        } else {
+            cParameters += "void **" + capture.name;
+        }
+    }
+    if (declaredInlineSymbols_.emplace(symbol).second) {
+        std::string declarationArguments;
+        for (std::size_t index = 0; index < statement.inlineCaptures.size(); ++index) {
+            if (index != 0) declarationArguments += ", ";
+            declarationArguments += "ptr";
+        }
+        inlineDeclarations_ += "declare void @" + symbol + "(" +
+                               declarationArguments + ")\n";
+
+        const auto parameters = cParameters.empty() ? "void" : cParameters;
+        std::string definition = "void " + symbol + "(" + parameters + ") {\n"
+                                 "    simp_inline_cstr_begin();\n";
+        definition += statement.inlineSource;
+        if (definition.empty() || definition.back() != '\n') definition += '\n';
+        definition += "    simp_inline_cstr_end();\n}\n";
+        inlineShims_.emplace(symbol, std::move(definition));
+    }
+    instructions_ += "  call void @" + symbol + "(" + llvmArguments + ")\n";
+}
 
 void CodeGenerator::emitStatements(const std::vector<Statement>& statements) {
     for (const auto& statement : statements) {
@@ -108,6 +165,9 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         return;
     case StatementKind::Expression:
         (void)emitExpression(*statement.expressions.front());
+        return;
+    case StatementKind::InlineC:
+        emitInlineC(statement);
         return;
     case StatementKind::Return:
         if (statement.expressions.empty()) {

@@ -591,6 +591,9 @@ std::string CodeGenerator::generate(const Program& program,
     typeDefinitions_.clear();
     metadataGlobals_.clear();
     externDeclarations_.clear();
+    inlineDeclarations_.clear();
+    declaredInlineSymbols_.clear();
+    inlineShims_.clear();
     instructions_.clear();
     nextString_ = 0;
     std::unordered_set<std::string> declaredExternalSymbols;
@@ -629,6 +632,7 @@ std::string CodeGenerator::generate(const Program& program,
            << "@stdout = external global ptr\n"
            << stringGlobals_ << metadataGlobals_ << "\n"
            << externDeclarations_
+           << inlineDeclarations_
            << "declare i32 @printf(ptr, ...)\n"
            << "declare i64 @fwrite(ptr, i64, i64, ptr)\n"           << "declare void @simp_gc_push_or_abort(ptr, ptr, i64)\n"
            << "declare void @simp_gc_pop_or_abort(ptr)\n"
@@ -678,6 +682,11 @@ std::string CodeGenerator::generate(const Program& program,
            << "attributes #0 = { returns_twice }\n\n"
            << methods << main;
     return module.str();
+}
+
+const std::unordered_map<std::string, std::string>&
+CodeGenerator::inlineShims() const noexcept {
+    return inlineShims_;
 }
 
 } // namespace simp

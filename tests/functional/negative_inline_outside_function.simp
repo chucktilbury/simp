@@ -1,0 +1,5 @@
+inline {
+    printf("not allowed\n");
+}
+
+start {}

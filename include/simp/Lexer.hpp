@@ -25,6 +25,7 @@ private:
     void skipTrivia(std::vector<Token>& tokens, std::size_t parenthesisDepth);
     Token scanIdentifierOrInteger();
     Token scanString(char quote, SourceLocation location);
+    Token scanInlineBody(SourceLocation location);
     Token makeToken(TokenType type, std::string text, SourceLocation location,
                     bool formattedString = false) const;
     SourceLocation currentLocation() const;
@@ -34,6 +35,7 @@ private:
     std::size_t position_ = 0;
     std::size_t line_ = 1;
     std::size_t column_ = 1;
+    bool inlineHeader_ = false;
 };
 
 } // namespace simp

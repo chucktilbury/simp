@@ -85,6 +85,7 @@ void dumpStatement(const Statement& statement, std::ostream& output, int depth) 
         break;
     case StatementKind::Raise: output << "Raise\n"; break;
     case StatementKind::Try: output << "Try\n"; break;
+    case StatementKind::InlineC: output << "Inline C\n"; break;
     }
     if (statement.target) {
         dumpExpression(*statement.target, output, depth + 1);

@@ -52,11 +52,11 @@ void writeFile(const std::string& path, const std::string& contents) {
     }
     std::ofstream output(path);
     if (!output) {
-        throw std::runtime_error("cannot write LLVM IR file: " + path);
+        throw std::runtime_error("cannot write generated file: " + path);
     }
     output << contents;
     if (!output) {
-        throw std::runtime_error("failed while writing LLVM IR file: " + path);
+        throw std::runtime_error("failed while writing generated file: " + path);
     }
 }
 
@@ -66,7 +66,8 @@ std::string defaultExecutablePath(const std::string& inputPath) {
     return (std::filesystem::path(".") / name).string();
 }
 
-int buildExecutable(const std::vector<std::string>& irPaths, const std::string& outputPath) {
+int buildExecutable(const std::vector<std::string>& irPaths,
+                    const std::string& inlineShimPath, const std::string& outputPath) {
     const auto parent = std::filesystem::path(outputPath).parent_path();
     if (!parent.empty()) {
         std::filesystem::create_directories(parent);
@@ -76,6 +77,10 @@ int buildExecutable(const std::vector<std::string>& irPaths, const std::string& 
         command += " -x ir " + shellQuote(irPath);
     }
     command += " -x none " + shellQuote(SIMP_GC_RUNTIME_LIBRARY) +
+               (inlineShimPath.empty()
+                    ? ""
+                    : " -I " + shellQuote(SIMP_RUNTIME_INCLUDE_DIRECTORY) +
+                          " -x c " + shellQuote(inlineShimPath)) +
                " -o " + shellQuote(outputPath);
     const int status = std::system(command.c_str());
     if (status == -1) {
@@ -210,10 +215,17 @@ int main(int argc, char** argv) {
                                     : requestedOutput;
         simp::CodeGenerator codeGenerator(SIMP_TARGET_TRIPLE);
         const auto ir = codeGenerator.generate(program);
+        std::unordered_map<std::string, std::string> inlineShims;
+        for (const auto& shim : codeGenerator.inlineShims()) {
+            inlineShims.emplace(shim.first, shim.second);
+        }
         std::vector<std::string> moduleIrPaths;
         for (const auto& module : modules) {
             simp::CodeGenerator moduleGenerator(SIMP_TARGET_TRIPLE);
             const auto moduleIr = moduleGenerator.generate(program, module.name);
+            for (const auto& shim : moduleGenerator.inlineShims()) {
+                inlineShims.emplace(shim.first, shim.second);
+            }
             const auto moduleIrPath = outputPath + ".simp.module." +
                                       std::to_string(moduleIrPaths.size()) + ".tmp.ll";
             writeFile(moduleIrPath, moduleIr);
@@ -231,7 +243,18 @@ int main(int argc, char** argv) {
             linkInputs.push_back(irOutput);
         }
         linkInputs.insert(linkInputs.end(), moduleIrPaths.begin(), moduleIrPaths.end());
-        const int buildResult = buildExecutable(linkInputs, outputPath);
+        std::string inlineShimPath;
+        if (!inlineShims.empty()) {
+            inlineShimPath = outputPath + ".simp.inline.tmp.c";
+            std::string source = "#include \"simp/RuntimeGc.h\"\n#include <stdio.h>\n\n";
+            for (const auto& shim : inlineShims) {
+                source += shim.second;
+                source += '\n';
+            }
+            writeFile(inlineShimPath, source);
+            temporaryIrPaths.push_back(inlineShimPath);
+        }
+        const int buildResult = buildExecutable(linkInputs, inlineShimPath, outputPath);
         for (const auto& temporary : temporaryIrPaths) {
             std::error_code ignored;
             std::filesystem::remove(temporary, ignored);

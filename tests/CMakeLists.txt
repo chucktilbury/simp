@@ -248,6 +248,48 @@ add_test(NAME simp_cli_rejects_adjacent_statements
         "-DEXPECTED_DIAGNOSTIC=expected newline after statement"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+
+function(add_inline_run_test name expected_output)
+    add_test(NAME simp_${name}
+        COMMAND "${CMAKE_COMMAND}"
+            "-DCOMPILER=$<TARGET_FILE:simp>"
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/${name}.simp"
+            "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${name}"
+            "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${name}.ll"
+            "-DEXPECTED_OUTPUT=${expected_output}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+    )
+endfunction()
+
+function(add_inline_diagnostic_test name expected_diagnostic)
+    add_test(NAME simp_${name}
+        COMMAND "${CMAKE_COMMAND}"
+            "-DCOMPILER=$<TARGET_FILE:simp>"
+            "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/${name}.simp"
+            "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${name}"
+            "-DEXPECTED_DIAGNOSTIC=${expected_diagnostic}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+    )
+endfunction()
+
+add_inline_run_test(positive_inline_no_captures "inline { says } hello\n")
+add_inline_run_test(positive_inline_int_capture "12\n")
+add_inline_run_test(positive_inline_string_capture "hello from C\n")
+add_inline_run_test(positive_inline_multiple_captures "answer: 42\n")
+add_inline_run_test(positive_inline_array_capture "3\n3\n")
+add_inline_run_test(positive_inline_method "42\n")
+add_inline_diagnostic_test(negative_inline_outside_function
+    "'inline' is only allowed inside a function or method body")
+add_inline_diagnostic_test(negative_inline_void_capture
+    "inline capture type 'void' is not supported")
+add_inline_diagnostic_test(negative_inline_any_capture
+    "inline capture type 'any' is not supported")
+add_inline_diagnostic_test(negative_inline_duplicate_capture
+    "duplicate inline capture 'value'")
+add_inline_diagnostic_test(negative_inline_undefined_capture
+    "undefined inline capture 'missing'")
+add_inline_diagnostic_test(negative_inline_type_mismatch_capture
+    "inline capture type 'int' does not match string variable 'value'")
 add_test(NAME simp_compile_and_run_newline_statements
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"

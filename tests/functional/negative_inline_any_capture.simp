@@ -1,0 +1,6 @@
+start {
+    any value = 1
+    inline (any value) {
+        (void)value;
+    }
+}

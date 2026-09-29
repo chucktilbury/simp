@@ -89,6 +89,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Class: return "'class'";
     case TokenType::Namespace: return "'namespace'";
     case TokenType::Include: return "'include'";
+    case TokenType::Inline: return "'inline'";
+    case TokenType::InlineBody: return "inline C body";
     case TokenType::Import: return "'import'";
     case TokenType::As: return "'as'";
     case TokenType::Public: return "'public'";
@@ -246,6 +248,7 @@ Token Lexer::scanIdentifierOrInteger() {
         {"try", TokenType::Try}, {"except", TokenType::Except},
         {"finally", TokenType::Finally}, {"class", TokenType::Class},
         {"namespace", TokenType::Namespace}, {"include", TokenType::Include},
+        {"inline", TokenType::Inline},
         {"import", TokenType::Import}, {"as", TokenType::As},
         {"from", TokenType::From},
         {"public", TokenType::Public}, {"protected", TokenType::Protected},
@@ -256,8 +259,80 @@ Token Lexer::scanIdentifierOrInteger() {
         {"return", TokenType::Return}, {"void", TokenType::Void}
     };
     const auto found = keywords.find(normalized);
+    if (found != keywords.end() && found->second == TokenType::Inline) {
+        inlineHeader_ = true;
+    }
     return makeToken(found == keywords.end() ? TokenType::Identifier : found->second,
                      std::move(text), location);
+}
+
+Token Lexer::scanInlineBody(SourceLocation location) {
+    advance();
+    std::size_t braceDepth = 1;
+    std::string body;
+    const auto append = [&]() { body.push_back(advance()); };
+
+    while (!atEnd()) {
+        if (peek() == '"' || peek() == '\'') {
+            const char quote = peek();
+            append();
+            bool closed = false;
+            while (!atEnd()) {
+                const char value = peek();
+                append();
+                if (value == '\\' && !atEnd()) {
+                    append();
+                } else if (value == quote) {
+                    closed = true;
+                    break;
+                }
+            }
+            if (!closed) {
+                throw DiagnosticError(location, "unterminated string in inline C block");
+            }
+            continue;
+        }
+        if (peek() == '/' && peek(1) == '/') {
+            append();
+            append();
+            while (!atEnd() && peek() != '\n') append();
+            continue;
+        }
+        if (peek() == '/' && peek(1) == '*') {
+            append();
+            append();
+            bool closed = false;
+            while (!atEnd()) {
+                if (peek() == '*' && peek(1) == '/') {
+                    append();
+                    append();
+                    closed = true;
+                    break;
+                }
+                append();
+            }
+            if (!closed) {
+                throw DiagnosticError(location, "unterminated comment in inline C block");
+            }
+            continue;
+        }
+        if (peek() == '{') {
+            ++braceDepth;
+            append();
+            continue;
+        }
+        if (peek() == '}') {
+            advance();
+            if (--braceDepth == 0) {
+                inlineHeader_ = false;
+                return makeToken(TokenType::InlineBody, std::move(body), location);
+            }
+            body.push_back('}');
+            continue;
+        }
+        append();
+    }
+    throw DiagnosticError(location, "unterminated inline C block");
 }
 
 Token Lexer::scanString(char quote, SourceLocation location) {
@@ -306,6 +381,10 @@ std::vector<Token> Lexer::tokenize() {
         }
         const auto location = currentLocation();
         const char value = peek();
+        if (inlineHeader_ && value == '{') {
+            tokens.push_back(scanInlineBody(location));
+            continue;
+        }
         if (value == '\n') {
             advance();
             if (parenthesisDepth == 0) {

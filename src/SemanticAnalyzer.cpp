@@ -185,6 +185,11 @@ void SemanticAnalyzer::normalizeStatements(
         if (statement.kind == StatementKind::Declaration) {
             normalizeType(statement.declaredType, namespacePath, statement.location);
         }
+        if (statement.kind == StatementKind::InlineC) {
+            for (auto& capture : statement.inlineCaptures) {
+                normalizeType(capture.type, namespacePath, capture.location);
+            }
+        }
         if (statement.kind == StatementKind::SuperConstructorCall) {
             statement.name = resolveClassName(statement.name, namespacePath,
                                                statement.location);

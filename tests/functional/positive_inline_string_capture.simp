@@ -1,0 +1,6 @@
+start {
+    string message = "hello from C"
+    inline (string message) {
+        printf("%s\n", simp_string_cstr(message));
+    }
+}

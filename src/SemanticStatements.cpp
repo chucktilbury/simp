@@ -321,6 +321,41 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
     case StatementKind::Expression:
         (void)analyzeExpression(*statement.expressions.front());
         return;
+    case StatementKind::InlineC: {
+        for (const auto& capture : statement.inlineCaptures) {
+            if (capture.type == "void" || capture.type == "any") {
+                throw DiagnosticError(capture.location,
+                                      "inline capture type '" + capture.type +
+                                          "' is not supported");
+            }
+            if (capture.type != "int" && capture.type != "string" &&
+                capture.type != "array" && capture.type != "map" &&
+                classes_.find(capture.type) == classes_.end()) {
+                throw DiagnosticError(capture.location,
+                                      "inline capture type must be int, string, array, map, "
+                                      "or a declared class type");
+            }
+        }
+        std::unordered_set<std::string> captureNames;
+        for (const auto& capture : statement.inlineCaptures) {
+            if (!captureNames.emplace(capture.name).second) {
+                throw DiagnosticError(capture.location,
+                                      "duplicate inline capture '" + capture.name + "'");
+            }
+            const auto index = findSymbolIndex(capture.name);
+            if (index == symbols_.size()) {
+                throw DiagnosticError(capture.location,
+                                      "undefined inline capture '" + capture.name + "'");
+            }
+            if (symbols_[index].type != capture.type) {
+                throw DiagnosticError(capture.location,
+                                      "inline capture type '" + capture.type +
+                                          "' does not match " + symbols_[index].type +
+                                          " variable '" + capture.name + "'");
+            }
+        }
+        return;
+    }
     }
 }
 

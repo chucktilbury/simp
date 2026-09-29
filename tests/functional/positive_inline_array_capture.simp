@@ -1,0 +1,7 @@
+start {
+    array values = [1, 2, 3]
+    inline (array values) {
+        printf("%llu\n", (unsigned long long)((SimpArray *)*values)->length);
+    }
+    print(values.length)
+}

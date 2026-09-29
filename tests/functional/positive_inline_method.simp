@@ -1,0 +1,12 @@
+class Calculator {
+    int adjust(int value) {
+        inline (int value) {
+            *value += 2;
+        }
+        return value
+    }
+}
+
+start {
+    print(Calculator().adjust(40))
+}

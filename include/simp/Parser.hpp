@@ -55,6 +55,7 @@ private:
     Statement parseForEach();
     Statement parseRaise();
     Statement parseTry();
+    Statement parseInlineC();
     std::unique_ptr<Expression> parseExpression();
     std::unique_ptr<Expression> parseComparison();
     std::unique_ptr<Expression> parseAddition();
