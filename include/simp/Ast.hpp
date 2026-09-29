@@ -50,10 +50,13 @@ struct Parameter {
     SourceLocation location;
 };
 
+enum class AccessLevel { Public, Protected, Private };
+
 struct FieldDeclaration {
     std::string type;
     std::string name;
     SourceLocation location;
+    AccessLevel access = AccessLevel::Public;
 };
 
 struct MethodDeclaration {
@@ -63,6 +66,8 @@ struct MethodDeclaration {
     std::vector<Parameter> parameters;
     std::vector<Statement> body;
     bool constructor = false;
+    bool destructor = false;
+    AccessLevel access = AccessLevel::Public;
 };
 
 struct ClassDeclaration {
@@ -72,6 +77,7 @@ struct ClassDeclaration {
     SourceLocation baseLocation;
     std::vector<std::string> baseClassNames;
     std::vector<SourceLocation> baseLocations;
+    std::vector<AccessLevel> baseAccess;
     std::vector<FieldDeclaration> fields;
     std::vector<MethodDeclaration> methods;
 };

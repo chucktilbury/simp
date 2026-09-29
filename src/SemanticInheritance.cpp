@@ -5,9 +5,87 @@
  */
 #include "simp/SemanticAnalyzer.hpp"
 
+#include <algorithm>
 #include <unordered_set>
 
 namespace simp {
+
+bool SemanticAnalyzer::basePathIsPublic(const ClassDeclaration& owner,
+                                        const std::vector<std::string>& path) const {
+    const ClassDeclaration* current = &owner;
+    bool publicPath = true;
+    std::string restrictedAt;
+    for (const auto& baseName : path) {
+        const auto base = std::find(current->baseClassNames.begin(),
+                                    current->baseClassNames.end(), baseName);
+        if (base == current->baseClassNames.end()) return false;
+        const auto index = static_cast<std::size_t>(
+            std::distance(current->baseClassNames.begin(), base));
+        const auto access = current->baseAccess[index];
+        if (!publicPath && access == AccessLevel::Private) {
+            return false;
+        }
+        if (publicPath && access != AccessLevel::Public) {
+            restrictedAt = current->name;
+        }
+        publicPath = publicPath && access == AccessLevel::Public;
+        if (!publicPath && (currentClass_ == nullptr ||
+                            currentClass_->name != restrictedAt)) {
+            return false;
+        }
+        const auto declaration = classes_.find(baseName);
+        if (declaration == classes_.end()) return false;
+        current = declaration->second;
+    }
+    return true;
+}
+
+bool SemanticAnalyzer::memberPubliclyAccessible(const ClassDeclaration& owner,
+                                                const std::string& name,
+                                                bool method) const {
+    const auto contains = [this, &name, method](const auto& self,
+                                                const ClassDeclaration& current,
+                                                bool publicPath,
+                                                const std::string& restrictedAt)
+        -> bool {
+        if (method) {
+            for (const auto& declaration : current.methods) {
+                if (!declaration.constructor && declaration.name == name) {
+                    return publicPath ||
+                           (currentClass_ != nullptr &&
+                            currentClass_->name == restrictedAt);
+                }
+            }
+        } else {
+            for (const auto& declaration : current.fields) {
+                if (declaration.name == name) {
+                    return publicPath ||
+                           (currentClass_ != nullptr &&
+                            currentClass_->name == restrictedAt);
+                }
+            }
+        }
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto base = classes_.find(current.baseClassNames[index]);
+            if (base == classes_.end()) continue;
+            const auto access = current.baseAccess[index];
+            std::string nextRestrictedAt = restrictedAt;
+            if (!publicPath && access == AccessLevel::Private) {
+                return false;
+            }
+            if (publicPath && access != AccessLevel::Public) {
+                nextRestrictedAt = current.name;
+            }
+            if (self(self, *base->second,
+                     publicPath && access == AccessLevel::Public,
+                     nextRestrictedAt)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    return contains(contains, owner, true, {});
+}
 
 const FieldDeclaration* SemanticAnalyzer::findField(const ClassDeclaration& declaration,
                                                     const std::string& name) const {
@@ -106,6 +184,10 @@ bool SemanticAnalyzer::isAssignable(const std::string& target,
     auto* current = found->second;
     while (current != nullptr && current->name != target) {
         if (current->baseClassNames.empty()) return false;
+        if ((currentClass_ == nullptr || currentClass_->name != source) &&
+            current->baseAccess.front() != AccessLevel::Public) {
+            return false;
+        }
         current = classes_.at(current->baseClassNames.front());
     }
     return current != nullptr;

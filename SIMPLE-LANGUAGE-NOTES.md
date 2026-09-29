@@ -39,7 +39,8 @@ The exact syntax and complete rules for nullability and conversion remain part o
   exception: `start` is the only top-level method.
 - A complete program contains exactly one `start` block. A missing `start` block
   or more than one `start` block is a compile-time error.
-- Full OOP is supported, including multiple inheritance.
+- Full OOP, including multiple inheritance, is the language goal; the current
+  prototype implements only the explicitly listed inheritance slice below.
 - Only classes inherit.
 - Function/method overrides are supported, including virtual methods.
 - A constructor is named exactly after its class, for example `Window(...)`.
@@ -117,7 +118,8 @@ is default-constructible only if its bases also have no explicit constructors.
 
 ### Names, scopes, namespaces, and access
 
-- `public`, `private`, and `protected` access are supported.
+- `public`, `private`, and `protected` member access are part of the language
+  design; the prototype currently implements only per-base visibility.
 - Namespaces concatenate into symbol paths.
 - A name is a compile-time symbol-tree path, not merely a textual identifier.
 - Simple compilation is multi-pass: a name may be referenced before its
@@ -129,9 +131,18 @@ is default-constructible only if its bases also have no explicit constructors.
 - Scope/path qualification can disambiguate inherited members. The prototype
   implements base-path qualification for field reads and assignments.
 - An unqualified inherited member that is ambiguous under multiple inheritance is a compile-time error; the prototype implements this for fields and methods.
+- Base classes may be marked `public`, `protected`, or `private`. The prototype
+  defaults omitted visibility to public, preserves inherited members on public
+  paths, and hides inherited members from unrelated code on protected/private
+  paths. Since member-level access sections are not implemented, all declared
+  fields/methods in the prototype behave as public; base-private members cannot
+  yet be expressed. Exact protected/private access across further-derived
+  classes remains deferred.
 - An explicit base-constructor call uses `super.Base(args)`, naming the
   specified base class.
-- Base access for constructors, destructors, methods, and data is checked against scope and access rules.
+- Base access and member accessibility are checked according to the intended
+  language access rules; only external access through public versus
+  protected/private base paths is enforced by the prototype.
 
 Keywords are case-insensitive and reserved under every capitalization. For example, `while`, `While`, and `wHiLe` are the same keyword, so `int While = 0` is a syntax error.
 

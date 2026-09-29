@@ -1,0 +1,11 @@
+class Base {
+    int value;
+}
+
+class PrivateChild : private Base {
+}
+
+start {
+    PrivateChild child = PrivateChild();
+    print(child.value);
+}

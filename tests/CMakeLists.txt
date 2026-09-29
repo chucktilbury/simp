@@ -157,6 +157,47 @@ add_test(NAME simp_compile_and_run_multiple_inheritance
         "-DEXPECTED_OUTPUT=7\n7\n10\n20\n3\n"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+add_test(NAME simp_compile_and_run_public_inheritance
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_public_inheritance.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_public_inheritance"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_public_inheritance.ll"
+        "-DEXPECTED_OUTPUT=42\n0\n0\n0\n0\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_protected_inherited_member_access
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_protected_inheritance.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_protected_inheritance"
+        "-DEXPECTED_DIAGNOSTIC=is not accessible through this inheritance path"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_private_inherited_member_access
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_inheritance.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_inheritance"
+        "-DEXPECTED_DIAGNOSTIC=is not accessible through this inheritance path"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_protected_base_conversion
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_protected_base_conversion.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_protected_base_conversion"
+        "-DEXPECTED_DIAGNOSTIC=cannot initialize Base variable with ProtectedChild"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_private_base_conversion
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_base_conversion.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_base_conversion"
+        "-DEXPECTED_DIAGNOSTIC=cannot initialize Base variable with PrivateChild"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
 add_test(NAME simp_rejects_ambiguous_inherited_field
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"

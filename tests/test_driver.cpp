@@ -120,7 +120,7 @@ int main() {
                  "start { Child child = Child(1); }");
              std::ostringstream output;
              simp::dumpAst(program, output);
-             require(output.str().find("Class [Child : Base]") != std::string::npos,
+             require(output.str().find("Class [Child : public Base]") != std::string::npos,
                      "base class missing from AST");
              require(output.str().find("Super constructor [Base]") != std::string::npos,
                      "explicit base constructor missing from AST");

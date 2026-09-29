@@ -106,6 +106,12 @@ void dumpAst(const Program& program, std::ostream& output) {
             output << " : ";
             for (std::size_t index = 0; index < declaration.baseClassNames.size(); ++index) {
                 if (index != 0) output << ", ";
+                const char* access = declaration.baseAccess[index] == AccessLevel::Public
+                                         ? "public "
+                                         : declaration.baseAccess[index] == AccessLevel::Protected
+                                               ? "protected "
+                                               : "private ";
+                output << access;
                 output << declaration.baseClassNames[index];
             }
         }

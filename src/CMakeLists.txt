@@ -49,6 +49,7 @@ add_library(simp_frontend
     Diagnostic.cpp
     Lexer.cpp
     Parser.cpp
+    ParserClass.cpp
     SemanticAnalyzer.cpp
     SemanticInheritance.cpp
     SemanticExpressions.cpp

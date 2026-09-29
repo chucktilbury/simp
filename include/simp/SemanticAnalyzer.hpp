@@ -43,6 +43,10 @@ private:
     bool resolveBaseQualifier(const Expression& receiver, const Expression*& root,
                              const ClassDeclaration*& view,
                              std::vector<std::string>& path);
+    bool memberPubliclyAccessible(const ClassDeclaration& owner, const std::string& name,
+                                  bool method) const;
+    bool basePathIsPublic(const ClassDeclaration& owner,
+                          const std::vector<std::string>& path) const;
     bool isAssignable(const std::string& target, const std::string& source) const;
     bool isSubclassOf(const std::string& type, const std::string& base) const;
     std::vector<const FieldDeclaration*> inheritedFields(const ClassDeclaration& declaration) const;

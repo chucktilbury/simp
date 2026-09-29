@@ -94,6 +94,14 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                                   "ambiguous inherited field '" + expression.value +
                                       "'; qualify it through a base class");
         }
+        const auto& accessOwner = path.empty() ? *owner : *classes_.at(analyzeExpression(*root));
+        if (matches != 0 &&
+            (!memberPubliclyAccessible(*owner, expression.value, false) ||
+             (!path.empty() && !basePathIsPublic(accessOwner, path)))) {
+            throw DiagnosticError(expression.location,
+                                  "field '" + expression.value +
+                                      "' is not accessible through this inheritance path");
+        }
         if (const auto* field = findField(*owner, expression.value)) {
             return field->type;
         }
@@ -162,6 +170,15 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
             throw DiagnosticError(target.location,
                                   "ambiguous inherited method '" + target.value +
                                       "'; qualify it through a base class");
+        }
+        const auto& accessOwner =
+            basePath.empty() ? *owner : *classes_.at(analyzeExpression(*root));
+        if (countMethods(*owner, target.value) != 0 &&
+            (!memberPubliclyAccessible(*owner, target.value, true) ||
+             (!basePath.empty() && !basePathIsPublic(accessOwner, basePath)))) {
+            throw DiagnosticError(target.location,
+                                  "method '" + target.value +
+                                      "' is not accessible through this inheritance path");
         }
         const auto* method = findMethod(*owner, target.value);
         if (method == nullptr) {
@@ -265,6 +282,13 @@ std::string SemanticAnalyzer::analyzeLValue(const Expression& expression) {
             throw DiagnosticError(expression.location,
                                   "ambiguous inherited field '" + expression.value +
                                       "'; qualify it through a base class");
+        }
+        const auto& accessOwner = path.empty() ? *owner : *classes_.at(analyzeExpression(*root));
+        if (!memberPubliclyAccessible(*owner, expression.value, false) ||
+            (!path.empty() && !basePathIsPublic(accessOwner, path))) {
+            throw DiagnosticError(expression.location,
+                                  "field '" + expression.value +
+                                      "' is not accessible through this inheritance path");
         }
         if (const auto* field = findField(*owner, expression.value)) {
             return field->type;

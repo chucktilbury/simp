@@ -1,0 +1,48 @@
+class Base {
+    int value;
+}
+
+class PublicChild : public Base {
+}
+
+class ProtectedChild : protected Base {
+    int readValue() {
+        return value;
+    }
+}
+
+class PrivateChild : private Base {
+    int readValue() {
+        return value;
+    }
+}
+
+class ProtectedGrandchild : public ProtectedChild {
+    int readAgain() {
+        return value;
+    }
+}
+
+class PrivateGrandchild : public PrivateChild {
+    int readAgain() {
+        return value;
+    }
+}
+
+start {
+    PublicChild child = PublicChild();
+    child.value = 42;
+    print(child.value);
+
+    ProtectedChild protectedChild = ProtectedChild();
+    print(protectedChild.readValue());
+
+    PrivateChild privateChild = PrivateChild();
+    print(privateChild.readValue());
+
+    ProtectedGrandchild protectedGrandchild = ProtectedGrandchild();
+    print(protectedGrandchild.readAgain());
+
+    PrivateGrandchild privateGrandchild = PrivateGrandchild();
+    print(privateGrandchild.readAgain());
+}

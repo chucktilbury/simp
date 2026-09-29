@@ -1,0 +1,10 @@
+class Base {
+}
+
+class ProtectedChild : protected Base {
+}
+
+start {
+    ProtectedChild child = ProtectedChild();
+    Base base = child;
+}

@@ -74,8 +74,8 @@ and semantic errors.
 - Exactly one top-level `start { ... }` block is required. Duplicate or missing
   blocks are errors; other top-level forms are rejected.
 - Reserved keywords are case-insensitive: `start`, `int`, `string`, `if`,
-  `else`, `while`, `print`, `class`, `super`, `null`, `return`, and `void`.
-  Every capitalization is reserved.
+  `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
+  `public`, `protected`, and `private`. Every capitalization is reserved.
 - `int` and `string` declarations (with optional initializer) and identifier
   assignment use semicolon-terminated statements.
 - Expressions include integer and string literals, identifiers, parentheses,
@@ -139,7 +139,17 @@ and semantic errors.
   supported along the primary-base chain; secondary-base method dispatch is
   rejected. Overrides on supported paths must exactly preserve inherited
   return and parameter types. Inherited field redeclaration, incompatible
-  overrides, access control, and shared/virtual bases are unsupported.
+  overrides, member-level access control, and shared/virtual bases are
+  unsupported.
+
+  Each direct base may be marked `public`, `protected`, or `private`; omitted
+  visibility defaults to `public` for compatibility with the current subset.
+  External code may access inherited fields/methods only through public base
+  paths. Protected/private paths are available to members of the class that
+  declares the path but are hidden from `start` and unrelated classes. This
+  models the effective public-vs-non-public result for currently public
+  members; it does not yet model `public:`, `protected:`, or `private:`
+  sections on fields/methods, so base-private members cannot yet be declared.
 
   Objects have stable, non-moving addresses. Their first word points to class
   metadata, followed by distinct base subobjects in declared order and then
@@ -148,8 +158,9 @@ and semantic errors.
   object size, and compiler-generated offsets for class-reference fields;
   instances do not contain method copies. Class references may be `null`; dereferencing null
   aborts through a runtime guard. Newly allocated fields are zero-initialized
-  before the constructor runs. Access control, constructor overloading, method
-  overloading, and default field initializer syntax are unsupported.
+  before the constructor runs. Member-level access control, constructor
+  overloading, method overloading, and default field initializer syntax are
+  unsupported.
 
 The parser is recursive descent and produces an AST that can be dumped with
 `--dump-ast`. Lexer, parser, and CLI diagnostics include file, line, and column.
@@ -212,7 +223,8 @@ optimization pipeline. Building the compiler requires Clang on `PATH`; the
 current driver launches it through the host POSIX shell. Full language type
 checking and name-resolution rules, OOP beyond the supported single- and
 limited multiple-inheritance slices (including secondary-base constructor and
-virtual-dispatch support and access control),
+virtual-dispatch support, member-level access control, and access to protected
+base members from further-derived classes),
 production GC features, modules and native libraries, inline C, GTK, package
 manager, IDE, and debugger remain deferred. The full grammar, collections,
 imports/includes, and the remaining semantics in the design notes are not
