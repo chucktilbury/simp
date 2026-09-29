@@ -28,6 +28,7 @@ const char* expressionName(ExpressionKind kind) {
     case ExpressionKind::ConstructorCall: return "ConstructorCall";
     case ExpressionKind::Null: return "Null";
     case ExpressionKind::ArrayLiteral: return "ArrayLiteral";
+    case ExpressionKind::MapLiteral: return "MapLiteral";
     case ExpressionKind::Index: return "Index";
     case ExpressionKind::Slice: return "Slice";
     }
@@ -69,6 +70,11 @@ void dumpStatement(const Statement& statement, std::ostream& output, int depth) 
     case StatementKind::Print: output << "Print\n"; break;
     case StatementKind::If: output << "If\n"; break;
     case StatementKind::While: output << "While\n"; break;
+    case StatementKind::ForEach:
+        output << (statement.keyName.empty()
+                       ? "For each [" + statement.name + "]\n"
+                       : "For each [" + statement.keyName + ", " + statement.name + "]\n");
+        break;
     case StatementKind::Block: output << "Block\n"; break;
     case StatementKind::Return: output << "Return\n"; break;
     case StatementKind::Expression: output << "Expression statement\n"; break;

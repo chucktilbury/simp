@@ -46,6 +46,7 @@ private:
     Statement parsePrint();
     Statement parseIf();
     Statement parseWhile();
+    Statement parseForEach();
     Statement parseRaise();
     Statement parseTry();
     std::unique_ptr<Expression> parseExpression();

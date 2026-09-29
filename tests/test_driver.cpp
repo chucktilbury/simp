@@ -205,6 +205,14 @@ int main() {
              require(tree.find("Binary [+]") != std::string::npos, "addition absent from AST");
              require(tree.find("Binary [*]") != std::string::npos, "multiplication absent from AST");
          }},
+        {"map literals are represented in the AST", [] {
+             const auto program = parse(
+                 "start {\n map values = {\"answer\": 42}\n}");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             require(output.str().find("MapLiteral") != std::string::npos,
+                     "map literal missing from AST");
+         }},
         {"raise, catch-all, and finally syntax", [] {
              const auto program = parse(
                  "start {\n"
@@ -486,8 +494,8 @@ int main() {
          }},
         {"nested array literals are rejected", [] {
              expectDiagnostic("start {\n  array bag = [1, [2, 3]]\n}",
-                              "array elements must be int, string, a class reference, null, "
-                              "or 'any'; found array");
+                              "array elements must be int, string, a class reference, a map, "
+                              "null, or 'any'; found array");
          }},
         {"'any' has no members until extracted", [] {
              expectDiagnostic("start {\n  array bag = [1]\n  any first = bag[0]\n"
@@ -498,7 +506,63 @@ int main() {
         {"array and 'any' equality is not implemented", [] {
              expectDiagnostic("start {\n  array bag = [1]\n  array other = [1]\n"
                               "  int same = bag == other\n}",
-                              "array and 'any' equality are not implemented in this prototype");
+                              "collection and 'any' equality are not implemented in this prototype");
+         }},
+        {"map type and literal keys are accepted", [] {
+             expectValid("start {\n"
+                         "  dict values = {\"answer\": 42, 'label': \"ok\"}\n"
+                         "  map alias = values\n"
+                         "  any result = alias[\"answer\"]\n"
+                         "  alias[\"answer\"] = \"changed\"\n"
+                         "  print(alias.length)\n"
+                         "}");
+         }},
+        {"map indexing accepts string expressions", [] {
+             expectValid("start {\n map values = {}\n string key = \"x\"\n"
+                         " any value = values[key]\n}");
+         }},
+        {"map literal keys must be string literals", [] {
+             expectDiagnostic("start { map values = {1: \"value\"} }",
+                              "map keys must have type string");
+         }},
+        {"map length is read-only", [] {
+             expectDiagnostic("start {\n map values = {}\n values.length = 1\n}",
+                              "map length is read-only");
+         }},
+        {"map and 'any' equality are not implemented", [] {
+             expectDiagnostic("start {\n map values = {}\n map other = {}\n"
+                              " int same = values == other\n}",
+                              "collection and 'any' equality are not implemented in this "
+                              "prototype");
+         }},
+        {"map slicing is rejected", [] {
+             expectDiagnostic("start {\n map values = {}\n any value = values[\"a\":\"z\"]\n}",
+                              "slicing requires an array");
+         }},
+         {"map contains and collection iteration are accepted", [] {
+              expectValid("start {\n"
+                          "  map values = {\"one\": 1}\n"
+                          "  string key = \"one\"\n"
+                          "  int present = values.contains(key)\n"
+                          "  for (name, value in values) { print(name) }\n"
+                          "  array items = [1, \"two\"]\n"
+                          "  for (item in items) { print(item) }\n"
+                          "}");
+         }},
+         {"map iteration requires key and value variables", [] {
+              expectDiagnostic("start {\n map values = {}\n"
+                               " for (value in values) { print(value) }\n}",
+                               "map iteration requires key and value variables");
+         }},
+         {"array iteration accepts one value variable", [] {
+              expectDiagnostic("start {\n array values = []\n"
+                               " for (key, value in values) { print(value) }\n}",
+                               "array iteration accepts one value variable");
+         }},
+         {"map keys must be statically typed strings", [] {
+              expectDiagnostic("start {\n map values = {}\n any key = \"x\"\n"
+                               " any value = values[key]\n}",
+                               "map keys must have type string");
          }}
     };
 

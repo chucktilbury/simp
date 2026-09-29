@@ -50,6 +50,8 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     typeDefinitions_ += "%SimpleString = type { ptr, i64 }\n";
     typeDefinitions_ += "%SimpleArrayValue = type { i64, i64, ptr, i64 }\n";
     typeDefinitions_ += "%SimpleArray = type { ptr, i64, [0 x %SimpleArrayValue] }\n";
+    typeDefinitions_ += "%SimpleMap = type { ptr, i64, i64, ptr }\n";
+    typeDefinitions_ += "%SimpleMapEntry = type { ptr, i64, %SimpleArrayValue }\n";
     typeDefinitions_ += "%SimpRootFrame = type { ptr, i64, ptr }\n";
     typeDefinitions_ += "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr }\n";
     typeDefinitions_ += "%SimpleMethodMeta = type { ptr, i64, ptr }\n";
@@ -542,9 +544,16 @@ std::string CodeGenerator::generate(const Program& program) {
            << "declare ptr @simp_gc_alloc_array(i64)\n"
            << "declare ptr @simp_array_index(ptr, i32, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_array_slice(ptr, i32, i32, ptr, i64, i64, i64)\n"
+           << "declare ptr @simp_gc_alloc_map()\n"
+           << "declare ptr @simp_map_get(ptr, ptr, i64, ptr, i64, i64, i64)\n"
+           << "declare i32 @simp_map_contains(ptr, ptr, i64, ptr, i64, i64, i64)\n"
+           << "declare ptr @simp_map_entry_at(ptr, i64, ptr, i64, i64, i64)\n"
+           << "declare void @simp_map_set(ptr, ptr, i64, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_require_alive(ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_tag(i64, i64, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_class(i64, ptr, ptr, ptr, i64, i64, i64)\n"
+           << "declare void @simp_value_require_map(i64, ptr, ptr, i64, i64, i64)\n"
+           << "declare void @simp_value_require_array(i64, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_begin_construction(ptr)\n"
            << "declare void @simp_gc_end_construction(ptr)\n"
            << "declare void @simp_gc_begin_destroy(ptr, ptr, i64, i64, i64)\n"

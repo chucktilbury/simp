@@ -1,0 +1,4 @@
+start {
+    any value = 7
+    map invalid = value
+}

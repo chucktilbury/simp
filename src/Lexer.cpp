@@ -84,6 +84,7 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Int: return "'int'";
     case TokenType::StringType: return "'string'";
     case TokenType::ArrayType: return "'array'";
+    case TokenType::MapType: return "'map'";
     case TokenType::AnyType: return "'any'";
     case TokenType::Class: return "'class'";
     case TokenType::Public: return "'public'";
@@ -97,6 +98,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::If: return "'if'";
     case TokenType::Else: return "'else'";
     case TokenType::While: return "'while'";
+    case TokenType::For: return "'for'";
+    case TokenType::In: return "'in'";
     case TokenType::Print: return "'print'";
     case TokenType::Raise: return "'raise'";
     case TokenType::Try: return "'try'";
@@ -230,8 +233,10 @@ Token Lexer::scanIdentifierOrInteger() {
         {"start", TokenType::Start}, {"int", TokenType::Int},
         {"string", TokenType::StringType},
         {"array", TokenType::ArrayType}, {"list", TokenType::ArrayType},
+        {"map", TokenType::MapType}, {"dict", TokenType::MapType},
         {"any", TokenType::AnyType}, {"if", TokenType::If},
         {"else", TokenType::Else}, {"while", TokenType::While},
+        {"for", TokenType::For}, {"in", TokenType::In},
         {"print", TokenType::Print}, {"raise", TokenType::Raise},
         {"try", TokenType::Try}, {"except", TokenType::Except},
         {"finally", TokenType::Finally}, {"class", TokenType::Class},

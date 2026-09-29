@@ -21,12 +21,16 @@ bool CodeGenerator::isArrayType(const std::string& type) const {
     return type == "array";
 }
 
+bool CodeGenerator::isMapType(const std::string& type) const {
+    return type == "map";
+}
+
 bool CodeGenerator::isDynamicValueType(const std::string& type) const {
     return type == "any";
 }
 
 bool CodeGenerator::isManagedReferenceType(const std::string& type) const {
-    return isArrayType(type) || classes_.find(type) != classes_.end();
+    return isArrayType(type) || isMapType(type) || classes_.find(type) != classes_.end();
 }
 
 [[noreturn]] void CodeGenerator::unsupported(const SourceLocation& location,
@@ -41,7 +45,7 @@ std::string CodeGenerator::newTemporary() {
 CodeGenerator::Value CodeGenerator::rootObjectValue(Value value,
                                                      const SourceLocation& location) {
     if (isDynamicValueType(value.type)) {
-        // A dynamic 'any' value may embed a class-reference pointer (or may not,
+        // A dynamic 'any' value may embed a managed-reference pointer (or may not,
         // if it holds an int/string/null). Root the pointer sub-field so a later
         // allocation cannot collect a referenced object out from under it; unlike
         // a plain object/array reference, we cannot call simp_gc_require_alive
@@ -130,8 +134,29 @@ void CodeGenerator::emitArrayElementStore(const std::string& valuePointer, Value
                      "\n";
 }
 
+void CodeGenerator::emitMapElementStore(const std::string& mapPointer, Value key, Value value,
+                                        const SourceLocation& location) {
+    const auto keyData = newTemporary();
+    const auto keyLength = newTemporary();
+    instructions_ += "  " + keyData + " = extractvalue %SimpleString " + key.operand + ", 0\n"
+                     "  " + keyLength + " = extractvalue %SimpleString " + key.operand + ", 1\n";
+    const auto dynamic = buildDynamicValue(std::move(value), location);
+    const auto valueSlot = newTemporary();
+    entryAllocas_ += "  " + valueSlot + " = alloca %SimpleArrayValue\n";
+    instructions_ += "  store %SimpleArrayValue " + dynamic.operand + ", ptr " + valueSlot +
+                     "\n";
+    const auto file = internString(location.file);
+    instructions_ += "  call void @simp_map_set(ptr " + mapPointer + ", ptr " + keyData +
+                     ", i64 " + keyLength + ", ptr " + valueSlot +
+                     ", ptr " + file + ", i64 " +
+                     std::to_string(location.file.size()) + ", i64 " +
+                     std::to_string(location.line) + ", i64 " +
+                     std::to_string(location.column) + ")\n";
+}
+
 CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
                                                        const SourceLocation& location) {
+    (void)location;
     if (value.type == "any") {
         return value;
     }
@@ -140,7 +165,8 @@ CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
     }
     const auto tag = newTemporary();
     instructions_ += "  " + tag + " = insertvalue %SimpleArrayValue zeroinitializer, i64 " +
-                     (value.type == "int" ? "1" : value.type == "string" ? "2" : "3") +
+                     (value.type == "int" ? "1" : value.type == "string" ? "2" :
+                      isMapType(value.type) ? "4" : isArrayType(value.type) ? "5" : "3") +
                      ", 0\n";
     std::string stored = tag;
     if (value.type == "int") {
@@ -213,6 +239,16 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
                          "  " + result + " = insertvalue %SimpleString " + first + ", i64 " +
                          length + ", 1\n";
         return {"string", result};
+    }
+    if (expectedType == "map" || expectedType == "array") {
+        const auto pointer = newTemporary();
+        instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " +
+                         value.operand + ", 2\n"
+                         "  call void @simp_value_require_" + expectedType +
+                         "(i64 " + tag + ", ptr " + pointer + ", ptr " + file +
+                         ", i64 " + fileLength + ", i64 " + line + ", i64 " + column +
+                         ")\n";
+        return {expectedType, rootObjectValue({expectedType, pointer}, location).operand};
     }
     // Otherwise expectedType names a class: the value must tag as an object
     // reference, and (unless it is null) its runtime class metadata must match
@@ -294,6 +330,17 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         }
         return {"array", array};
     }
+    case ExpressionKind::MapLiteral: {
+        const auto map = newTemporary();
+        instructions_ += "  " + map + " = call ptr @simp_gc_alloc_map()\n";
+        rootObjectValue({"map", map}, expression.location);
+        for (std::size_t index = 0; index < expression.arguments.size(); index += 2) {
+            const auto key = emitExpression(*expression.arguments[index]);
+            const auto value = emitExpression(*expression.arguments[index + 1]);
+            emitMapElementStore(map, key, value, expression.arguments[index]->location);
+        }
+        return {"map", map};
+    }
     case ExpressionKind::Identifier: {
         const auto binding = findVariable(expression.value, expression.location);
         const auto pointer = emitAddress(binding, expression.location);
@@ -324,6 +371,21 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              "  " + result + " = trunc i64 " + length + " to i32\n";
             return {"int", result};
         }
+        if (!qualified && isMapType(receiver.type)) {
+            if (expression.value != "length") {
+                throw DiagnosticError(expression.location,
+                                      "maps support only the read-only 'length' member");
+            }
+            const auto lengthAddress = newTemporary();
+            const auto length = newTemporary();
+            const auto result = newTemporary();
+            instructions_ += "  " + lengthAddress +
+                             " = getelementptr inbounds %SimpleMap, ptr " + receiver.operand +
+                             ", i32 0, i32 1\n"
+                             "  " + length + " = load i64, ptr " + lengthAddress + "\n"
+                             "  " + result + " = trunc i64 " + length + " to i32\n";
+            return {"int", result};
+        }
         const auto object = qualified ? emitExpression(*root) : receiver;
         if (classes_.find(object.type) == classes_.end()) {
             throw DiagnosticError(expression.location, "member receiver is not an object");
@@ -349,20 +411,39 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         return rootObjectValue({field->type, result}, expression.location);
     }
     case ExpressionKind::Index: {
-        const auto array = emitExpression(*expression.left);
-        const auto index = emitIntegerExpression(*expression.arguments.front());
+        const auto collection = emitExpression(*expression.left);
         const auto file = internString(expression.location.file);
         const auto valuePointer = newTemporary();
         const auto loaded = newTemporary();
-        instructions_ += "  " + valuePointer + " = call ptr @simp_array_index(ptr " +
-                         array.operand + ", i32 " + index.operand + ", ptr " + file + ", i64 " +
-                         std::to_string(expression.location.file.size()) + ", i64 " +
-                         std::to_string(expression.location.line) + ", i64 " +
-                         std::to_string(expression.location.column) + ")\n"
-                         "  " + loaded + " = load %SimpleArrayValue, ptr " + valuePointer + "\n";
+        if (isArrayType(collection.type)) {
+            const auto index = emitIntegerExpression(*expression.arguments.front());
+            instructions_ += "  " + valuePointer + " = call ptr @simp_array_index(ptr " +
+                             collection.operand + ", i32 " + index.operand + ", ptr " + file +
+                             ", i64 " +
+                             std::to_string(expression.location.file.size()) + ", i64 " +
+                             std::to_string(expression.location.line) + ", i64 " +
+                             std::to_string(expression.location.column) + ")\n"
+                             "  " + loaded + " = load %SimpleArrayValue, ptr " +
+                             valuePointer + "\n";
+        } else {
+            const auto key = emitExpression(*expression.arguments.front());
+            const auto keyData = newTemporary();
+            const auto keyLength = newTemporary();
+            instructions_ += "  " + keyData + " = extractvalue %SimpleString " + key.operand +
+                             ", 0\n"
+                             "  " + keyLength + " = extractvalue %SimpleString " + key.operand +
+                             ", 1\n"
+                             "  " + valuePointer + " = call ptr @simp_map_get(ptr " +
+                             collection.operand + ", ptr " + keyData + ", i64 " + keyLength +
+                             ", ptr " + file + ", i64 " +
+                             std::to_string(expression.location.file.size()) + ", i64 " +
+                             std::to_string(expression.location.line) + ", i64 " +
+                             std::to_string(expression.location.column) + ")\n"
+                             "  " + loaded + " = load %SimpleArrayValue, ptr " +
+                             valuePointer + "\n";
+        }
         // Indexing an array always yields the dynamic 'any' representation; the
-        // caller (declaration, assignment, argument, etc.) coerces it to a
-        // concrete type via convertObjectValue()/extractTypedValue().
+        // same dynamic result is used for maps; typed consumers extract it.
         return rootObjectValue({"any", loaded}, expression.location);
     }
     case ExpressionKind::Slice: {
@@ -486,6 +567,28 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         std::vector<std::string> basePath;
         const bool qualified = resolveBaseQualifier(*target.left, root, owner, basePath);
         auto receiver = emitExpression(qualified ? *root : *target.left);
+        if (isMapType(receiver.type)) {
+            if (target.value != "contains" || expression.arguments.size() != 1) {
+                throw DiagnosticError(target.location,
+                                      "maps support only 'contains(string)'");
+            }
+            const auto key = emitExpression(*expression.arguments.front());
+            const auto keyData = newTemporary();
+            const auto keyLength = newTemporary();
+            const auto file = internString(target.location.file);
+            const auto result = newTemporary();
+            instructions_ += "  " + keyData + " = extractvalue %SimpleString " + key.operand +
+                             ", 0\n"
+                             "  " + keyLength + " = extractvalue %SimpleString " + key.operand +
+                             ", 1\n"
+                             "  " + result + " = call i32 @simp_map_contains(ptr " +
+                             receiver.operand + ", ptr " + keyData + ", i64 " + keyLength +
+                             ", ptr " + file + ", i64 " +
+                             std::to_string(target.location.file.size()) + ", i64 " +
+                             std::to_string(target.location.line) + ", i64 " +
+                             std::to_string(target.location.column) + ")\n";
+            return {"int", result};
+        }
         const auto found = classes_.find(receiver.type);
         if (found == classes_.end()) {
             throw DiagnosticError(target.location, "method receiver is not an object");

@@ -33,7 +33,9 @@ typedef struct SimpClassMeta {
 typedef enum SimpArrayValueTag {
     SIMP_ARRAY_INTEGER = 1,
     SIMP_ARRAY_STRING = 2,
-    SIMP_ARRAY_OBJECT = 3
+    SIMP_ARRAY_OBJECT = 3,
+    SIMP_ARRAY_MAP = 4,
+    SIMP_ARRAY_ARRAY = 5
 } SimpArrayValueTag;
 
 typedef struct SimpArrayValue {
@@ -48,6 +50,19 @@ typedef struct SimpArray {
     uint64_t length;
     SimpArrayValue values[];
 } SimpArray;
+
+typedef struct SimpMapEntry {
+    const char *key;
+    uint64_t key_length;
+    SimpArrayValue value;
+} SimpMapEntry;
+
+typedef struct SimpMap {
+    const SimpClassMeta *metadata;
+    uint64_t length;
+    uint64_t capacity;
+    SimpMapEntry *entries;
+} SimpMap;
 
 typedef struct SimpRootFrame {
     struct SimpRootFrame *previous;
@@ -69,6 +84,17 @@ void *simp_array_index(void *array, int32_t index, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_array_slice(void *array, int32_t start, int32_t end, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
+void *simp_gc_alloc_map(void);
+void *simp_map_get(void *map, const char *key, uint64_t key_length, const char *file,
+                   uint64_t file_length, uint64_t line, uint64_t column);
+int32_t simp_map_contains(void *map, const char *key, uint64_t key_length,
+                          const char *file, uint64_t file_length, uint64_t line,
+                          uint64_t column);
+void *simp_map_entry_at(void *map, uint64_t index, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column);
+void simp_map_set(void *map, const char *key, uint64_t key_length,
+                  const SimpArrayValue *value,
+                  const char *file, uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_gc_root(void *object);
 void simp_gc_require_alive(void *object, const char *file, uint64_t file_length,
                            uint64_t line, uint64_t column);
@@ -79,6 +105,10 @@ void simp_value_require_tag(uint64_t actual, uint64_t expected, const char *file
                             uint64_t file_length, uint64_t line, uint64_t column);
 void simp_value_require_class(uint64_t actual_tag, void *pointer,
                               const SimpClassMeta *expected, const char *file,
+                              uint64_t file_length, uint64_t line, uint64_t column);
+void simp_value_require_map(uint64_t actual_tag, void *pointer, const char *file,
+                            uint64_t file_length, uint64_t line, uint64_t column);
+void simp_value_require_array(uint64_t actual_tag, void *pointer, const char *file,
                               uint64_t file_length, uint64_t line, uint64_t column);
 void simp_gc_begin_construction(void *object);
 void simp_gc_end_construction(void *object);

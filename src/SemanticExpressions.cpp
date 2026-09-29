@@ -19,6 +19,10 @@ bool isArrayType(const std::string& type) {
     return type == "array";
 }
 
+bool isMapType(const std::string& type) {
+    return type == "map";
+}
+
 bool isDynamicValueType(const std::string& type) {
     return type == "any";
 }
@@ -55,6 +59,7 @@ bool SemanticAnalyzer::resolveBaseQualifier(const Expression& receiver,
 
 std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
                                                 const std::string& expectedType) {
+    (void)expectedType;
     switch (expression.kind) {
     case ExpressionKind::Integer: {
         std::int32_t value = 0;
@@ -116,6 +121,16 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
                 throw DiagnosticError(expression.location,
                                       "arrays support only the read-only 'length' member");
             }
+            if (isMapType(receiverType)) {
+                if (expression.value == "length") return "int";
+                if (expression.value == "contains") {
+                    throw DiagnosticError(expression.location,
+                                          "map 'contains' must be called with a string key");
+                }
+                throw DiagnosticError(expression.location,
+                                      "maps support only the read-only 'length' member and "
+                                      "'contains' method");
+            }
             if (isDynamicValueType(receiverType)) {
                 throw DiagnosticError(expression.location,
                                       "'any' has no members; assign it to a typed variable "
@@ -152,30 +167,60 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
             const auto actualType = analyzeExpression(*element);
             const bool validElement = actualType == "int" || actualType == "string" ||
                                       actualType == "null" || actualType == "any" ||
+                                      isMapType(actualType) ||
                                       classes_.find(actualType) != classes_.end();
             if (!validElement) {
                 throw DiagnosticError(element->location,
                                       "array elements must be int, string, a class reference, "
-                                      "null, or 'any'; found " + actualType);
+                                      "a map, null, or 'any'; found " + actualType);
             }
         }
         return "array";
     }
-    case ExpressionKind::Index:
-    case ExpressionKind::Slice: {
-        const auto arrayType = analyzeExpression(*expression.left);
-        if (!isArrayType(arrayType)) {
-            throw DiagnosticError(expression.location, "indexing and slicing require an array");
-        }
-        for (const auto& bound : expression.arguments) {
-            if (analyzeExpression(*bound) != "int") {
-                throw DiagnosticError(bound->location, "array index and slice bounds must be int");
+    case ExpressionKind::MapLiteral: {
+        for (std::size_t index = 0; index < expression.arguments.size(); index += 2) {
+            const auto& key = *expression.arguments[index];
+            if (analyzeExpression(key) != "string") {
+                throw DiagnosticError(key.location,
+                                      "map keys must have type string");
+            }
+            const auto valueType = analyzeExpression(*expression.arguments[index + 1]);
+            const bool validValue = valueType == "int" || valueType == "string" ||
+                                    valueType == "null" || valueType == "any" ||
+                                    valueType == "array" || valueType == "map" ||
+                                    classes_.find(valueType) != classes_.end();
+            if (!validValue) {
+                throw DiagnosticError(expression.arguments[index + 1]->location,
+                                      "map values must be int, string, a collection, a class "
+                                      "reference, null, or 'any'; found " + valueType);
             }
         }
-        // Slicing copies a range and stays an array; indexing yields one dynamic
-        // 'any' element that must be assigned to a typed variable (or another
-        // 'any') to be used further.
-        return expression.kind == ExpressionKind::Slice ? "array" : "any";
+        return "map";
+    }
+    case ExpressionKind::Index:
+    case ExpressionKind::Slice: {
+        const auto collectionType = analyzeExpression(*expression.left);
+        if (isArrayType(collectionType)) {
+            for (const auto& bound : expression.arguments) {
+                if (analyzeExpression(*bound) != "int") {
+                    throw DiagnosticError(bound->location,
+                                          "array index and slice bounds must be int");
+                }
+            }
+            return expression.kind == ExpressionKind::Slice ? "array" : "any";
+        }
+        if (isMapType(collectionType) && expression.kind == ExpressionKind::Index) {
+            const auto& key = *expression.arguments.front();
+            if (analyzeExpression(key) != "string") {
+                throw DiagnosticError(key.location,
+                                      "map keys must have type string");
+            }
+            return "any";
+        }
+        throw DiagnosticError(expression.location,
+                              expression.kind == ExpressionKind::Slice
+                                  ? "slicing requires an array"
+                                  : "indexing requires an array or map");
     }
     case ExpressionKind::ConstructorCall: {
         const auto* owner = findClass(expression.value, expression.location);
@@ -264,6 +309,21 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
             resolveBaseQualifier(*target.left, root, owner, basePath);
         if (!qualified) {
             const auto receiverType = analyzeExpression(*target.left);
+            if (isMapType(receiverType)) {
+                if (target.value != "contains") {
+                    throw DiagnosticError(target.location,
+                                          "maps support only the 'contains' method");
+                }
+                if (expression.arguments.size() != 1) {
+                    throw DiagnosticError(expression.location,
+                                          "map 'contains' expects one string key");
+                }
+                if (analyzeExpression(*expression.arguments.front()) != "string") {
+                    throw DiagnosticError(expression.arguments.front()->location,
+                                          "map key must have type string");
+                }
+                return "int";
+            }
             owner = findClass(receiverType, target.location);
         }
         if (target.value == "destroy") {
@@ -352,10 +412,11 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
         const auto right = analyzeExpression(*expression.right);
         const auto& operation = expression.value;
         if (operation == "==" || operation == "!=") {
-            if (isArrayType(left) || isArrayType(right) || isDynamicValueType(left) ||
+            if (isArrayType(left) || isArrayType(right) || isMapType(left) || isMapType(right) ||
+                isDynamicValueType(left) ||
                 isDynamicValueType(right)) {
                 throw DiagnosticError(expression.location,
-                                      "array and 'any' equality are not implemented in this "
+                                      "collection and 'any' equality are not implemented in this "
                                       "prototype");
             }
             if (left == "string" && right == "string") {
@@ -408,18 +469,23 @@ std::string SemanticAnalyzer::analyzeLValue(const Expression& expression) {
                               "undefined variable '" + expression.value + "' or field");
     }
     if (expression.kind == ExpressionKind::Index) {
-        const auto arrayType = analyzeExpression(*expression.left);
-        if (!isArrayType(arrayType)) {
-            throw DiagnosticError(expression.location, "index assignment requires an array");
+        const auto collectionType = analyzeExpression(*expression.left);
+        if (isArrayType(collectionType)) {
+            if (analyzeExpression(*expression.arguments.front()) != "int") {
+                throw DiagnosticError(expression.arguments.front()->location,
+                                      "array index must be int");
+            }
+            return "any";
         }
-        if (analyzeExpression(*expression.arguments.front()) != "int") {
-            throw DiagnosticError(expression.arguments.front()->location,
-                                  "array index must be int");
+        if (isMapType(collectionType)) {
+            const auto& key = *expression.arguments.front();
+            if (analyzeExpression(key) != "string") {
+                throw DiagnosticError(key.location,
+                                      "map keys must have type string");
+            }
+            return "any";
         }
-        // An array slot accepts any supported element type; the target is the
-        // dynamic 'any' representation and isAssignable() bridges it to the
-        // concrete type of the assigned expression.
-        return "any";
+        throw DiagnosticError(expression.location, "index assignment requires an array or map");
     }
     if (expression.kind == ExpressionKind::Slice) {
         throw DiagnosticError(expression.location,
@@ -434,6 +500,9 @@ std::string SemanticAnalyzer::analyzeLValue(const Expression& expression) {
             const auto receiverType = analyzeExpression(*expression.left);
             if (isArrayType(receiverType) && expression.value == "length") {
                 throw DiagnosticError(expression.location, "array length is read-only");
+            }
+            if (isMapType(receiverType) && expression.value == "length") {
+                throw DiagnosticError(expression.location, "map length is read-only");
             }
             owner = findClass(receiverType, expression.location);
         }

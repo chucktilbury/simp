@@ -16,7 +16,7 @@ namespace simp {
 
 enum class ExpressionKind {
     Integer, String, Identifier, Unary, Binary, Member, Call, ConstructorCall, Null,
-    ArrayLiteral, Index, Slice
+    ArrayLiteral, MapLiteral, Index, Slice
 };
 
 struct Expression {
@@ -31,13 +31,14 @@ struct Expression {
 
 enum class StatementKind {
     Declaration, Assignment, Print, If, While, Block, Return, Expression, SuperConstructorCall,
-    Raise, Try
+    Raise, Try, ForEach
 };
 
 struct Statement {
     StatementKind kind = StatementKind::Block;
     SourceLocation location;
     std::string name;
+    std::string keyName;
     bool hasExceptionBinding = false;
     std::string declaredType;
     std::unique_ptr<Expression> target;

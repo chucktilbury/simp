@@ -20,6 +20,7 @@ typedef struct HeapNode {
     size_t allocation_size;
     int marked;
     int is_array;
+    int is_map;
     int destroyed;
     int destroying;
     int constructing;
@@ -60,6 +61,9 @@ static RetainedExceptionMessage *retained_exception_messages = NULL;
 static int retained_message_cleanup_registered = 0;
 static const SimpClassMeta array_metadata = {
     "array", 5, 0, NULL, 0, sizeof(SimpArray), 0, NULL, NULL
+};
+static const SimpClassMeta map_metadata = {
+    "map", 3, 0, NULL, 0, sizeof(SimpMap), 0, NULL, NULL
 };
 
 static HeapNode *find_object(const void *object);
@@ -405,6 +409,36 @@ void simp_value_require_class(uint64_t actual_tag, void *pointer,
     }
 }
 
+void simp_value_require_map(uint64_t actual_tag, void *pointer, const char *file,
+                           uint64_t file_length, uint64_t line, uint64_t column) {
+    static const char message[] = "'any' value does not hold a map reference";
+    if (actual_tag != SIMP_ARRAY_MAP) {
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    if (pointer == NULL) {
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    HeapNode *node = find_object(pointer);
+    if (node == NULL || !node->is_map) {
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+}
+
+void simp_value_require_array(uint64_t actual_tag, void *pointer, const char *file,
+                              uint64_t file_length, uint64_t line, uint64_t column) {
+    static const char message[] = "'any' value does not hold an array reference";
+    if (actual_tag != SIMP_ARRAY_ARRAY) {
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    if (pointer == NULL) {
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    HeapNode *node = find_object(pointer);
+    if (node == NULL || !node->is_array) {
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+}
+
 
 void *simp_gc_root(void *object) {
     HeapNode *node = find_containing_object(object);
@@ -464,7 +498,19 @@ static void trace_graph(HeapNode **worklist, size_t *work_count) {
             const SimpArray *array = (const SimpArray *)node->object;
             for (uint64_t index = 0; index < array->length; ++index) {
                 const SimpArrayValue *value = &array->values[index];
-                if (value->tag == SIMP_ARRAY_OBJECT) {
+                if (value->tag == SIMP_ARRAY_OBJECT || value->tag == SIMP_ARRAY_MAP ||
+                    value->tag == SIMP_ARRAY_ARRAY) {
+                    mark_object(value->pointer, worklist, work_count);
+                }
+            }
+            continue;
+        }
+        if (node->is_map) {
+            const SimpMap *map = (const SimpMap *)node->object;
+            for (uint64_t index = 0; index < map->length; ++index) {
+                const SimpArrayValue *value = &map->entries[index].value;
+                if (value->tag == SIMP_ARRAY_OBJECT || value->tag == SIMP_ARRAY_MAP ||
+                    value->tag == SIMP_ARRAY_ARRAY) {
                     mark_object(value->pointer, worklist, work_count);
                 }
             }
@@ -521,6 +567,13 @@ void simp_gc_collect(void) {
         HeapNode *node = *link;
         if (!node->marked) {
             *link = node->next;
+            if (node->is_map) {
+                SimpMap *map = (SimpMap *)node->object;
+                for (uint64_t index = 0; index < map->length; ++index) {
+                    free((void *)map->entries[index].key);
+                }
+                free(map->entries);
+            }
             free(node->object);
             free(node);
             --object_count;
@@ -557,6 +610,7 @@ void *simp_gc_alloc(const SimpClassMeta *metadata) {
     node->object = object;
     node->allocation_size = (size_t)metadata->object_size;
     node->is_array = 0;
+    node->is_map = 0;
     node->marked = 0;
     node->destroyed = 0;
     node->destroying = 0;
@@ -589,6 +643,7 @@ void *simp_gc_alloc_array(uint64_t length) {
     node->object = array;
     node->allocation_size = allocation_size;
     node->is_array = 1;
+    node->is_map = 0;
     node->marked = 0;
     node->destroyed = 0;
     node->destroying = 0;
@@ -599,6 +654,33 @@ void *simp_gc_alloc_array(uint64_t length) {
     heap = node;
     ++object_count;
     return array;
+}
+
+void *simp_gc_alloc_map(void) {
+    if (collecting || running_destructor) abort();
+    simp_gc_collect();
+    SimpMap *map = (SimpMap *)calloc(1, sizeof(*map));
+    HeapNode *node = (HeapNode *)malloc(sizeof(*node));
+    if (map == NULL || node == NULL) {
+        free(map);
+        free(node);
+        abort();
+    }
+    map->metadata = &map_metadata;
+    node->object = map;
+    node->allocation_size = sizeof(*map);
+    node->is_array = 0;
+    node->is_map = 1;
+    node->marked = 0;
+    node->destroyed = 0;
+    node->destroying = 0;
+    node->destroy_previous = NULL;
+    node->constructing = 0;
+    node->construct_previous = NULL;
+    node->next = heap;
+    heap = node;
+    ++object_count;
+    return map;
 }
 
 static SimpArray *checked_array(void *object, const char *file, uint64_t file_length,
@@ -613,6 +695,96 @@ static SimpArray *checked_array(void *object, const char *file, uint64_t file_le
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     return (SimpArray *)object;
+}
+
+static SimpMap *checked_map(void *object, const char *file, uint64_t file_length,
+                            uint64_t line, uint64_t column) {
+    if (object == NULL) {
+        static const char message[] = "null map reference";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    HeapNode *node = find_object(object);
+    if (node == NULL || !node->is_map) {
+        static const char message[] = "invalid map reference";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    return (SimpMap *)object;
+}
+
+static int map_key_matches(const SimpMapEntry *entry, const char *key,
+                           uint64_t key_length) {
+    return entry->key_length == key_length &&
+           (key_length == 0 || memcmp(entry->key, key, (size_t)key_length) == 0);
+}
+
+void *simp_map_get(void *object, const char *key, uint64_t key_length, const char *file,
+                   uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpMap *map = checked_map(object, file, file_length, line, column);
+    if ((key == NULL && key_length != 0) || key_length > (uint64_t)SIZE_MAX) abort();
+    for (uint64_t index = 0; index < map->length; ++index) {
+        if (map_key_matches(&map->entries[index], key, key_length)) {
+            return &map->entries[index].value;
+        }
+    }
+    static const char message[] = "map key not found";
+    simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    abort();
+}
+
+int32_t simp_map_contains(void *object, const char *key, uint64_t key_length,
+                          const char *file, uint64_t file_length, uint64_t line,
+                          uint64_t column) {
+    SimpMap *map = checked_map(object, file, file_length, line, column);
+    if ((key == NULL && key_length != 0) || key_length > (uint64_t)SIZE_MAX) abort();
+    for (uint64_t index = 0; index < map->length; ++index) {
+        if (map_key_matches(&map->entries[index], key, key_length)) return 1;
+    }
+    return 0;
+}
+
+void *simp_map_entry_at(void *object, uint64_t index, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpMap *map = checked_map(object, file, file_length, line, column);
+    if (index >= map->length) {
+        static const char message[] = "map iteration index out of bounds";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    return &map->entries[index];
+}
+
+void simp_map_set(void *object, const char *key, uint64_t key_length,
+                  const SimpArrayValue *value,
+                  const char *file, uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpMap *map = checked_map(object, file, file_length, line, column);
+    if (value == NULL || (key == NULL && key_length != 0) ||
+        key_length > (uint64_t)SIZE_MAX) abort();
+    for (uint64_t index = 0; index < map->length; ++index) {
+        if (map_key_matches(&map->entries[index], key, key_length)) {
+            map->entries[index].value = *value;
+            return;
+        }
+    }
+    if (map->length >= INT32_MAX) abort();
+    char *key_copy = (char *)malloc(key_length == 0 ? 1 : (size_t)key_length);
+    if (key_copy == NULL) abort();
+    if (key_length != 0) memcpy(key_copy, key, (size_t)key_length);
+    if (map->length == map->capacity) {
+        const uint64_t capacity = map->capacity == 0 ? 4 : map->capacity * 2;
+        if (capacity < map->capacity ||
+            capacity > SIZE_MAX / sizeof(SimpMapEntry)) abort();
+        SimpMapEntry *entries =
+            (SimpMapEntry *)realloc(map->entries, (size_t)capacity * sizeof(*entries));
+        if (entries == NULL) {
+            free(key_copy);
+            abort();
+        }
+        map->entries = entries;
+        map->capacity = capacity;
+    }
+    SimpMapEntry *entry = &map->entries[map->length++];
+    entry->key = key_copy;
+    entry->key_length = key_length;
+    entry->value = *value;
 }
 
 void *simp_array_index(void *object, int32_t index, const char *file,

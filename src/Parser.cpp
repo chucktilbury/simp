@@ -131,7 +131,7 @@ std::vector<Statement> Parser::parseBlock() {
 Statement Parser::parseStatement() {
     trace("parse statement");
     if (check(TokenType::Int) || check(TokenType::StringType) || check(TokenType::ArrayType) ||
-        check(TokenType::AnyType) || check(TokenType::Void)) {
+        check(TokenType::MapType) || check(TokenType::AnyType) || check(TokenType::Void)) {
         return parseDeclaration();
     }
     if (check(TokenType::Identifier)) {
@@ -145,6 +145,9 @@ Statement Parser::parseStatement() {
     }
     if (check(TokenType::While)) {
         return parseWhile();
+    }
+    if (check(TokenType::For)) {
+        return parseForEach();
     }
     if (check(TokenType::Raise)) {
         return parseRaise();
@@ -313,6 +316,27 @@ Statement Parser::parseWhile() {
     return statement;
 }
 
+Statement Parser::parseForEach() {
+    const auto keyword = consume(TokenType::For, "'for'");
+    Statement statement;
+    statement.kind = StatementKind::ForEach;
+    statement.location = keyword.location;
+    consume(TokenType::LeftParen, "'(' after for");
+    const auto first = consume(TokenType::Identifier, "iteration variable");
+    if (match(TokenType::Comma)) {
+        statement.keyName = first.text;
+        statement.name = consume(TokenType::Identifier, "value iteration variable").text;
+    } else {
+        statement.name = first.text;
+    }
+    consume(TokenType::In, "'in' after iteration variable");
+    statement.expressions.push_back(parseExpression());
+    consume(TokenType::RightParen, "')' after collection expression");
+    skipNewlines();
+    statement.body = parseBlock();
+    return statement;
+}
+
 Statement Parser::parseRaise() {
     const auto keyword = consume(TokenType::Raise, "'raise'");
     Statement statement;
@@ -464,6 +488,20 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         consume(TokenType::RightBracket, "']' after array elements");
         return expression;
     }
+    if (match(TokenType::LeftBrace)) {
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::MapLiteral;
+        expression->location = token.location;
+        if (!check(TokenType::RightBrace)) {
+            do {
+                expression->arguments.push_back(parseExpression());
+                consume(TokenType::Colon, "':' between map key and value");
+                expression->arguments.push_back(parseExpression());
+            } while (match(TokenType::Comma));
+        }
+        consume(TokenType::RightBrace, "'}' after map entries");
+        return expression;
+    }
     error(current(), std::string("expected expression, found ") + tokenTypeName(current().type));
 }
 
@@ -480,7 +518,7 @@ std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> exp
             } else {
                 access->kind = ExpressionKind::Index;
             }
-            consume(TokenType::RightBracket, "']' after array index or slice");
+            consume(TokenType::RightBracket, "']' after index or slice");
             expression = std::move(access);
             continue;
         }

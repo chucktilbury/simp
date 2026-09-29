@@ -209,7 +209,9 @@ non-virtual bases also have no explicit constructors.
   documented subset above; protected receiver-expression restrictions and
   friendship remain deferred.
 
-Keywords are case-insensitive and reserved under every capitalization. For example, `while`, `While`, and `wHiLe` are the same keyword, so `int While = 0` is a syntax error.
+Keywords are case-insensitive and reserved under every capitalization. For
+example, `while`, `While`, and `wHiLe` are the same keyword, so `int While = 0`
+is a syntax error. The collection loop words `for` and `in` are reserved too.
 
 In the current prototype subset, simple statements are terminated by a
 newline or a closing block brace. Newlines inside parentheses and array
@@ -270,7 +272,7 @@ statements.
 - APIs that require NUL-terminated input require an explicit compatible conversion.
 - Built-in object-to-string conversions are desired.
 
-UTF-8 is the choice for now. Advanced Unicode semantics are deferred. A length operator is needed for strings, maps, and arrays, but whether string length means bytes or Unicode code points remains open.
+UTF-8 is the choice for now. Advanced Unicode semantics are deferred. String length remains unimplemented; whether it means bytes or Unicode code points remains open. Arrays and maps expose a read-only `length` property in the current prototype.
 
 ### Collections and copying
 
@@ -278,16 +280,20 @@ UTF-8 is the choice for now. Advanced Unicode semantics are deferred. A length o
 - Arrays support slices.
 - Slices copy rather than creating a view.
 - Out-of-bounds access raises an exception; if it is unhandled, execution aborts.
-- Dictionary keys must be string literals. Variables, numbers, and formatted strings are not valid dictionary keys.
+- Dictionary keys must have statically known type `string`; string variables and
+  other string-valued expressions are valid, while numbers and `any` values are
+  not accepted without a dynamic type check or typed extraction.
+- Map keys compare by exact UTF-8 bytes, case-sensitively and without Unicode normalization.
+- Assigning an existing map key replaces its value; missing-key access raises a catchable exception.
 - Internal “under-the-table” object copying is needed by the runtime and collection behavior.
 
 The current compiler implements the heterogeneous-bag design goal for arrays,
-using the keyword `array` (with `list` accepted as an alias keyword for the
-exact same type — there is only one collection type). An array literal, for
-example `[1, "two", Node(3), null]`, may freely mix `int`, `string`, class
-references, and `null` in the same collection; empty literals `[]` are always
-allowed. Reading an element with `values[index]` yields the explicit dynamic
-`any` value type rather than a statically-known concrete type; assigning
+using the keyword `array` (`list` is an alias for the same type). An array
+literal, for example
+`[1, "two", Node(3), {"name": "Ada"}, null]`, may freely mix `int`, `string`,
+class references, maps, and `null` in the same collection; empty literals `[]`
+are always allowed. Reading an element with `values[index]` yields the explicit
+dynamic `any` value type rather than a statically-known concrete type; assigning
 `values[index] = expr` accepts any supported element type directly.
 `values.length` is a read-only `int`, and `values[start:end]` copies the
 half-open range `[start, end)` into independent storage. Copying is shallow
@@ -295,14 +301,41 @@ for class references. Arrays have a fixed length; array assignment aliases
 the same mutable storage. Negative/out-of-range indices and invalid slice
 bounds raise catchable, source-located exceptions. `any` is the explicit
 dynamic/tagged value type: it can be declared directly, holds an `int`,
-`string`, class reference, or `null`, has no members of its own, and must be
-assigned to a concretely typed variable/field/parameter to extract its value
-(a runtime-checked operation that raises on a tag or exact-class mismatch;
-there is no covariant/polymorphic downcast support). Nested arrays (an array
-or `any` holding another array), maps, and append/resize operations are not
-implemented; `array`/`any` equality (`==`/`!=`) is also not implemented. The
-runtime traces class-reference array elements, including those reached
-through `any`-typed values, and arrays stored in object fields.
+`string`, class reference, map reference, or `null`, has no members of its own,
+and must be assigned to a concretely typed variable/field/parameter to extract
+its value (a runtime-checked operation that raises on a tag or exact-class mismatch;
+there is no covariant/polymorphic downcast support). Direct nested-array
+elements, direct array-to-`any` conversion, and append/resize operations are
+not implemented; collection/`any` equality (`==`/`!=`) is also not implemented.
+Arrays and maps can be carried through tagged values produced by map lookup.
+The runtime traces class-reference and nested collection references reached
+through arrays, maps, `any` values, and object fields.
+
+Maps are implemented as the corresponding keyed collection using `map` (with
+`dict` as an alias), brace literals such as `{"name": "Ada", "age": 37}`, and
+string-expression indexing such as `person[key]`. Keys compare by exact
+UTF-8 byte sequence; they are case-sensitive and are not Unicode-normalized.
+Map indexing returns `any`; assignment inserts or replaces, and a duplicate
+literal key replaces its earlier value without increasing the map's distinct
+key count. The read-only `length` member reports that count. `contains(key)`
+returns integer `1` or `0` without raising for a missing key. Missing-key index
+access raises a source-located runtime exception that can be caught with
+`try`/`except`. Map assignment aliases its mutable storage.
+
+Map values accept ints, strings, class references, null, `any`, arrays, and
+maps. Maps may nest maps and arrays, and arrays may hold maps; arrays remain
+one-dimensional and array-to-`any` conversion is still unsupported. Array and
+map references in tagged values use distinct tags, so typed extraction checks
+the requested collection kind. The precise collector traces class references
+and nested map/array references stored in both collection kinds, including
+values reached through `any`. Array iteration uses `for (value in array)` and
+binds each element as `any` in increasing index order. Map iteration uses
+`for (key, value in map)` and binds a `string` key plus an `any` value in
+insertion order. Map iteration snapshots the entry count at loop start, so
+insertions during the loop are deferred; replacement preserves entry position,
+and values are read when their entries are reached. Runtime-owned copies of
+map key bytes avoid retaining pointers into transient string expressions.
+Deletion, map slicing, and collection equality are not yet implemented.
 
 ### Examples that guide the design
 

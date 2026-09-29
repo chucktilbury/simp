@@ -303,15 +303,15 @@ bool SemanticAnalyzer::isSubclassOf(const std::string& type, const std::string& 
 bool SemanticAnalyzer::isAssignable(const std::string& target,
                                     const std::string& source) const {
     if (target == source) return true;
-    // 'any' is the dynamic/tagged value representation returned by array element
-    // reads: it may hold an int, a string, a class reference, or null, and any of
-    // those (including another 'any') may in turn be stored into an 'any'.
+    // 'any' is the dynamic/tagged value representation returned by collection
+    // reads; it may hold primitive values and managed references.
     if (target == "any") {
         return source == "int" || source == "string" || source == "null" ||
-               classes_.find(source) != classes_.end();
+               source == "map" || classes_.find(source) != classes_.end();
     }
     if (source == "any") {
-        return target == "int" || target == "string" ||
+        return target == "int" || target == "string" || target == "map" ||
+               target == "array" ||
                classes_.find(target) != classes_.end();
     }
     if (source == "null") {

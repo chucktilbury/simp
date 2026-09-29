@@ -81,10 +81,11 @@ and semantic errors.
   blocks are errors; other top-level forms are rejected.
 - Reserved keywords are case-insensitive: `start`, `int`, `string`, `if`,
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
-  `raise`, `try`, `except`, `finally`, `public`, `protected`, `private`, and
-  `virtual`.
+  `raise`, `try`, `except`, `finally`, `for`, `in`, `public`, `protected`,
+  `private`, `virtual`, `map`, and `dict`. `dict` is an alias for the `map`
+  type.
   Every capitalization is reserved.
-- `int`, `string`, class-reference, `array`, and `any` declarations
+- `int`, `string`, class-reference, `array`, `map`/`dict`, and `any` declarations
   (with optional initializer), assignment, `print`, `return`, and
   `super.Base(...)` statements end at a
   newline or closing brace. Newlines inside parentheses and square brackets
@@ -92,10 +93,12 @@ and semantic errors.
   begin single-line comments, while `/* ... */` is a block comment.
 - Expressions include integer and string literals, identifiers, parentheses,
   unary `+`, `-`, `!`, arithmetic `+ - * / %`, comparisons `== != < <= > >=`,
-  array literals, zero-based indexing, and copying slices.
+  array and map literals, zero-based indexing, copying array slices, and the
+  map key check `mapValue.contains(stringExpression)`.
 - `if (condition) { ... }`, unconditional `else { ... }`, and
-  `while (condition) { ... }` execute in the LLVM backend. Conditions are
-  integer expressions; zero is false and nonzero is true. An
+  `while (condition) { ... }`, `for (value in arrayValue) { ... }`, and
+  `for (key, value in mapValue) { ... }` execute in the LLVM backend.
+  Conditions are integer expressions; zero is false and nonzero is true. An
   `else (condition)` form is explicitly rejected.
 - `raise "message"` throws a runtime exception. `try { ... } except { ... }`
   catches any exception. `except error { ... }` additionally binds its message
@@ -125,10 +128,11 @@ and semantic errors.
 - Arrays (`array`, with `list` accepted as an alias keyword for the exact same
   type) are heterogeneous bags: a single literal such as
   `[1, "two", Node(3), null]` may freely mix ints, strings, class references,
-  and `null` in one collection; an empty literal `[]` is always allowed.
+  maps, and `null` in one collection; an empty literal `[]` is always allowed.
   Reading an element with `values[index]` yields the explicit dynamic `any`
   value type — it does not statically know whether that slot holds an `int`,
-  a `string`, or a class reference. Assigning `values[index] = expr` accepts
+  a `string`, a class reference, or a map reference. Assigning
+  `values[index] = expr` accepts
   any of the supported element types directly. The read-only
   `values.length` property returns an `int`. Indexing is zero-based.
   `values[start:end]` creates a new array containing the half-open range
@@ -136,26 +140,50 @@ and semantic errors.
   scalar slot does not change the source (class-reference elements still refer
   to the same objects). Invalid indices and slice bounds raise catchable
   runtime exceptions with source locations.
+- Array iteration visits elements in index order and binds each element as
+  `any`; map iteration binds a string key and an `any` value in insertion order.
+  A map loop snapshots its entry count at loop start, so keys inserted in the
+  body are not visited until a later loop. Replacing an existing key preserves
+  its position; replacing a value before its iteration is observed when that
+  entry is reached. `contains(key)` returns `1` or `0` and does not throw for a
+  missing key.
+- Maps (`map`, with `dict` as an alias) are mutable heterogeneous dictionaries.
+  A literal uses `{ "name": "Ada", "age": 37 }`; keys are string expressions
+  and are compared by exact UTF-8 bytes (case-sensitive, without normalization).
+  Reading `values[key]` yields `any`; writing `values[key] = value` inserts
+  a new key or replaces the existing value. Replacing a key does not change
+  `values.length`, which counts distinct keys and is read-only. A missing key
+  raises a source-located, catchable `map key not found` exception. Map
+  assignment aliases the same mutable storage. Values may be ints, strings,
+  class references, null, `any`, arrays, or maps; array/map references extracted
+  from `any` are runtime-checked. Maps can contain nested maps and arrays, and
+  arrays can contain maps. Keys must have statically known type `string`; an
+  `any` value is not accepted as a key without an implemented type-test or
+  extraction. Deletion, map slicing, and collection equality are not
+  implemented.
 - `any` is the explicit dynamic/tagged value type: it can hold an `int`, a
-  `string`, a class reference, or `null`. It can be declared directly
-  (`any value = ...`) or produced implicitly by indexing into an array. `any`
-  has no members of its own — assign it to a concretely typed variable,
-  field, or parameter to extract its value. Extraction is runtime-checked: it
+  `string`, a class reference, `null`, or a map reference; map lookups can also
+  carry array references through it. It can be declared directly
+  (`any value = ...`) or produced implicitly by indexing into an array or map.
+  Array expressions still cannot be assigned directly to `any`. `any` has no
+  members of its own — assign it to a concretely typed variable, field, or
+  parameter to extract its value. Extraction is runtime-checked: it
   raises a catchable exception if the dynamic value's tag does not match the
   requested type, or (for class targets) if its exact runtime class does not
-  match the requested class. There is no covariant/polymorphic downcast
+  match the requested class. Map and array tags are distinct and checked on
+  extraction. There is no covariant/polymorphic downcast
   support — only an exact class match (or a `null` reference) is accepted.
   Printing an `any` dispatches on its runtime tag: an `int` or `string`
   payload prints its value; an object reference prints a fixed `<object>`
-  placeholder (or `null`), since user-defined `toString()` dispatch is not
-  implemented.
-- The array/`any` subset is deliberately bounded: arrays are one-dimensional.
-  Nested arrays (an array element or an `any` value holding another array),
-  maps, append/resize operations, omitted slice bounds, slice steps, and
-  `array`/`any` equality (`==`/`!=`) are unsupported. Array variables can
-  alias the same mutable array; only slicing copies. Class-reference elements
-  (including references reachable through array fields, and through `any`
-  fields/parameters/locals) are traced by the GC.
+  placeholder (or `null`), including map and array references, since
+  user-defined `toString()` dispatch is not implemented.
+- The array/map/`any` subset is deliberately bounded: arrays reject statically
+  known nested-array elements, and direct array-to-`any` conversion is
+  unsupported (an array can still be carried through a map value). Append/resize
+  operations, omitted slice bounds, slice steps, and collection/`any` equality
+  (`==`/`!=`) are unsupported.
+  Class-reference and collection values reachable through arrays, maps, and
+  `any` are traced by the GC.
 - `;`, `#`, and `//` line comments, `/* ... */` block comments, and basic
   double-quoted escapes (`\\`, `\"`, `\n`, `\r`,
   `\t`) are accepted. Single-quoted strings have no escape processing.
@@ -165,7 +193,7 @@ and semantic errors.
   requires integer conditions. Definite initialization across `if` branches
   and loops is conservative.
 - A small class subset is supported: top-level `class` declarations with
-  `int`, `string`, `array`, `any`, or class-reference fields; one class-named constructor;
+  `int`, `string`, `array`, `map`, `any`, or class-reference fields; one class-named constructor;
   typed methods; `Class(args)` construction/allocation; nullable class-reference
   variables; field access/assignment; method calls; and direct `return`
   statements at the end of methods. Inheritance uses `class Child : Base` or
@@ -280,7 +308,7 @@ the declarations and initialization state seen by semantic analysis.
 
 The backend emits textual LLVM IR using opaque pointers, then the configured
 Clang executable compiles and links it. It supports integer and string
-declarations/assignments, heterogeneous `array` collections (with `any` as
+declarations/assignments, heterogeneous `array` and `map` collections (with `any` as
 the explicit dynamic element/value type), integer
 expressions and comparisons, integer
 `if`/`else` and `while`, `raise`/catch-all `try`/`except`/`finally`,
@@ -328,8 +356,8 @@ not LLVM landing-pad or cross-platform exception support. There is no string
 concatenation, object-to-string conversion, or code-point-aware operation.
 Caught exception messages are retained until process exit so a bound string
 copied into a longer-lived variable or object field remains valid.
-The collector traces arrays and their heterogeneous elements (including
-tagged class references reachable through `any` values) in
+The collector traces arrays and maps, including tagged class references and
+nested collection references reachable through `any` values, in
 addition to object fields. It has finalizers for inherited classes, but no weak references, multithreading,
 incremental/concurrent collection, or configurable allocation threshold.
 Generated roots conservatively include every object-typed slot in a function,
@@ -356,6 +384,6 @@ checking and name-resolution rules, OOP beyond the supported single- and
 multiple-inheritance slices (including access to protected
 base members from further-derived classes),
 production GC features, modules and native libraries, inline C, GTK, package
-manager, IDE, and debugger remain deferred. Maps, heterogeneous collection bags,
-imports/includes, and the remaining semantics in the design notes are not
+manager, IDE, and debugger remain deferred. Collection deletion, imports/includes,
+and the remaining semantics in the design notes are not
 implied to work.

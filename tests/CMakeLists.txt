@@ -73,7 +73,97 @@ add_test(NAME simp_rejects_nested_array_literal
         "-DCOMPILER=$<TARGET_FILE:simp>"
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_array_element_type.simp"
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_element_type"
-        "-DEXPECTED_DIAGNOSTIC=array elements must be int, string, a class reference, null, or 'any'; found array"
+        "-DEXPECTED_DIAGNOSTIC=array elements must be int, string, a class reference, a map, null, or 'any'; found array"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_heterogeneous_maps
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_maps.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_maps"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_maps.ll"
+        "-DEXPECTED_OUTPUT=5\n7\n7\nseven\n11\n1\n2\n3\n1\n2\n3\n64\n9\n88\n77\nmap key not found\n"
+        "-DREQUIRE_GC_ROOTS=ON"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_collection_iteration
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_collection_iteration.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_collection_iteration"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_collection_iteration.ll"
+        "-DEXPECTED_OUTPUT=3\n1\n0\n3\n22\nfirst\n10\ndynamic\n22\nthird\n30\n3\n4\n1\ntwo\n<object>\n<object>\n42\n100\n"
+        "-DREQUIRE_GC_ROOTS=ON"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_any_map_index_key
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_map_nonliteral_key.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_nonliteral_key"
+        "-DEXPECTED_DIAGNOSTIC=map keys must have type string"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_numeric_map_index_key
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_map_numeric_key.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_numeric_key"
+        "-DEXPECTED_DIAGNOSTIC=map keys must have type string"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_map_iteration_without_key
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_map_iteration_arity.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_iteration_arity"
+        "-DEXPECTED_DIAGNOSTIC=map iteration requires key and value variables"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_array_key_value_iteration
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_array_iteration_arity.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_iteration_arity"
+        "-DEXPECTED_DIAGNOSTIC=array iteration accepts one value variable"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_nonstring_map_literal_key
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_map_literal_key.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_literal_key"
+        "-DEXPECTED_DIAGNOSTIC=map keys must have type string"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_map_length_assignment
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_map_length_assignment.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_length_assignment"
+        "-DEXPECTED_DIAGNOSTIC=map length is read-only"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_map_extraction_mismatch
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_map_extraction_mismatch.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_extraction_mismatch"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_extraction_mismatch.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=uncaught runtime exception at .*negative_map_extraction_mismatch.simp:3:19: 'any' value does not hold a map reference"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_uncaught_missing_map_key
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_map_missing_key.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_missing_key"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_missing_key.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=uncaught runtime exception at .*negative_map_missing_key.simp:3:17: map key not found"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_any_member_access

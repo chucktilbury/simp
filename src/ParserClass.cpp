@@ -109,6 +109,7 @@ std::string Parser::parseType(bool allowVoid) {
     if (match(TokenType::Int)) type = "int";
     else if (match(TokenType::StringType)) type = "string";
     else if (match(TokenType::ArrayType)) type = "array";
+    else if (match(TokenType::MapType)) type = "map";
     else if (match(TokenType::AnyType)) type = "any";
     else if (allowVoid && match(TokenType::Void)) type = "void";
     else if (check(TokenType::Identifier)) type = tokens_[current_++].text;

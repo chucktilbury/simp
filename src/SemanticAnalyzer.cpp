@@ -184,7 +184,8 @@ void SemanticAnalyzer::analyze(const Program& program) {
 
 void SemanticAnalyzer::validateType(const std::string& type, const SourceLocation& location,
                                    bool allowVoid) const {
-    if (type == "int" || type == "string" || type == "array" || type == "any" ||
+    if (type == "int" || type == "string" || type == "array" || type == "map" ||
+        type == "any" ||
         (allowVoid && type == "void")) {
         return;
     }

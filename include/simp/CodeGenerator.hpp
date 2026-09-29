@@ -46,6 +46,8 @@ private:
     Value emitIntegerExpression(const Expression& expression);
     void emitArrayElementStore(const std::string& valuePointer, Value value,
                                const SourceLocation& location);
+    void emitMapElementStore(const std::string& mapPointer, Value key, Value value,
+                             const SourceLocation& location);
     Value buildDynamicValue(Value value, const SourceLocation& location);
     Value extractTypedValue(Value value, const std::string& expectedType,
                             const SourceLocation& location);
@@ -103,6 +105,7 @@ private:
     void emitPrintDynamicValue(const Value& value);
     void emitNullCheck(const std::string& pointer, const SourceLocation& location);
     bool isArrayType(const std::string& type) const;
+    bool isMapType(const std::string& type) const;
     bool isManagedReferenceType(const std::string& type) const;
     bool isDynamicValueType(const std::string& type) const;
     [[noreturn]] void unsupported(const SourceLocation& location, const std::string& feature) const;

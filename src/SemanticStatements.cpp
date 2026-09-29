@@ -219,6 +219,41 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
             restoreInitializationState(before);
         }
         return;
+    case StatementKind::ForEach: {
+        const auto collectionType = analyzeExpression(*statement.expressions.front());
+        const bool array = collectionType == "array";
+        const bool map = collectionType == "map";
+        if (!array && !map) {
+            throw DiagnosticError(statement.expressions.front()->location,
+                                  "for-each requires an array or map");
+        }
+        if (array && !statement.keyName.empty()) {
+            throw DiagnosticError(statement.location,
+                                  "array iteration accepts one value variable");
+        }
+        if (map && statement.keyName.empty()) {
+            throw DiagnosticError(statement.location,
+                                  "map iteration requires key and value variables");
+        }
+        if (!statement.keyName.empty() && statement.keyName == statement.name) {
+            throw DiagnosticError(statement.location,
+                                  "map key and value iteration variables must be distinct");
+        }
+        const auto before = initializationState();
+        scopes_.emplace_back();
+        if (!statement.keyName.empty()) {
+            const auto keyIndex = symbols_.size();
+            symbols_.push_back({statement.keyName, "string", true, statement.location});
+            scopes_.back().emplace(statement.keyName, keyIndex);
+        }
+        const auto valueIndex = symbols_.size();
+        symbols_.push_back({statement.name, "any", true, statement.location});
+        scopes_.back().emplace(statement.name, valueIndex);
+        analyzeStatements(statement.body);
+        scopes_.pop_back();
+        restoreInitializationState(before);
+        return;
+    }
     case StatementKind::Raise:
         if (analyzeExpression(*statement.expressions.front()) != "string") {
             throw DiagnosticError(statement.expressions.front()->location,

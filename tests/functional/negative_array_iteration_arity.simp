@@ -1,0 +1,6 @@
+start {
+    array values = [1, 2]
+    for (key, value in values) {
+        print(value)
+    }
+}

@@ -38,24 +38,33 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         Binding binding;
         std::string address;
         bool arrayElementTarget = false;
+        bool mapElementTarget = false;
+        std::string mapPointer;
+        Value mapKey;
         if (statement.target->kind == ExpressionKind::Identifier) {
             binding = findVariable(statement.target->value, statement.target->location);
             address = emitAddress(binding, statement.location);
         } else if (statement.target->kind == ExpressionKind::Index) {
-            const auto array = emitExpression(*statement.target->left);
-            const auto index =
-                emitIntegerExpression(*statement.target->arguments.front());
-            const auto file = internString(statement.target->location.file);
-            address = newTemporary();
-            instructions_ += "  " + address + " = call ptr @simp_array_index(ptr " +
-                             array.operand + ", i32 " + index.operand + ", ptr " + file +
-                             ", i64 " +
-                             std::to_string(statement.target->location.file.size()) +
-                             ", i64 " +
-                             std::to_string(statement.target->location.line) + ", i64 " +
-                             std::to_string(statement.target->location.column) + ")\n";
             binding.type = "any";
-            arrayElementTarget = true;
+            const auto collection = emitExpression(*statement.target->left);
+            if (isArrayType(collection.type)) {
+                const auto index =
+                    emitIntegerExpression(*statement.target->arguments.front());
+                const auto file = internString(statement.target->location.file);
+                address = newTemporary();
+                instructions_ += "  " + address + " = call ptr @simp_array_index(ptr " +
+                                 collection.operand + ", i32 " + index.operand + ", ptr " +
+                                 file + ", i64 " +
+                                 std::to_string(statement.target->location.file.size()) +
+                                 ", i64 " +
+                                 std::to_string(statement.target->location.line) + ", i64 " +
+                                 std::to_string(statement.target->location.column) + ")\n";
+                arrayElementTarget = true;
+            } else {
+                mapPointer = collection.operand;
+                mapKey = emitExpression(*statement.target->arguments.front());
+                mapElementTarget = true;
+            }
         } else {
             const Expression* root = nullptr;
             const ClassDeclaration* owner = nullptr;
@@ -82,6 +91,10 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         const auto value = emitExpression(*statement.expressions.front(), binding.type);
         if (arrayElementTarget) {
             emitArrayElementStore(address, value, statement.expressions.front()->location);
+            return;
+        }
+        if (mapElementTarget) {
+            emitMapElementStore(mapPointer, mapKey, value, statement.target->location);
             return;
         }
         const auto converted = convertObjectValue(value, binding.type,
@@ -199,6 +212,112 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         const bool bodyTerminated = blockTerminated_;
         scopes_.pop_back();
         if (!bodyTerminated) instructions_ += "  br label %" + conditionLabel + "\n";
+        instructions_ += endLabel + ":\n";
+        blockTerminated_ = false;
+        return;
+    }
+    case StatementKind::ForEach: {
+        const auto collection = emitExpression(*statement.expressions.front());
+        const bool array = isArrayType(collection.type);
+        const auto lengthAddress = newTemporary();
+        const auto length = newTemporary();
+        instructions_ += "  " + lengthAddress +
+                         " = getelementptr inbounds " +
+                         (array ? "%SimpleArray" : "%SimpleMap") + ", ptr " +
+                         collection.operand + ", i32 0, i32 1\n"
+                         "  " + length + " = load i64, ptr " + lengthAddress + "\n";
+
+        const auto indexSlot = "%v" + std::to_string(nextVariable_++);
+        entryAllocas_ += "  " + indexSlot + " = alloca i64\n";
+        instructions_ += "  store i64 0, ptr " + indexSlot + "\n";
+        scopes_.emplace_back();
+        if (!statement.keyName.empty()) {
+            const auto keySlot = "%v" + std::to_string(nextVariable_++);
+            scopes_.back().emplace(statement.keyName,
+                                   Binding{"string", keySlot, {}, false});
+            entryAllocas_ += "  " + keySlot + " = alloca %SimpleString\n";
+        }
+        const auto valueSlot = "%v" + std::to_string(nextVariable_++);
+        scopes_.back().emplace(statement.name, Binding{"any", valueSlot, {}, false});
+        entryAllocas_ += "  " + valueSlot + " = alloca %SimpleArrayValue\n";
+        registerRootSlot(valueSlot, "any");
+
+        const auto conditionLabel = freshLabel("foreach.cond");
+        const auto bodyLabel = freshLabel("foreach.body");
+        const auto endLabel = freshLabel("foreach.end");
+        instructions_ += "  br label %" + conditionLabel + "\n" + conditionLabel + ":\n";
+        const auto index = newTemporary();
+        const auto inRange = newTemporary();
+        instructions_ += "  " + index + " = load i64, ptr " + indexSlot + "\n"
+                         "  " + inRange + " = icmp ult i64 " + index + ", " + length + "\n"
+                         "  br i1 " + inRange + ", label %" + bodyLabel + ", label %" +
+                         endLabel + "\n" + bodyLabel + ":\n";
+        if (array) {
+            const auto narrowed = newTemporary();
+            const auto file = internString(statement.location.file);
+            const auto element = newTemporary();
+            const auto loaded = newTemporary();
+            instructions_ += "  " + narrowed + " = trunc i64 " + index + " to i32\n"
+                             "  " + element + " = call ptr @simp_array_index(ptr " +
+                             collection.operand + ", i32 " + narrowed + ", ptr " + file +
+                             ", i64 " + std::to_string(statement.location.file.size()) +
+                             ", i64 " + std::to_string(statement.location.line) + ", i64 " +
+                             std::to_string(statement.location.column) + ")\n"
+                             "  " + loaded + " = load %SimpleArrayValue, ptr " + element +
+                             "\n"
+                             "  store %SimpleArrayValue " + loaded + ", ptr " + valueSlot +
+                             "\n";
+        } else {
+            const auto file = internString(statement.location.file);
+            const auto entry = newTemporary();
+            const auto keyDataAddress = newTemporary();
+            const auto keyData = newTemporary();
+            const auto keyLengthAddress = newTemporary();
+            const auto keyLength = newTemporary();
+            const auto keyFirst = newTemporary();
+            const auto keyValue = newTemporary();
+            const auto valueAddress = newTemporary();
+            const auto value = newTemporary();
+            instructions_ += "  " + entry + " = call ptr @simp_map_entry_at(ptr " +
+                             collection.operand + ", i64 " + index + ", ptr " + file +
+                             ", i64 " + std::to_string(statement.location.file.size()) +
+                             ", i64 " + std::to_string(statement.location.line) + ", i64 " +
+                             std::to_string(statement.location.column) + ")\n"
+                             "  " + keyDataAddress +
+                             " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
+                             ", i32 0, i32 0\n"
+                             "  " + keyData + " = load ptr, ptr " + keyDataAddress + "\n"
+                             "  " + keyLengthAddress +
+                             " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
+                             ", i32 0, i32 1\n"
+                             "  " + keyLength + " = load i64, ptr " + keyLengthAddress +
+                             "\n"
+                             "  " + keyFirst + " = insertvalue %SimpleString poison, ptr " +
+                             keyData + ", 0\n"
+                             "  " + keyValue + " = insertvalue %SimpleString " + keyFirst +
+                             ", i64 " + keyLength + ", 1\n"
+                             "  store %SimpleString " + keyValue + ", ptr " +
+                             scopes_.back().at(statement.keyName).pointer + "\n"
+                             "  " + valueAddress +
+                             " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
+                             ", i32 0, i32 2\n"
+                             "  " + value + " = load %SimpleArrayValue, ptr " + valueAddress +
+                             "\n"
+                             "  store %SimpleArrayValue " + value + ", ptr " + valueSlot +
+                             "\n";
+        }
+        blockTerminated_ = false;
+        emitStatements(statement.body);
+        const bool bodyTerminated = blockTerminated_;
+        scopes_.pop_back();
+        if (!bodyTerminated) {
+            const auto currentIndex = newTemporary();
+            const auto nextIndex = newTemporary();
+            instructions_ += "  " + currentIndex + " = load i64, ptr " + indexSlot + "\n"
+                             "  " + nextIndex + " = add i64 " + currentIndex + ", 1\n"
+                             "  store i64 " + nextIndex + ", ptr " + indexSlot + "\n"
+                             "  br label %" + conditionLabel + "\n";
+        }
         instructions_ += endLabel + ":\n";
         blockTerminated_ = false;
         return;
