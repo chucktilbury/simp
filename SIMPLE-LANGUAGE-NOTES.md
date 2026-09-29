@@ -63,8 +63,9 @@ details remain subject to validation as the runtime grows:
   allocation. The root object and each base subobject have a metadata header
   and a link to the containing allocation. Direct non-virtual bases are
   embedded in declared order before fields declared by the derived class.
-  Supported virtual root bases have one physical subobject per complete object,
-  shared by every inheritance path. The first declared base retains the primary
+  Each virtual base class reachable in a complete object's inheritance graph
+  has one physical subobject shared by every path, including virtual bases
+  declared by another virtual base. The first declared base retains the primary
   designation and first layout position, but does not receive special
   construction or dispatch behavior.
 - Methods are shared class metadata/code entries, never copied into instances.
@@ -78,8 +79,8 @@ details remain subject to validation as the runtime grows:
   slots at function boundaries; conservative stack scanning is not used.
 
 The current compiler prototype validates single- and multiple-inheritance
-layouts, including shared identity for supported virtual root bases; qualified
-field and method access through base paths; direct non-virtual-base
+layouts, including transitive virtual-base graphs and shared identity across
+repeated paths; qualified field and method access through base paths; direct non-virtual-base
 `super.Base(args)` constructor chaining; unique-subobject implicit upcasts;
 typed methods; allocation; virtual dispatch through non-virtual and shared
 virtual base views; and a minimal precise collector.
@@ -120,13 +121,15 @@ finalized again. `super.Base(args)` initializes a named direct non-virtual base.
 non-virtual base constructors must be called once in declared order before the
 derived constructor body. A supported shared base is marked with
 `class Left : virtual Root` (the access and `virtual` modifiers may appear in
-either order). Virtual bases are restricted to root classes with no bases.
+either order); that virtual base may itself have bases, including other
+virtual bases.
 The most-derived constructor supplies arguments with a leading
-`super.virtual Root(args)` statement. Its initializer must precede every
-`super.Base(args)` call; initializer statements follow depth-first,
-left-to-right virtual-base construction order. Each parameterized virtual base
-must have exactly one such initializer when that class is constructed as a
-complete object. Omitting an initializer is allowed for a virtual base with a
+`super.virtual Root(args)` statement. Initializers precede every
+`super.Base(args)` call and follow the complete object's depth-first,
+left-to-right virtual-base construction order. A virtual base's own virtual
+ancestors are initialized first. Each parameterized virtual base must have
+exactly one such initializer when that class is constructed as a complete
+object. Omitting an initializer is allowed for a virtual base with a
 zero-argument constructor, which is then invoked automatically. Duplicate
 initializers, an unknown/non-virtual base, an incorrect argument count or type,
 or an initializer outside the direct leading constructor-initializer sequence
@@ -134,27 +137,35 @@ is rejected. The initializer expression is checked in the declaring
 constructor's parameter/field scope.
 
 Construction carries a hidden complete-object flag through constructor calls.
-The complete object's virtual-base constructors run once, in
-depth-first, left-to-right base-declaration order, before direct non-virtual
-bases. Only a class that is not used as a base by another class in the program
-may declare a virtual-base initializer; trying to initialize from an
-intermediate class is rejected. This keeps argument ownership statically
-unambiguous: only a most-derived class supplies them, and ordinary
-`super.Base(...)` calls never forward them. A thrown exception during
-virtual-base initialization fails construction and suppresses the partial
-object's destructor chain.
+The complete object's virtual-base constructors run once before direct
+non-virtual bases. Their order is a deterministic depth-first, left-to-right
+walk of declared base edges; a virtual base's own virtual ancestors are
+initialized before that virtual base. Repeated virtual paths are deduplicated
+by base class, while distinct non-virtual subobjects remain distinct. Only a
+class that is not used as a base by another class in the program may declare a
+virtual-base initializer; trying to initialize from an intermediate class is
+rejected. This keeps argument ownership statically unambiguous: only a
+most-derived class supplies them, and ordinary `super.Base(...)` calls never
+forward them. A thrown exception during transitive virtual-base initialization
+fails construction and suppresses the partial object's destructor chain. As a
+result, a class that is also used as a base cannot separately provide
+parameterized virtual-base arguments when constructed on its own; that
+standalone construction is rejected if the required initializer is absent.
 
 Multiple direct non-virtual bases are distinct subobjects in declared order.
-All qualified paths to a shared virtual root, such as
-`diamond.Left.Root.value` and `diamond.Right.Root.value`, address the same
-subobject. That identity also governs inherited-member ambiguity and implicit
-upcasts: one shared virtual root is a unique conversion target, while repeated
-non-virtual ancestors remain ambiguous. Virtual dispatch uses one metadata view
-for that shared subobject and adjusts `this` to the selected implementation.
-GC reference offsets include each shared virtual subobject exactly once, so
+All qualified paths to a shared virtual base and its virtual ancestors, such as
+`diamond.Left.Root.Ancestor.value` and
+`diamond.Right.Root.Ancestor.value`, address the same subobjects. That identity
+also governs inherited-member ambiguity and implicit upcasts: one shared
+virtual base is a unique conversion target, while repeated non-virtual
+ancestors (or a virtual and a separate non-virtual instance of the same type)
+remain ambiguous. Virtual dispatch uses one metadata view for each canonical
+virtual subobject and adjusts `this` to the selected implementation. GC
+reference offsets include each physical virtual subobject exactly once, so
 references stored through any path remain traceable. Destruction runs the
 complete object's destructor and non-virtual bases in reverse declaration/depth
-order, then each virtual base once in reverse virtual-base construction order.
+order, then each virtual base and its non-virtual bases once in reverse
+virtual-base construction order.
 A class without an explicit constructor is default-constructible only if its
 non-virtual bases also have no explicit constructors.
 
@@ -201,8 +212,9 @@ non-virtual bases also have no explicit constructors.
 Keywords are case-insensitive and reserved under every capitalization. For example, `while`, `While`, and `wHiLe` are the same keyword, so `int While = 0` is a syntax error.
 
 In the current prototype subset, simple statements are terminated by a
-newline or a closing block brace. Newlines inside parentheses are treated as
-whitespace, allowing wrapped expressions and argument lists. Adjacent simple
+newline or a closing block brace. Newlines inside parentheses and array
+brackets are treated as whitespace, allowing wrapped expressions, argument
+lists, and array literals. Adjacent simple
 statements on one line are not supported. The lexer recognizes `;`, `#`, and
 `//` as single-line comment introducers and `/* ... */` as a block comment;
 block-comment newlines continue to terminate statements. A semicolon never
@@ -269,6 +281,29 @@ UTF-8 is the choice for now. Advanced Unicode semantics are deferred. A length o
 - Dictionary keys must be string literals. Variables, numbers, and formatted strings are not valid dictionary keys.
 - Internal “under-the-table” object copying is needed by the runtime and collection behavior.
 
+The current compiler implements the heterogeneous-bag design goal for arrays,
+using the keyword `array` (with `list` accepted as an alias keyword for the
+exact same type — there is only one collection type). An array literal, for
+example `[1, "two", Node(3), null]`, may freely mix `int`, `string`, class
+references, and `null` in the same collection; empty literals `[]` are always
+allowed. Reading an element with `values[index]` yields the explicit dynamic
+`any` value type rather than a statically-known concrete type; assigning
+`values[index] = expr` accepts any supported element type directly.
+`values.length` is a read-only `int`, and `values[start:end]` copies the
+half-open range `[start, end)` into independent storage. Copying is shallow
+for class references. Arrays have a fixed length; array assignment aliases
+the same mutable storage. Negative/out-of-range indices and invalid slice
+bounds raise catchable, source-located exceptions. `any` is the explicit
+dynamic/tagged value type: it can be declared directly, holds an `int`,
+`string`, class reference, or `null`, has no members of its own, and must be
+assigned to a concretely typed variable/field/parameter to extract its value
+(a runtime-checked operation that raises on a tag or exact-class mismatch;
+there is no covariant/polymorphic downcast support). Nested arrays (an array
+or `any` holding another array), maps, and append/resize operations are not
+implemented; `array`/`any` equality (`==`/`!=`) is also not implemented. The
+runtime traces class-reference array elements, including those reached
+through `any`-typed values, and arrays stored in object fields.
+
 ### Examples that guide the design
 
 The project conversation supplied examples covering:
@@ -311,9 +346,10 @@ destroy()` calls through inheritance hierarchies. The collector first marks
 the graph, invokes each unmarked object's destructor chain at most once before
 sweeping, then traces roots again before reclamation. Each class destructor
 runs once, most-derived first, followed by direct bases in reverse declaration
-order and recursively through their bases. Repeated non-virtual base classes
-in a diamond are distinct subobjects and are each destroyed; a shared virtual
-root base is destroyed once after the non-virtual bases. Explicit destruction marks
+order and recursively through their non-virtual bases. Repeated non-virtual
+base classes in a diamond are distinct subobjects and are each destroyed;
+transitive virtual bases are each destroyed once after the non-virtual bases.
+Explicit destruction marks
 the object, suppressing its later finalizer. The heap marks an object destroyed
 before invoking its callback; repeated explicit destruction raises a catchable
 runtime exception. If an explicit destructor raises, the object remains

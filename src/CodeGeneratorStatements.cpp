@@ -24,9 +24,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         scopes_.back().emplace(statement.name,
                                Binding{statement.declaredType, pointer, {}, false});
         entryAllocas_ += "  " + pointer + " = alloca " + llvmType(statement.declaredType) + "\n";
-        if (classes_.find(statement.declaredType) != classes_.end()) {
-            rootSlots_.push_back(pointer);
-        }
+        registerRootSlot(pointer, statement.declaredType);
         if (!statement.expressions.empty()) {
             const auto value = emitExpression(*statement.expressions.front(), statement.declaredType);
             const auto converted = convertObjectValue(value, statement.declaredType,
@@ -39,9 +37,25 @@ void CodeGenerator::emitStatement(const Statement& statement) {
     case StatementKind::Assignment: {
         Binding binding;
         std::string address;
+        bool arrayElementTarget = false;
         if (statement.target->kind == ExpressionKind::Identifier) {
             binding = findVariable(statement.target->value, statement.target->location);
             address = emitAddress(binding, statement.location);
+        } else if (statement.target->kind == ExpressionKind::Index) {
+            const auto array = emitExpression(*statement.target->left);
+            const auto index =
+                emitIntegerExpression(*statement.target->arguments.front());
+            const auto file = internString(statement.target->location.file);
+            address = newTemporary();
+            instructions_ += "  " + address + " = call ptr @simp_array_index(ptr " +
+                             array.operand + ", i32 " + index.operand + ", ptr " + file +
+                             ", i64 " +
+                             std::to_string(statement.target->location.file.size()) +
+                             ", i64 " +
+                             std::to_string(statement.target->location.line) + ", i64 " +
+                             std::to_string(statement.target->location.column) + ")\n";
+            binding.type = "any";
+            arrayElementTarget = true;
         } else {
             const Expression* root = nullptr;
             const ClassDeclaration* owner = nullptr;
@@ -66,6 +80,10 @@ void CodeGenerator::emitStatement(const Statement& statement) {
             address = emitFieldAddress(receiver.operand, *owner, fieldPath);
         }
         const auto value = emitExpression(*statement.expressions.front(), binding.type);
+        if (arrayElementTarget) {
+            emitArrayElementStore(address, value, statement.expressions.front()->location);
+            return;
+        }
         const auto converted = convertObjectValue(value, binding.type,
                                                    statement.expressions.front()->location);
         instructions_ += "  store " + llvmType(binding.type) + " " + converted.operand +

@@ -130,7 +130,8 @@ std::vector<Statement> Parser::parseBlock() {
 
 Statement Parser::parseStatement() {
     trace("parse statement");
-    if (check(TokenType::Int) || check(TokenType::StringType) || check(TokenType::Void)) {
+    if (check(TokenType::Int) || check(TokenType::StringType) || check(TokenType::ArrayType) ||
+        check(TokenType::AnyType) || check(TokenType::Void)) {
         return parseDeclaration();
     }
     if (check(TokenType::Identifier)) {
@@ -413,7 +414,7 @@ std::unique_ptr<Expression> Parser::parseUnary() {
         expression->left = parseUnary();
         return expression;
     }
-    return parsePrimary();
+    return parsePostfix(parsePrimary());
 }
 
 std::unique_ptr<Expression> Parser::parsePrimary() {
@@ -438,7 +439,7 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         expression->kind = ExpressionKind::Identifier;
         expression->location = token.location;
         expression->value = token.text;
-        return parsePostfix(std::move(expression));
+        return expression;
     }
     if (match(TokenType::Null)) {
         auto expression = std::make_unique<Expression>();
@@ -451,11 +452,38 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         consume(TokenType::RightParen, "')' after expression");
         return expression;
     }
+    if (match(TokenType::LeftBracket)) {
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::ArrayLiteral;
+        expression->location = token.location;
+        if (!check(TokenType::RightBracket)) {
+            do {
+                expression->arguments.push_back(parseExpression());
+            } while (match(TokenType::Comma));
+        }
+        consume(TokenType::RightBracket, "']' after array elements");
+        return expression;
+    }
     error(current(), std::string("expected expression, found ") + tokenTypeName(current().type));
 }
 
 std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> expression) {
     for (;;) {
+        if (match(TokenType::LeftBracket)) {
+            auto access = std::make_unique<Expression>();
+            access->location = previous().location;
+            access->left = std::move(expression);
+            access->arguments.push_back(parseExpression());
+            if (match(TokenType::Colon)) {
+                access->kind = ExpressionKind::Slice;
+                access->arguments.push_back(parseExpression());
+            } else {
+                access->kind = ExpressionKind::Index;
+            }
+            consume(TokenType::RightBracket, "']' after array index or slice");
+            expression = std::move(access);
+            continue;
+        }
         if (match(TokenType::Dot)) {
             const auto member = consume(TokenType::Identifier, "member name after '.'");
             auto access = std::make_unique<Expression>();
@@ -466,7 +494,10 @@ std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> exp
             expression = std::move(access);
             continue;
         }
-        if (match(TokenType::LeftParen)) {
+        if (check(TokenType::LeftParen) &&
+            (expression->kind == ExpressionKind::Identifier ||
+             expression->kind == ExpressionKind::Member)) {
+            ++current_;
             const bool constructorCall = expression->kind == ExpressionKind::Identifier;
             auto call = std::make_unique<Expression>();
             call->kind = constructorCall ? ExpressionKind::ConstructorCall : ExpressionKind::Call;

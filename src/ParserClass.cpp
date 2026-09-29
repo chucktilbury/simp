@@ -87,7 +87,7 @@ ClassDeclaration Parser::parseClass() {
             if (member.text == "destroy" && typeName != "void") {
                 error(member, "destructor must be declared void");
             }
-            auto method = parseMethod(type, member, false);
+            auto method = parseMethod(type, member, false, typeName);
             if (member.text == "destroy") {
                 method.destructor = true;
                 method.returnType = "void";
@@ -105,11 +105,15 @@ ClassDeclaration Parser::parseClass() {
 }
 
 std::string Parser::parseType(bool allowVoid) {
-    if (match(TokenType::Int)) return "int";
-    if (match(TokenType::StringType)) return "string";
-    if (allowVoid && match(TokenType::Void)) return "void";
-    if (check(TokenType::Identifier)) return tokens_[current_++].text;
-    error(current(), "expected type name");
+    std::string type;
+    if (match(TokenType::Int)) type = "int";
+    else if (match(TokenType::StringType)) type = "string";
+    else if (match(TokenType::ArrayType)) type = "array";
+    else if (match(TokenType::AnyType)) type = "any";
+    else if (allowVoid && match(TokenType::Void)) type = "void";
+    else if (check(TokenType::Identifier)) type = tokens_[current_++].text;
+    else error(current(), "expected type name");
+    return type;
 }
 
 std::vector<Parameter> Parser::parseParameters() {
@@ -128,10 +132,10 @@ std::vector<Parameter> Parser::parseParameters() {
 }
 
 MethodDeclaration Parser::parseMethod(const Token& typeOrName, const Token& methodName,
-                                      bool constructor) {
+                                      bool constructor, const std::string& returnType) {
     MethodDeclaration method;
     method.name = methodName.text;
-    method.returnType = constructor ? "void" :
+    method.returnType = constructor ? "void" : !returnType.empty() ? returnType :
                         (typeOrName.type == TokenType::Int ? "int" :
                          typeOrName.type == TokenType::StringType ? "string" :
                          typeOrName.type == TokenType::Void ? "void" : typeOrName.text);

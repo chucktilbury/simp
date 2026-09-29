@@ -54,7 +54,8 @@ private:
     bool isAssignable(const std::string& target, const std::string& source) const;
     bool isSubclassOf(const std::string& type, const std::string& base) const;
     std::vector<const FieldDeclaration*> inheritedFields(const ClassDeclaration& declaration) const;
-    std::string analyzeExpression(const Expression& expression);
+    std::string analyzeExpression(const Expression& expression,
+                                  const std::string& expectedType = {});
     std::string analyzeLValue(const Expression& expression);
     void analyzeStatements(const std::vector<Statement>& statements);
     void analyzeStatement(const Statement& statement);

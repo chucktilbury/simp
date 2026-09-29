@@ -65,13 +65,7 @@ void SemanticAnalyzer::analyze(const Program& program) {
                 throw DiagnosticError(declaration.baseLocations[index],
                                       "duplicate base class '" + baseName + "'");
             }
-            const auto* base = findClass(baseName, declaration.baseLocations[index]);
-            if (declaration.baseVirtual[index]) {
-                if (!base->baseClassNames.empty()) {
-                    throw DiagnosticError(declaration.baseLocations[index],
-                                          "virtual bases must be root classes with no bases");
-                }
-            }
+            (void)findClass(baseName, declaration.baseLocations[index]);
         }
         std::unordered_set<std::string> path{declaration.name};
         std::vector<const ClassDeclaration*> pending{&declaration};
@@ -190,7 +184,8 @@ void SemanticAnalyzer::analyze(const Program& program) {
 
 void SemanticAnalyzer::validateType(const std::string& type, const SourceLocation& location,
                                    bool allowVoid) const {
-    if (type == "int" || type == "string" || (allowVoid && type == "void")) {
+    if (type == "int" || type == "string" || type == "array" || type == "any" ||
+        (allowVoid && type == "void")) {
         return;
     }
     if (classes_.find(type) == classes_.end()) {

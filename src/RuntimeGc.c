@@ -7,6 +7,7 @@
 
 #include <setjmp.h>
 #include <stdalign.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,7 +17,9 @@ typedef struct HeapNode {
     struct HeapNode *destroy_previous;
     struct HeapNode *construct_previous;
     void *object;
+    size_t allocation_size;
     int marked;
+    int is_array;
     int destroyed;
     int destroying;
     int constructing;
@@ -55,6 +58,9 @@ static int collecting = 0;
 static int running_destructor = 0;
 static RetainedExceptionMessage *retained_exception_messages = NULL;
 static int retained_message_cleanup_registered = 0;
+static const SimpClassMeta array_metadata = {
+    "array", 5, 0, NULL, 0, sizeof(SimpArray), 0, NULL, NULL
+};
 
 static HeapNode *find_object(const void *object);
 
@@ -297,10 +303,8 @@ static HeapNode *find_containing_object(const void *object) {
     const uintptr_t address = (uintptr_t)object;
     for (HeapNode *node = heap; node != NULL; node = node->next) {
         const uintptr_t start = (uintptr_t)node->object;
-        const SimpClassMeta *metadata = NULL;
-        memcpy(&metadata, node->object, sizeof(metadata));
-        if (metadata == NULL || address < start) continue;
-        if (address - start < metadata->object_size) return node;
+        if (address < start) continue;
+        if (address - start < node->allocation_size) return node;
     }
     return NULL;
 }
@@ -373,6 +377,35 @@ void simp_gc_require_alive(void *object, const char *file, uint64_t file_length,
         simp_exception_raise("object has been destroyed", 25, file, file_length, line, column);
 }
 
+void simp_value_require_tag(uint64_t actual, uint64_t expected, const char *file,
+                            uint64_t file_length, uint64_t line, uint64_t column) {
+    if (actual != expected) {
+        static const char message[] = "'any' value does not hold the requested type";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+}
+
+void simp_value_require_class(uint64_t actual_tag, void *pointer,
+                              const SimpClassMeta *expected, const char *file,
+                              uint64_t file_length, uint64_t line, uint64_t column) {
+    if (actual_tag != SIMP_ARRAY_OBJECT) {
+        static const char message[] = "'any' value does not hold an object reference";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    if (pointer == NULL) {
+        /* A null object reference is compatible with every class type. */
+        return;
+    }
+    const SimpClassMeta *actual;
+    memcpy(&actual, pointer, sizeof(actual));
+    if (actual != expected) {
+        static const char message[] =
+            "'any' value holds a different class than the requested type";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+}
+
+
 void *simp_gc_root(void *object) {
     HeapNode *node = find_containing_object(object);
     if (node == NULL) abort();
@@ -427,6 +460,16 @@ static void mark_roots(HeapNode **worklist, size_t *work_count) {
 static void trace_graph(HeapNode **worklist, size_t *work_count) {
     while (*work_count != 0) {
         HeapNode *node = worklist[--(*work_count)];
+        if (node->is_array) {
+            const SimpArray *array = (const SimpArray *)node->object;
+            for (uint64_t index = 0; index < array->length; ++index) {
+                const SimpArrayValue *value = &array->values[index];
+                if (value->tag == SIMP_ARRAY_OBJECT) {
+                    mark_object(value->pointer, worklist, work_count);
+                }
+            }
+            continue;
+        }
         const SimpClassMeta *metadata = NULL;
         memcpy(&metadata, node->object, sizeof(metadata));
         if (metadata == NULL) abort();
@@ -512,6 +555,8 @@ void *simp_gc_alloc(const SimpClassMeta *metadata) {
     }
     memcpy(object, &metadata, sizeof(metadata));
     node->object = object;
+    node->allocation_size = (size_t)metadata->object_size;
+    node->is_array = 0;
     node->marked = 0;
     node->destroyed = 0;
     node->destroying = 0;
@@ -522,6 +567,78 @@ void *simp_gc_alloc(const SimpClassMeta *metadata) {
     heap = node;
     ++object_count;
     return object;
+}
+
+void *simp_gc_alloc_array(uint64_t length) {
+    if (collecting || running_destructor || length > INT32_MAX ||
+        length > (SIZE_MAX - sizeof(SimpArray)) / sizeof(SimpArrayValue)) {
+        abort();
+    }
+    simp_gc_collect();
+    const size_t allocation_size =
+        sizeof(SimpArray) + (size_t)length * sizeof(SimpArrayValue);
+    SimpArray *array = (SimpArray *)calloc(1, allocation_size);
+    HeapNode *node = (HeapNode *)malloc(sizeof(*node));
+    if (array == NULL || node == NULL) {
+        free(array);
+        free(node);
+        abort();
+    }
+    array->metadata = &array_metadata;
+    array->length = length;
+    node->object = array;
+    node->allocation_size = allocation_size;
+    node->is_array = 1;
+    node->marked = 0;
+    node->destroyed = 0;
+    node->destroying = 0;
+    node->destroy_previous = NULL;
+    node->constructing = 0;
+    node->construct_previous = NULL;
+    node->next = heap;
+    heap = node;
+    ++object_count;
+    return array;
+}
+
+static SimpArray *checked_array(void *object, const char *file, uint64_t file_length,
+                                uint64_t line, uint64_t column) {
+    if (object == NULL) {
+        static const char message[] = "null array reference";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    HeapNode *node = find_object(object);
+    if (node == NULL || !node->is_array) {
+        static const char message[] = "invalid array reference";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    return (SimpArray *)object;
+}
+
+void *simp_array_index(void *object, int32_t index, const char *file,
+                       uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpArray *array = checked_array(object, file, file_length, line, column);
+    if (index < 0 || (uint64_t)index >= array->length) {
+        static const char message[] = "array index out of bounds";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    return &array->values[index];
+}
+
+void *simp_array_slice(void *object, int32_t start, int32_t end, const char *file,
+                       uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpArray *source = checked_array(object, file, file_length, line, column);
+    if (start < 0 || end < start || (uint64_t)end > source->length) {
+        static const char message[] = "array slice bounds out of bounds";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    const uint64_t length = (uint64_t)(end - start);
+    SimpArray *copy = (SimpArray *)simp_gc_alloc_array(length);
+    if (length != 0) {
+        memcpy(copy->values, source->values + start,
+               (size_t)length * sizeof(SimpArrayValue));
+    }
+    return copy;
 }
 
 size_t simp_gc_heap_count(void) {

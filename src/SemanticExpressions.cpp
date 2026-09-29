@@ -13,6 +13,17 @@
 #include <iostream>
 
 namespace simp {
+namespace {
+
+bool isArrayType(const std::string& type) {
+    return type == "array";
+}
+
+bool isDynamicValueType(const std::string& type) {
+    return type == "any";
+}
+
+} // namespace
 
 bool SemanticAnalyzer::resolveBaseQualifier(const Expression& receiver,
                                            const Expression*& root,
@@ -42,7 +53,8 @@ bool SemanticAnalyzer::resolveBaseQualifier(const Expression& receiver,
     return true;
 }
 
-std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
+std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
+                                                const std::string& expectedType) {
     switch (expression.kind) {
     case ExpressionKind::Integer: {
         std::int32_t value = 0;
@@ -96,8 +108,19 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
         const Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;
         std::vector<std::string> path;
-        if (!resolveBaseQualifier(*expression.left, root, owner, path)) {
+        const bool qualified = resolveBaseQualifier(*expression.left, root, owner, path);
+        if (!qualified) {
             const auto receiverType = analyzeExpression(*expression.left);
+            if (isArrayType(receiverType)) {
+                if (expression.value == "length") return "int";
+                throw DiagnosticError(expression.location,
+                                      "arrays support only the read-only 'length' member");
+            }
+            if (isDynamicValueType(receiverType)) {
+                throw DiagnosticError(expression.location,
+                                      "'any' has no members; assign it to a typed variable "
+                                      "first to extract its value");
+            }
             owner = findClass(receiverType, expression.location);
         }
         const auto matches = countFields(*owner, expression.value);
@@ -120,6 +143,39 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
         }
         throw DiagnosticError(expression.location,
                               "class '" + owner->name + "' has no field '" + expression.value + "'");
+    }
+    case ExpressionKind::ArrayLiteral: {
+        // Arrays are heterogeneous bags: each element may independently be an int,
+        // a string, a class reference, null, or another dynamic 'any' value. Nested
+        // arrays are not supported as elements in this prototype.
+        for (const auto& element : expression.arguments) {
+            const auto actualType = analyzeExpression(*element);
+            const bool validElement = actualType == "int" || actualType == "string" ||
+                                      actualType == "null" || actualType == "any" ||
+                                      classes_.find(actualType) != classes_.end();
+            if (!validElement) {
+                throw DiagnosticError(element->location,
+                                      "array elements must be int, string, a class reference, "
+                                      "null, or 'any'; found " + actualType);
+            }
+        }
+        return "array";
+    }
+    case ExpressionKind::Index:
+    case ExpressionKind::Slice: {
+        const auto arrayType = analyzeExpression(*expression.left);
+        if (!isArrayType(arrayType)) {
+            throw DiagnosticError(expression.location, "indexing and slicing require an array");
+        }
+        for (const auto& bound : expression.arguments) {
+            if (analyzeExpression(*bound) != "int") {
+                throw DiagnosticError(bound->location, "array index and slice bounds must be int");
+            }
+        }
+        // Slicing copies a range and stays an array; indexing yields one dynamic
+        // 'any' element that must be assigned to a typed variable (or another
+        // 'any') to be used further.
+        return expression.kind == ExpressionKind::Slice ? "array" : "any";
     }
     case ExpressionKind::ConstructorCall: {
         const auto* owner = findClass(expression.value, expression.location);
@@ -160,7 +216,8 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                                   "constructor argument count does not match class '" + owner->name + "'");
         }
         for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
-            const auto argumentType = analyzeExpression(*expression.arguments[index]);
+            const auto argumentType =
+                analyzeExpression(*expression.arguments[index], constructor->parameters[index].type);
             if (!isAssignable(constructor->parameters[index].type, argumentType) &&
                 !(argumentType == "null" &&
                   classes_.find(constructor->parameters[index].type) != classes_.end())) {
@@ -273,7 +330,8 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                                   "method '" + target.value + "' argument count mismatch");
         }
         for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
-            const auto argumentType = analyzeExpression(*expression.arguments[index]);
+            const auto argumentType =
+                analyzeExpression(*expression.arguments[index], method->parameters[index].type);
             if (!isAssignable(method->parameters[index].type, argumentType) &&
                 !(argumentType == "null" &&
                   classes_.find(method->parameters[index].type) != classes_.end())) {
@@ -294,6 +352,12 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
         const auto right = analyzeExpression(*expression.right);
         const auto& operation = expression.value;
         if (operation == "==" || operation == "!=") {
+            if (isArrayType(left) || isArrayType(right) || isDynamicValueType(left) ||
+                isDynamicValueType(right)) {
+                throw DiagnosticError(expression.location,
+                                      "array and 'any' equality are not implemented in this "
+                                      "prototype");
+            }
             if (left == "string" && right == "string") {
                 throw DiagnosticError(expression.location,
                                       "string equality is not implemented in this prototype");
@@ -343,12 +407,34 @@ std::string SemanticAnalyzer::analyzeLValue(const Expression& expression) {
         throw DiagnosticError(expression.location,
                               "undefined variable '" + expression.value + "' or field");
     }
+    if (expression.kind == ExpressionKind::Index) {
+        const auto arrayType = analyzeExpression(*expression.left);
+        if (!isArrayType(arrayType)) {
+            throw DiagnosticError(expression.location, "index assignment requires an array");
+        }
+        if (analyzeExpression(*expression.arguments.front()) != "int") {
+            throw DiagnosticError(expression.arguments.front()->location,
+                                  "array index must be int");
+        }
+        // An array slot accepts any supported element type; the target is the
+        // dynamic 'any' representation and isAssignable() bridges it to the
+        // concrete type of the assigned expression.
+        return "any";
+    }
+    if (expression.kind == ExpressionKind::Slice) {
+        throw DiagnosticError(expression.location,
+                              "slice expressions are copies and are not assignable");
+    }
     if (expression.kind == ExpressionKind::Member) {
         const Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;
         std::vector<std::string> path;
-        if (!resolveBaseQualifier(*expression.left, root, owner, path)) {
+        const bool qualified = resolveBaseQualifier(*expression.left, root, owner, path);
+        if (!qualified) {
             const auto receiverType = analyzeExpression(*expression.left);
+            if (isArrayType(receiverType) && expression.value == "length") {
+                throw DiagnosticError(expression.location, "array length is read-only");
+            }
             owner = findClass(receiverType, expression.location);
         }
         const auto matches = countFields(*owner, expression.value);

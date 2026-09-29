@@ -1,0 +1,86 @@
+class Node {
+    int value
+    Node(int initial) {
+        value = initial
+    }
+}
+
+class Holder {
+    array nodes
+    Holder(array initial) {
+        nodes = initial
+    }
+    array copyNodes(array source) {
+        return source[0:2]
+    }
+}
+
+start {
+    // Arrays (and their 'list' keyword alias) are heterogeneous bags: one
+    // literal can freely mix ints, strings, and class references.
+    array items = [10, "twenty", 30, "forty"]
+    print(items.length)
+    print(items[1])
+    items[1] = "twenty-five"
+    print(items[1])
+    items[1] = 25
+    print(items[1])
+
+    array middle = items[1:3]
+    print(middle.length)
+    print(middle[0])
+    middle[0] = 99
+    print(items[1])
+    print(middle[0])
+    array empty = items[2:2]
+    print(empty.length)
+    array emptyLiteral = []
+    print(emptyLiteral.length)
+    array alias = items
+    alias[0] = 11
+    print(items[0])
+
+    list words = ["one", "two"]
+    print(words[1])
+
+    array nodes = [Node(7), Node(8)]
+    Holder holder = Holder(nodes)
+    array copiedNodes = holder.copyNodes(holder.nodes)
+    nodes = []
+    int counter = 0
+    while (counter < 40) {
+        Node discarded = Node(counter)
+        counter = counter + 1
+    }
+    // holder.nodes[0] is 'any'; extract it into a Node-typed variable before
+    // accessing its fields (dynamic values have no members of their own).
+    Node firstNode = holder.nodes[0]
+    Node secondNode = holder.nodes[1]
+    Node firstCopied = copiedNodes[0]
+    print(firstNode.value)
+    print(secondNode.value)
+    print(firstCopied.value)
+
+    // Reading an element yields the explicit dynamic 'any' representation;
+    // extracting a concrete type is a runtime-checked, type-safe operation.
+    any dynamicValue = items[0]
+    int extracted = dynamicValue
+    print(extracted)
+
+    array mixed = [1, "two", Node(3), null]
+    print(mixed[0])
+    print(mixed[1])
+    print(mixed[2])
+    print(mixed[3])
+
+    try {
+        print(items[-1])
+    } except error {
+        print(error)
+    }
+    try {
+        array invalid = items[3:2]
+    } except error {
+        print(error)
+    }
+}

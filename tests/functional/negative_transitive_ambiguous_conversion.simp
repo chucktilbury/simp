@@ -1,0 +1,16 @@
+class Ancestor {
+}
+
+class VirtualPath : virtual Ancestor {
+}
+
+class OrdinaryPath : Ancestor {
+}
+
+class Diamond : VirtualPath, OrdinaryPath {
+}
+
+start {
+    Diamond diamond = Diamond()
+    Ancestor ancestor = diamond
+}

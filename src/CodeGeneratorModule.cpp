@@ -48,6 +48,8 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         classes_.emplace(declaration.name, &declaration);
     }
     typeDefinitions_ += "%SimpleString = type { ptr, i64 }\n";
+    typeDefinitions_ += "%SimpleArrayValue = type { i64, i64, ptr, i64 }\n";
+    typeDefinitions_ += "%SimpleArray = type { ptr, i64, [0 x %SimpleArrayValue] }\n";
     typeDefinitions_ += "%SimpRootFrame = type { ptr, i64, ptr }\n";
     typeDefinitions_ += "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr }\n";
     typeDefinitions_ += "%SimpleMethodMeta = type { ptr, i64, ptr }\n";
@@ -73,19 +75,14 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         const auto className = internString(owner.name);
         std::vector<std::string> referenceOffsets;
         for (const auto& subobject : subobjects(owner)) {
-            const auto prefix = directBasePath(owner, subobject.first);
             for (std::size_t localFieldIndex = 0;
                  localFieldIndex < subobject.second->fields.size(); ++localFieldIndex) {
                 const auto& field = subobject.second->fields[localFieldIndex];
-                if (classes_.find(field.type) == classes_.end()) continue;
-                auto indices = prefix;
-                indices.push_back(fieldIndex(*subobject.second, localFieldIndex));
-                std::string offset = "i64 ptrtoint (ptr getelementptr (%Class." + owner.name +
-                                     ", ptr null, i32 0";
-                for (const auto index : indices) {
-                    offset += ", i32 " + std::to_string(index);
-                }
-                offset += ") to i64)";
+                const bool dynamic = isDynamicValueType(field.type);
+                if (!isManagedReferenceType(field.type) && !dynamic) continue;
+                const auto offset = "i64 " + subobjectFieldOffset(
+                    owner, subobject.first,
+                    fieldIndex(*subobject.second, localFieldIndex), dynamic);
                 referenceOffsets.push_back(std::move(offset));
             }
         }
@@ -189,9 +186,7 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
         scopes_.back().emplace(parameter.name,
                                Binding{parameter.type, pointer, {}, false});
         entryAllocas_ += "  " + pointer + " = alloca " + llvmType(parameter.type) + "\n";
-        if (classes_.find(parameter.type) != classes_.end()) {
-            rootSlots_.push_back(pointer);
-        }
+        registerRootSlot(pointer, parameter.type);
         functionPrologue_ += "  store " + llvmType(parameter.type) + " " + argument +
                              ", ptr " + pointer + "\n";
     }
@@ -325,17 +320,15 @@ void CodeGenerator::emitClassMethods(const Program& program) {
                                     " = getelementptr inbounds %Class." + view.second->name +
                                     ", ptr %this, i32 0, i32 1\n"
                                     "  " + root + " = load ptr, ptr " + rootAddress + "\n";
-                const auto implementationIndices =
-                    directBasePath(dynamicOwner, implementationPath);
-                if (implementationIndices.empty()) {
+                if (implementationPath.empty()) {
                     thunk += "  %impl.this = getelementptr i8, ptr " + root + ", i64 0\n";
                 } else {
-                    thunk += "  %impl.this = getelementptr inbounds %Class." +
-                             dynamicOwner.name + ", ptr " + root + ", i32 0";
-                    for (const auto index : implementationIndices) {
-                        thunk += ", i32 " + std::to_string(index);
-                    }
-                    thunk += "\n";
+                    std::string implementationAddress;
+                    thunk += subobjectAddressSequence(root, dynamicOwner,
+                                                      implementationPath, "impl",
+                                                      implementationAddress);
+                    thunk += "  %impl.this = getelementptr i8, ptr " +
+                             implementationAddress + ", i64 0\n";
                 }
                 if (implementation->returnType == "void") {
                     thunk += "  call void " + methodSymbol(implementationOwner->name,
@@ -358,11 +351,10 @@ void CodeGenerator::emitClassMethods(const Program& program) {
             std::vector<std::string> path;
         };
         std::vector<DestructorCall> chain;
-        std::vector<DestructorCall> virtualChain;
-        std::unordered_set<std::string> virtualSeen;
-        const auto collect = [this, &chain, &virtualChain, &virtualSeen](
-                                 const auto& self, const ClassDeclaration& declaration,
-                                 std::vector<std::string> path) -> void {
+        const auto collectNonVirtual = [this, &chain](
+                                           const auto& self,
+                                           const ClassDeclaration& declaration,
+                                           std::vector<std::string> path) -> void {
             for (const auto& method : declaration.methods) {
                 if (method.destructor) chain.push_back({&declaration, &method, path});
             }
@@ -372,31 +364,46 @@ void CodeGenerator::emitClassMethods(const Program& program) {
                 const auto& baseName = declaration.baseClassNames[index];
                 const auto found = classes_.find(baseName);
                 if (found == classes_.end()) continue;
+                if (declaration.baseVirtual[index]) continue;
                 auto basePath = path;
                 basePath.push_back(baseName);
-                if (declaration.baseVirtual[index]) {
-                    if (!virtualSeen.emplace(baseName).second) continue;
-                    for (const auto& method : found->second->methods) {
-                        if (method.destructor) {
-                            virtualChain.push_back(
-                                {found->second, &method, std::move(basePath)});
-                            break;
-                        }
-                    }
-                } else {
-                    self(self, *found->second, std::move(basePath));
-                }
+                self(self, *found->second, std::move(basePath));
             }
         };
-        collect(collect, dynamicOwner, {});
+        collectNonVirtual(collectNonVirtual, dynamicOwner, {});
         const auto virtualBases = virtualBaseNames(dynamicOwner);
+        const auto virtualPath = [this](const ClassDeclaration& owner,
+                                        const std::string& target) {
+            std::unordered_set<std::string> seen;
+            std::vector<std::string> result;
+            const auto find = [this, &seen, &target, &result](
+                                  const auto& self, const ClassDeclaration& current,
+                                  const std::vector<std::string>& path) -> bool {
+                for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+                    const auto& baseName = current.baseClassNames[index];
+                    const auto base = classes_.find(baseName);
+                    if (base == classes_.end()) continue;
+                    auto nextPath = path;
+                    nextPath.push_back(baseName);
+                    if (current.baseVirtual[index]) {
+                        if (!seen.emplace(baseName).second) continue;
+                        if (baseName == target) {
+                            result = std::move(nextPath);
+                            return true;
+                        }
+                    }
+                    if (self(self, *base->second, nextPath)) return true;
+                }
+                return false;
+            };
+            (void)find(find, owner, {});
+            return result;
+        };
         for (auto baseName = virtualBases.rbegin(); baseName != virtualBases.rend(); ++baseName) {
-            const auto found = std::find_if(
-                virtualChain.begin(), virtualChain.end(),
-                [&baseName](const DestructorCall& call) {
-                    return call.owner->name == *baseName;
-                });
-            if (found != virtualChain.end()) chain.push_back(*found);
+            const auto found = classes_.find(*baseName);
+            if (found == classes_.end()) continue;
+            collectNonVirtual(collectNonVirtual, *found->second,
+                              virtualPath(dynamicOwner, *baseName));
         }
         if (chain.empty()) continue;
         for (std::size_t index = 0; index < chain.size(); ++index) {
@@ -423,15 +430,10 @@ void CodeGenerator::emitClassMethods(const Program& program) {
             finalizerAllocas += "  " + size + " = call i64 @simp_exception_frame_size()\n"
                                 "  " + frame + " = alloca i8, i64 " + size + ", align 16\n";
             std::string objectAddress = "%object";
-            const auto objectIndices = directBasePath(dynamicOwner, chain[index].path);
-            if (!objectIndices.empty()) {
-                objectAddress = "%simp.destroy.this." + suffix;
-                finalizerAllocas += "  " + objectAddress + " = getelementptr inbounds %Class." +
-                                    dynamicOwner.name + ", ptr %object, i32 0";
-                for (const auto fieldIndex : objectIndices) {
-                    finalizerAllocas += ", i32 " + std::to_string(fieldIndex);
-                }
-                finalizerAllocas += "\n";
+            if (!chain[index].path.empty()) {
+                finalizerAllocas += subobjectAddressSequence(
+                    "%object", dynamicOwner, chain[index].path,
+                    "destroy." + suffix, objectAddress);
             }
             finalizerBlocks += invoke + ":\n"
                                "  call void @simp_exception_frame_init(ptr " + frame + ")\n"
@@ -537,7 +539,12 @@ std::string CodeGenerator::generate(const Program& program) {
            << "declare void @simp_gc_push_or_abort(ptr, ptr, i64)\n"
            << "declare void @simp_gc_pop_or_abort(ptr)\n"
            << "declare ptr @simp_gc_alloc(ptr)\n"
+           << "declare ptr @simp_gc_alloc_array(i64)\n"
+           << "declare ptr @simp_array_index(ptr, i32, ptr, i64, i64, i64)\n"
+           << "declare ptr @simp_array_slice(ptr, i32, i32, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_require_alive(ptr, ptr, i64, i64, i64)\n"
+           << "declare void @simp_value_require_tag(i64, i64, ptr, i64, i64, i64)\n"
+           << "declare void @simp_value_require_class(i64, ptr, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_begin_construction(ptr)\n"
            << "declare void @simp_gc_end_construction(ptr)\n"
            << "declare void @simp_gc_begin_destroy(ptr, ptr, i64, i64, i64)\n"

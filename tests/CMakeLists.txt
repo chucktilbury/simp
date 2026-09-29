@@ -50,6 +50,84 @@ set_target_properties(simp_gc_runtime_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
 )
 add_test(NAME simp_gc_runtime_lifecycle COMMAND simp_gc_runtime_tests)
+add_test(NAME simp_compile_and_run_typed_arrays
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_arrays.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_arrays"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_arrays.ll"
+        "-DEXPECTED_OUTPUT=4\ntwenty\ntwenty-five\n25\n2\n25\n25\n99\n0\n0\n11\ntwo\n7\n8\n7\n11\n1\ntwo\n<object>\nnull\narray index out of bounds\narray slice bounds out of bounds\n"
+        "-DREQUIRE_GC_ROOTS=ON"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_non_integer_array_index
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_array_index_type.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_index_type"
+        "-DEXPECTED_DIAGNOSTIC=array index and slice bounds must be int"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_nested_array_literal
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_array_element_type.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_element_type"
+        "-DEXPECTED_DIAGNOSTIC=array elements must be int, string, a class reference, null, or 'any'; found array"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_any_member_access
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_any_member_access.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_any_member_access"
+        "-DEXPECTED_DIAGNOSTIC='any' has no members; assign it to a typed variable first to extract its value"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_uncaught_array_index_bounds
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_array_bounds_uncaught.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_bounds_uncaught"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_bounds_uncaught.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=uncaught runtime exception at .*negative_array_bounds_uncaught.simp:3:17: array index out of bounds"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_uncaught_array_slice_bounds
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_array_slice_bounds_uncaught.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_slice_bounds_uncaught"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_slice_bounds_uncaught.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=uncaught runtime exception at .*negative_array_slice_bounds_uncaught.simp:3:24: array slice bounds out of bounds"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_uncaught_any_extraction_mismatch
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_any_extraction_mismatch.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_any_extraction_mismatch"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_any_extraction_mismatch.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=uncaught runtime exception at .*negative_any_extraction_mismatch.simp:6:28: 'any' value does not hold the requested type"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_uncaught_any_class_mismatch
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_any_class_mismatch.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_any_class_mismatch"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_any_class_mismatch.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=uncaught runtime exception at .*negative_any_class_mismatch.simp:19:26: 'any' value holds a different class than the requested type"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
 add_test(NAME simp_default_output_uses_working_directory
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
@@ -548,12 +626,45 @@ add_test(NAME simp_rejects_intermediate_virtual_base_initializer
         "-DEXPECTED_DIAGNOSTIC=virtual base initializers are only allowed in most-derived classes"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
-add_test(NAME simp_rejects_nonroot_virtual_base
+add_test(NAME simp_compile_and_run_transitive_virtual_bases
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
-        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_virtual_base_nonroot.simp"
-        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_virtual_base_nonroot"
-        "-DEXPECTED_DIAGNOSTIC=virtual bases must be root classes with no bases"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_transitive_virtual_bases.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_transitive_virtual_bases"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_transitive_virtual_bases.ll"
+        "-DEXPECTED_OUTPUT=Common+\nAncestor+\nRoot+\nLeft+\nRight+\nDiamond+\n7\n7\n50\n8\n50\n7\n77\n77\n40\nDiamond-\nRight-\nLeft-\nRoot-\nAncestor-\nCommon-\ntransitive initialization failed\nCommon+\nAncestor+\nRoot+\nLeft+\nRight+\nDiamond+\nbefore collection\nDiamond-\nRight-\nLeft-\nRoot-\nAncestor-\nCommon-\nafter collection\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_transitive_virtual_base_initializer_order
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_transitive_virtual_base_initializer_order.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_transitive_virtual_base_initializer_order"
+        "-DEXPECTED_DIAGNOSTIC=virtual base initializers must follow virtual-base construction order"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_ambiguous_transitive_virtual_conversion
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_transitive_ambiguous_conversion.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_transitive_ambiguous_conversion"
+        "-DEXPECTED_DIAGNOSTIC=cannot initialize Ancestor variable with Diamond"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_ambiguous_transitive_virtual_field
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_transitive_ambiguous_field.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_transitive_ambiguous_field"
+        "-DEXPECTED_DIAGNOSTIC=ambiguous inherited field"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_ambiguous_transitive_virtual_method
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_transitive_ambiguous_method.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_transitive_ambiguous_method"
+        "-DEXPECTED_DIAGNOSTIC=ambiguous inherited method"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_explicit_virtual_base_initialization

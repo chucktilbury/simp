@@ -52,18 +52,17 @@ std::size_t CodeGenerator::flattenedFieldCount(const ClassDeclaration& owner) co
     std::size_t count = 0;
     std::unordered_set<std::string> virtualSeen;
     const auto visit = [this, &count, &virtualSeen](const auto& self,
-                                                   const ClassDeclaration& current,
-                                                   bool virtualSubobject) -> void {
-        if (virtualSubobject && !virtualSeen.emplace(current.name).second) return;
+                                                   const ClassDeclaration& current) -> void {
         count += current.fields.size();
         for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
-            const auto base = classes_.find(current.baseClassNames[index]);
+            const auto& baseName = current.baseClassNames[index];
+            const auto base = classes_.find(baseName);
             if (base == classes_.end()) continue;
-            self(self, *base->second,
-                 virtualSubobject || current.baseVirtual[index]);
+            if (current.baseVirtual[index] && !virtualSeen.emplace(baseName).second) continue;
+            self(self, *base->second);
         }
     };
-    visit(visit, owner, false);
+    visit(visit, owner);
     return count;
 }
 
@@ -76,11 +75,12 @@ std::vector<std::string> CodeGenerator::virtualBaseNames(
         for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
             const auto& baseName = current.baseClassNames[index];
             if (current.baseVirtual[index]) {
-                if (seen.emplace(baseName).second) result.push_back(baseName);
-            } else {
-                const auto base = classes_.find(baseName);
-                if (base != classes_.end()) self(self, *base->second);
+                if (!seen.emplace(baseName).second) continue;
             }
+            const auto base = classes_.find(baseName);
+            if (base == classes_.end()) continue;
+            self(self, *base->second);
+            if (current.baseVirtual[index]) result.push_back(baseName);
         }
     };
     visit(visit, owner);
@@ -110,27 +110,6 @@ std::size_t CodeGenerator::fieldIndex(const ClassDeclaration& owner,
     return owner.baseClassNames.size() + 2 + virtualBaseNames(owner).size() + field;
 }
 
-std::vector<std::size_t> CodeGenerator::directBasePath(
-    const ClassDeclaration& owner, const std::vector<std::string>& path) const {
-    std::vector<std::size_t> indices;
-    const ClassDeclaration* current = &owner;
-    for (const auto& baseName : path) {
-        const auto position = std::find(current->baseClassNames.begin(),
-                                        current->baseClassNames.end(), baseName);
-        if (position == current->baseClassNames.end()) {
-            throw std::logic_error("invalid qualified base path");
-        }
-        const auto baseIndex = static_cast<std::size_t>(
-            std::distance(current->baseClassNames.begin(), position));
-        if (current->baseVirtual[baseIndex]) {
-            return {virtualBaseStorageIndex(owner, baseName)};
-        }
-        indices.push_back(baseIndex + 2);
-        current = classes_.at(baseName);
-    }
-    return indices;
-}
-
 std::vector<std::pair<std::vector<std::string>, const ClassDeclaration*>>
 CodeGenerator::subobjects(const ClassDeclaration& owner) const {
     std::vector<std::pair<std::vector<std::string>, const ClassDeclaration*>> result;
@@ -147,7 +126,7 @@ CodeGenerator::subobjects(const ClassDeclaration& owner) const {
             basePath.push_back(baseName);
             if (current.baseVirtual[index]) {
                 if (virtualSeen.emplace(baseName).second) {
-                    result.emplace_back(std::move(basePath), base->second);
+                    self(self, *base->second, std::move(basePath));
                 }
             } else {
                 self(self, *base->second, std::move(basePath));
@@ -202,15 +181,93 @@ std::string CodeGenerator::emitSubobjectAddress(
     const std::string& pointer, const ClassDeclaration& owner,
     const std::vector<std::string>& path) {
     if (path.empty()) return pointer;
-    const auto indices = directBasePath(owner, path);
-    const auto result = newTemporary();
-    instructions_ += "  " + result + " = getelementptr inbounds %Class." + owner.name +
-                     ", ptr " + pointer + ", i32 0";
-    for (const auto index : indices) {
-        instructions_ += ", i32 " + std::to_string(index);
+    std::string address;
+    const auto prefix = newTemporary();
+    instructions_ += subobjectAddressSequence(pointer, owner, path, prefix.substr(1), address);
+    return address;
+}
+
+std::string CodeGenerator::subobjectAddressSequence(
+    const std::string& pointer, const ClassDeclaration& owner,
+    const std::vector<std::string>& path, const std::string& temporaryPrefix,
+    std::string& address) const {
+    address = pointer;
+    std::string code;
+    const ClassDeclaration* current = &owner;
+    for (std::size_t step = 0; step < path.size(); ++step) {
+        const auto found = std::find(current->baseClassNames.begin(),
+                                     current->baseClassNames.end(), path[step]);
+        if (found == current->baseClassNames.end()) {
+            throw std::logic_error("invalid qualified base path");
+        }
+        const auto baseIndex = static_cast<std::size_t>(
+            std::distance(current->baseClassNames.begin(), found));
+        const auto result = "%" + temporaryPrefix + ".addr." + std::to_string(step);
+        if (current->baseVirtual[baseIndex]) {
+            const auto slot = "%" + temporaryPrefix + ".slot." + std::to_string(step);
+            code += "  " + slot + " = getelementptr inbounds %Class." + current->name +
+                    ", ptr " + address + ", i32 0, i32 " +
+                    std::to_string(virtualBasePointerIndex(*current, path[step])) + "\n"
+                    "  " + result + " = load ptr, ptr " + slot + "\n";
+            address = result;
+        } else {
+            code += "  " + result + " = getelementptr inbounds %Class." + current->name +
+                    ", ptr " + address + ", i32 0, i32 " +
+                    std::to_string(baseIndex + 2) + "\n";
+            address = result;
+        }
+        current = classes_.at(path[step]);
     }
-    instructions_ += "\n";
-    return result;
+    return code;
+}
+
+std::string CodeGenerator::subobjectFieldOffset(
+    const ClassDeclaration& owner, const std::vector<std::string>& path,
+    std::size_t field, bool dynamicPointerSubfield) const {
+    const ClassDeclaration* current = &owner;
+    const ClassDeclaration* segment = &owner;
+    std::vector<std::size_t> indices;
+    std::string rootOffset;
+    const auto offsetExpression = [&indices](const ClassDeclaration& type) {
+        std::string expression = "ptrtoint (ptr getelementptr (%Class." + type.name +
+                                 ", ptr null, i32 0";
+        for (const auto index : indices) {
+            expression += ", i32 " + std::to_string(index);
+        }
+        expression += ") to i64)";
+        return expression;
+    };
+    for (const auto& baseName : path) {
+        const auto found = std::find(current->baseClassNames.begin(),
+                                     current->baseClassNames.end(), baseName);
+        if (found == current->baseClassNames.end()) {
+            throw std::logic_error("invalid qualified base path");
+        }
+        const auto baseIndex = static_cast<std::size_t>(
+            std::distance(current->baseClassNames.begin(), found));
+        if (current->baseVirtual[baseIndex]) {
+            rootOffset = "ptrtoint (ptr getelementptr (%Class." + owner.name +
+                         ", ptr null, i32 0, i32 " +
+                         std::to_string(virtualBaseStorageIndex(owner, baseName)) +
+                         ") to i64)";
+            segment = classes_.at(baseName);
+            indices.clear();
+        } else {
+            indices.push_back(baseIndex + 2);
+        }
+        current = classes_.at(baseName);
+    }
+    indices.push_back(field);
+    // A field of type 'any' is stored as %SimpleArrayValue { tag, integer, pointer,
+    // length }; only its third machine word (the pointer sub-field) can hold a
+    // traceable GC reference, so the metadata records that sub-field's offset
+    // instead of the aggregate's start.
+    if (dynamicPointerSubfield) {
+        indices.push_back(2);
+    }
+    const auto localOffset = offsetExpression(*segment);
+    if (rootOffset.empty()) return localOffset;
+    return "add (i64 " + rootOffset + ", i64 " + localOffset + ")";
 }
 
 std::string CodeGenerator::viewMetadataSymbol(
@@ -275,10 +332,24 @@ std::string CodeGenerator::emitAddress(const Binding& binding, const SourceLocat
 
 CodeGenerator::Value CodeGenerator::convertObjectValue(
     Value value, const std::string& expectedType, const SourceLocation& location) {
-    if (value.operand == "null" || value.type == expectedType ||
-        classes_.find(value.type) == classes_.end() ||
+    if (value.operand == "null") {
+        if (expectedType == "any") {
+            return buildDynamicValue({"null", "null"}, location);
+        }
+        value.type = expectedType;
+        return value;
+    }
+    if (value.type == expectedType) {
+        return value;
+    }
+    if (expectedType == "any") {
+        return buildDynamicValue(value, location);
+    }
+    if (value.type == "any") {
+        return extractTypedValue(value, expectedType, location);
+    }
+    if (classes_.find(value.type) == classes_.end() ||
         classes_.find(expectedType) == classes_.end()) {
-        if (value.operand == "null") value.type = expectedType;
         return value;
     }
     const auto& owner = *classes_.at(value.type);

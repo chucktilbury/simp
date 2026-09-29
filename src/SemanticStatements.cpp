@@ -30,7 +30,8 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
         symbols_.push_back({statement.name, statement.declaredType, false, statement.location});
         scope.emplace(statement.name, index);
         if (!statement.expressions.empty()) {
-            const auto initializerType = analyzeExpression(*statement.expressions.front());
+            const auto initializerType =
+                analyzeExpression(*statement.expressions.front(), statement.declaredType);
             if (!isAssignable(statement.declaredType, initializerType) &&
                 !(initializerType == "null" && classes_.find(statement.declaredType) != classes_.end())) {
                 throw DiagnosticError(statement.expressions.front()->location,
@@ -77,7 +78,8 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
                                       "class '" + statement.name + "'");
             }
             for (std::size_t index = 0; index < statement.expressions.size(); ++index) {
-                const auto actual = analyzeExpression(*statement.expressions[index]);
+                const auto actual = analyzeExpression(
+                    *statement.expressions[index], constructor->parameters[index].type);
                 const auto expected = constructor->parameters[index].type;
                 if (!isAssignable(expected, actual) &&
                     !(actual == "null" &&
@@ -125,7 +127,8 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
                                       statement.name + "'");
         }
         for (std::size_t index = 0; index < statement.expressions.size(); ++index) {
-            const auto actual = analyzeExpression(*statement.expressions[index]);
+            const auto actual =
+                analyzeExpression(*statement.expressions[index], constructor->parameters[index].type);
             const auto expected = constructor->parameters[index].type;
             if (!isAssignable(expected, actual) &&
                 !(actual == "null" && classes_.find(expected) != classes_.end())) {
@@ -146,7 +149,7 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
                                           "' is read-only");
             }
         }
-        const auto valueType = analyzeExpression(*statement.expressions.front());
+        const auto valueType = analyzeExpression(*statement.expressions.front(), targetType);
         if (!isAssignable(targetType, valueType) &&
             !(valueType == "null" && classes_.find(targetType) != classes_.end())) {
             throw DiagnosticError(statement.expressions.front()->location,
@@ -173,8 +176,10 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
                                           "formatted print arguments must have type int");
                 }
             }
-        } else if (!types.empty() && types.front() != "int" && types.front() != "string") {
-            throw DiagnosticError(statement.location, "print supports int or string values only");
+        } else if (!types.empty() && types.front() != "int" && types.front() != "string" &&
+                  types.front() != "any") {
+            throw DiagnosticError(statement.location,
+                                  "print supports int, string, or 'any' values only");
         }
         return;
     }
@@ -272,7 +277,8 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
             if (statement.expressions.empty()) {
                 throw DiagnosticError(statement.location, "non-void method must return a value");
             }
-            const auto returnType = analyzeExpression(*statement.expressions.front());
+            const auto returnType = analyzeExpression(*statement.expressions.front(),
+                                                      currentMethod_->returnType);
             if (!isAssignable(currentMethod_->returnType, returnType) &&
                 !(returnType == "null" && classes_.find(currentMethod_->returnType) != classes_.end())) {
                 throw DiagnosticError(statement.expressions.front()->location,

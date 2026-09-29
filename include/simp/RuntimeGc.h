@@ -30,6 +30,25 @@ typedef struct SimpClassMeta {
     void (*finalize)(void *object);
 } SimpClassMeta;
 
+typedef enum SimpArrayValueTag {
+    SIMP_ARRAY_INTEGER = 1,
+    SIMP_ARRAY_STRING = 2,
+    SIMP_ARRAY_OBJECT = 3
+} SimpArrayValueTag;
+
+typedef struct SimpArrayValue {
+    uint64_t tag;
+    int64_t integer;
+    void *pointer;
+    uint64_t length;
+} SimpArrayValue;
+
+typedef struct SimpArray {
+    const SimpClassMeta *metadata;
+    uint64_t length;
+    SimpArrayValue values[];
+} SimpArray;
+
 typedef struct SimpRootFrame {
     struct SimpRootFrame *previous;
     uint64_t count;
@@ -45,9 +64,22 @@ void simp_gc_pop_or_abort(SimpRootFrame *frame);
 
 /* Collect before allocating; the returned object's header and fields are zeroed. */
 void *simp_gc_alloc(const SimpClassMeta *metadata);
+void *simp_gc_alloc_array(uint64_t length);
+void *simp_array_index(void *array, int32_t index, const char *file,
+                       uint64_t file_length, uint64_t line, uint64_t column);
+void *simp_array_slice(void *array, int32_t start, int32_t end, const char *file,
+                       uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_gc_root(void *object);
 void simp_gc_require_alive(void *object, const char *file, uint64_t file_length,
                            uint64_t line, uint64_t column);
+
+/* Extraction guards for the 'any' dynamic value representation: raise on a tag
+ * or exact-class mismatch instead of returning a value. */
+void simp_value_require_tag(uint64_t actual, uint64_t expected, const char *file,
+                            uint64_t file_length, uint64_t line, uint64_t column);
+void simp_value_require_class(uint64_t actual_tag, void *pointer,
+                              const SimpClassMeta *expected, const char *file,
+                              uint64_t file_length, uint64_t line, uint64_t column);
 void simp_gc_begin_construction(void *object);
 void simp_gc_end_construction(void *object);
 void simp_gc_begin_destroy(void *object, const char *file, uint64_t file_length,

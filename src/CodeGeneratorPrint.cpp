@@ -77,11 +77,65 @@ void CodeGenerator::emitPrint(const Statement& statement) {
         } else if (value.type == "int") {
             instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i32 " +
                              value.operand + ")\n";
+        } else if (value.type == "any") {
+            emitPrintDynamicValue(value);
         } else {
             unsupported(statement.location, "printing object references");
         }
     }
     emitStringBytes("\n");
+}
+
+void CodeGenerator::emitPrintDynamicValue(const Value& value) {
+    const auto tag = newTemporary();
+    instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " + value.operand + ", 0\n";
+    const auto intLabel = freshLabel("print.any.int");
+    const auto stringLabel = freshLabel("print.any.string");
+    const auto objectLabel = freshLabel("print.any.object");
+    const auto nullLabel = freshLabel("print.any.null");
+    const auto instanceLabel = freshLabel("print.any.instance");
+    const auto endLabel = freshLabel("print.any.end");
+    instructions_ += "  switch i64 " + tag + ", label %" + objectLabel + " [ i64 1, label %" +
+                     intLabel + " i64 2, label %" + stringLabel + " ]\n";
+    instructions_ += intLabel + ":\n";
+    const auto stored = newTemporary();
+    const auto truncated = newTemporary();
+    instructions_ += "  " + stored + " = extractvalue %SimpleArrayValue " + value.operand +
+                     ", 1\n"
+                     "  " + truncated + " = trunc i64 " + stored + " to i32\n"
+                     "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i32 " + truncated +
+                     ")\n"
+                     "  br label %" + endLabel + "\n";
+    instructions_ += stringLabel + ":\n";
+    const auto stringData = newTemporary();
+    const auto stringLength = newTemporary();
+    const auto stringStream = newTemporary();
+    instructions_ += "  " + stringData + " = extractvalue %SimpleArrayValue " + value.operand +
+                     ", 2\n"
+                     "  " + stringLength + " = extractvalue %SimpleArrayValue " + value.operand +
+                     ", 3\n"
+                     "  " + stringStream + " = load ptr, ptr @stdout\n"
+                     "  call i64 @fwrite(ptr " + stringData + ", i64 1, i64 " + stringLength +
+                     ", ptr " + stringStream + ")\n"
+                     "  br label %" + endLabel + "\n";
+    instructions_ += objectLabel + ":\n";
+    const auto objectPointer = newTemporary();
+    const auto isNull = newTemporary();
+    instructions_ += "  " + objectPointer + " = extractvalue %SimpleArrayValue " +
+                     value.operand + ", 2\n"
+                     "  " + isNull + " = icmp eq ptr " + objectPointer + ", null\n"
+                     "  br i1 " + isNull + ", label %" + nullLabel + ", label %" +
+                     instanceLabel + "\n";
+    instructions_ += nullLabel + ":\n";
+    emitStringBytes("null");
+    instructions_ += "  br label %" + endLabel + "\n";
+    // Printing an 'any' object reference does not (yet) dispatch to a
+    // user-defined toString(); it prints a fixed placeholder so output stays
+    // deterministic regardless of the referenced class's runtime identity.
+    instructions_ += instanceLabel + ":\n";
+    emitStringBytes("<object>");
+    instructions_ += "  br label %" + endLabel + "\n";
+    instructions_ += endLabel + ":\n";
 }
 
 } // namespace simp

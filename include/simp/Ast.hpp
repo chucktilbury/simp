@@ -15,7 +15,8 @@
 namespace simp {
 
 enum class ExpressionKind {
-    Integer, String, Identifier, Unary, Binary, Member, Call, ConstructorCall, Null
+    Integer, String, Identifier, Unary, Binary, Member, Call, ConstructorCall, Null,
+    ArrayLiteral, Index, Slice
 };
 
 struct Expression {

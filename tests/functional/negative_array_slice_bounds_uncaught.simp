@@ -1,0 +1,4 @@
+start {
+    array values = [1, 2]
+    array copy = values[-1:1]
+}

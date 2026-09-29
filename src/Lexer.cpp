@@ -83,6 +83,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Start: return "'start'";
     case TokenType::Int: return "'int'";
     case TokenType::StringType: return "'string'";
+    case TokenType::ArrayType: return "'array'";
+    case TokenType::AnyType: return "'any'";
     case TokenType::Class: return "'class'";
     case TokenType::Public: return "'public'";
     case TokenType::Protected: return "'protected'";
@@ -104,6 +106,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::RightBrace: return "'}'";
     case TokenType::LeftParen: return "'('";
     case TokenType::RightParen: return "')'";
+    case TokenType::LeftBracket: return "'['";
+    case TokenType::RightBracket: return "']'";
     case TokenType::Comma: return "','";
     case TokenType::Dot: return "'.'";
     case TokenType::Colon: return "':'";
@@ -224,7 +228,9 @@ Token Lexer::scanIdentifierOrInteger() {
     }
     static const std::unordered_map<std::string, TokenType> keywords{
         {"start", TokenType::Start}, {"int", TokenType::Int},
-        {"string", TokenType::StringType}, {"if", TokenType::If},
+        {"string", TokenType::StringType},
+        {"array", TokenType::ArrayType}, {"list", TokenType::ArrayType},
+        {"any", TokenType::AnyType}, {"if", TokenType::If},
         {"else", TokenType::Else}, {"while", TokenType::While},
         {"print", TokenType::Print}, {"raise", TokenType::Raise},
         {"try", TokenType::Try}, {"except", TokenType::Except},
@@ -309,6 +315,8 @@ std::vector<Token> Lexer::tokenize() {
         case '}': type = TokenType::RightBrace; break;
         case '(': type = TokenType::LeftParen; break;
         case ')': type = TokenType::RightParen; break;
+        case '[': type = TokenType::LeftBracket; break;
+        case ']': type = TokenType::RightBracket; break;
         case ',': type = TokenType::Comma; break;
         case '.': type = TokenType::Dot; break;
         case ':': type = TokenType::Colon; break;
@@ -332,9 +340,10 @@ std::vector<Token> Lexer::tokenize() {
         default:
             throw DiagnosticError(location, "unexpected character");
         }
-        if (type == TokenType::LeftParen) {
+        if (type == TokenType::LeftParen || type == TokenType::LeftBracket) {
             ++parenthesisDepth;
-        } else if (type == TokenType::RightParen && parenthesisDepth > 0) {
+        } else if ((type == TokenType::RightParen || type == TokenType::RightBracket) &&
+                   parenthesisDepth > 0) {
             --parenthesisDepth;
         }
         std::string text(1, value);

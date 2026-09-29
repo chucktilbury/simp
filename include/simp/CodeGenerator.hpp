@@ -44,7 +44,13 @@ private:
     void emitTry(const Statement& statement);
     Value emitExpression(const Expression& expression, const std::string& expectedType = {});
     Value emitIntegerExpression(const Expression& expression);
+    void emitArrayElementStore(const std::string& valuePointer, Value value,
+                               const SourceLocation& location);
+    Value buildDynamicValue(Value value, const SourceLocation& location);
+    Value extractTypedValue(Value value, const std::string& expectedType,
+                            const SourceLocation& location);
     Value rootObjectValue(Value value, const SourceLocation& location);
+    void registerRootSlot(const std::string& pointer, const std::string& type);
     std::string rootFrameInitialization() const;
     std::string rootFramePush() const;
     void emitRootFramePop();
@@ -53,8 +59,6 @@ private:
                                       const std::string& name,
                                       std::vector<std::size_t>& path) const;
     std::size_t flattenedFieldCount(const ClassDeclaration& owner) const;
-    std::vector<std::size_t> directBasePath(const ClassDeclaration& owner,
-                                            const std::vector<std::string>& path) const;
     std::vector<std::pair<std::vector<std::string>, const ClassDeclaration*>>
     subobjects(const ClassDeclaration& owner) const;
     std::vector<std::string> virtualBaseNames(const ClassDeclaration& owner) const;
@@ -68,6 +72,14 @@ private:
     std::string emitSubobjectAddress(const std::string& pointer,
                                      const ClassDeclaration& owner,
                                      const std::vector<std::string>& path);
+    std::string subobjectAddressSequence(const std::string& pointer,
+                                        const ClassDeclaration& owner,
+                                        const std::vector<std::string>& path,
+                                        const std::string& temporaryPrefix,
+                                        std::string& address) const;
+    std::string subobjectFieldOffset(const ClassDeclaration& owner,
+                                     const std::vector<std::string>& path,
+                                     std::size_t field, bool dynamicPointerSubfield = false) const;
     std::string viewMetadataSymbol(const ClassDeclaration& owner,
                                    const std::vector<std::string>& path) const;
     Value convertObjectValue(Value value, const std::string& expectedType,
@@ -88,7 +100,11 @@ private:
     std::string internString(const std::string& bytes);
     void emitStringBytes(const std::string& bytes);
     void emitPrint(const Statement& statement);
+    void emitPrintDynamicValue(const Value& value);
     void emitNullCheck(const std::string& pointer, const SourceLocation& location);
+    bool isArrayType(const std::string& type) const;
+    bool isManagedReferenceType(const std::string& type) const;
+    bool isDynamicValueType(const std::string& type) const;
     [[noreturn]] void unsupported(const SourceLocation& location, const std::string& feature) const;
 
     std::string targetTriple_;

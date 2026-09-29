@@ -27,6 +27,9 @@ const char* expressionName(ExpressionKind kind) {
     case ExpressionKind::Call: return "Call";
     case ExpressionKind::ConstructorCall: return "ConstructorCall";
     case ExpressionKind::Null: return "Null";
+    case ExpressionKind::ArrayLiteral: return "ArrayLiteral";
+    case ExpressionKind::Index: return "Index";
+    case ExpressionKind::Slice: return "Slice";
     }
     return "Expression";
 }

@@ -34,7 +34,7 @@ private:
 
     ClassDeclaration parseClass();
     MethodDeclaration parseMethod(const Token& typeOrName, const Token& methodName,
-                                 bool constructor);
+                                 bool constructor, const std::string& returnType = {});
     std::vector<Parameter> parseParameters();
     std::string parseType(bool allowVoid = false);
     std::vector<Statement> parseBlock();

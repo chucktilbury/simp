@@ -17,6 +17,18 @@ namespace simp {
 CodeGenerator::CodeGenerator(std::string targetTriple)
     : targetTriple_(std::move(targetTriple)) {}
 
+bool CodeGenerator::isArrayType(const std::string& type) const {
+    return type == "array";
+}
+
+bool CodeGenerator::isDynamicValueType(const std::string& type) const {
+    return type == "any";
+}
+
+bool CodeGenerator::isManagedReferenceType(const std::string& type) const {
+    return isArrayType(type) || classes_.find(type) != classes_.end();
+}
+
 [[noreturn]] void CodeGenerator::unsupported(const SourceLocation& location,
                                              const std::string& feature) const {
     throw DiagnosticError(location, feature + " is not supported by the current LLVM backend");
@@ -28,7 +40,23 @@ std::string CodeGenerator::newTemporary() {
 
 CodeGenerator::Value CodeGenerator::rootObjectValue(Value value,
                                                      const SourceLocation& location) {
-    if (classes_.find(value.type) == classes_.end() || value.operand == "null") {
+    if (isDynamicValueType(value.type)) {
+        // A dynamic 'any' value may embed a class-reference pointer (or may not,
+        // if it holds an int/string/null). Root the pointer sub-field so a later
+        // allocation cannot collect a referenced object out from under it; unlike
+        // a plain object/array reference, we cannot call simp_gc_require_alive
+        // here because the pointer may instead be string byte data that the GC
+        // heap does not manage.
+        const auto pointer = newTemporary();
+        instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " + value.operand +
+                         ", 2\n";
+        const auto slot = "%root." + std::to_string(nextRoot_++);
+        entryAllocas_ += "  " + slot + " = alloca ptr\n";
+        instructions_ += "  store ptr " + pointer + ", ptr " + slot + "\n";
+        rootSlots_.push_back(slot);
+        return value;
+    }
+    if (!isManagedReferenceType(value.type) || value.operand == "null") {
         return value;
     }
     const auto file = internString(location.file);
@@ -44,6 +72,22 @@ CodeGenerator::Value CodeGenerator::rootObjectValue(Value value,
     return value;
 }
 
+void CodeGenerator::registerRootSlot(const std::string& pointer, const std::string& type) {
+    if (isDynamicValueType(type)) {
+        // The variable's own storage is a %SimpleArrayValue aggregate; only its
+        // pointer sub-field can ever hold a GC reference, so root that sub-field
+        // directly inside the variable's alloca rather than the whole aggregate.
+        const auto slot = "%vroot" + std::to_string(nextRoot_++);
+        entryAllocas_ += "  " + slot + " = getelementptr inbounds %SimpleArrayValue, ptr " +
+                         pointer + ", i32 0, i32 2\n";
+        rootSlots_.push_back(slot);
+        return;
+    }
+    if (isManagedReferenceType(type)) {
+        rootSlots_.push_back(pointer);
+    }
+}
+
 std::string CodeGenerator::freshLabel(const std::string& prefix) {
     return prefix + "." + std::to_string(nextLabel_++);
 }
@@ -51,6 +95,7 @@ std::string CodeGenerator::freshLabel(const std::string& prefix) {
 std::string CodeGenerator::llvmType(const std::string& type) const {
     if (type == "int") return "i32";
     if (type == "string") return "%SimpleString";
+    if (type == "any") return "%SimpleArrayValue";
     if (type == "void") return "void";
     return "ptr";
 }
@@ -76,6 +121,110 @@ CodeGenerator::Value CodeGenerator::emitIntegerExpression(const Expression& expr
         throw DiagnosticError(expression.location, "integer expression required");
     }
     return value;
+}
+
+void CodeGenerator::emitArrayElementStore(const std::string& valuePointer, Value value,
+                                          const SourceLocation& location) {
+    const auto dynamic = buildDynamicValue(std::move(value), location);
+    instructions_ += "  store %SimpleArrayValue " + dynamic.operand + ", ptr " + valuePointer +
+                     "\n";
+}
+
+CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
+                                                       const SourceLocation& location) {
+    if (value.type == "any") {
+        return value;
+    }
+    if (value.operand == "null") {
+        value.type = "null";
+    }
+    const auto tag = newTemporary();
+    instructions_ += "  " + tag + " = insertvalue %SimpleArrayValue zeroinitializer, i64 " +
+                     (value.type == "int" ? "1" : value.type == "string" ? "2" : "3") +
+                     ", 0\n";
+    std::string stored = tag;
+    if (value.type == "int") {
+        const auto extended = newTemporary();
+        const auto withInteger = newTemporary();
+        instructions_ += "  " + extended + " = sext i32 " + value.operand + " to i64\n"
+                         "  " + withInteger + " = insertvalue %SimpleArrayValue " + stored +
+                         ", i64 " + extended + ", 1\n";
+        stored = withInteger;
+    } else if (value.type == "string") {
+        const auto data = newTemporary();
+        const auto length = newTemporary();
+        const auto withData = newTemporary();
+        const auto withLength = newTemporary();
+        instructions_ += "  " + data + " = extractvalue %SimpleString " + value.operand +
+                         ", 0\n"
+                         "  " + length + " = extractvalue %SimpleString " + value.operand +
+                         ", 1\n"
+                         "  " + withData + " = insertvalue %SimpleArrayValue " + stored +
+                         ", ptr " + data + ", 2\n"
+                         "  " + withLength + " = insertvalue %SimpleArrayValue " + withData +
+                         ", i64 " + length + ", 3\n";
+        stored = withLength;
+    } else if (value.type == "null") {
+        // Tagged as an object reference with a null pointer: assignable to any
+        // class-typed extraction target, matching a null class reference.
+    } else {
+        const auto withPointer = newTemporary();
+        instructions_ += "  " + withPointer + " = insertvalue %SimpleArrayValue " + stored +
+                         ", ptr " + value.operand + ", 2\n";
+        stored = withPointer;
+    }
+    return {"any", stored};
+}
+
+CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
+                                                       const std::string& expectedType,
+                                                       const SourceLocation& location) {
+    const auto file = internString(location.file);
+    const auto fileLength = std::to_string(location.file.size());
+    const auto line = std::to_string(location.line);
+    const auto column = std::to_string(location.column);
+    const auto tag = newTemporary();
+    instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " + value.operand + ", 0\n";
+    if (expectedType == "int") {
+        instructions_ += "  call void @simp_value_require_tag(i64 " + tag + ", i64 1, ptr " +
+                         file + ", i64 " + fileLength + ", i64 " + line + ", i64 " + column +
+                         ")\n";
+        const auto stored = newTemporary();
+        const auto result = newTemporary();
+        instructions_ += "  " + stored + " = extractvalue %SimpleArrayValue " + value.operand +
+                         ", 1\n"
+                         "  " + result + " = trunc i64 " + stored + " to i32\n";
+        return {"int", result};
+    }
+    if (expectedType == "string") {
+        instructions_ += "  call void @simp_value_require_tag(i64 " + tag + ", i64 2, ptr " +
+                         file + ", i64 " + fileLength + ", i64 " + line + ", i64 " + column +
+                         ")\n";
+        const auto pointer = newTemporary();
+        const auto length = newTemporary();
+        const auto first = newTemporary();
+        const auto result = newTemporary();
+        instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " + value.operand +
+                         ", 2\n"
+                         "  " + length + " = extractvalue %SimpleArrayValue " + value.operand +
+                         ", 3\n"
+                         "  " + first + " = insertvalue %SimpleString poison, ptr " + pointer +
+                         ", 0\n"
+                         "  " + result + " = insertvalue %SimpleString " + first + ", i64 " +
+                         length + ", 1\n";
+        return {"string", result};
+    }
+    // Otherwise expectedType names a class: the value must tag as an object
+    // reference, and (unless it is null) its runtime class metadata must match
+    // exactly. This prototype does not support extracting a proper subclass
+    // instance into a base-class-typed variable from 'any'.
+    const auto pointer = newTemporary();
+    instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " + value.operand +
+                     ", 2\n"
+                     "  call void @simp_value_require_class(i64 " + tag + ", ptr " + pointer +
+                     ", ptr @.simp.class.meta." + expectedType + ", ptr " + file + ", i64 " +
+                     fileLength + ", i64 " + line + ", i64 " + column + ")\n";
+    return rootObjectValue({expectedType, pointer}, location);
 }
 
 std::string CodeGenerator::rootFrameInitialization() const {
@@ -126,7 +275,25 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         return {"string", result};
     }
     case ExpressionKind::Null:
-        return {expectedType, "null"};
+        return {expectedType.empty() ? "null" : expectedType, "null"};
+    case ExpressionKind::ArrayLiteral: {
+        const auto array = newTemporary();
+        instructions_ += "  " + array + " = call ptr @simp_gc_alloc_array(i64 " +
+                         std::to_string(expression.arguments.size()) + ")\n";
+        rootObjectValue({"array", array}, expression.location);
+        for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
+            const auto element = emitExpression(*expression.arguments[index]);
+            const auto valueIndex = newTemporary();
+            const auto valuePointer = newTemporary();
+            instructions_ += "  " + valueIndex + " = getelementptr inbounds %SimpleArray, ptr " +
+                             array + ", i32 0, i32 2, i64 " + std::to_string(index) + "\n"
+                             "  " + valuePointer +
+                             " = getelementptr inbounds %SimpleArrayValue, ptr " + valueIndex +
+                             ", i32 0\n";
+            emitArrayElementStore(valuePointer, element, expression.arguments[index]->location);
+        }
+        return {"array", array};
+    }
     case ExpressionKind::Identifier: {
         const auto binding = findVariable(expression.value, expression.location);
         const auto pointer = emitAddress(binding, expression.location);
@@ -141,16 +308,32 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         std::vector<std::string> basePath;
         const bool qualified =
             resolveBaseQualifier(*expression.left, root, owner, basePath);
-        const auto receiver = emitExpression(qualified ? *root : *expression.left);
-        if (classes_.find(receiver.type) == classes_.end()) {
+        const auto receiver = qualified ? Value{} : emitExpression(*expression.left);
+        if (!qualified && isArrayType(receiver.type)) {
+            if (expression.value != "length") {
+                throw DiagnosticError(expression.location,
+                                      "arrays support only the read-only 'length' member");
+            }
+            const auto lengthAddress = newTemporary();
+            const auto length = newTemporary();
+            const auto result = newTemporary();
+            instructions_ += "  " + lengthAddress +
+                             " = getelementptr inbounds %SimpleArray, ptr " + receiver.operand +
+                             ", i32 0, i32 1\n"
+                             "  " + length + " = load i64, ptr " + lengthAddress + "\n"
+                             "  " + result + " = trunc i64 " + length + " to i32\n";
+            return {"int", result};
+        }
+        const auto object = qualified ? emitExpression(*root) : receiver;
+        if (classes_.find(object.type) == classes_.end()) {
             throw DiagnosticError(expression.location, "member receiver is not an object");
         }
-        emitNullCheck(receiver.operand, expression.location);
-        auto objectView = receiver.operand;
+        emitNullCheck(object.operand, expression.location);
+        auto objectView = object.operand;
         if (!qualified) {
-            owner = classes_.at(receiver.type);
+            owner = classes_.at(object.type);
         } else {
-            objectView = emitSubobjectAddress(receiver.operand, *classes_.at(receiver.type),
+            objectView = emitSubobjectAddress(object.operand, *classes_.at(object.type),
                                               basePath);
         }
         std::vector<std::size_t> fieldPath;
@@ -164,6 +347,36 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         instructions_ += "  " + result + " = load " + llvmType(field->type) + ", ptr " +
                          address + "\n";
         return rootObjectValue({field->type, result}, expression.location);
+    }
+    case ExpressionKind::Index: {
+        const auto array = emitExpression(*expression.left);
+        const auto index = emitIntegerExpression(*expression.arguments.front());
+        const auto file = internString(expression.location.file);
+        const auto valuePointer = newTemporary();
+        const auto loaded = newTemporary();
+        instructions_ += "  " + valuePointer + " = call ptr @simp_array_index(ptr " +
+                         array.operand + ", i32 " + index.operand + ", ptr " + file + ", i64 " +
+                         std::to_string(expression.location.file.size()) + ", i64 " +
+                         std::to_string(expression.location.line) + ", i64 " +
+                         std::to_string(expression.location.column) + ")\n"
+                         "  " + loaded + " = load %SimpleArrayValue, ptr " + valuePointer + "\n";
+        // Indexing an array always yields the dynamic 'any' representation; the
+        // caller (declaration, assignment, argument, etc.) coerces it to a
+        // concrete type via convertObjectValue()/extractTypedValue().
+        return rootObjectValue({"any", loaded}, expression.location);
+    }
+    case ExpressionKind::Slice: {
+        const auto array = emitExpression(*expression.left);
+        const auto start = emitIntegerExpression(*expression.arguments[0]);
+        const auto end = emitIntegerExpression(*expression.arguments[1]);
+        const auto file = internString(expression.location.file);
+        const auto result = newTemporary();
+        instructions_ += "  " + result + " = call ptr @simp_array_slice(ptr " + array.operand +
+                         ", i32 " + start.operand + ", i32 " + end.operand + ", ptr " + file +
+                         ", i64 " + std::to_string(expression.location.file.size()) +
+                         ", i64 " + std::to_string(expression.location.line) + ", i64 " +
+                         std::to_string(expression.location.column) + ")\n";
+        return rootObjectValue({array.type, result}, expression.location);
     }
     case ExpressionKind::ConstructorCall: {
         const auto found = classes_.find(expression.value);
@@ -181,19 +394,6 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                          owner->name + ", ptr " + object + ", i32 0, i32 1\n"
                          "  store ptr " + object + ", ptr " + rootLink + "\n";
         for (const auto& view : subobjects(*owner)) {
-            if (view.first.empty()) continue;
-            const auto viewAddress = emitSubobjectAddress(object, *owner, view.first);
-            const auto metadataAddress = newTemporary();
-            const auto ownerLinkAddress = newTemporary();
-            instructions_ += "  " + metadataAddress + " = getelementptr inbounds %Class." +
-                             view.second->name + ", ptr " + viewAddress + ", i32 0, i32 0\n"
-                             "  store ptr " + viewMetadataSymbol(*owner, view.first) +
-                             ", ptr " + metadataAddress + "\n"
-                             "  " + ownerLinkAddress + " = getelementptr inbounds %Class." +
-                             view.second->name + ", ptr " + viewAddress + ", i32 0, i32 1\n"
-                             "  store ptr " + object + ", ptr " + ownerLinkAddress + "\n";
-        }
-        for (const auto& view : subobjects(*owner)) {
             const auto viewAddress = emitSubobjectAddress(object, *owner, view.first);
             for (const auto& baseName : virtualBaseNames(*view.second)) {
                 const auto canonicalAddress = newTemporary();
@@ -209,6 +409,19 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                  "  store ptr " + canonicalAddress + ", ptr " + slotAddress +
                                  "\n";
             }
+        }
+        for (const auto& view : subobjects(*owner)) {
+            if (view.first.empty()) continue;
+            const auto viewAddress = emitSubobjectAddress(object, *owner, view.first);
+            const auto metadataAddress = newTemporary();
+            const auto ownerLinkAddress = newTemporary();
+            instructions_ += "  " + metadataAddress + " = getelementptr inbounds %Class." +
+                                 view.second->name + ", ptr " + viewAddress + ", i32 0, i32 0\n"
+                                 "  store ptr " + viewMetadataSymbol(*owner, view.first) +
+                                 ", ptr " + metadataAddress + "\n"
+                                 "  " + ownerLinkAddress + " = getelementptr inbounds %Class." +
+                                 view.second->name + ", ptr " + viewAddress + ", i32 0, i32 1\n"
+                                 "  store ptr " + object + ", ptr " + ownerLinkAddress + "\n";
         }
         const MethodDeclaration* constructor = nullptr;
         for (const auto& method : owner->methods) {

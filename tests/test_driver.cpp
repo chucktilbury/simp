@@ -72,6 +72,10 @@ void runFunctional(const std::string& filename, const std::string& expectedError
     require(expectedError.empty(), "expected functional program to fail: " + filename);
 }
 
+void expectValid(const std::string& source) {
+    parse(source);
+}
+
 } // namespace
 
 int main() {
@@ -394,9 +398,24 @@ int main() {
                  "start {}",
                  "super initializers must be direct leading constructor statements");
          }},
-        {"functional non-root virtual base rejected", [] {
-             runFunctional("negative_virtual_base_nonroot.simp",
-                           "virtual bases must be root classes with no bases");
+        {"functional transitive virtual-base inheritance", [] {
+             runFunctional("positive_transitive_virtual_bases.simp");
+         }},
+        {"functional transitive virtual-base initializer order", [] {
+             runFunctional("negative_transitive_virtual_base_initializer_order.simp",
+                           "virtual base initializers must follow virtual-base construction order");
+         }},
+        {"functional ambiguous virtual/non-virtual conversion rejected", [] {
+             runFunctional("negative_transitive_ambiguous_conversion.simp",
+                           "cannot initialize Ancestor variable with Diamond");
+         }},
+        {"functional ambiguous virtual/non-virtual field rejected", [] {
+             runFunctional("negative_transitive_ambiguous_field.simp",
+                           "ambiguous inherited field 'value'");
+         }},
+        {"functional ambiguous virtual/non-virtual method rejected", [] {
+             runFunctional("negative_transitive_ambiguous_method.simp",
+                           "ambiguous inherited method 'read'");
          }},
         {"functional explicit virtual-base constructor call rejected", [] {
              runFunctional("negative_virtual_base_explicit_super.simp",
@@ -417,6 +436,69 @@ int main() {
          }},
         {"functional reserved identifier", [] {
              runFunctional("negative_keyword_identifier.simp", "keywords are reserved");
+         }},
+        {"array literals accept mixed int, string, and class values", [] {
+             expectValid(
+                 "class Widget {\n  int id\n  Widget(int initial) { id = initial }\n}\n"
+                 "start {\n"
+                 "  array bag = [1, \"two\", Widget(3), null]\n"
+                 "  print(bag.length)\n"
+                 "}");
+         }},
+        {"'list' is an alias for the 'array' type", [] {
+             expectValid("start {\n"
+                         "  list values = [1, \"two\"]\n"
+                         "  array alias = values\n"
+                         "  print(alias.length)\n"
+                         "}");
+         }},
+        {"array element reads yield 'any' and can be extracted by type", [] {
+             expectValid("start {\n"
+                         "  array bag = [1, \"two\"]\n"
+                         "  any first = bag[0]\n"
+                         "  int extracted = first\n"
+                         "  string second = bag[1]\n"
+                         "  print(extracted)\n"
+                         "  print(second)\n"
+                         "}");
+         }},
+        {"array element assignment accepts any supported value type", [] {
+             expectValid("start {\n"
+                         "  array bag = [1, \"two\"]\n"
+                         "  bag[0] = \"now a string\"\n"
+                         "  bag[1] = 42\n"
+                         "  print(bag.length)\n"
+                         "}");
+         }},
+        {"legacy 'int[]' array syntax is rejected", [] {
+             expectDiagnostic("start {\n  int[] values = [1, 2]\n}",
+                              "expected identifier (keywords are reserved)");
+         }},
+        {"legacy 'string[]' array syntax is rejected", [] {
+             expectDiagnostic("start {\n  string[] values = [\"a\"]\n}",
+                              "expected identifier (keywords are reserved)");
+         }},
+        {"legacy 'Class[]' array syntax is rejected", [] {
+             expectDiagnostic(
+                 "class Widget {\n  int id\n  Widget(int initial) { id = initial }\n}\n"
+                 "start {\n  Widget[] values = [Widget(1)]\n}",
+                 "expected expression");
+         }},
+        {"nested array literals are rejected", [] {
+             expectDiagnostic("start {\n  array bag = [1, [2, 3]]\n}",
+                              "array elements must be int, string, a class reference, null, "
+                              "or 'any'; found array");
+         }},
+        {"'any' has no members until extracted", [] {
+             expectDiagnostic("start {\n  array bag = [1]\n  any first = bag[0]\n"
+                              "  print(first.length)\n}",
+                              "'any' has no members; assign it to a typed variable first to "
+                              "extract its value");
+         }},
+        {"array and 'any' equality is not implemented", [] {
+             expectDiagnostic("start {\n  array bag = [1]\n  array other = [1]\n"
+                              "  int same = bag == other\n}",
+                              "array and 'any' equality are not implemented in this prototype");
          }}
     };
 

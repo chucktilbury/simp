@@ -7,24 +7,33 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace simp {
 
 const MethodDeclaration* CodeGenerator::findMethod(const ClassDeclaration& owner,
                                                     const std::string& name) const {
-    for (const auto& method : owner.methods) {
-        if (method.name == name && !method.constructor && !method.destructor) return &method;
-    }
-    const MethodDeclaration* result = nullptr;
-    for (const auto& baseName : owner.baseClassNames) {
-        const auto base = classes_.find(baseName);
-        if (base == classes_.end()) continue;
-        if (const auto* candidate = findMethod(*base->second, name)) {
-            if (result != nullptr) return nullptr;
-            result = candidate;
+    std::unordered_set<std::string> seenVirtual;
+    const auto visit = [this, &name, &seenVirtual](
+                           const auto& self, const ClassDeclaration& current)
+        -> const MethodDeclaration* {
+        for (const auto& method : current.methods) {
+            if (method.name == name && !method.constructor && !method.destructor) return &method;
         }
-    }
-    return result;
+        const MethodDeclaration* result = nullptr;
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto& baseName = current.baseClassNames[index];
+            const auto base = classes_.find(baseName);
+            if (base == classes_.end()) continue;
+            if (current.baseVirtual[index] && !seenVirtual.emplace(baseName).second) continue;
+            if (const auto* candidate = self(self, *base->second)) {
+                if (result != nullptr) return nullptr;
+                result = candidate;
+            }
+        }
+        return result;
+    };
+    return visit(visit, owner);
 }
 
 std::vector<const MethodDeclaration*> CodeGenerator::methodSlots(
