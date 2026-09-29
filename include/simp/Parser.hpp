@@ -8,6 +8,7 @@
 #include "simp/Ast.hpp"
 #include "simp/Token.hpp"
 
+#include <cstddef>
 #include <iosfwd>
 #include <vector>
 
@@ -29,10 +30,17 @@ private:
                               const Token& location) const;
     void trace(const char* action) const;
 
+    ClassDeclaration parseClass();
+    MethodDeclaration parseMethod(const Token& typeOrName, const Token& methodName,
+                                 bool constructor);
+    std::vector<Parameter> parseParameters();
+    std::string parseType(bool allowVoid = false);
     std::vector<Statement> parseBlock();
     Statement parseStatement();
     Statement parseDeclaration();
-    Statement parseAssignment();
+    Statement parseIdentifierStatement();
+    Statement parseReturn();
+    Statement parseSuperConstructorCall();
     Statement parsePrint();
     Statement parseIf();
     Statement parseWhile();
@@ -42,6 +50,7 @@ private:
     std::unique_ptr<Expression> parseMultiplication();
     std::unique_ptr<Expression> parseUnary();
     std::unique_ptr<Expression> parsePrimary();
+    std::unique_ptr<Expression> parsePostfix(std::unique_ptr<Expression> expression);
 
     std::vector<Token> tokens_;
     std::size_t current_ = 0;

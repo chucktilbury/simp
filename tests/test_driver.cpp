@@ -98,6 +98,33 @@ int main() {
         {"reserved keywords", [] {
              expectDiagnostic("start { int While = 0; }", "keywords are reserved");
          }},
+        {"create is no longer a reserved keyword", [] {
+             simp::Lexer lexer("start { int create = 1; print(create); }", "identifier.simp");
+             const auto tokens = lexer.tokenize();
+             require(tokens[3].type == simp::TokenType::Identifier &&
+                         tokens[3].text == "create",
+                     "create should be lexed as an identifier");
+         }},
+        {"class-name constructor syntax", [] {
+             const auto program = parse(
+                 "class Box { Box() {} } start { Box box = Box(); }");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             require(output.str().find("ConstructorCall [Box]") != std::string::npos,
+                     "class-name constructor call missing from AST");
+         }},
+        {"single inheritance and base constructor syntax", [] {
+             const auto program = parse(
+                 "class Base { Base(int value) {} } "
+                 "class Child : Base { Child(int value) { super.Base(value); } } "
+                 "start { Child child = Child(1); }");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             require(output.str().find("Class [Child : Base]") != std::string::npos,
+                     "base class missing from AST");
+             require(output.str().find("Super constructor [Base]") != std::string::npos,
+                     "explicit base constructor missing from AST");
+         }},
         {"parser precedence and AST", [] {
              const auto program = parse("start { int x = 1 + 2 * 3; print(x); }");
              require(program.statements.size() == 2, "expected declaration and print");

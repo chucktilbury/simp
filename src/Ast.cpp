@@ -23,6 +23,10 @@ const char* expressionName(ExpressionKind kind) {
     case ExpressionKind::Identifier: return "Identifier";
     case ExpressionKind::Unary: return "Unary";
     case ExpressionKind::Binary: return "Binary";
+    case ExpressionKind::Member: return "Member";
+    case ExpressionKind::Call: return "Call";
+    case ExpressionKind::ConstructorCall: return "ConstructorCall";
+    case ExpressionKind::Null: return "Null";
     }
     return "Expression";
 }
@@ -43,6 +47,9 @@ void dumpExpression(const Expression& expression, std::ostream& output, int dept
     if (expression.right) {
         dumpExpression(*expression.right, output, depth + 1);
     }
+    for (const auto& argument : expression.arguments) {
+        dumpExpression(*argument, output, depth + 1);
+    }
 }
 
 void dumpStatements(const std::vector<Statement>& statements, std::ostream& output, int depth);
@@ -54,12 +61,20 @@ void dumpStatement(const Statement& statement, std::ostream& output, int depth) 
         output << "Declaration [" << statement.declaredType << " " << statement.name << "]\n";
         break;
     case StatementKind::Assignment:
-        output << "Assignment [" << statement.name << "]\n";
+        output << "Assignment\n";
         break;
     case StatementKind::Print: output << "Print\n"; break;
     case StatementKind::If: output << "If\n"; break;
     case StatementKind::While: output << "While\n"; break;
     case StatementKind::Block: output << "Block\n"; break;
+    case StatementKind::Return: output << "Return\n"; break;
+    case StatementKind::Expression: output << "Expression statement\n"; break;
+    case StatementKind::SuperConstructorCall:
+        output << "Super constructor [" << statement.name << "]\n";
+        break;
+    }
+    if (statement.target) {
+        dumpExpression(*statement.target, output, depth + 1);
     }
     for (const auto& expression : statement.expressions) {
         dumpExpression(*expression, output, depth + 1);
@@ -84,6 +99,28 @@ void dumpStatements(const std::vector<Statement>& statements, std::ostream& outp
 
 void dumpAst(const Program& program, std::ostream& output) {
     output << "Program\n";
+    for (const auto& declaration : program.classes) {
+        indent(output, 1);
+        output << "Class [" << declaration.name;
+        if (!declaration.baseClassNames.empty()) {
+            output << " : ";
+            for (std::size_t index = 0; index < declaration.baseClassNames.size(); ++index) {
+                if (index != 0) output << ", ";
+                output << declaration.baseClassNames[index];
+            }
+        }
+        output << "]\n";
+        for (const auto& field : declaration.fields) {
+            indent(output, 2);
+            output << "Field [" << field.type << " " << field.name << "]\n";
+        }
+        for (const auto& method : declaration.methods) {
+            indent(output, 2);
+            output << (method.constructor ? "Constructor [" : "Method [")
+                   << method.returnType << " " << method.name << "]\n";
+            dumpStatements(method.body, output, 3);
+        }
+    }
     dumpStatements(program.statements, output, 1);
 }
 

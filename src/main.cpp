@@ -63,6 +63,7 @@ int buildExecutable(const std::string& irPath, const std::string& outputPath) {
     }
     const std::string command = shellQuote(SIMP_CLANG_EXECUTABLE) +
                                 " -Wno-override-module -x ir " + shellQuote(irPath) +
+                                " -x none " + shellQuote(SIMP_GC_RUNTIME_LIBRARY) +
                                 " -o " + shellQuote(outputPath);
     const int status = std::system(command.c_str());
     if (status == -1) {

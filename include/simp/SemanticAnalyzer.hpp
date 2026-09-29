@@ -15,11 +15,9 @@
 
 namespace simp {
 
-enum class ValueType { Integer, String };
-
 struct SymbolInfo {
     std::string name;
-    ValueType type = ValueType::Integer;
+    std::string type;
     bool initialized = false;
     SourceLocation location;
 };
@@ -32,17 +30,38 @@ public:
 private:
     using Scope = std::unordered_map<std::string, std::size_t>;
 
-    ValueType analyzeExpression(const Expression& expression);
+    const ClassDeclaration* findClass(const std::string& name,
+                                      const SourceLocation& location) const;
+    const FieldDeclaration* findField(const ClassDeclaration& declaration,
+                                      const std::string& name) const;
+    std::size_t countFields(const ClassDeclaration& declaration,
+                            const std::string& name) const;
+    const MethodDeclaration* findMethod(const ClassDeclaration& declaration,
+                                        const std::string& name) const;
+    std::size_t countMethods(const ClassDeclaration& declaration,
+                             const std::string& name) const;
+    bool resolveBaseQualifier(const Expression& receiver, const Expression*& root,
+                             const ClassDeclaration*& view,
+                             std::vector<std::string>& path);
+    bool isAssignable(const std::string& target, const std::string& source) const;
+    bool isSubclassOf(const std::string& type, const std::string& base) const;
+    std::vector<const FieldDeclaration*> inheritedFields(const ClassDeclaration& declaration) const;
+    std::string analyzeExpression(const Expression& expression);
+    std::string analyzeLValue(const Expression& expression);
     void analyzeStatements(const std::vector<Statement>& statements);
     void analyzeStatement(const Statement& statement);
-    std::size_t findSymbol(const std::string& name, const SourceLocation& location) const;
+    std::size_t findSymbolIndex(const std::string& name) const;
+    void analyzeMethod(const ClassDeclaration& owner, const MethodDeclaration& method);
+    void validateType(const std::string& type, const SourceLocation& location,
+                      bool allowVoid = false) const;
     std::vector<bool> initializationState() const;
     void restoreInitializationState(const std::vector<bool>& state);
 
     std::vector<Scope> scopes_;
     std::vector<SymbolInfo> symbols_;
+    std::unordered_map<std::string, const ClassDeclaration*> classes_;
+    const ClassDeclaration* currentClass_ = nullptr;
+    const MethodDeclaration* currentMethod_ = nullptr;
 };
-
-const char* valueTypeName(ValueType type) noexcept;
 
 } // namespace simp

@@ -21,13 +21,22 @@ ctest --test-dir build --output-on-failure
 ./bin/simp tests/functional/positive_string_format.simp
 ./bin/positive_string_format
 # Prints café and a blank line, then "value: 42" and "sum 21 21".
+./bin/simp tests/functional/positive_class_counter.simp
+./bin/positive_class_counter
+# Prints: 42, then 42
+./bin/simp tests/functional/positive_gc_object_graph.simp
+./bin/positive_gc_object_graph
+# Prints: 1, 64, and 77 after repeated collections.
+./bin/simp tests/functional/positive_multiple_inheritance.simp
+./bin/positive_multiple_inheritance
+# Prints: 7, 7, 10, 20, and 3; the two Root subobjects hold separate Node references.
 ./bin/simp tests/functional/positive_integer_output.simp \
   --emit-llvm build/positive_integer_output.ll -o bin/positive_integer_output
 ```
 
 The root build writes executables to project-root `bin/` and static, shared, or
-module libraries to project-root `lib/` (the front-end archive is
-`lib/libsimp_frontend.a` on Linux).
+module libraries to project-root `lib/`. On Linux the archives are
+`lib/libsimp_frontend.a` and `lib/libsimp_runtime.a`.
 
 The repository uses one in-tree build directory: `build/`. `include`, `src`,
 and `tests` each have their own `CMakeLists.txt` and are integrated by the root
@@ -50,6 +59,13 @@ Useful options are `--verbose` (`-v`), `--trace-parser`, `--dump-ast`,
 code generation). LLVM IR is compiled to a native executable by the installed
 Clang driver; `--emit-llvm FILE` additionally saves the generated IR.
 Executables default to `bin/<input-basename>`; `-o FILE` selects another path.
+The emitted IR uses the GC runtime ABI; link it manually with the runtime
+archive, for example:
+
+```sh
+clang -Wno-override-module -x ir build/program.ll -x none \
+  lib/libsimp_runtime.a -o bin/program
+```
 The compiler reads one source file and reports source-located lexer, parser,
 and semantic errors.
 
@@ -58,7 +74,8 @@ and semantic errors.
 - Exactly one top-level `start { ... }` block is required. Duplicate or missing
   blocks are errors; other top-level forms are rejected.
 - Reserved keywords are case-insensitive: `start`, `int`, `string`, `if`,
-  `else`, `while`, and `print`. Every capitalization is reserved.
+  `else`, `while`, `print`, `class`, `super`, `null`, `return`, and `void`.
+  Every capitalization is reserved.
 - `int` and `string` declarations (with optional initializer) and identifier
   assignment use semicolon-terminated statements.
 - Expressions include integer and string literals, identifiers, parentheses,
@@ -86,6 +103,53 @@ and semantic errors.
   initialization and assignment types, validates integer literal range, and
   requires integer conditions. Definite initialization across `if` branches
   and loops is conservative.
+- A small class subset is supported: top-level `class` declarations with
+  `int`, `string`, or class-reference fields; one class-named constructor;
+  typed methods; `Class(args)` construction/allocation; nullable class-reference
+  variables; field access/assignment; method calls; and direct `return`
+  statements at the end of methods. Inheritance uses `class Child : Base` or
+  `class Diamond : Left, Right`.
+
+  ```simple
+  class Counter {
+      int value;
+      Counter(int initial) { value = initial; }
+      int add(int amount) { value = value + amount; return value; }
+  }
+  start {
+      Counter counter = Counter(40);
+      print(counter.add(2));
+      print(counter.value);
+  }
+  ```
+
+  Constructors are named exactly after their class. `destroy` is the designated
+  destructor name, but destructor execution is not implemented in this
+  prototype. Direct bases have distinct, non-shared subobjects in declared
+  order; fields are flattened depth-first through those paths. Ambiguous
+  inherited fields must be qualified, for example
+  `diamond.Left.Root.value`; unqualified ambiguous fields or methods are
+  compile-time errors. Secondary-base method calls are rejected rather than
+  path-qualified in this slice. The first declared base is primary.
+  `super.Base(args)` may initialize
+  only that primary base and must appear first in a derived constructor.
+  Secondary-base constructors and implicit upcasts are not implemented.
+  Classes without explicit constructors are default-constructible only when
+  none of their bases declares one. Virtual dispatch and upcasts remain
+  supported along the primary-base chain; secondary-base method dispatch is
+  rejected. Overrides on supported paths must exactly preserve inherited
+  return and parameter types. Inherited field redeclaration, incompatible
+  overrides, access control, and shared/virtual bases are unsupported.
+
+  Objects have stable, non-moving addresses. Their first word points to class
+  metadata, followed by distinct base subobjects in declared order and then
+  declared fields. The
+  metadata contains class name/field count, a base-stable virtual method table,
+  object size, and compiler-generated offsets for class-reference fields;
+  instances do not contain method copies. Class references may be `null`; dereferencing null
+  aborts through a runtime guard. Newly allocated fields are zero-initialized
+  before the constructor runs. Access control, constructor overloading, method
+  overloading, and default field initializer syntax are unsupported.
 
 The parser is recursive descent and produces an AST that can be dumped with
 `--dump-ast`. Lexer, parser, and CLI diagnostics include file, line, and column.
@@ -98,16 +162,46 @@ The backend emits textual LLVM IR using opaque pointers, then the configured
 Clang executable compiles and links it. It supports integer and string
 declarations/assignments, integer expressions and comparisons, integer
 `if`/`else` and `while`, single-value integer or string printing, and the
-limited `{}` integer formatting form described above. Strings store UTF-8
-bytes plus an explicit byte count; `fwrite` writes those bytes without
-requiring a terminator. The program entry returns zero.
+limited `{}` integer formatting form described above. It also supports object
+layout/allocation/constructor/method/field operations for classes
+and single- and multiple-inheritance layouts. Base-path field access
+distinguishes repeated subobjects in a diamond. Explicit base-constructor calls
+and virtual dispatch are limited to the primary-base chain. Method-table slots
+are inherited in stable order and an
+override replaces its inherited slot; generated calls load the object's class
+metadata and invoke the selected function pointer. Strings
+store UTF-8 bytes plus an explicit byte count; `fwrite` writes those bytes
+without requiring a terminator. The program entry returns zero.
+
+Generated functions register and pop explicit root frames. Descriptors list
+only object-reference stack slots (including parameters, `this`, locals, and
+object-valued temporaries); the collector never scans arbitrary stack words.
+The C-compatible runtime performs a stop-the-world, non-moving mark/sweep
+collection before each object allocation and follows only the generated
+reference-field offsets. This prototype is single-threaded. Root slots are
+kept for the whole function, so dead locals/temporaries may retain objects
+until their frame returns. The runtime unit test checks root-frame misuse,
+survival through an object-reference field, and reclamation after the last
+root is removed; an executable stress fixture allocates a linked object graph
+through repeated collections. Inheritance integration tests also call
+overridden methods through base-typed references and verify the most-derived
+method table is used after collection.
 
 The parser and semantic analyzer accept more syntax than the backend executes.
 String comparisons and other non-integer formatted values produce precise
 backend/semantic errors. There is no string concatenation, object-to-string
 conversion, code-point-aware operation, full language runtime, or
 division-by-zero handling; signed division follows LLVM integer operation
-semantics.
+semantics. The collector has no finalizers, weak references, multithreading,
+incremental/concurrent collection, or configurable allocation threshold.
+Generated roots conservatively include every object-typed slot in a function,
+but do not scan non-reference values or the native stack. This small runtime
+has stress/unit coverage but is not a production-validated memory manager.
+Multiple inheritance is limited to deterministic non-virtual subobject layout
+and qualified field access. Secondary-base constructors, implicit upcasts,
+and virtual dispatch are not implemented; a shared ancestor in a diamond is
+represented as two separate subobjects. Method overloading, visibility/access
+control, and reflection are also unsupported.
 
 ## Deferred
 
@@ -116,8 +210,10 @@ prototype was extended. The implementation emits textual LLVM IR and invokes
 Clang; it does not link the LLVM C++ API or provide a configurable LLVM
 optimization pipeline. Building the compiler requires Clang on `PATH`; the
 current driver launches it through the host POSIX shell. Full language type
-checking and name-resolution rules,
-garbage collection (GC), modules and native libraries, inline C, GTK, package
-manager, IDE, and debugger remain deferred. The full grammar, classes/OOP,
-collections, imports/includes, and the remaining semantics in the design notes
-are not implied to work.
+checking and name-resolution rules, OOP beyond the supported single- and
+limited multiple-inheritance slices (including secondary-base constructor and
+virtual-dispatch support and access control),
+production GC features, modules and native libraries, inline C, GTK, package
+manager, IDE, and debugger remain deferred. The full grammar, collections,
+imports/includes, and the remaining semantics in the design notes are not
+implied to work.

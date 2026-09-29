@@ -75,13 +75,18 @@ void Parser::trace(const char* action) const {
 }
 
 Program Parser::parseProgram() {
+    Program program;
+    while (check(TokenType::Class)) {
+        program.classes.push_back(parseClass());
+    }
     if (!check(TokenType::Start)) {
         error(current(), "program must contain exactly one top-level 'start' block");
     }
     const auto start = current();
+    program.location = start.location;
     trace("enter start block");
     ++current_;
-    Program program{start.location, parseBlock()};
+    program.statements = parseBlock();
     if (check(TokenType::Start)) {
         error(current(), "program contains more than one top-level 'start' block");
     }
@@ -89,6 +94,86 @@ Program Parser::parseProgram() {
         error(current(), "only one top-level 'start' block is allowed");
     }
     return program;
+}
+
+ClassDeclaration Parser::parseClass() {
+    const auto keyword = consume(TokenType::Class, "'class'");
+    const auto name = consume(TokenType::Identifier, "class name");
+    ClassDeclaration declaration;
+    declaration.name = name.text;
+    declaration.location = keyword.location;
+    if (match(TokenType::Colon)) {
+        do {
+            const auto base = consume(TokenType::Identifier, "base class name");
+            declaration.baseClassNames.push_back(base.text);
+            declaration.baseLocations.push_back(base.location);
+            if (declaration.baseClassNames.size() == 1) {
+                declaration.baseClassName = base.text;
+                declaration.baseLocation = base.location;
+            }
+        } while (match(TokenType::Comma));
+    }
+    consume(TokenType::LeftBrace, "'{' after class name");
+    while (!check(TokenType::RightBrace) && !check(TokenType::End)) {
+        const auto type = current();
+        const auto typeName = parseType(true);
+        if (type.type == TokenType::Identifier && typeName == declaration.name &&
+            check(TokenType::LeftParen)) {
+            declaration.methods.push_back(parseMethod(type, type, true));
+            continue;
+        }
+        const auto member = consume(TokenType::Identifier, "field or method name");
+        if (check(TokenType::LeftParen)) {
+            declaration.methods.push_back(
+                parseMethod(type, member, false));
+        } else {
+            if (typeName == "void") {
+                error(type, "fields cannot have type void");
+            }
+            consume(TokenType::Semicolon, "';' after field declaration");
+            declaration.fields.push_back({typeName, member.text, type.location});
+        }
+    }
+    consume(TokenType::RightBrace, "'}' after class body");
+    return declaration;
+}
+
+std::string Parser::parseType(bool allowVoid) {
+    if (match(TokenType::Int)) return "int";
+    if (match(TokenType::StringType)) return "string";
+    if (allowVoid && match(TokenType::Void)) return "void";
+    if (check(TokenType::Identifier)) return tokens_[current_++].text;
+    error(current(), "expected type name");
+}
+
+std::vector<Parameter> Parser::parseParameters() {
+    std::vector<Parameter> parameters;
+    consume(TokenType::LeftParen, "'(' before parameters");
+    if (!check(TokenType::RightParen)) {
+        do {
+            const auto location = current().location;
+            const auto type = parseType();
+            const auto name = consume(TokenType::Identifier, "parameter name");
+            parameters.push_back({type, name.text, location});
+        } while (match(TokenType::Comma));
+    }
+    consume(TokenType::RightParen, "')' after parameters");
+    return parameters;
+}
+
+MethodDeclaration Parser::parseMethod(const Token& typeOrName, const Token& methodName,
+                                      bool constructor) {
+    MethodDeclaration method;
+    method.name = methodName.text;
+    method.returnType = constructor ? "void" :
+                        (typeOrName.type == TokenType::Int ? "int" :
+                         typeOrName.type == TokenType::StringType ? "string" :
+                         typeOrName.type == TokenType::Void ? "void" : typeOrName.text);
+    method.location = typeOrName.location;
+    method.constructor = constructor;
+    method.parameters = parseParameters();
+    method.body = parseBlock();
+    return method;
 }
 
 std::vector<Statement> Parser::parseBlock() {
@@ -103,11 +188,11 @@ std::vector<Statement> Parser::parseBlock() {
 
 Statement Parser::parseStatement() {
     trace("parse statement");
-    if (check(TokenType::Int) || check(TokenType::StringType)) {
+    if (check(TokenType::Int) || check(TokenType::StringType) || check(TokenType::Void)) {
         return parseDeclaration();
     }
     if (check(TokenType::Identifier)) {
-        return parseAssignment();
+        return parseIdentifierStatement();
     }
     if (check(TokenType::Print)) {
         return parsePrint();
@@ -125,18 +210,24 @@ Statement Parser::parseStatement() {
         block.body = parseBlock();
         return block;
     }
+    if (check(TokenType::Return)) {
+        return parseReturn();
+    }
+    if (check(TokenType::Super)) {
+        return parseSuperConstructorCall();
+    }
     error(current(), std::string("expected statement, found ") + tokenTypeName(current().type));
 }
 
 Statement Parser::parseDeclaration() {
     const auto type = current();
-    ++current_;
+    const auto typeName = parseType();
     const auto name = consume(TokenType::Identifier, "identifier (keywords are reserved)");
     Statement statement;
     statement.kind = StatementKind::Declaration;
     statement.location = type.location;
     statement.name = name.text;
-    statement.declaredType = type.type == TokenType::Int ? "int" : "string";
+    statement.declaredType = typeName;
     if (match(TokenType::Equal)) {
         statement.expressions.push_back(parseExpression());
     }
@@ -144,15 +235,59 @@ Statement Parser::parseDeclaration() {
     return statement;
 }
 
-Statement Parser::parseAssignment() {
-    const auto name = consume(TokenType::Identifier, "identifier");
+Statement Parser::parseIdentifierStatement() {
+    if (current_ + 1 < tokens_.size() && current().type == TokenType::Identifier &&
+        tokens_[current_ + 1].type == TokenType::Identifier) {
+        return parseDeclaration();
+    }
+    auto expression = parseExpression();
+    if (match(TokenType::Equal)) {
+        Statement statement;
+        statement.kind = StatementKind::Assignment;
+        statement.location = expression->location;
+        statement.target = std::move(expression);
+        statement.expressions.push_back(parseExpression());
+        consume(TokenType::Semicolon, "';'");
+        return statement;
+    }
+    if (expression->kind != ExpressionKind::Call) {
+        error(current(), "only method calls may be used as expression statements");
+    }
     Statement statement;
-    statement.kind = StatementKind::Assignment;
-    statement.location = name.location;
-    statement.name = name.text;
-    consume(TokenType::Equal, "'=' in assignment");
-    statement.expressions.push_back(parseExpression());
+    statement.kind = StatementKind::Expression;
+    statement.location = expression->location;
+    statement.expressions.push_back(std::move(expression));
     consume(TokenType::Semicolon, "';'");
+    return statement;
+}
+
+Statement Parser::parseReturn() {
+    const auto keyword = consume(TokenType::Return, "'return'");
+    Statement statement;
+    statement.kind = StatementKind::Return;
+    statement.location = keyword.location;
+    if (!check(TokenType::Semicolon)) {
+        statement.expressions.push_back(parseExpression());
+    }
+    consume(TokenType::Semicolon, "';' after return");
+    return statement;
+}
+
+Statement Parser::parseSuperConstructorCall() {
+    const auto keyword = consume(TokenType::Super, "'super'");
+    Statement statement;
+    statement.kind = StatementKind::SuperConstructorCall;
+    statement.location = keyword.location;
+    consume(TokenType::Dot, "'.' after super");
+    statement.name = consume(TokenType::Identifier, "base class name after super.").text;
+    consume(TokenType::LeftParen, "'(' after base class name");
+    if (!check(TokenType::RightParen)) {
+        do {
+            statement.expressions.push_back(parseExpression());
+        } while (match(TokenType::Comma));
+    }
+    consume(TokenType::RightParen, "')' after base constructor arguments");
+    consume(TokenType::Semicolon, "';' after base constructor call");
     return statement;
 }
 
@@ -310,6 +445,12 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         expression->kind = ExpressionKind::Identifier;
         expression->location = token.location;
         expression->value = token.text;
+        return parsePostfix(std::move(expression));
+    }
+    if (match(TokenType::Null)) {
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::Null;
+        expression->location = token.location;
         return expression;
     }
     if (match(TokenType::LeftParen)) {
@@ -318,6 +459,41 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         return expression;
     }
     error(current(), std::string("expected expression, found ") + tokenTypeName(current().type));
+}
+
+std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> expression) {
+    for (;;) {
+        if (match(TokenType::Dot)) {
+            const auto member = consume(TokenType::Identifier, "member name after '.'");
+            auto access = std::make_unique<Expression>();
+            access->kind = ExpressionKind::Member;
+            access->location = member.location;
+            access->value = member.text;
+            access->left = std::move(expression);
+            expression = std::move(access);
+            continue;
+        }
+        if (match(TokenType::LeftParen)) {
+            const bool constructorCall = expression->kind == ExpressionKind::Identifier;
+            auto call = std::make_unique<Expression>();
+            call->kind = constructorCall ? ExpressionKind::ConstructorCall : ExpressionKind::Call;
+            call->location = expression->location;
+            if (constructorCall) {
+                call->value = expression->value;
+            } else {
+                call->left = std::move(expression);
+            }
+            if (!check(TokenType::RightParen)) {
+                do {
+                    call->arguments.push_back(parseExpression());
+                } while (match(TokenType::Comma));
+            }
+            consume(TokenType::RightParen, "')' after call arguments");
+            expression = std::move(call);
+            continue;
+        }
+        return expression;
+    }
 }
 
 } // namespace simp

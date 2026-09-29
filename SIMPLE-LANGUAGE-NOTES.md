@@ -42,6 +42,9 @@ The exact syntax and complete rules for nullability and conversion remain part o
 - Full OOP is supported, including multiple inheritance.
 - Only classes inherit.
 - Function/method overrides are supported, including virtual methods.
+- A constructor is named exactly after its class, for example `Window(...)`.
+  Constructors are not named `create`.
+- Destructors are named `destroy`.
 - Operator overloading is not supported.
 - Static classes and singletons are not supported.
 - Nested classes are not supported.
@@ -49,6 +52,68 @@ The exact syntax and complete rules for nullability and conversion remain part o
 The top-level `start` block is therefore the intentional exception to the
 class-member rule, not a general facility for top-level methods or data. Other
 methods remain class members.
+
+### Selected object-layout and GC direction
+
+The first object-runtime prototype uses the following architectural direction;
+details remain subject to validation as the runtime grows:
+
+- Heap object addresses are stable and non-moving for the lifetime of an
+  allocation. Objects begin with one header field that points to their class
+  metadata.
+- Instance fields follow that header in declaration order. The prototype lays
+  out distinct, non-virtual base subobjects depth-first in declared-base order,
+  followed by fields declared by the derived class. Repeated ancestors in a
+  diamond are separate subobjects; virtual/shared-base semantics remain
+  deferred.
+- Methods are shared class metadata/code entries, never copied into instances.
+- In the primary-base chain, virtual method slots are inherited in stable
+  order; an override replaces its base slot, and calls dispatch through the
+  object's class metadata. Secondary-base virtual dispatch is deferred.
+- Native `int` and `float` values remain unboxed. Class values are nullable
+  object references; null is represented as a null pointer.
+- The selected collector direction is precise, stop-the-world, and non-moving.
+  The prototype publishes explicit root frames describing object-reference
+  slots at function boundaries; conservative stack scanning is not used.
+
+The current compiler prototype validates single- and multiple-inheritance
+layouts, qualified field access through base paths, primary-base
+`super.Base(args)` constructor chaining, typed methods, allocation, field
+access, primary-chain virtual method dispatch, and a minimal precise collector.
+Overrides must preserve the exact return and parameter
+types. Objects use stable, non-moving allocations with
+a metadata pointer in the header. Generated code registers
+stack root frames around each function; descriptors identify only object
+reference slots, including object locals, parameters, `this`, and
+object-valued temporaries. Class metadata includes generated offsets for
+reference fields, which the collector follows. The single-threaded runtime
+collects before each object allocation and never scans arbitrary stack words.
+Frames stay active across all control-flow paths and are popped on every
+generated return.
+
+This is a safety-oriented prototype, not a production-validated memory
+manager. Root descriptors include all object-typed slots for a function's
+whole lifetime, so stale values can delay reclamation until return. There are
+no finalizers, weak references, threads, concurrent/incremental collection,
+or configurable thresholds. Runtime tests cover root-frame lifecycle errors,
+reachable-object survival through reference fields, and unreachable-object
+reclamation; an executable stress case performs repeated allocations through
+linked objects and nested constructor arguments. An inherited reference-field
+test also forces collection after construction and dispatches overridden
+methods through a primary-base reference. Secondary-base pointer adjustment
+is not implemented.
+
+The prototype spells construction as `ClassName(args)`, matching the
+class-named constructor rule above. `destroy` is the destructor name, but
+destructor execution is not implemented. `super.Base(args)` is the explicit
+primary-base constructor spelling. Multiple direct bases are laid out as
+distinct subobjects in declared order; for example,
+`diamond.Left.Root.value` selects one of two `Root` subobjects in a diamond.
+Unqualified ambiguous inherited fields and methods are errors. Constructor
+chaining, implicit upcasts, and virtual dispatch work only through the first
+declared (primary) base. Secondary-base constructors/upcasts/method calls and
+virtual/shared bases are unsupported. A class without an explicit constructor
+is default-constructible only if its bases also have no explicit constructors.
 
 ### Names, scopes, namespaces, and access
 
@@ -61,10 +126,11 @@ methods remain class members.
 - If a name remains unresolved after the final compiler pass, compilation
   reports a syntax error.
 - A reference can contain calls and indexing, so references are not necessarily wholly statically resolvable.
-- Scope/path qualification can disambiguate inherited members.
-- An unqualified inherited member that is ambiguous under multiple inheritance is a compile-time error.
-- `super` identifies a specified base class. There is no generic `super()`.
-- A constructor shape such as `super.the_base_class(foo, bar)` names the base constructor explicitly.
+- Scope/path qualification can disambiguate inherited members. The prototype
+  implements base-path qualification for field reads and assignments.
+- An unqualified inherited member that is ambiguous under multiple inheritance is a compile-time error; the prototype implements this for fields and methods.
+- An explicit base-constructor call uses `super.Base(args)`, naming the
+  specified base class.
 - Base access for constructors, destructors, methods, and data is checked against scope and access rules.
 
 Keywords are case-insensitive and reserved under every capitalization. For example, `while`, `While`, and `wHiLe` are the same keyword, so `int While = 0` is a syntax error.
@@ -72,6 +138,11 @@ Keywords are case-insensitive and reserved under every capitalization. For examp
 ## Syntax and examples
 
 The following forms capture established examples and intended syntax. They are illustrative and do not by themselves settle every grammar detail.
+
+Constructors use the class name; destructors use `destroy`. For example, a
+`Window` constructor is written `Window(...)`, and a base constructor call is
+written `super.Base(args)`. Any earlier grammar production that used `create`
+as constructor syntax is superseded.
 
 ### Strings
 
@@ -126,12 +197,20 @@ module design. The program-entry examples use the single permitted top-level
 
 ### Destructors and GC
 
-- The garbage collector invokes a user destructor only when the destructor was not explicitly called.
-- Explicit destructor calls are permitted, but the compiler warns about them.
-- The runtime tracks explicit destruction and does not invoke the same destructor a second time.
-- Prompt cleanup matters for resources such as files and sockets.
+- Callers that need timely resource cleanup, such as closing files or sockets,
+  invoke the user's destructor explicitly. Explicit calls are permitted, but
+  the compiler warns about them.
+- If the destructor was not explicitly called, GC finalization is the fallback.
+  The runtime tracks explicit destruction so finalization does not invoke the
+  destructor a second time.
+- Destructor execution and memory reclamation are separate: explicitly
+  invoking a destructor does not force the GC to reclaim the object's memory
+  immediately.
 
-The interaction between prompt cleanup, garbage-collection timing, and deterministic resource release remains a design concern. The language should not claim deterministic destruction semantics beyond the rules established above until that question is resolved.
+The behavior of using an object after its destructor has run, including
+whether resurrection is possible, remains undecided. GC timing and memory
+reclamation are also separate from the caller-controlled timing of explicit
+cleanup.
 
 ### Threads
 
@@ -141,7 +220,10 @@ The interaction between prompt cleanup, garbage-collection timing, and determini
 - The user is responsible for the lifetime of callback/function-pointer values supplied to the threading API.
 - The runtime and GC must register/cooperate with active threads and discover their roots.
 
-A stop-the-world collector that works with registered threads and safe points was discussed as a potentially manageable strategy, but it is not a final decision. The complete GC/thread strategy remains open.
+The current prototype exercises stop-the-world collection only in its
+single-threaded runtime. A production stop-the-world strategy for pthread-style
+threads still requires registration and safe-point coordination; the complete
+GC/thread integration remains open.
 
 ## Inline C and LLVM/backend direction
 
@@ -235,9 +317,11 @@ so far are proposals, not canonical specifications:
 - A 359-line Grok-generated grammar.
 
 The Grok grammar claims to include a parser implementation, but no parser
-source has been verified. The grammars must be reconciled against the examples
-and the module/runtime priorities before either is treated as authoritative;
-this does not change the confirmed recursive-descent parser architecture.
+source has been verified. The grammars must be reconciled against the examples,
+the module/runtime priorities, and the confirmed constructor naming rules
+(including replacing any `create` constructor production) before either is
+treated as authoritative; this does not change the confirmed recursive-descent
+parser architecture.
 
 The goal is to turn the requirements into stages, not to estimate Copilot credit usage as a fixed number of prompts. Credit usage depends on the selected model, token counts, and context size; account usage should be monitored directly.
 
@@ -250,6 +334,9 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - Compile-time diagnostics are preferred, with specified warnings and runtime checks where needed.
 - `start` is the only top-level method, and exactly one `start` block is required in a complete program.
 - The parser architecture is recursive descent.
+- Constructors are named exactly after their class, destructors are named
+  `destroy`, and explicit base-constructor calls use `super.Base(args)`;
+  constructor syntax using `create` is superseded.
 - The compiler is implemented in C++, using LLVM's C++ APIs and safer compiler
   data structures; the runtime/native-module ABI remains C-compatible where
   appropriate.
@@ -267,8 +354,13 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - Exact nullability-flow analysis and all conversion syntax.
 - Whether string length is measured in bytes or Unicode code points.
 - Advanced Unicode semantics beyond current UTF-8 support.
-- The final deterministic-cleanup and destructor/GC contract.
-- The GC strategy for active threads; registered-thread stop-the-world safe points are only a possible approach.
+- Object-use-after-destruction and resurrection semantics.
+- GC timing and memory reclamation policy; neither is determined by explicitly
+  invoking a destructor. The prototype currently collects before each object
+  allocation; that cadence is not a final language/runtime policy.
+- Production GC integration with active threads, including registration and
+  safe-point coordination, remains open. The current prototype runtime is
+  single-threaded and cannot safely be used by concurrent threads.
 - The inline-C backend strategy, including enclosing-function C-aware code generation versus helper/IR linkage.
 - The final LLVM pipeline and how captured locals are represented.
 - The module creation, binding-generation, build, link, and versioning workflow in executable detail.

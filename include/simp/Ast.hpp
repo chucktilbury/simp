@@ -14,7 +14,9 @@
 
 namespace simp {
 
-enum class ExpressionKind { Integer, String, Identifier, Unary, Binary };
+enum class ExpressionKind {
+    Integer, String, Identifier, Unary, Binary, Member, Call, ConstructorCall, Null
+};
 
 struct Expression {
     ExpressionKind kind = ExpressionKind::Integer;
@@ -23,23 +25,60 @@ struct Expression {
     bool formattedString = false;
     std::unique_ptr<Expression> left;
     std::unique_ptr<Expression> right;
+    std::vector<std::unique_ptr<Expression>> arguments;
 };
 
-enum class StatementKind { Declaration, Assignment, Print, If, While, Block };
+enum class StatementKind {
+    Declaration, Assignment, Print, If, While, Block, Return, Expression, SuperConstructorCall
+};
 
 struct Statement {
     StatementKind kind = StatementKind::Block;
     SourceLocation location;
     std::string name;
     std::string declaredType;
+    std::unique_ptr<Expression> target;
     std::vector<std::unique_ptr<Expression>> expressions;
     std::vector<Statement> body;
     std::vector<Statement> alternate;
     bool hasAlternate = false;
 };
 
+struct Parameter {
+    std::string type;
+    std::string name;
+    SourceLocation location;
+};
+
+struct FieldDeclaration {
+    std::string type;
+    std::string name;
+    SourceLocation location;
+};
+
+struct MethodDeclaration {
+    std::string name;
+    std::string returnType;
+    SourceLocation location;
+    std::vector<Parameter> parameters;
+    std::vector<Statement> body;
+    bool constructor = false;
+};
+
+struct ClassDeclaration {
+    std::string name;
+    std::string baseClassName;
+    SourceLocation location;
+    SourceLocation baseLocation;
+    std::vector<std::string> baseClassNames;
+    std::vector<SourceLocation> baseLocations;
+    std::vector<FieldDeclaration> fields;
+    std::vector<MethodDeclaration> methods;
+};
+
 struct Program {
     SourceLocation location;
+    std::vector<ClassDeclaration> classes;
     std::vector<Statement> statements;
 };
 

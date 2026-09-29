@@ -83,6 +83,11 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Start: return "'start'";
     case TokenType::Int: return "'int'";
     case TokenType::StringType: return "'string'";
+    case TokenType::Class: return "'class'";
+    case TokenType::Super: return "'super'";
+    case TokenType::Null: return "'null'";
+    case TokenType::Return: return "'return'";
+    case TokenType::Void: return "'void'";
     case TokenType::If: return "'if'";
     case TokenType::Else: return "'else'";
     case TokenType::While: return "'while'";
@@ -92,6 +97,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::LeftParen: return "'('";
     case TokenType::RightParen: return "')'";
     case TokenType::Comma: return "','";
+    case TokenType::Dot: return "'.'";
+    case TokenType::Colon: return "':'";
     case TokenType::Semicolon: return "';'";
     case TokenType::Plus: return "'+'";
     case TokenType::Minus: return "'-'";
@@ -176,7 +183,10 @@ Token Lexer::scanIdentifierOrInteger() {
         {"start", TokenType::Start}, {"int", TokenType::Int},
         {"string", TokenType::StringType}, {"if", TokenType::If},
         {"else", TokenType::Else}, {"while", TokenType::While},
-        {"print", TokenType::Print}
+        {"print", TokenType::Print}, {"class", TokenType::Class},
+        {"super", TokenType::Super},
+        {"null", TokenType::Null},
+        {"return", TokenType::Return}, {"void", TokenType::Void}
     };
     const auto found = keywords.find(normalized);
     return makeToken(found == keywords.end() ? TokenType::Identifier : found->second,
@@ -245,6 +255,8 @@ std::vector<Token> Lexer::tokenize() {
         case '(': type = TokenType::LeftParen; break;
         case ')': type = TokenType::RightParen; break;
         case ',': type = TokenType::Comma; break;
+        case '.': type = TokenType::Dot; break;
+        case ':': type = TokenType::Colon; break;
         case ';': type = TokenType::Semicolon; break;
         case '+': type = TokenType::Plus; break;
         case '-': type = TokenType::Minus; break;

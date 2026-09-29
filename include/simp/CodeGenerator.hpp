@@ -21,37 +21,72 @@ public:
 
 private:
     struct Binding {
+        std::string type;
         std::string pointer;
-        bool isString = false;
+        std::size_t fieldIndex = 0;
+        bool field = false;
     };
     struct Value {
         std::string type;
         std::string operand;
-        bool isString = false;
     };
     using Scope = std::unordered_map<std::string, Binding>;
 
+    void emitClassTypesAndMetadata(const Program& program);
+    void emitClassMethods(const Program& program);
+    void emitMethod(const ClassDeclaration& owner, const MethodDeclaration& method);
+    void emitMain(const Program& program);
     void emitStatements(const std::vector<Statement>& statements);
     void emitStatement(const Statement& statement);
-    Value emitExpression(const Expression& expression);
+    Value emitExpression(const Expression& expression, const std::string& expectedType = {});
     Value emitIntegerExpression(const Expression& expression);
+    Value rootObjectValue(Value value);
+    std::string rootFrameInitialization() const;
+    std::string rootFramePush() const;
+    void emitRootFramePop();
     Binding findVariable(const std::string& name, const SourceLocation& location) const;
+    const FieldDeclaration* findField(const ClassDeclaration& owner,
+                                      const std::string& name, std::size_t& index) const;
+    std::size_t flattenedFieldCount(const ClassDeclaration& owner) const;
+    std::size_t basePathFieldOffset(const ClassDeclaration& owner,
+                                    const std::vector<std::string>& path) const;
+    bool resolveBaseQualifier(const Expression& receiver, const Expression*& root,
+                              const ClassDeclaration*& view,
+                              std::vector<std::string>& path) const;
+    const MethodDeclaration* findMethod(const ClassDeclaration& owner,
+                                        const std::string& name) const;
+    std::vector<const MethodDeclaration*> methodSlots(const ClassDeclaration& owner) const;
+    std::size_t methodSlot(const ClassDeclaration& owner, const std::string& name) const;
+    std::string declaringClass(const MethodDeclaration& method) const;
+    std::string emitAddress(const Binding& binding, const SourceLocation& location);
+    std::string llvmType(const std::string& type) const;
+    std::string methodSymbol(const std::string& className, const std::string& methodName) const;
     std::string newTemporary();
-    std::string newLabel(const std::string& prefix);
+    std::string freshLabel(const std::string& prefix);
     std::string internString(const std::string& bytes);
     void emitStringBytes(const std::string& bytes);
     void emitPrint(const Statement& statement);
+    void emitNullCheck(const std::string& pointer);
     [[noreturn]] void unsupported(const SourceLocation& location, const std::string& feature) const;
 
     std::string targetTriple_;
+    std::unordered_map<std::string, const ClassDeclaration*> classes_;
+    const ClassDeclaration* currentClass_ = nullptr;
+    const MethodDeclaration* currentMethod_ = nullptr;
     std::vector<Scope> scopes_;
     std::string instructions_;
     std::string entryAllocas_;
+    std::string functionPrologue_;
     std::string stringGlobals_;
+    std::string typeDefinitions_;
+    std::string metadataGlobals_;
+    std::vector<std::string> rootSlots_;
     std::size_t nextTemporary_ = 0;
     std::size_t nextVariable_ = 0;
+    std::size_t nextRoot_ = 0;
     std::size_t nextLabel_ = 0;
     std::size_t nextString_ = 0;
+    bool blockTerminated_ = false;
 };
 
 } // namespace simp
