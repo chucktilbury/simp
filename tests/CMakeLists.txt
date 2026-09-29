@@ -37,6 +37,7 @@ set_target_properties(simp_tests PROPERTIES
 )
 target_compile_definitions(simp_tests PRIVATE
     SIMP_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/functional"
+    SIMP_TEST_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
