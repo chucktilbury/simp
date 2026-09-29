@@ -379,6 +379,18 @@ Statement Parser::parseReturn() {
     Statement statement;
     statement.kind = StatementKind::Return;
     statement.location = keyword.location;
+    // C-style optional parentheses: `return (expr)` is just a parenthesized
+    // expression (already handled by parseExpression below), but a bare
+    // `return ()` with nothing inside is the void-return form, equivalent to
+    // plain `return`. Detect that empty-parens case explicitly so it isn't
+    // parsed as "expected expression, found ')'".
+    if (check(TokenType::LeftParen) && current_ + 1 < tokens_.size() &&
+        tokens_[current_ + 1].type == TokenType::RightParen) {
+        match(TokenType::LeftParen);
+        match(TokenType::RightParen);
+        consumeStatementTerminator();
+        return statement;
+    }
     if (!check(TokenType::Newline) && !check(TokenType::RightBrace) &&
         !check(TokenType::End)) {
         statement.expressions.push_back(parseExpression());

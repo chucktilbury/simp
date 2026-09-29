@@ -1158,3 +1158,12 @@ add_test(NAME simp_rejects_include_missing_file
         "-DEXPECTED_DIAGNOSTIC=cannot resolve included source"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+add_test(NAME simp_compile_and_run_return_parentheses
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_return_parentheses.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_return_parentheses"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_return_parentheses.ll"
+        "-DEXPECTED_OUTPUT=10\n1\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)

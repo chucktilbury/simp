@@ -91,13 +91,8 @@ const char *simp_string_cstr(const SimpString *text);
 void simp_inline_cstr_begin(void);
 void simp_inline_cstr_end(void);
 
-/* Demonstration C shims for out-of-line native-bound methods. Every method
- * receives its Simple receiver first, followed by its declared parameters. */
-int32_t simp_method_demo_abs(void *receiver, int32_t value);
-void simp_method_demo_ignore(void *receiver, int32_t value);
-int32_t simp_method_demo_string_length(void *receiver, SimpString text);
-SimpString simp_method_demo_string_identity(void *receiver, SimpString text);
-void *simp_method_demo_identity(void *receiver, void *object);
+/* Demonstration C shims for out-of-line native-bound methods now live in
+ * their own translation unit; see RuntimeDemoShims.h. */
 
 /* Push/pop are LIFO; return 1 on success and 0 for an invalid operation. */
 int simp_gc_push(SimpRootFrame *frame, void *const *slots, uint64_t count);

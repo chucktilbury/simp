@@ -32,7 +32,7 @@ if(NOT DEFINED SIMP_LIBRARY_OUTPUT_DIRECTORY)
     set(SIMP_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib")
 endif()
 
-add_library(simp_runtime STATIC RuntimeGc.c)
+add_library(simp_runtime STATIC RuntimeGc.c RuntimeDemoShims.c)
 target_link_libraries(simp_runtime PUBLIC simp_headers)
 set_target_properties(simp_runtime PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${SIMP_LIBRARY_OUTPUT_DIRECTORY}"
