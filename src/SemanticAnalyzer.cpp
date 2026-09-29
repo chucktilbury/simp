@@ -318,6 +318,13 @@ void SemanticAnalyzer::analyze(Program& program) {
                                                 definition.namespacePath,
                                                 definition.location);
         const auto* owner = classes_.at(definition.className);
+        if (definition.namespacePath != owner->namespacePath) {
+            throw DiagnosticError(definition.location,
+                                  "method '" + definition.className + "." +
+                                      definition.method.name +
+                                      "' must be defined in the same namespace scope as its "
+                                      "class declaration");
+        }
         if (owner->moduleName != definition.moduleName) {
             throw DiagnosticError(definition.location,
                                   "cannot define methods for class '" +

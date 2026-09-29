@@ -453,6 +453,8 @@ start {
   calls use ordinary `receiver.method(args)` syntax and validate argument
   count/types against the class declaration. Constructors/destructors remain
   defined in-class and cannot use `from`.
+- An out-of-line definition must appear in exactly the same lexical namespace
+  scope as its class declaration, and in the same compilation unit.
 - Native-bound methods are ordinary class methods to their callers. The
   external implementation detail is not exposed at the call site. The
   compiler emits an ordinary Simple method/dispatch entry as a wrapper around

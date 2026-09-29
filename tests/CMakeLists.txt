@@ -448,6 +448,12 @@ add_namespace_run_test(simp_namespace_across_included_source
     positive_namespace_include.simp "42\n")
 add_namespace_run_test(simp_namespace_out_of_line_method
     positive_namespace_out_of_line.simp "42\n")
+add_namespace_reject_test(simp_rejects_out_of_line_cross_namespace
+    negative_out_of_line_cross_namespace.simp
+    "must be defined in the same namespace scope as its class declaration")
+add_namespace_reject_test(simp_rejects_out_of_line_top_level_class_in_namespace
+    negative_out_of_line_top_level_class_in_namespace.simp
+    "must be defined in the same namespace scope as its class declaration")
 add_namespace_reject_test(simp_rejects_namespace_start
     negative_namespace_start.simp "'start' cannot be declared inside a namespace")
 add_namespace_reject_test(simp_rejects_namespace_statement

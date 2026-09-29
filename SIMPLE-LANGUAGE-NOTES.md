@@ -725,6 +725,8 @@ string Foo.echo(string value) from "c_foo_echo"
   match the in-class declaration. Method calls use ordinary
   `receiver.method(args)` syntax regardless of whether the implementation is
   Simple or C.
+- An out-of-line definition must be written in exactly the same lexical
+  namespace scope as the class declaration, in the same compilation unit.
 - `from "<symbol>"` names the linker-visible C function. The compiler emits
   a regular Simple method wrapper and dispatch entry; the caller does not
   mention `from` or any external-specific syntax. The implicit receiver is
