@@ -8,11 +8,29 @@
 #include "simp/Diagnostic.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <iomanip>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
 
 namespace simp {
+
+namespace {
+
+std::string llvmDoubleConstant(const std::string& literal) {
+    const auto value = std::stod(literal);
+    std::uint64_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(value), "double must be 64-bit");
+    std::memcpy(&bits, &value, sizeof(bits));
+    std::ostringstream encoded;
+    encoded << "0x" << std::uppercase << std::hex << std::setw(16) << std::setfill('0')
+            << bits;
+    return encoded.str();
+}
+
+} // namespace
 
 CodeGenerator::CodeGenerator(std::string targetTriple)
     : targetTriple_(std::move(targetTriple)) {}
@@ -46,7 +64,7 @@ CodeGenerator::Value CodeGenerator::rootObjectValue(Value value,
                                                      const SourceLocation& location) {
     if (isDynamicValueType(value.type)) {
         // A dynamic 'any' value may embed a managed-reference pointer (or may not,
-        // if it holds an int/string/null). Root the pointer sub-field so a later
+        // if it holds a scalar or null). Root the pointer sub-field so a later
         // allocation cannot collect a referenced object out from under it; unlike
         // a plain object/array reference, we cannot call simp_gc_require_alive
         // here because the pointer may instead be string byte data that the GC
@@ -98,6 +116,9 @@ std::string CodeGenerator::freshLabel(const std::string& prefix) {
 
 std::string CodeGenerator::llvmType(const std::string& type) const {
     if (type == "int") return "i32";
+    if (type == "bool") return "i1";
+    if (type == "float") return "double";
+    if (type == "unsigned") return "i64";
     if (type == "string") return "%SimpleString";
     if (type == "any") return "%SimpleArrayValue";
     if (type == "void") return "void";
@@ -111,6 +132,7 @@ std::string CodeGenerator::externReturnLlvmType(const std::string& type) const {
     // C ABI as a literal (unnamed) two-scalar aggregate rather than the named
     // struct type, matching what clang emits for an equivalent C struct return.
     if (type == "string") return "{ ptr, i64 }";
+    if (type == "bool") return "zeroext i1";
     return llvmType(type);
 }
 
@@ -123,6 +145,8 @@ std::string CodeGenerator::externMethodDeclaration(const ClassDeclaration& owner
         const auto& type = parameter.type;
         if (type == "string") {
             parameters += "ptr, i64";
+        } else if (type == "bool") {
+            parameters += "i1 zeroext";
         } else {
             parameters += llvmType(type);
         }
@@ -191,18 +215,37 @@ CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
         value.type = "null";
     }
     const auto tag = newTemporary();
+    const auto valueTag = value.type == "int" ? "1" :
+                          value.type == "string" ? "2" :
+                          isMapType(value.type) ? "4" :
+                          isArrayType(value.type) ? "5" :
+                          value.type == "bool" ? "6" :
+                          value.type == "float" ? "7" :
+                          value.type == "unsigned" ? "8" : "3";
     instructions_ += "  " + tag + " = insertvalue %SimpleArrayValue zeroinitializer, i64 " +
-                     (value.type == "int" ? "1" : value.type == "string" ? "2" :
-                      isMapType(value.type) ? "4" : isArrayType(value.type) ? "5" : "3") +
-                     ", 0\n";
+                     valueTag + ", 0\n";
     std::string stored = tag;
-    if (value.type == "int") {
+    if (value.type == "int" || value.type == "bool") {
         const auto extended = newTemporary();
         const auto withInteger = newTemporary();
-        instructions_ += "  " + extended + " = sext i32 " + value.operand + " to i64\n"
+        instructions_ += "  " + extended + " = " +
+                         (value.type == "int" ? "sext i32 " : "zext i1 ") +
+                         value.operand + " to i64\n"
                          "  " + withInteger + " = insertvalue %SimpleArrayValue " + stored +
                          ", i64 " + extended + ", 1\n";
         stored = withInteger;
+    } else if (value.type == "unsigned") {
+        const auto withInteger = newTemporary();
+        instructions_ += "  " + withInteger + " = insertvalue %SimpleArrayValue " + stored +
+                         ", i64 " + value.operand + ", 1\n";
+        stored = withInteger;
+    } else if (value.type == "float") {
+        const auto bits = newTemporary();
+        const auto withFloat = newTemporary();
+        instructions_ += "  " + bits + " = bitcast double " + value.operand + " to i64\n"
+                         "  " + withFloat + " = insertvalue %SimpleArrayValue " + stored +
+                         ", i64 " + bits + ", 1\n";
+        stored = withFloat;
     } else if (value.type == "string") {
         const auto data = newTemporary();
         const auto length = newTemporary();
@@ -238,16 +281,28 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
     const auto column = std::to_string(location.column);
     const auto tag = newTemporary();
     instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " + value.operand + ", 0\n";
-    if (expectedType == "int") {
-        instructions_ += "  call void @simp_value_require_tag(i64 " + tag + ", i64 1, ptr " +
-                         file + ", i64 " + fileLength + ", i64 " + line + ", i64 " + column +
-                         ")\n";
+    if (expectedType == "int" || expectedType == "bool" ||
+        expectedType == "float" || expectedType == "unsigned") {
+        const auto expectedTag = expectedType == "int" ? "1" :
+                                 expectedType == "bool" ? "6" :
+                                 expectedType == "float" ? "7" : "8";
+        instructions_ += "  call void @simp_value_require_tag(i64 " + tag + ", i64 " +
+                         expectedTag + ", ptr " + file + ", i64 " + fileLength + ", i64 " +
+                         line + ", i64 " + column + ")\n";
         const auto stored = newTemporary();
-        const auto result = newTemporary();
         instructions_ += "  " + stored + " = extractvalue %SimpleArrayValue " + value.operand +
-                         ", 1\n"
-                         "  " + result + " = trunc i64 " + stored + " to i32\n";
-        return {"int", result};
+                         ", 1\n";
+        const auto result = newTemporary();
+        if (expectedType == "int") {
+            instructions_ += "  " + result + " = trunc i64 " + stored + " to i32\n";
+        } else if (expectedType == "bool") {
+            instructions_ += "  " + result + " = trunc i64 " + stored + " to i1\n";
+        } else if (expectedType == "float") {
+            instructions_ += "  " + result + " = bitcast i64 " + stored + " to double\n";
+        } else {
+            instructions_ += "  " + result + " = add i64 " + stored + ", 0\n";
+        }
+        return {expectedType, result};
     }
     if (expectedType == "string") {
         instructions_ += "  call void @simp_value_require_tag(i64 " + tag + ", i64 2, ptr " +
@@ -323,6 +378,12 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
     switch (expression.kind) {
     case ExpressionKind::Integer:
         return {"int", expression.value};
+    case ExpressionKind::Unsigned:
+        return {"unsigned", expression.value.substr(0, expression.value.size() - 1)};
+    case ExpressionKind::Float:
+        return {"float", llvmDoubleConstant(expression.value)};
+    case ExpressionKind::Boolean:
+        return {"bool", expression.value == "true" ? "1" : "0"};
     case ExpressionKind::String: {
         const auto global = internString(expression.value);
         const auto pointer = newTemporary();
@@ -720,62 +781,124 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         return rootObjectValue({method->returnType, result}, expression.location);
     }
     case ExpressionKind::Unary: {
-        const auto operand = emitIntegerExpression(*expression.left);
+        const auto operand = emitExpression(*expression.left);
         if (expression.value == "+") return operand;
         const auto result = newTemporary();
         if (expression.value == "-") {
-            instructions_ += "  " + result + " = sub i32 0, " + operand.operand + "\n";
+            if (operand.type == "float") {
+                instructions_ += "  " + result + " = fneg double " + operand.operand + "\n";
+            } else {
+                instructions_ += "  " + result + " = sub i32 0, " + operand.operand + "\n";
+            }
+        } else if (expression.value == "!") {
+            instructions_ += "  " + result + " = xor i1 " + operand.operand + ", true\n";
         } else {
-            const auto flag = newTemporary();
-            instructions_ += "  " + flag + " = icmp eq i32 " + operand.operand + ", 0\n";
-            instructions_ += "  " + result + " = zext i1 " + flag + " to i32\n";
+            unsupported(expression.location, "unary operator '" + expression.value + "'");
         }
-        return {"int", result};
+        return {expression.value == "!" ? "bool" : operand.type, result};
     }
     case ExpressionKind::Binary: {
-        const auto left = emitIntegerExpression(*expression.left);
-        const auto right = emitIntegerExpression(*expression.right);
-        const auto result = newTemporary();
+        const auto left = emitExpression(*expression.left);
         const auto& operation = expression.value;
-        if (operation == "+" || operation == "-" || operation == "*") {
-            const char* instruction = operation == "+" ? "add" : operation == "-" ? "sub" : "mul";
-            instructions_ += "  " + result + " = " + instruction + " i32 " + left.operand +
-                             ", " + right.operand + "\n";
-            return {"int", result};
+        if (operation == "&&" || operation == "||") {
+            const bool conjunction = operation == "&&";
+            const auto rightLabel = freshLabel(conjunction ? "and.right" : "or.right");
+            const auto shortLabel = freshLabel(conjunction ? "and.false" : "or.true");
+            const auto endLabel = freshLabel(conjunction ? "and.end" : "or.end");
+            const auto resultSlot = "%logical." + std::to_string(nextVariable_++);
+            entryAllocas_ += "  " + resultSlot + " = alloca i1\n";
+            instructions_ += "  br i1 " + left.operand + ", label %" +
+                             (conjunction ? rightLabel : shortLabel) + ", label %" +
+                             (conjunction ? shortLabel : rightLabel) + "\n"
+                             + shortLabel + ":\n"
+                             "  store i1 " + (conjunction ? "false" : "true") + ", ptr " +
+                             resultSlot + "\n"
+                             "  br label %" + endLabel + "\n"
+                             + rightLabel + ":\n";
+            const auto right = emitExpression(*expression.right);
+            instructions_ += "  store i1 " + right.operand + ", ptr " + resultSlot + "\n"
+                             "  br label %" + endLabel + "\n"
+                             + endLabel + ":\n";
+            const auto result = newTemporary();
+            instructions_ += "  " + result + " = load i1, ptr " + resultSlot + "\n";
+            return {"bool", result};
         }
-        if (operation == "/" || operation == "%") {
-            const auto zero = newTemporary();
-            const auto failureLabel = freshLabel("division.zero");
-            const auto successLabel = freshLabel("division.ok");
-            instructions_ += "  " + zero + " = icmp eq i32 " + right.operand + ", 0\n"
-                             "  br i1 " + zero + ", label %" + failureLabel +
-                             ", label %" + successLabel + "\n"
-                             + failureLabel + ":\n"
-                             "  call void @simp_exception_raise(ptr @.simp.division.message, i64 16, ptr " +
-                             internString(expression.location.file) + ", i64 " +
-                             std::to_string(expression.location.file.size()) + ", i64 " +
-                             std::to_string(expression.location.line) + ", i64 " +
-                             std::to_string(expression.location.column) + ")\n"
-                             "  unreachable\n"
-                             + successLabel + ":\n";
-            const char* instruction = operation == "/" ? "sdiv" : "srem";
-            instructions_ += "  " + result + " = " + instruction + " i32 " + left.operand +
-                             ", " + right.operand + "\n";
-            return {"int", result};
+        const auto right = emitExpression(*expression.right);
+        const auto result = newTemporary();
+        if (operation == "+" || operation == "-" || operation == "*" ||
+            operation == "/" || operation == "%") {
+            if (left.type == "float") {
+                const char* instruction = operation == "+" ? "fadd" :
+                                          operation == "-" ? "fsub" :
+                                          operation == "*" ? "fmul" :
+                                          operation == "/" ? "fdiv" : nullptr;
+                if (instruction == nullptr) {
+                    unsupported(expression.location, "floating-point remainder");
+                }
+                instructions_ += "  " + result + " = " + instruction + " double " +
+                                 left.operand + ", " + right.operand + "\n";
+                return {"float", result};
+            }
+            const auto llvmIntegerType = left.type == "unsigned" ? "i64" : "i32";
+            if ((operation == "/" || operation == "%")) {
+                const auto zero = newTemporary();
+                const auto failureLabel = freshLabel("division.zero");
+                const auto successLabel = freshLabel("division.ok");
+                instructions_ += "  " + zero + " = icmp eq " + llvmIntegerType + " " +
+                                 right.operand + ", 0\n"
+                                 "  br i1 " + zero + ", label %" + failureLabel +
+                                 ", label %" + successLabel + "\n"
+                                 + failureLabel + ":\n"
+                                 "  call void @simp_exception_raise(ptr @.simp.division.message, i64 16, ptr " +
+                                 internString(expression.location.file) + ", i64 " +
+                                 std::to_string(expression.location.file.size()) + ", i64 " +
+                                 std::to_string(expression.location.line) + ", i64 " +
+                                 std::to_string(expression.location.column) + ")\n"
+                                 "  unreachable\n"
+                                 + successLabel + ":\n";
+            }
+            const char* instruction = nullptr;
+            if (operation == "+") instruction = "add";
+            else if (operation == "-") instruction = "sub";
+            else if (operation == "*") instruction = "mul";
+            else if (operation == "/") instruction = left.type == "unsigned" ? "udiv" : "sdiv";
+            else if (operation == "%") instruction = left.type == "unsigned" ? "urem" : "srem";
+            instructions_ += "  " + result + " = " + instruction + " " + llvmIntegerType + " " +
+                             left.operand + ", " + right.operand + "\n";
+            return {left.type, result};
         }
-        std::string predicate;
-        if (operation == "==") predicate = "eq";
-        else if (operation == "!=") predicate = "ne";
-        else if (operation == "<") predicate = "slt";
-        else if (operation == "<=") predicate = "sle";
-        else if (operation == ">") predicate = "sgt";
-        else if (operation == ">=") predicate = "sge";
-        else unsupported(expression.location, "operator '" + operation + "'");
-        const auto flag = newTemporary();
-        instructions_ += "  " + flag + " = icmp " + predicate + " i32 " + left.operand +
-                         ", " + right.operand + "\n";
-        instructions_ += "  " + result + " = zext i1 " + flag + " to i32\n";
-        return {"int", result};
+        if (operation == "==" || operation == "!=" || operation == "<" ||
+            operation == "<=" || operation == ">" || operation == ">=") {
+            if (left.type == "float") {
+                std::string predicate;
+                if (operation == "==") predicate = "oeq";
+                else if (operation == "!=") predicate = "une";
+                else if (operation == "<") predicate = "olt";
+                else if (operation == "<=") predicate = "ole";
+                else if (operation == ">") predicate = "ogt";
+                else predicate = "oge";
+                instructions_ += "  " + result + " = fcmp " + predicate + " double " +
+                                 left.operand + ", " + right.operand + "\n";
+                return {"bool", result};
+            }
+            std::string predicate;
+            if (operation == "==") predicate = "eq";
+            else if (operation == "!=") predicate = "ne";
+            else if (operation == "<") {
+                predicate = left.type == "unsigned" ? "ult" : "slt";
+            } else if (operation == "<=") {
+                predicate = left.type == "unsigned" ? "ule" : "sle";
+            } else if (operation == ">") {
+                predicate = left.type == "unsigned" ? "ugt" : "sgt";
+            } else {
+                predicate = left.type == "unsigned" ? "uge" : "sge";
+            }
+            instructions_ += "  " + result + " = icmp " + predicate + " " +
+                             llvmType(left.type) + " " + left.operand + ", " + right.operand +
+                             "\n";
+            return {"bool", result};
+        }
+        unsupported(expression.location, "operator '" + operation + "'");
     }
     }
     unsupported(expression.location, "expression");

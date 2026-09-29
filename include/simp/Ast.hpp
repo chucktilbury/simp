@@ -15,8 +15,8 @@
 namespace simp {
 
 enum class ExpressionKind {
-    Integer, String, Identifier, Unary, Binary, Member, Call, ConstructorCall, Null,
-    ArrayLiteral, MapLiteral, Index, Slice
+    Integer, Unsigned, Float, Boolean, String, Identifier, Unary, Binary, Member, Call,
+    ConstructorCall, Null, ArrayLiteral, MapLiteral, Index, Slice
 };
 
 struct Expression {
@@ -30,8 +30,8 @@ struct Expression {
 };
 
 enum class StatementKind {
-    Declaration, Assignment, Print, If, While, Block, Return, Expression, SuperConstructorCall,
-    Raise, Try, ForEach, InlineC
+    Declaration, Assignment, Print, If, While, DoWhile, Block, Return, Expression,
+    SuperConstructorCall, Raise, Try, ForEach, Break, Continue, InlineC
 };
 
 struct InlineCapture {

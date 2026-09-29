@@ -1,0 +1,100 @@
+# Exercises distinct bool, double-backed float, and uint64 unsigned semantics.
+class ScalarBox {
+    bool enabled
+    float amount
+    unsigned count
+    ScalarBox(bool enabledValue, float amountValue, unsigned countValue) {
+        enabled = enabledValue
+        amount = amountValue
+        count = countValue
+    }
+    bool isEnabled() {
+        return enabled
+    }
+    float getAmount() {
+        return amount
+    }
+    unsigned getCount() {
+        return count
+    }
+}
+
+start {
+    bool yes = true
+    bool no = false
+    print(yes)
+    print(no)
+    bool combined = yes and not no && 3 < 4
+    print(combined)
+    print(yes == true)
+    print(no != yes)
+    if (combined) {
+        print("bool condition")
+    }
+
+    int loops = 0
+    while (loops < 3 and combined) {
+        loops = loops + 1
+    }
+    print(loops)
+    int doRuns = 0
+    do {
+        doRuns = doRuns + 1
+    } while (false)
+    print(doRuns)
+
+    float amount = 3.14 + 0.5
+    float scientific = 1.5e-3
+    print(amount)
+    print(scientific)
+    print(amount > 3.0)
+
+    unsigned maximum = 18446744073709551615u
+    unsigned quotient = maximum / 3u
+    unsigned remainder = 8u % 3u
+    print(maximum)
+    print(quotient)
+    print(remainder)
+    print(maximum > 9223372036854775808u)
+    print("formatted {} {} {}"(no, scientific, 42u))
+
+    array values = [yes, amount, maximum]
+    print(values[0])
+    print(values[1])
+    print(values[2])
+    bool extractedBool = values[0]
+    float extractedFloat = values[1]
+    unsigned extractedUnsigned = values[2]
+    print(extractedBool)
+    print(extractedFloat)
+    print(extractedUnsigned)
+
+    map entries = {"flag": no, "amount": scientific, "count": 42u}
+    bool mapBool = entries["flag"]
+    float mapFloat = entries["amount"]
+    unsigned mapUnsigned = entries["count"]
+    print(mapBool)
+    print(mapFloat)
+    print(mapUnsigned)
+
+    ScalarBox box = ScalarBox(yes, amount, maximum)
+    print(box.isEnabled())
+    print(box.getAmount())
+    print(box.getCount())
+    while (doRuns < 2 and box.isEnabled() or false) {
+        doRuns = doRuns + 1
+    }
+    print(doRuns)
+
+    bool inlineFlag = false
+    float inlineAmount = 1.0
+    unsigned inlineCount = 5u
+    inline (bool inlineFlag, float inlineAmount, unsigned inlineCount) {
+        *inlineFlag = 1;
+        *inlineAmount += 0.5;
+        *inlineCount += 2;
+    }
+    print(inlineFlag)
+    print(inlineAmount)
+    print(inlineCount)
+}

@@ -6,6 +6,54 @@
     "enabled": true
   },
   {
+    "name": "positive_loop_logic.simp",
+    "friendly_name": "functional loops and short-circuit logical operators",
+    "expected_diagnostic": "",
+    "enabled": true
+  },
+  {
+    "name": "positive_scalar_types.simp",
+    "friendly_name": "functional bool float and unsigned scalar types",
+    "expected_diagnostic": "",
+    "enabled": true
+  },
+  {
+    "name": "positive_float_literal_forms.simp",
+    "friendly_name": "functional strtod-style float literal forms",
+    "expected_diagnostic": "",
+    "enabled": true
+  },
+  {
+    "name": "negative_int_condition.simp",
+    "friendly_name": "functional integer condition rejected",
+    "expected_diagnostic": "if condition must have type bool",
+    "enabled": true
+  },
+  {
+    "name": "negative_float_int_mixing.simp",
+    "friendly_name": "functional float and int mixing rejected",
+    "expected_diagnostic": "requires matching int, float, or unsigned operands",
+    "enabled": true
+  },
+  {
+    "name": "negative_unsigned_int_mixing.simp",
+    "friendly_name": "functional unsigned and int mixing rejected",
+    "expected_diagnostic": "requires matching int, float, or unsigned operands",
+    "enabled": true
+  },
+  {
+    "name": "negative_bool_arithmetic.simp",
+    "friendly_name": "functional bool arithmetic rejected",
+    "expected_diagnostic": "requires matching int, float, or unsigned operands",
+    "enabled": true
+  },
+  {
+    "name": "negative_float_remainder.simp",
+    "friendly_name": "functional float remainder rejected",
+    "expected_diagnostic": "float remainder is unsupported",
+    "enabled": true
+  },
+  {
     "name": "positive_newline_statements.simp",
     "friendly_name": "functional newline-only statements",
     "expected_diagnostic": "",
@@ -141,6 +189,30 @@
     "name": "negative_conditional_else.simp",
     "friendly_name": "functional conditional else",
     "expected_diagnostic": "unconditional 'else' cannot have a condition",
+    "enabled": true
+  },
+  {
+    "name": "negative_do_while_condition.simp",
+    "friendly_name": "functional do-while condition type checked",
+    "expected_diagnostic": "while condition must have type bool",
+    "enabled": true
+  },
+  {
+    "name": "negative_break_outside_loop.simp",
+    "friendly_name": "functional break outside loop rejected",
+    "expected_diagnostic": "'break' outside of a loop",
+    "enabled": true
+  },
+  {
+    "name": "negative_continue_outside_loop.simp",
+    "friendly_name": "functional continue outside loop rejected",
+    "expected_diagnostic": "'continue' outside of a loop",
+    "enabled": true
+  },
+  {
+    "name": "negative_logical_operand_type.simp",
+    "friendly_name": "functional logical operands require booleans",
+    "expected_diagnostic": "logical operator '&&' requires bool operands",
     "enabled": true
   },
   {

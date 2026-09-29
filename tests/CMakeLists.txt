@@ -195,6 +195,9 @@ function(add_inline_diagnostic_test name expected_diagnostic)
 endfunction()
 
 set(FUNCTIONAL_RUN_TESTS
+    "simp_compile_and_run_loop_logic|positive_loop_logic.simp|4\n1\n2\n4\n1\n2\nfalse\nfalse\ntrue\ntrue\n0\ntrue\ntrue\nfalse\ntrue\n4\n0\n0\n2\n5\n1\n|-"
+    "simp_compile_and_run_scalar_types|positive_scalar_types.simp|true\nfalse\ntrue\ntrue\ntrue\nbool condition\n3\n1\n3.64\n0.0015\ntrue\n18446744073709551615\n6148914691236517205\n2\ntrue\nformatted false 0.0015 42\ntrue\n3.64\n18446744073709551615\ntrue\n3.64\n18446744073709551615\nfalse\n0.0015\n42\ntrue\n3.64\n18446744073709551615\n2\ntrue\n1.5\n7\n|gc"
+    "simp_compile_and_run_float_literal_forms|positive_float_literal_forms.simp|0.5\n5\n3.14\n1000\n50\n500\n0\n|gc"
     "simp_compile_and_run_typed_arrays|positive_arrays.simp|4\ntwenty\ntwenty-five\n25\n2\n25\n25\n99\n0\n0\n11\ntwo\n7\n8\n7\n11\n1\ntwo\n<object>\nnull\narray index out of bounds\narray slice bounds out of bounds\n|gc"
     "simp_compile_and_run_heterogeneous_maps|positive_maps.simp|5\n7\n7\nseven\n11\n1\n2\n3\n1\n2\n3\n64\n9\n88\n77\nmap key not found\n|gc"
     "simp_compile_and_run_collection_iteration|positive_collection_iteration.simp|3\n1\n0\n3\n22\nfirst\n10\ndynamic\n22\nthird\n30\n3\n4\n1\ntwo\n<object>\n<object>\n42\n100\n|gc"
@@ -252,6 +255,15 @@ foreach(test_row IN LISTS FUNCTIONAL_RUN_TESTS)
 endforeach()
 
 set(FUNCTIONAL_REJECT_TESTS
+    "simp_rejects_integer_condition|negative_int_condition.simp|if condition must have type bool|-"
+    "simp_rejects_float_int_mixing|negative_float_int_mixing.simp|requires matching int, float, or unsigned operands|-"
+    "simp_rejects_unsigned_int_mixing|negative_unsigned_int_mixing.simp|requires matching int, float, or unsigned operands|-"
+    "simp_rejects_bool_arithmetic|negative_bool_arithmetic.simp|requires matching int, float, or unsigned operands|-"
+    "simp_rejects_float_remainder|negative_float_remainder.simp|float remainder is unsupported|-"
+    "simp_rejects_break_outside_loop|negative_break_outside_loop.simp|'break' outside of a loop|-"
+    "simp_rejects_continue_outside_loop|negative_continue_outside_loop.simp|'continue' outside of a loop|-"
+    "simp_rejects_do_while_non_boolean_condition|negative_do_while_condition.simp|while condition must have type bool|-"
+    "simp_rejects_non_boolean_logical_operands|negative_logical_operand_type.simp|logical operator '&&' requires bool operands|-"
     "simp_rejects_non_integer_array_index|negative_array_index_type.simp|array index and slice bounds must be int|-"
     "simp_rejects_any_map_index_key|negative_map_nonliteral_key.simp|map keys must have type string|-"
     "simp_rejects_numeric_map_index_key|negative_map_numeric_key.simp|map keys must have type string|-"
@@ -261,9 +273,9 @@ set(FUNCTIONAL_REJECT_TESTS
     "simp_rejects_any_member_access|negative_any_member_access.simp|'any' has no members__CMAKE_SEMICOLON__ assign it to a typed variable first to extract its value|-"
     "simp_cli_rejects_adjacent_statements|negative_adjacent_statements.simp|expected newline after statement|-"
     "simp_rejects_uninitialized_variable|negative_uninitialized.simp|variable 'value' may be uninitialized|-"
-    "simp_rejects_non_integer_formatted_value|negative_string_format_value.simp|formatted print arguments must have type int|-"
+    "simp_rejects_non_scalar_formatted_value|negative_string_format_value.simp|formatted print arguments must have type int|-"
     "simp_rejects_malformed_format|negative_malformed_format.simp|placeholders are supported in formatted strings|-"
-    "simp_rejects_string_condition|negative_string_condition.simp|if condition must have type int|-"
+    "simp_rejects_string_condition|negative_string_condition.simp|if condition must have type bool|-"
     "simp_rejects_private_field_access|negative_private_member.simp|field 'value' is not accessible|-"
     "simp_rejects_protected_method_access|negative_protected_member.simp|method 'read' is not accessible|-"
     "simp_rejects_private_method_access|negative_private_method.simp|method 'read' is not accessible|-"

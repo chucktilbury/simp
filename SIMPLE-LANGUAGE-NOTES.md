@@ -21,6 +21,38 @@ The language is intended to have full object-oriented programming support. Broad
 
 - Types are explicit; Simple does not infer variable types.
 - A variable's type is fixed after declaration. The language is strongly typed.
+- The required scalar types are `bool`, `int`, `unsigned`, and `float`, alongside
+  `string`, `array`, `map`, and `any`. `bool` is distinct from `int`; it is
+  stored as an LLVM `i1`. `int` is signed 32-bit, `unsigned` is unsigned
+  64-bit, and `float` denotes an IEEE 754 double-precision value and is stored
+  as an LLVM `double`.
+- Boolean literals are the reserved, case-insensitive keywords `true` and
+  `false`. Boolean values support assignment, `==`, `!=`, logical negation,
+  conjunction, and disjunction. Arithmetic and ordering comparisons on
+  booleans are rejected.
+- Float literals use the same lexical shapes `strtod()` accepts for a decimal
+  floating constant: digits on both sides of the point (`3.14`), a leading
+  point with no digit before it (`.5`), a trailing point with no digit after
+  it (`5.`), and an optional decimal exponent on any of those forms (`1e10`,
+  `1.5e-3`, `.5e2`, `5.e2`). Hexadecimal float literals and `inf`/`nan`
+  spellings, which `strtod()` also accepts at runtime, are not part of the
+  literal grammar. Unsigned literals require an integer digit sequence
+  followed by `u` (`42u`; uppercase `U` is accepted too). A bare digit
+  sequence with no point or exponent (`0`, `42`) remains a signed `int`
+  literal.
+- Arithmetic and ordering comparisons require operands of the same numeric
+  type. Equality requires matching operands of the same supported scalar type
+  (`int`, `unsigned`, `float`, or `bool`). Comparisons produce `bool`; numeric
+  arithmetic produces the operand type. Integer division and remainder are
+  signed for `int` and unsigned for `unsigned`. Remainder on `float` is not
+  supported.
+- There are no implicit conversions between `int`, `unsigned`, `float`, and
+  `bool`. No explicit scalar-cast syntax is currently implemented; code must
+  use values already of the required type.
+- Printing supports all four scalar types: booleans display as `true` or
+  `false`, floats use `printf`'s `%.15g` format, and unsigned integers display
+  as unsigned decimal values. Formatted print placeholders accept these scalar
+  types too.
 - Using a local before it has been initialized is a warning.
 - `null` means “no value.” An assignment such as `int x = null` is valid.
 - Reading a variable that is definitely null is a compile-time error.
@@ -269,8 +301,8 @@ non-virtual bases also have no explicit constructors.
 
 Keywords are case-insensitive and reserved under every capitalization. For
 example, `while`, `While`, and `wHiLe` are the same keyword, so `int While = 0`
-is a syntax error. The import words `import` and `as`, and collection loop
-words `for` and `in`, are reserved too.
+is a syntax error. The import words `import` and `as`, collection loop words
+`for` and `in`, and logical words `and`, `or`, and `not` are reserved too.
 
 In the current prototype subset, simple statements are terminated by a
 newline or a closing block brace. Newlines inside parentheses and array
@@ -316,6 +348,27 @@ as constructor syntax is superseded. The implemented subset accepts newline
 statement boundaries; semicolons begin comments rather than terminating
 statements.
 
+### Control flow and logical operators
+
+- `while (<expr>) { <statement>* }` tests its boolean condition before each
+  iteration. `do { <statement>* } while (<expr>)` executes its body once before
+  testing the boolean condition at the end of each iteration. `if`, `while`,
+  and `do ... while` conditions strictly require `bool`; integer truthiness is
+  rejected.
+- `for (value in collection) { <statement>* }` iterates over an array or map;
+  `for (key, value in map) { <statement>* }` also binds map keys.
+- `break` exits the innermost enclosing `while`, `do ... while`, or collection
+  `for` loop. `continue` proceeds to that loop's next condition or iteration
+  step. Both are valid inside nested conditional, exception-handler, and
+  `finally` blocks within a loop, and are compile-time errors outside a loop.
+- Logical operands and results are `bool`; there is no integer truthiness.
+- Logical negation is written `!expr` or `not expr`; conjunction is
+  `left && right` or `left and right`; disjunction is `left || right` or
+  `left or right`. These spellings are equivalent. Comparisons bind more tightly than
+  logical operators, `not` binds more tightly than `and`, and `and` binds more
+  tightly than `or`. Conjunction and disjunction short-circuit from left to
+  right.
+
 ### Strings
 
 - Single-quoted strings are absolute literals. They have no escapes or formatting; supplying formatting arguments is a syntax error.
@@ -333,6 +386,256 @@ statements.
 
 UTF-8 is the choice for now. Advanced Unicode semantics are deferred. String length remains unimplemented; whether it means bytes or Unicode code points remains open. Arrays and maps expose a read-only `length` property in the current prototype.
 
+### `buffer` and `handle` types (confirmed design, not yet implemented)
+
+Two new built-in reference types, `buffer` and `handle`, are confirmed. Both
+are, like `array` and `map`, not classes: no user-defined methods, no
+subclassing, only a small fixed set of compiler-built-in operations.
+
+#### `buffer`
+
+- `buffer` is a homogeneous, resizable, GC-traced sequence of bytes.
+- Construction: `buffer(n)` allocates a zero-filled buffer of length `n`.
+  There is no buffer literal syntax.
+- `b.resize(newLength)` grows or shrinks in place; new bytes introduced by
+  growth are zero-filled, and shrinking discards trailing bytes.
+- `b.length` is a read-only `int`, matching the existing `array`/`map`
+  property style (not a method call).
+- `b.clear()` truncates the buffer to zero length.
+- `b.append(value)` appends one element, growing length by one; `value`
+  must be `int` or `unsigned` (see element typing below).
+- Element access: `b[i]` reads and `b[i] = value` writes a single element.
+  A value of type other than `int` or `unsigned` (for example `bool`,
+  `float`, `string`) assigned to a buffer element is a **compile-time
+  (syntax) error**. A well-typed `int` or `unsigned` write is never
+  rejected at either compile time or runtime: the element is a byte, so an
+  assigned `int`/`unsigned` value is bounds-checked and **truncated
+  bitwise** to the low 8 bits, matching ordinary C `uint8_t` narrowing
+  (`(uint8_t)value`), not a range-checked, throwing conversion. **Confirmed:**
+  reading `b[i]` yields `unsigned` — semantically, a `buffer` is "an array
+  of bytes," and every element, once inside the buffer, is an unsigned
+  byte value (`0..255`) regardless of whether it was written from an `int`
+  or an `unsigned` expression.
+- `b[start:end]` slices a half-open byte range into a new, independent
+  `buffer` — a copy, matching `array`/`map` slice-copy semantics.
+- **Assigning a `buffer` copies it**, producing an exact, independent
+  duplicate. This is different from `array`/`map`, whose assignment aliases
+  shared mutable storage; `buffer` assignment is a value type in this
+  respect.
+- No comparisons (`==`, `<`, and so on) are defined for `buffer`; a `buffer`
+  cannot appear as an operand in any operator expression at all (not just
+  comparisons) — the same restriction now applies to `handle` and to
+  `string`. Passing a `buffer` as a call argument, storing it in a
+  field/variable/collection, indexing it, or invoking its built-in
+  operations above are not "expressions" in this restricted sense; using it
+  with `+`, `==`, `<`, and so on is.
+- Runtime representation (parallel to the existing `SimpArray`/`SimpMap`
+  structs in `include/simp/RuntimeGc.h`):
+
+  ```c
+  typedef struct SimpBuffer {
+      const SimpClassMeta *metadata; /* reserved; buffer is not a class */
+      uint64_t length;
+      uint64_t capacity;
+      uint8_t *data; /* raw bytes; not individually GC-traced */
+  } SimpBuffer;
+  ```
+
+  Because bytes are never references, the collector only needs to trace the
+  `SimpBuffer` header itself (as it already traces `SimpArray`/`SimpMap`
+  headers), not each byte. Growth reallocates `data` and copies existing
+  bytes; the `SimpBuffer` header's address stays stable (consistent with
+  the collector's existing non-moving-object guarantee), only the
+  secondary `data` allocation moves. Assignment-as-copy allocates a new
+  `SimpBuffer` header and a new `data` allocation, then copies `length`
+  bytes.
+
+#### `handle`
+
+- `handle` is opaque in every way: the compiler and runtime carry it as an
+  untyped reference and never inspect, trace, copy, index, or compare its
+  contents. It has no built-in operations at all — not even `.length`.
+- A `handle` cannot appear as an operand in any operator expression, the
+  same restriction as `buffer` and `string`.
+- **Confirmed:** since `handle` has no literal syntax and no built-in
+  constructor, a `handle` value can only be produced by native code: either
+  a native-bound (`from "<symbol>"` C) method that returns one, or an
+  `inline` C block that captures a `handle` local and assigns it directly
+  (see the new inline-capture sugar under "Inline C and LLVM/backend
+  direction" below, motivated by exactly this case). Simple code can hold a
+  `handle` in a variable/field, pass it as an argument, return it, compare
+  it against `null`, and pass it back into another native-bound method or
+  inline block — but never construct, inspect, or manufacture one directly
+  in ordinary Simple expressions. This matches the resource-handle use case
+  (file handles, external library handles) that motivated the type.
+- Because `handle` is opaque and not GC-traced, the runtime does not manage
+  the resource it refers to; native code remains responsible for its
+  lifetime (opening/closing a file handle, for example). This is the
+  intended tradeoff versus `buffer`, which stays GC-traced and managed.
+
+#### Integration points for `buffer` and `handle` (confirmed, filling gaps before implementation)
+
+These points were not covered above and are needed before implementation can
+begin, following the precedent set by `array`/`map`/class references:
+
+- **`any`:** both `buffer` and `handle` may be stored in and extracted from
+  `any`, exactly like `array`/`map`/class references — a runtime-checked
+  tag/extraction operation, using two new tags analogous to the existing
+  `SIMP_ARRAY_ARRAY`/`SIMP_ARRAY_MAP`/`SIMP_ARRAY_OBJECT` entries in
+  `SimpArrayValueTag` (`include/simp/RuntimeGc.h`).
+- **Collection literals:** a `buffer` reference may be an `array`/`map`
+  element/value (traced by the GC like any other reference element). A
+  `handle` may also be an `array`/`map` element/value; because it is
+  opaque, the GC does not trace what it points to, but the slot holding the
+  `handle` reference itself is an ordinary untraced payload, exactly like
+  today's `int`/`unsigned` elements — consistent with `handle` never being
+  GC-managed.
+- **Native ABI (`from "<symbol>"`):** both are valid native-bound parameter
+  and return types. `buffer` lowers as an opaque pointer, the same
+  treatment `array`/`map`/class references already receive. `handle` also
+  lowers as a single opaque pointer (`void *`) — the natural, minimal ABI
+  for a type whose entire purpose is carrying an untyped native pointer
+  across the Simple/C boundary.
+- **`print`/format placeholders:** `buffer` is not printable/formattable in
+  the first milestone (there is no meaningful default textual form for
+  arbitrary bytes; a `String`-based hex/text dump, if wanted, is a future
+  method, not automatic `print` support). `handle` is likewise not
+  printable/formattable, matching its fully opaque status.
+- **`null`:** both `buffer` and `handle` variables may hold `null` and be
+  compared against `null` with `==`/`!=`; this is not a general operator
+  expression exception, it is the same null-check every reference type
+  (`array`, `map`, class, `string`) already supports today.
+
+#### Interaction with the pending `String`-as-class proposal
+
+The instruction that `string` cannot appear in an operator expression
+matches `string`'s **current** behavior (no comparisons are implemented for
+strings today). It also directly conflicts with one part of the
+still-pending, not-yet-decided `String`-class proposal below, which adds
+`==`/`!=` support for `String`. That part of the proposal is not resolved by
+this message and needs an explicit decision: either `String` gains `==`/`!=`
+as proposed (making it an exception to the buffer/handle/string
+no-operators rule), or `String` equality is instead exposed as a built-in
+comparison method (for example `s.equals(other)`) rather than `==`, keeping
+every reference-like built-in type consistently out of operator expressions.
+
+### Proposal: a class-based `String` on top of `buffer` (pending review, not yet implemented)
+
+This proposal resolves a design tension: literal scalar values (`int`, `bool`,
+`float`, `unsigned`) can never have methods called on them (`int x = 0;
+x.add(3)` must be a syntax error), yet a useful string API (`find`, `insert`,
+`clear`, `append`, and similar) is naturally expressed with method-call
+syntax. The resolution is that `string` stops being a native/opaque scalar
+and becomes a genuine, user-inheritable class, `String`, whose backing
+storage is the now-confirmed `buffer` type above.
+
+#### `String`
+
+- `String` becomes a real class, declared in a standard/prelude module,
+  with one private field: `buffer _bytes`. Because it is a genuine class,
+  it can be subclassed like any other class (multiple/virtual inheritance
+  already supported by the language applies to it with no special-casing).
+- The `string` keyword becomes an alias for `String`, exactly the way
+  `array`/`list` and `map`/`dict` are already aliases for one underlying
+  type. Existing code that declares `string` keeps compiling; it now
+  denotes a class type rather than a native scalar.
+- String literals (`"..."`, `'...'`) still produce `String` values; the
+  compiler synthesizes the byte contents directly into a new `String`'s
+  `_bytes` buffer rather than routing through a public constructor, so there
+  is no circularity between the literal syntax and the class's own API.
+- Proposed method surface for the first milestone (all are ordinary class
+  methods — Simple-implemented where practical, `from "<symbol>"`
+  native-bound where they need C library support):
+  - `s.length` — read-only `int`, UTF-8 byte count (property, not a method
+    call, matching `array`/`map`).
+  - `s[i]` — reads byte `i` as `unsigned` (`0..255`); this is a byte index,
+    **not** a Unicode code-point index, mirroring `buffer`.
+  - `s[start:end]` — slices a half-open byte range into a new `String`
+    (copy), matching `array`/`map`/`buffer` slicing.
+  - `s.append(other: String)` — mutates `s` in place, no return value.
+  - `s.insert(index: int, other: String)` — inserts at a byte index,
+    shifting the remainder; mutates in place.
+  - `s.removeRange(start: int, end: int)` — deletes a half-open byte range,
+    shifting the remainder; mutates in place.
+  - `s.clear()` — truncates to zero length; mutates in place.
+  - `s.find(needle: String)` — returns the byte index of the first
+    occurrence, or `-1` if absent (an `int`, not an exception — matching
+    `map.contains` returning `0`/`1` rather than raising).
+  - `s.contains(needle: String)` — returns `bool`.
+  - `s.startsWith(prefix: String)` / `s.endsWith(suffix: String)` — `bool`.
+  - `s.split(separator: String)` — returns `array` of `String`.
+  - `s.replace(target: String, replacement: String)` — returns a **new**
+    `String`; not mutating, since replacement may change length.
+  - `s.trim()` — returns a new `String` with leading/trailing ASCII
+    whitespace removed (Unicode-aware trimming deferred, matching the
+    existing "advanced Unicode semantics deferred" note).
+  - `s.toUpper()` / `s.toLower()` — ASCII-only for the first milestone,
+    same deferral as above.
+- `==`/`!=` become supported for `String`, defined as exact UTF-8 byte
+  equality — case-sensitive, no Unicode normalization, matching the existing
+  map-key comparison rule. Ordering comparisons (`<`, `>`, and so on) remain
+  unsupported for `String`, matching today's behavior. This is new: today
+  strings support no comparisons at all.
+- Mutating methods use alias/reference semantics, matching how `array` and
+  `map` assignment already aliases shared mutable storage: two variables
+  referring to the same `String` observe each other's in-place mutations.
+  Assigning a `String` does not copy it; `s[start:end]` and `.replace(...)`
+  are the explicit ways to get an independent copy.
+- Operator overloading remains unsupported, so there is no `+` concatenation
+  operator; `.append(...)` (mutating) is the supported way to grow a
+  `String` in place.
+- Native ABI impact: the existing `SimpString { const char *data; uint64_t
+  length; }` C-ABI marshaling struct (`include/simp/RuntimeGc.h`,
+  `simp_string_cstr`) keeps its role at the native-bound-method boundary
+  unchanged; it is a wire format for crossing into C, not the in-heap
+  representation, so this proposal does not disturb the native-bindings ABI
+  described in "Out-of-line methods and native C bindings."
+
+#### Explicitly out of scope for this proposal
+
+- `handle` (confirmed above, opaque, used for native resource ownership) is
+  a separate, complementary type; it is not used for string or buffer
+  storage, which stay GC-traced.
+- Unicode code-point iteration/indexing, `regex`-style pattern matching, and
+  locale-aware case conversion/collation remain deferred, matching the
+  document's existing Unicode deferrals.
+- Numeric parsing/formatting helpers (turning a `String` into `int`/`float`
+  and back) are not specified here; they overlap with the already-open
+  "string-to-number conversion" item above and should be designed together
+  with explicit scalar casts.
+
+#### Open questions needing a decision before implementation
+
+1. Byte-based `String` indexing and `.length` (simplest, matches this
+   proposal, and matches the confirmed byte-oriented `buffer`) versus
+   Unicode-code-point-aware indexing (more correct, substantially more
+   implementation work). Recommendation: byte-based for the first
+   milestone, revisit later.
+2. Whether `String`'s element access reuses `buffer`'s `int`-or-`unsigned`
+   element typing (confirmed above) or is `unsigned`-only. Recommendation:
+   match `buffer` exactly for consistency.
+3. Mutating-in-place (alias semantics, matching `array`/`map`) versus
+   copy-on-write/value semantics for `String` mutation methods. Note this
+   is now a real inconsistency to resolve either way: `buffer` assignment
+   was just confirmed to **copy**, not alias, so a `String` built on
+   `buffer` copying its mutation methods' alias semantics from `array`/`map`
+   (as originally recommended) would make `String` behave differently from
+   its own backing `buffer` field. Recommendation: reconsider — copy-on-assign
+   `String` values (matching `buffer`) may now be more consistent than the
+   original alias-semantics recommendation.
+4. Whether `string` should become a hard alias for `String` (one unified
+   type, as proposed) or whether `String` should be introduced as a
+   separate, additional type while `string` keeps its current native/opaque
+   status. Recommendation: unify under one type to avoid two ways to spell
+   "a string," but this touches every existing native-bound method
+   signature that currently mentions `string`.
+5. Whether `String` should keep the proposed `==`/`!=` support at all, given
+   the newly confirmed rule that `buffer`, `handle`, and `string` cannot
+   appear in operator expressions (see "Interaction with the pending
+   `String`-as-class proposal" above) — this is the most consequential open
+   conflict introduced by this update and should be resolved before any of
+   the `String` proposal is implemented.
+
 ### Collections and copying
 
 - Arrays and maps are heterogeneous, Python-like untyped bags.
@@ -349,8 +652,8 @@ UTF-8 is the choice for now. Advanced Unicode semantics are deferred. String len
 The current compiler implements the heterogeneous-bag design goal for arrays,
 using the keyword `array` (`list` is an alias for the same type). An array
 literal, for example
-`[1, "two", Node(3), {"name": "Ada"}, null]`, may freely mix `int`, `string`,
-class references, maps, and `null` in the same collection; empty literals `[]`
+`[1, true, 3.14, 42u, "two", Node(3), {"name": "Ada"}, null]`, may freely mix
+scalar values, strings, class references, maps, and `null` in the same collection; empty literals `[]`
 are always allowed. Reading an element with `values[index]` yields the explicit
 dynamic `any` value type rather than a statically-known concrete type; assigning
 `values[index] = expr` accepts any supported element type directly.
@@ -359,15 +662,18 @@ half-open range `[start, end)` into independent storage. Copying is shallow
 for class references and nested collections. Arrays have a fixed length; array assignment aliases
 the same mutable storage. Negative/out-of-range indices and invalid slice
 bounds raise catchable, source-located exceptions. `any` is the explicit
-dynamic/tagged value type: it can be declared directly, holds an `int`,
-`string`, class reference, map reference, or `null`, has no members of its own,
+dynamic/tagged value type: it can be declared directly, holds an `int`, `bool`,
+`float`, `unsigned`, `string`, class reference, array reference, map reference,
+or `null`, has no members of its own,
 and must be assigned to a concretely typed variable/field/parameter to extract
 its value (a runtime-checked operation that raises on a tag or exact-class mismatch;
 there is no covariant/polymorphic downcast support). Nested arrays and
-collections are supported as elements and are traced by the GC. Direct
-array-to-`any` conversion and append/resize operations are not implemented.
-Equality and ordering comparisons are limited to `int`; strings, objects,
-arrays, maps, and `any` do not support `==` or `!=`. Arrays and maps can be
+collections are supported as elements and are traced by the GC. Collection
+values can be stored in `any` and extracted with a runtime tag check; append
+and resize operations are not implemented.
+Equality and ordering comparisons are supported for matching scalar types
+(`int`, `unsigned`, and `float` ordering; equality also supports `bool`);
+strings, objects, arrays, maps, and `any` do not support comparisons. Arrays and maps can be
 carried through tagged values produced by collection indexing. The runtime
 traces class-reference and nested collection references reached through arrays,
 maps, `any` values, and object fields.
@@ -383,8 +689,8 @@ returns integer `1` or `0` without raising for a missing key. Missing-key index
 access raises a source-located runtime exception that can be caught with
 `try`/`except`. Map assignment aliases its mutable storage.
 
-Map values accept ints, strings, class references, null, `any`, arrays, and
-maps. Arrays and maps may recursively contain either collection type. Array
+Map values accept scalar values, strings, class references, null, `any`, arrays,
+and maps. Arrays and maps may recursively contain either collection type. Array
 and map references in tagged values use distinct tags, so typed extraction
 checks the requested collection kind. The precise collector traces
 class-reference and nested collection references in both collection kinds,
@@ -598,10 +904,12 @@ escaping a constructor marks the partially initialized allocation destroyed so G
 reclaims it without invoking its destructor.
 
 The prototype's collector retains an object resurrected during finalization
-after re-tracing roots, but it remains destroyed and unusable. Whether the
-complete language should permit resurrection remains undecided. GC timing and
-memory reclamation are separate from the caller-controlled timing of explicit
-cleanup.
+after re-tracing roots, but it remains destroyed and unusable. Object
+resurrection is not supported by the language: a finalizer cannot make a
+destroyed object usable again by, for example, storing `this` into a
+surviving root. This matches the prototype's current behavior; no code
+change was needed to confirm it. GC timing and memory reclamation are
+separate from the caller-controlled timing of explicit cleanup.
 
 ### Threads
 
@@ -628,22 +936,43 @@ inline {
 inline (int n, string msg) {
     printf("%s: %d\n", simp_string_cstr(msg), *n);
 }
+
+handle h inline {
+    /* assign the handle, e.g. h = fopen(...) cast to the capture's slot */
+}
+return(h)
 ```
 
 - Grammar: `inline { <C source> }` or
   `inline ( <type> <name> [, <type> <name> ...] ) { <C source> }`. These are
   statements, not top-level declarations; they may appear wherever an
   ordinary statement may appear inside a function body. The capture list is
-  optional. Capture types are `int`, `string`, `array`, `map`, or a declared
-  class type; `void` and `any` are not capture types. Every listed type must
-  exactly match an enclosing Simple local or parameter. Captures are by name,
-  cannot be duplicated, and only listed locals are available to the C block.
+  optional. Capture types are `int`, `bool`, `float`, `unsigned`, `string`,
+  `array`, `map`, `handle`, or a declared class type; `void`, `any`, and
+  `buffer` are not capture types (`buffer` remains GC-tracked, owned Simple
+  storage and is not exchanged with inline C in the first milestone). Every
+  listed type must exactly match an enclosing Simple local or parameter.
+  Captures are by name, cannot be duplicated, and only listed locals are
+  available to the C block.
+- A second, sugared form declares and captures a single local in one
+  statement: `<type> <name> inline { <C source> }`, where `<type>` is one
+  of the capture-eligible types above. This is exactly equivalent to
+  writing the plain declaration `<type> <name>` immediately followed by
+  `inline (<type> <name>) { <C source> }` capturing that same,
+  just-declared local — it exists purely to avoid the two-statement
+  "declare, then immediately fill from C" pattern, which is how a `handle`
+  is typically obtained: `handle h inline { /* C code assigns h */ }`. The
+  local is uninitialized (`null`) for the duration of the C block, exactly
+  as an ordinary declaration without an initializer would be.
 - Captured locals are passed by address so C writes are visible to the Simple
   code after the block. The generated shim parameters are `int *` for `int`,
+  `_Bool *` for `bool`, `double *` for `float`, `uint64_t *` for `unsigned`,
   `SimpString *` for `string` (using the matching struct from
-  `include/simp/RuntimeGc.h`), and `void **` for `array`, `map`, and class
-  references. Thus, for example, C reads or updates `n` through `*n`; a
-  reference capture's `void **` addresses the Simple reference slot.
+  `include/simp/RuntimeGc.h`), and `void **` for `array`, `map`, `handle`, and
+  class references. Thus, for example, C reads or updates `n` through `*n`; a
+  reference capture's `void **` addresses the Simple reference slot — for
+  `handle`, C assigns whatever opaque pointer value it holds (a `FILE *`, a
+  library handle, and so on) directly into that slot.
   Captures must preserve the language and runtime invariants of the value they
   represent.
 - This is intentionally different from a C-bound method: its arguments
@@ -732,7 +1061,8 @@ string Foo.echo(string value) from "c_foo_echo"
   mention `from` or any external-specific syntax. The implicit receiver is
   passed to C as the first argument (`void *receiver`), followed by explicit
   parameters. C code may ignore it or use it as an opaque reference.
-- The prototype ABI targets x86-64 SysV. `int` is C `int` (`i32`); `string`
+- The prototype ABI targets x86-64 SysV. `int` is C `int` (`i32`), `bool` is
+  `_Bool` (`i1`), `float` is `double`, and `unsigned` is `uint64_t` (`i64`); `string`
   is `SimpString { const char *data; uint64_t length; }` and is scalarized to
   `(ptr, uint64_t)` for arguments and the corresponding two-scalar aggregate
   for returns; `array`, `map`, and class references are opaque pointers;
@@ -760,9 +1090,11 @@ string Foo.echo(string value) from "c_foo_echo"
   namespace exports. Imported methods, including methods backed by C `from`
   definitions, are called through ordinary instance-method syntax; callers
   do not name C symbols directly.
-- Also deferred: library search-path configuration, variadic methods,
-  `any` at the native boundary, and ABI lowering for targets other than
-  x86-64 SysV.
+- Also not supported: variadic methods (a method always has a fixed
+  parameter count and fixed parameter types; there is no `...`-style
+  variable-argument syntax anywhere in the language, native-bound or not).
+  Also deferred: library search-path configuration, `any` at the native
+  boundary, and ABI lowering for targets other than x86-64 SysV.
 
 
 
@@ -834,6 +1166,9 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   appropriate.
 - Any use of an object after its destructor has run raises an exception; if
   uncaught, the program aborts.
+- Object resurrection is not supported: a destroyed object cannot be made
+  usable again, including by a finalizer storing a reference to itself into
+  a surviving root.
 - The class, inheritance, access, namespace/path, multi-pass name-resolution,
   keyword, string, collection, include/import, destructor, and inline-C
   behavior described above is the current agreed direction.
@@ -846,14 +1181,51 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   compiler implements source-module registry lookup and import linking.
 - The listed module priorities, examples, testing expectations, source-size guidance, documentation expectations, and CLI/tooling goals are project requirements.
 - The grammar proposals must be reconciled with examples and priorities before becoming a specification.
+- `switch`/`case` will not be implemented; `if`/`else if`/`else` chains are the
+  only multi-way branch construct.
+- `break` and `continue` are required loop-control statements.
+- `do { ... } while (<expr>)` is a required loop form in addition to `while`
+  and `for`.
+- Logical conjunction/disjunction/negation are spelled two ways, both
+  required and equivalent: the keyword forms `and`, `or`, `not`, and the
+  symbolic forms `&&`, `||`, `!`.
+- `bool`, `float` (an alias for `double`-precision IEEE 754), and `unsigned`
+  are required scalar types with full static type checking, alongside the
+  existing `int`, `string`, `array`, `map`, and `any`.
+- Float literals follow `strtod()`'s decimal-constant lexical shape,
+  including leading-dot (`.5`) and trailing-dot (`5.`) forms; a bare digit
+  sequence with no point or exponent remains `int`.
+- Bitwise operators (`&`, `|`, `^`, `~`, `<<`, `>>`) are not supported.
+- `static` (class-level fields/methods) is not supported.
+- `interface` and `abstract` are not supported; multiple inheritance remains
+  the only mechanism for shared/abstract-like contracts.
+- Generics/templates may be supported later; they are not part of the
+  current agreed direction.
+- Variadic methods are not supported: every method has a fixed parameter
+  count and fixed parameter types, whether Simple-implemented or
+  native-bound.
+- `buffer` and `handle` are confirmed new built-in reference types (see
+  "`buffer` and `handle` types" under "Strings" above): both are
+  primitive-like (not classes, no user methods, no subclassing). `buffer`
+  is a resizable, GC-traced byte sequence with `.resize`/`.length`/`.clear`/
+  `.append` and array-style slicing; assigning a `buffer` copies it.
+  `handle` is fully opaque with no built-in operations at all. Neither
+  `buffer` nor `handle` — nor `string` — may appear as an operand in an
+  operator expression; this is a compile-time (syntax) error.
+- `handle` is a valid `inline` C capture type, including the sugared
+  `handle x inline { ... }` declare-and-capture form (see "Inline C and
+  LLVM/backend direction"); this is the confirmed way native code assigns a
+  `handle` value directly into Simple code, alongside a native-bound method
+  returning one.
 
 ### Open or explicitly deferred
 
 - The complete grammar and how it is reconciled with the examples and priorities.
-- Exact nullability-flow analysis and all conversion syntax.
+- Exact nullability-flow analysis and explicit conversion syntax. Scalar casts
+  are not currently implemented; the chosen numeric literal forms and
+  mandatory `u` suffix may be revisited as the grammar is finalized.
 - Whether string length is measured in bytes or Unicode code points.
 - Advanced Unicode semantics beyond current UTF-8 support.
-- Whether object resurrection is possible.
 - GC timing and memory reclamation policy; neither is determined by explicitly
   invoking a destructor. The prototype currently collects before each object
   allocation; that cadence is not a final language/runtime policy.
@@ -873,8 +1245,16 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   and package-version constraints.
 - Whether and where SWIG is used.
 - The full set of future standard/external modules.
-- Library search paths, variadic native-bound methods, `any` values across
-  the native boundary, and ABI support beyond x86-64 SysV.
+- Library search paths, `any` values across the native boundary, and ABI
+  support beyond x86-64 SysV.
 - Package-manager, IDE, and LLDB/GDB integration details.
+- The class-based `String` redesign built on the now-confirmed `buffer`
+  type (see "Proposal: a class-based `String`..." under "Strings" above):
+  byte-vs-codepoint indexing, `String`'s element-type typing, mutation
+  alias-vs-copy semantics (now in tension with `buffer`'s confirmed
+  copy-on-assign behavior), the `string`/`String` unification question,
+  and — the most consequential open conflict — whether `String` should get
+  `==`/`!=` at all, since `buffer`, `handle`, and `string` are now
+  confirmed to never appear in operator expressions.
 
-Until these questions are resolved through examples and a runnable prototype, this document should be read as a design record and project guide rather than as a final language specification.
+Until these questions are resolved through examples and a runnable prototype, this document should be read as a design record and project guide rather than as a final language specification. A comprehensive, implementation-tracking language specification (covering everything actually built, not just agreed direction) is a planned future deliverable, separate from this design-record document.

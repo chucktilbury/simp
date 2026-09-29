@@ -52,11 +52,16 @@ private:
     Statement parsePrint();
     Statement parseIf();
     Statement parseWhile();
+    Statement parseDoWhile();
     Statement parseForEach();
+    Statement parseLoopControl();
     Statement parseRaise();
     Statement parseTry();
     Statement parseInlineC();
     std::unique_ptr<Expression> parseExpression();
+    std::unique_ptr<Expression> parseOr();
+    std::unique_ptr<Expression> parseAnd();
+    std::unique_ptr<Expression> parseNot();
     std::unique_ptr<Expression> parseComparison();
     std::unique_ptr<Expression> parseAddition();
     std::unique_ptr<Expression> parseMultiplication();

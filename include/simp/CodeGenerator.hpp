@@ -35,6 +35,16 @@ private:
         std::string type;
         std::string operand;
     };
+    struct LoopTarget {
+        std::string breakLabel;
+        std::string continueLabel;
+        std::size_t tryDepth = 0;
+    };
+    struct ActiveTryTransfer {
+        std::string exceptionFrame;
+        const std::vector<Statement>* cleanup = nullptr;
+        bool exceptionFrameActive = false;
+    };
     using Scope = std::unordered_map<std::string, Binding>;
 
     void emitClassTypesAndMetadata(const Program& program);
@@ -45,6 +55,7 @@ private:
     void emitStatements(const std::vector<Statement>& statements);
     void emitStatement(const Statement& statement);
     void emitTry(const Statement& statement);
+    void emitLoopTransfer(bool isBreak, const SourceLocation& location);
     Value emitExpression(const Expression& expression, const std::string& expectedType = {});
     Value emitIntegerExpression(const Expression& expression);
     void emitArrayElementStore(const std::string& valuePointer, Value value,
@@ -108,6 +119,7 @@ private:
     std::string internString(const std::string& bytes);
     void emitStringBytes(const std::string& bytes);
     void emitPrint(const Statement& statement);
+    void emitPrintValue(const Value& value, const SourceLocation& location);
     void emitPrintDynamicValue(const Value& value);
     void emitInlineC(const Statement& statement);
     std::string inlineSymbol(const Statement& statement) const;
@@ -136,6 +148,8 @@ private:
     std::unordered_set<std::string> declaredInlineSymbols_;
     std::unordered_map<std::string, std::string> inlineShims_;
     std::vector<std::string> rootSlots_;
+    std::vector<LoopTarget> loopTargets_;
+    std::vector<ActiveTryTransfer> activeTryTransfers_;
     std::size_t nextTemporary_ = 0;
     std::size_t nextVariable_ = 0;
     std::size_t nextRoot_ = 0;

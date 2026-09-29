@@ -1,0 +1,159 @@
+# Verifies do-while, loop transfers, logical aliases, precedence, short-circuiting, and finally.
+class Probe {
+    int calls
+    Probe() {
+        calls = 0
+    }
+    bool touch() {
+        calls = calls + 1
+        return true
+    }
+    int read() {
+        return calls
+    }
+}
+
+start {
+    int iterations = 0
+    int whileTotal = 0
+    while (iterations < 5) {
+        iterations = iterations + 1
+        if (iterations == 2) {
+            continue
+        }
+        if (iterations == 4) {
+            break
+        }
+        whileTotal = whileTotal + iterations
+    }
+    print(whileTotal)
+
+    int doRuns = 0
+    do {
+        doRuns = doRuns + 1
+    } while (false)
+    print(doRuns)
+
+    int doCount = 0
+    do {
+        doCount = doCount + 1
+        if (doCount == 1) {
+            continue
+        }
+        break
+    } while (true)
+    print(doCount)
+
+    array values = [1, 2, 3, 4]
+    int forTotal = 0
+    for (item in values) {
+        int value = item
+        if (value == 2) {
+            continue
+        }
+        if (value == 4) {
+            break
+        }
+        forTotal = forTotal + value
+    }
+    print(forTotal)
+
+    map entries = {"first": 1, "skip": 2, "stop": 3, "last": 4}
+    int mapTotal = 0
+    for (key, item in entries) {
+        int value = item
+        if (value == 2) {
+            continue
+        }
+        if (value == 3) {
+            break
+        }
+        mapTotal = mapTotal + value
+    }
+    print(mapTotal)
+
+    int outer = 0
+    int nestedTotal = 0
+    while (outer < 2) {
+        outer = outer + 1
+        int inner = 0
+        while (inner < 3) {
+            inner = inner + 1
+            break
+        }
+        nestedTotal = nestedTotal + inner
+    }
+    print(nestedTotal)
+
+    Probe probe = Probe()
+    bool andWord = false and probe.touch()
+    bool andSymbol = false && probe.touch()
+    bool orWord = true or probe.touch()
+    bool orSymbol = true || probe.touch()
+    print(andWord)
+    print(andSymbol)
+    print(orWord)
+    print(orSymbol)
+    print(probe.read())
+
+    bool wordLogic = not (1 != 1) or 1 == 1 and 1 < 2
+    bool symbolLogic = !(1 != 1) || 1 == 1 && 1 < 2
+    print(wordLogic)
+    print(symbolLogic)
+    bool logicalPrecedence = false or true and false
+    print(logicalPrecedence)
+    bool comparisonPrecedence = not 0 == 2
+    print(comparisonPrecedence)
+
+    int cleanupCount = 0
+    while (true) {
+        try {
+            break
+        } finally {
+            cleanupCount = cleanupCount + 1
+        }
+    }
+    while (true) {
+        try {
+            raise "break from handler"
+        } except {
+            break
+        } finally {
+            cleanupCount = cleanupCount + 1
+        }
+    }
+    int turns = 0
+    while (turns < 2) {
+        turns = turns + 1
+        try {
+            continue
+        } finally {
+            cleanupCount = cleanupCount + 1
+        }
+    }
+    print(cleanupCount)
+
+    int finalTurns = 0
+    int finalContinues = 0
+    while (finalTurns < 2) {
+        finalTurns = finalTurns + 1
+        try {
+            print(0)
+        } finally {
+            finalContinues = finalContinues + 1
+            continue
+        }
+    }
+    print(finalContinues)
+
+    int finalBreaks = 0
+    while (true) {
+        try {
+            print(5)
+        } finally {
+            finalBreaks = finalBreaks + 1
+            break
+        }
+    }
+    print(finalBreaks)
+}

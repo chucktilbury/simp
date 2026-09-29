@@ -1,0 +1,29 @@
+# float literals accept the same lexical shapes strtod() accepts: leading-dot
+# (".5"), trailing-dot ("5."), digit.digit, and each of those with a decimal
+# exponent. A bare "0" with no dot/exponent remains an int literal.
+class App {
+    App() {}
+    destroy() {}
+    void run() {
+        float leadingDot = .5
+        float trailingDot = 5.
+        float digitDotDigit = 3.14
+        float exponentOnly = 1e3
+        float leadingDotExponent = .5e2
+        float trailingDotExponent = 5.e2
+        int bareZero = 0
+
+        print("{}"(leadingDot))
+        print("{}"(trailingDot))
+        print("{}"(digitDotDigit))
+        print("{}"(exponentOnly))
+        print("{}"(leadingDotExponent))
+        print("{}"(trailingDotExponent))
+        print("{}"(bareZero))
+    }
+}
+
+start {
+    App a = App()
+    a.run()
+}

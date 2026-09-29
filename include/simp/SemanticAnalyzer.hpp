@@ -97,6 +97,7 @@ private:
     const MethodDeclaration* currentMethod_ = nullptr;
     std::vector<std::string> currentNamespace_;
     std::string currentModule_;
+    std::size_t loopDepth_ = 0;
     std::unordered_map<std::string,
         std::unordered_map<std::string, ImportBinding>> importAliases_;
 };

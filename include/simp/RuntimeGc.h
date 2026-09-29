@@ -35,7 +35,10 @@ typedef enum SimpArrayValueTag {
     SIMP_ARRAY_STRING = 2,
     SIMP_ARRAY_OBJECT = 3,
     SIMP_ARRAY_MAP = 4,
-    SIMP_ARRAY_ARRAY = 5
+    SIMP_ARRAY_ARRAY = 5,
+    SIMP_ARRAY_BOOLEAN = 6,
+    SIMP_ARRAY_FLOAT = 7,
+    SIMP_ARRAY_UNSIGNED = 8
 } SimpArrayValueTag;
 
 typedef struct SimpArrayValue {

@@ -163,6 +163,8 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
     entryAllocas_.clear();
     functionPrologue_.clear();
     rootSlots_.clear();
+    loopTargets_.clear();
+    activeTryTransfers_.clear();
     instructions_.clear();
     nextTemporary_ = 0;
     nextVariable_ = 0;
@@ -266,7 +268,8 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
                                  ", 1\n";
                 arguments += "ptr " + data + ", i64 " + length;
             } else {
-                arguments += llvmType(parameter.type) + " " + argument;
+                arguments += llvmType(parameter.type) +
+                             (parameter.type == "bool" ? " zeroext " : " ") + argument;
             }
         }
         const auto external = "@" + method.externalSymbol;
@@ -292,8 +295,11 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
             instructions_ += "  ret %SimpleString " + result + "\n";
         } else {
             const auto result = newTemporary();
-            instructions_ += "  " + result + " = call " + llvmType(method.returnType) + " " +
-                             external + "(" + arguments + ")\n";
+            const auto returnType = method.returnType == "bool"
+                                        ? "zeroext i1"
+                                        : llvmType(method.returnType);
+            instructions_ += "  " + result + " = call " + returnType + " " + external + "(" +
+                             arguments + ")\n";
             const auto rooted = rootObjectValue({method.returnType, result}, method.location);
             emitRootFramePop();
             instructions_ += "  ret " + llvmType(method.returnType) + " " + rooted.operand + "\n";
@@ -567,6 +573,8 @@ void CodeGenerator::emitMain(const Program& program) {
     entryAllocas_.clear();
     functionPrologue_.clear();
     rootSlots_.clear();
+    loopTargets_.clear();
+    activeTryTransfers_.clear();
     instructions_.clear();
     nextTemporary_ = 0;
     nextVariable_ = 0;
@@ -627,6 +635,8 @@ std::string CodeGenerator::generate(const Program& program,
            << "target triple = \"" << targetTriple_ << "\"\n\n"
            << typeDefinitions_
            << "@.simp.int.format = private unnamed_addr constant [3 x i8] c\"%d\\00\"\n"
+           << "@.simp.unsigned.format = private unnamed_addr constant [5 x i8] c\"%llu\\00\"\n"
+           << "@.simp.float.format = private unnamed_addr constant [6 x i8] c\"%.15g\\00\"\n"
            << "@.simp.null.message = private unnamed_addr constant [14 x i8] c\"null reference\"\n"
            << "@.simp.division.message = private unnamed_addr constant [16 x i8] c\"division by zero\"\n"
            << "@stdout = external global ptr\n"

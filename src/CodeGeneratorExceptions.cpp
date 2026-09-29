@@ -30,9 +30,12 @@ void CodeGenerator::emitTry(const Statement& statement) {
                      + bodyLabel + ":\n"
                      "  call void @simp_exception_push(ptr " + frame + ")\n";
     scopes_.emplace_back();
+    activeTryTransfers_.push_back(
+        {frame, statement.hasCleanup ? &statement.cleanup : nullptr, true});
     blockTerminated_ = false;
     emitStatements(statement.body);
     const bool bodyTerminated = blockTerminated_;
+    activeTryTransfers_.pop_back();
     scopes_.pop_back();
     if (!bodyTerminated) {
         instructions_ += "  call void @simp_exception_pop(ptr " + frame + ")\n"
@@ -95,9 +98,12 @@ void CodeGenerator::emitTry(const Statement& statement) {
                     statement.name,
                     Binding{"string", caughtStringSlot, {}, false, true});
             }
+            activeTryTransfers_.push_back(
+                {catchFrame, statement.hasCleanup ? &statement.cleanup : nullptr, true});
             blockTerminated_ = false;
             emitStatements(statement.alternate);
             const bool catchTerminated = blockTerminated_;
+            activeTryTransfers_.pop_back();
             scopes_.pop_back();
             if (!catchTerminated) {
                 instructions_ += "  call void @simp_exception_pop(ptr " + catchFrame + ")\n"
@@ -132,8 +138,11 @@ void CodeGenerator::emitTry(const Statement& statement) {
                     statement.name,
                     Binding{"string", caughtStringSlot, {}, false, true});
             }
+            activeTryTransfers_.push_back(
+                {{}, statement.hasCleanup ? &statement.cleanup : nullptr, false});
             blockTerminated_ = false;
             emitStatements(statement.alternate);
+            activeTryTransfers_.pop_back();
             scopes_.pop_back();
             if (!blockTerminated_) instructions_ += "  br label %" + endLabel + "\n";
         }

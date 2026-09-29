@@ -79,9 +79,14 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::End: return "end of file";
     case TokenType::Identifier: return "identifier";
     case TokenType::Integer: return "integer";
+    case TokenType::UnsignedInteger: return "unsigned integer";
+    case TokenType::Float: return "float";
     case TokenType::String: return "string";
     case TokenType::Start: return "'start'";
     case TokenType::Int: return "'int'";
+    case TokenType::Bool: return "'bool'";
+    case TokenType::FloatType: return "'float'";
+    case TokenType::Unsigned: return "'unsigned'";
     case TokenType::StringType: return "'string'";
     case TokenType::ArrayType: return "'array'";
     case TokenType::MapType: return "'map'";
@@ -99,13 +104,20 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Virtual: return "'virtual'";
     case TokenType::Super: return "'super'";
     case TokenType::Null: return "'null'";
+    case TokenType::True: return "'true'";
+    case TokenType::False: return "'false'";
     case TokenType::Return: return "'return'";
     case TokenType::Void: return "'void'";
     case TokenType::If: return "'if'";
     case TokenType::Else: return "'else'";
     case TokenType::While: return "'while'";
+    case TokenType::Do: return "'do'";
     case TokenType::For: return "'for'";
     case TokenType::In: return "'in'";
+    case TokenType::Break: return "'break'";
+    case TokenType::Continue: return "'continue'";
+    case TokenType::And: return "'and'";
+    case TokenType::Or: return "'or'";
     case TokenType::Print: return "'print'";
     case TokenType::Raise: return "'raise'";
     case TokenType::Try: return "'try'";
@@ -128,6 +140,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Slash: return "'/'";
     case TokenType::Percent: return "'%'";
     case TokenType::Bang: return "'!'";
+    case TokenType::AndAnd: return "'&&'";
+    case TokenType::OrOr: return "'||'";
     case TokenType::Equal: return "'='";
     case TokenType::EqualEqual: return "'=='";
     case TokenType::BangEqual: return "'!='";
@@ -222,13 +236,45 @@ void Lexer::skipTrivia(std::vector<Token>& tokens, std::size_t parenthesisDepth)
 
 Token Lexer::scanIdentifierOrInteger() {
     const auto location = currentLocation();
-    const bool integer = peek() >= '0' && peek() <= '9';
+    const bool leadingDot = peek() == '.';
+    const bool integer = leadingDot || (peek() >= '0' && peek() <= '9');
     std::string text;
-    while (integer ? (peek() >= '0' && peek() <= '9') : isIdentifierPart(peek())) {
-        text.push_back(advance());
-    }
     if (integer) {
-        return makeToken(TokenType::Integer, std::move(text), location);
+        bool floating = leadingDot;
+        if (leadingDot) {
+            /* strtod-style leading-dot float, e.g. ".5"; the caller only
+             * enters this branch on '.' when the next character is a
+             * digit, so a digit sequence is guaranteed here. */
+            text.push_back(advance());
+            while (peek() >= '0' && peek() <= '9') text.push_back(advance());
+        } else {
+            while (peek() >= '0' && peek() <= '9') text.push_back(advance());
+        }
+        if (!leadingDot && peek() == '.') {
+            /* strtod-style trailing-dot float, e.g. "5."; digits after the
+             * dot are optional. */
+            floating = true;
+            text.push_back(advance());
+            while (peek() >= '0' && peek() <= '9') text.push_back(advance());
+        }
+        if (peek() == 'e' || peek() == 'E') {
+            floating = true;
+            text.push_back(advance());
+            if (peek() == '+' || peek() == '-') text.push_back(advance());
+            if (peek() < '0' || peek() > '9') {
+                throw DiagnosticError(location, "malformed floating-point literal");
+            }
+            while (peek() >= '0' && peek() <= '9') text.push_back(advance());
+        }
+        if (!floating && (peek() == 'u' || peek() == 'U')) {
+            text.push_back(advance());
+            return makeToken(TokenType::UnsignedInteger, std::move(text), location);
+        }
+        return makeToken(floating ? TokenType::Float : TokenType::Integer,
+                         std::move(text), location);
+    }
+    while (isIdentifierPart(peek())) {
+        text.push_back(advance());
     }
 
     std::string normalized;
@@ -238,12 +284,17 @@ Token Lexer::scanIdentifierOrInteger() {
     }
     static const std::unordered_map<std::string, TokenType> keywords{
         {"start", TokenType::Start}, {"int", TokenType::Int},
+        {"bool", TokenType::Bool}, {"float", TokenType::FloatType},
+        {"unsigned", TokenType::Unsigned},
         {"string", TokenType::StringType},
         {"array", TokenType::ArrayType}, {"list", TokenType::ArrayType},
         {"map", TokenType::MapType}, {"dict", TokenType::MapType},
         {"any", TokenType::AnyType}, {"if", TokenType::If},
         {"else", TokenType::Else}, {"while", TokenType::While},
-        {"for", TokenType::For}, {"in", TokenType::In},
+        {"do", TokenType::Do}, {"for", TokenType::For},
+        {"in", TokenType::In}, {"break", TokenType::Break},
+        {"continue", TokenType::Continue}, {"and", TokenType::And},
+        {"or", TokenType::Or}, {"not", TokenType::Bang},
         {"print", TokenType::Print}, {"raise", TokenType::Raise},
         {"try", TokenType::Try}, {"except", TokenType::Except},
         {"finally", TokenType::Finally}, {"class", TokenType::Class},
@@ -256,6 +307,7 @@ Token Lexer::scanIdentifierOrInteger() {
         {"virtual", TokenType::Virtual},
         {"super", TokenType::Super},
         {"null", TokenType::Null},
+        {"true", TokenType::True}, {"false", TokenType::False},
         {"return", TokenType::Return}, {"void", TokenType::Void}
     };
     const auto found = keywords.find(normalized);
@@ -392,7 +444,8 @@ std::vector<Token> Lexer::tokenize() {
             }
             continue;
         }
-        if (isIdentifierStart(value) || (value >= '0' && value <= '9')) {
+        if (isIdentifierStart(value) || (value >= '0' && value <= '9') ||
+            (value == '.' && peek(1) >= '0' && peek(1) <= '9')) {
             tokens.push_back(scanIdentifierOrInteger());
             continue;
         }
@@ -417,6 +470,20 @@ std::vector<Token> Lexer::tokenize() {
         case '*': type = TokenType::Star; break;
         case '/': type = TokenType::Slash; break;
         case '%': type = TokenType::Percent; break;
+        case '&':
+            if (peek() != '&') {
+                throw DiagnosticError(location, "unexpected character");
+            }
+            advance();
+            type = TokenType::AndAnd;
+            break;
+        case '|':
+            if (peek() != '|') {
+                throw DiagnosticError(location, "unexpected character");
+            }
+            advance();
+            type = TokenType::OrOr;
+            break;
         case '!':
             type = peek() == '=' ? (advance(), TokenType::BangEqual) : TokenType::Bang;
             break;
@@ -440,8 +507,13 @@ std::vector<Token> Lexer::tokenize() {
         }
         std::string text(1, value);
         if (type == TokenType::BangEqual || type == TokenType::EqualEqual ||
-            type == TokenType::LessEqual || type == TokenType::GreaterEqual) {
-            text.push_back('=');
+            type == TokenType::LessEqual || type == TokenType::GreaterEqual ||
+            type == TokenType::AndAnd || type == TokenType::OrOr) {
+            if (type == TokenType::AndAnd || type == TokenType::OrOr) {
+                text.push_back(value);
+            } else {
+                text.push_back('=');
+            }
         }
         tokens.push_back(makeToken(type, std::move(text), location));
     }

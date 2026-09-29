@@ -19,6 +19,9 @@ void indent(std::ostream& output, int depth) {
 const char* expressionName(ExpressionKind kind) {
     switch (kind) {
     case ExpressionKind::Integer: return "Integer";
+    case ExpressionKind::Unsigned: return "Unsigned";
+    case ExpressionKind::Float: return "Float";
+    case ExpressionKind::Boolean: return "Boolean";
     case ExpressionKind::String: return "String";
     case ExpressionKind::Identifier: return "Identifier";
     case ExpressionKind::Unary: return "Unary";
@@ -70,6 +73,9 @@ void dumpStatement(const Statement& statement, std::ostream& output, int depth) 
     case StatementKind::Print: output << "Print\n"; break;
     case StatementKind::If: output << "If\n"; break;
     case StatementKind::While: output << "While\n"; break;
+    case StatementKind::DoWhile: output << "Do while\n"; break;
+    case StatementKind::Break: output << "Break\n"; break;
+    case StatementKind::Continue: output << "Continue\n"; break;
     case StatementKind::ForEach:
         output << (statement.keyName.empty()
                        ? "For each [" + statement.name + "]\n"

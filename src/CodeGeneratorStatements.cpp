@@ -42,6 +42,12 @@ void CodeGenerator::emitInlineC(const Statement& statement) {
         llvmArguments += "ptr " + binding.pointer;
         if (capture.type == "int") {
             cParameters += "int *" + capture.name;
+        } else if (capture.type == "bool") {
+            cParameters += "_Bool *" + capture.name;
+        } else if (capture.type == "float") {
+            cParameters += "double *" + capture.name;
+        } else if (capture.type == "unsigned") {
+            cParameters += "uint64_t *" + capture.name;
         } else if (capture.type == "string") {
             cParameters += "SimpString *" + capture.name;
         } else {
@@ -72,6 +78,39 @@ void CodeGenerator::emitStatements(const std::vector<Statement>& statements) {
     for (const auto& statement : statements) {
         if (!blockTerminated_) emitStatement(statement);
     }
+}
+
+void CodeGenerator::emitLoopTransfer(bool isBreak, const SourceLocation& location) {
+    if (loopTargets_.empty()) {
+        throw DiagnosticError(location,
+                              isBreak ? "'break' outside of a loop"
+                                      : "'continue' outside of a loop");
+    }
+    const auto target = loopTargets_.back();
+    const auto savedTryTransfers = activeTryTransfers_;
+    while (activeTryTransfers_.size() > target.tryDepth) {
+        const auto active = activeTryTransfers_.back();
+        activeTryTransfers_.pop_back();
+        if (active.exceptionFrameActive) {
+            instructions_ += "  call void @simp_exception_pop(ptr " +
+                             active.exceptionFrame + ")\n";
+        }
+        if (active.cleanup != nullptr) {
+            scopes_.emplace_back();
+            blockTerminated_ = false;
+            emitStatements(*active.cleanup);
+            const bool cleanupTerminated = blockTerminated_;
+            scopes_.pop_back();
+            if (cleanupTerminated) {
+                activeTryTransfers_ = savedTryTransfers;
+                return;
+            }
+        }
+    }
+    instructions_ += "  br label %" + (isBreak ? target.breakLabel : target.continueLabel) +
+                     "\n";
+    blockTerminated_ = true;
+    activeTryTransfers_ = savedTryTransfers;
 }
 
 void CodeGenerator::emitStatement(const Statement& statement) {
@@ -226,13 +265,11 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         scopes_.pop_back();
         return;
     case StatementKind::If: {
-        const auto condition = emitIntegerExpression(*statement.expressions.front());
-        const auto flag = newTemporary();
+        const auto condition = emitExpression(*statement.expressions.front());
         const auto thenLabel = freshLabel("if.then");
         const auto elseLabel = freshLabel("if.else");
         const auto endLabel = freshLabel("if.end");
-        instructions_ += "  " + flag + " = icmp ne i32 " + condition.operand + ", 0\n";
-        instructions_ += "  br i1 " + flag + ", label %" + thenLabel + ", label %" +
+        instructions_ += "  br i1 " + condition.operand + ", label %" + thenLabel + ", label %" +
                          (statement.hasAlternate ? elseLabel : endLabel) + "\n";
         instructions_ += thenLabel + ":\n";
         scopes_.emplace_back();
@@ -261,18 +298,41 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         const auto bodyLabel = freshLabel("while.body");
         const auto endLabel = freshLabel("while.end");
         instructions_ += "  br label %" + conditionLabel + "\n" + conditionLabel + ":\n";
-        const auto condition = emitIntegerExpression(*statement.expressions.front());
-        const auto flag = newTemporary();
-        instructions_ += "  " + flag + " = icmp ne i32 " + condition.operand + ", 0\n";
-        instructions_ += "  br i1 " + flag + ", label %" + bodyLabel + ", label %" + endLabel + "\n";
+        const auto condition = emitExpression(*statement.expressions.front());
+        instructions_ += "  br i1 " + condition.operand + ", label %" + bodyLabel +
+                         ", label %" + endLabel + "\n";
         instructions_ += bodyLabel + ":\n";
         scopes_.emplace_back();
+        loopTargets_.push_back({endLabel, conditionLabel, activeTryTransfers_.size()});
         blockTerminated_ = false;
         emitStatements(statement.body);
         const bool bodyTerminated = blockTerminated_;
+        loopTargets_.pop_back();
         scopes_.pop_back();
         if (!bodyTerminated) instructions_ += "  br label %" + conditionLabel + "\n";
         instructions_ += endLabel + ":\n";
+        blockTerminated_ = false;
+        return;
+    }
+    case StatementKind::DoWhile: {
+        const auto bodyLabel = freshLabel("do.body");
+        const auto conditionLabel = freshLabel("do.cond");
+        const auto endLabel = freshLabel("do.end");
+        instructions_ += "  br label %" + bodyLabel + "\n" + bodyLabel + ":\n";
+        scopes_.emplace_back();
+        loopTargets_.push_back({endLabel, conditionLabel, activeTryTransfers_.size()});
+        blockTerminated_ = false;
+        emitStatements(statement.body);
+        const bool bodyTerminated = blockTerminated_;
+        loopTargets_.pop_back();
+        scopes_.pop_back();
+        if (!bodyTerminated) instructions_ += "  br label %" + conditionLabel + "\n";
+        instructions_ += conditionLabel + ":\n";
+        blockTerminated_ = false;
+        const auto condition = emitExpression(*statement.expressions.front());
+        instructions_ += "  br i1 " + condition.operand + ", label %" + bodyLabel + ", label %" +
+                         endLabel + "\n"
+                         + endLabel + ":\n";
         blockTerminated_ = false;
         return;
     }
@@ -315,6 +375,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
 
         const auto conditionLabel = freshLabel("foreach.cond");
         const auto bodyLabel = freshLabel("foreach.body");
+        const auto stepLabel = freshLabel("foreach.step");
         const auto endLabel = freshLabel("foreach.end");
         instructions_ += "  br label %" + conditionLabel + "\n" + conditionLabel + ":\n";
         const auto index = newTemporary();
@@ -377,18 +438,21 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                              "  store %SimpleArrayValue " + value + ", ptr " + valueSlot +
                              "\n";
         }
+        loopTargets_.push_back({endLabel, stepLabel, activeTryTransfers_.size()});
         blockTerminated_ = false;
         emitStatements(statement.body);
         const bool bodyTerminated = blockTerminated_;
+        loopTargets_.pop_back();
         scopes_.pop_back();
-        if (!bodyTerminated) {
-            const auto currentIndex = newTemporary();
-            const auto nextIndex = newTemporary();
-            instructions_ += "  " + currentIndex + " = load i64, ptr " + indexSlot + "\n"
-                             "  " + nextIndex + " = add i64 " + currentIndex + ", 1\n"
-                             "  store i64 " + nextIndex + ", ptr " + indexSlot + "\n"
-                             "  br label %" + conditionLabel + "\n";
-        }
+        if (!bodyTerminated) instructions_ += "  br label %" + stepLabel + "\n";
+        instructions_ += stepLabel + ":\n";
+        blockTerminated_ = false;
+        const auto currentIndex = newTemporary();
+        const auto nextIndex = newTemporary();
+        instructions_ += "  " + currentIndex + " = load i64, ptr " + indexSlot + "\n"
+                         "  " + nextIndex + " = add i64 " + currentIndex + ", 1\n"
+                         "  store i64 " + nextIndex + ", ptr " + indexSlot + "\n"
+                         "  br label %" + conditionLabel + "\n";
         instructions_ += endLabel + ":\n";
         blockTerminated_ = false;
         return;
@@ -413,6 +477,12 @@ void CodeGenerator::emitStatement(const Statement& statement) {
     }
     case StatementKind::Try:
         emitTry(statement);
+        return;
+    case StatementKind::Break:
+        emitLoopTransfer(true, statement.location);
+        return;
+    case StatementKind::Continue:
+        emitLoopTransfer(false, statement.location);
         return;
     }
 }

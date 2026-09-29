@@ -306,11 +306,13 @@ bool SemanticAnalyzer::isAssignable(const std::string& target,
     // 'any' is the dynamic/tagged value representation returned by collection
     // reads; it may hold primitive values and managed references.
     if (target == "any") {
-        return source == "int" || source == "string" || source == "null" ||
-               source == "map" || classes_.find(source) != classes_.end();
+        return source == "int" || source == "bool" || source == "float" ||
+               source == "unsigned" || source == "string" || source == "null" ||
+               source == "array" || source == "map" || classes_.find(source) != classes_.end();
     }
     if (source == "any") {
-        return target == "int" || target == "string" || target == "map" ||
+        return target == "int" || target == "bool" || target == "float" ||
+               target == "unsigned" || target == "string" || target == "map" ||
                target == "array" ||
                classes_.find(target) != classes_.end();
     }

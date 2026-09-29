@@ -126,7 +126,7 @@ start {
   }
 
   try {
-    if (1) {
+    if (true) {
       raise "first branch"
     } else {
       raise "second branch"

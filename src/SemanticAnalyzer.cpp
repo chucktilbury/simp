@@ -158,7 +158,8 @@ std::string SemanticAnalyzer::resolveClassName(
 void SemanticAnalyzer::normalizeType(
     std::string& type, const std::vector<std::string>& namespacePath,
     const SourceLocation& location) const {
-    if (type == "int" || type == "string" || type == "array" || type == "map" ||
+    if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
+        type == "string" || type == "array" || type == "map" ||
         type == "any" || type == "void") {
         return;
     }
@@ -347,6 +348,9 @@ void SemanticAnalyzer::analyze(Program& program) {
     std::unordered_map<std::string, std::string> externalSymbolSignatures;
     const auto abiCategory = [](const std::string& type) {
         if (type == "int") return std::string("i32");
+        if (type == "bool") return std::string("i1");
+        if (type == "float") return std::string("double");
+        if (type == "unsigned") return std::string("i64");
         if (type == "string") return std::string("ptr,i64");
         if (type == "void") return std::string("void");
         return std::string("ptr");
@@ -563,8 +567,8 @@ void SemanticAnalyzer::analyze(Program& program) {
 
 void SemanticAnalyzer::validateType(const std::string& type, const SourceLocation& location,
                                    bool allowVoid) const {
-    if (type == "int" || type == "string" || type == "array" || type == "map" ||
-        type == "any" ||
+    if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
+        type == "string" || type == "array" || type == "map" || type == "any" ||
         (allowVoid && type == "void")) {
         return;
     }

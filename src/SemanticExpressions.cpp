@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cstdint>
+#include <cmath>
 #include <iostream>
 
 namespace simp {
@@ -85,6 +86,33 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         return "int";
     }
+    case ExpressionKind::Unsigned: {
+        const auto length = expression.value.size() - 1;
+        std::uint64_t value = 0;
+        const auto parsed = std::from_chars(expression.value.data(),
+                                            expression.value.data() + length, value);
+        if (length == 0 || parsed.ec != std::errc{} ||
+            parsed.ptr != expression.value.data() + length) {
+            throw DiagnosticError(expression.location,
+                                  "unsigned literal is outside the 64-bit range");
+        }
+        return "unsigned";
+    }
+    case ExpressionKind::Float: {
+        double value = 0;
+        const auto parsed = std::from_chars(expression.value.data(),
+                                            expression.value.data() + expression.value.size(),
+                                            value);
+        if (parsed.ec != std::errc{} ||
+            parsed.ptr != expression.value.data() + expression.value.size() ||
+            !std::isfinite(value)) {
+            throw DiagnosticError(expression.location,
+                                  "floating-point literal is outside the finite double range");
+        }
+        return "float";
+    }
+    case ExpressionKind::Boolean:
+        return "bool";
     case ExpressionKind::String:
         return "string";
     case ExpressionKind::Null:
@@ -178,13 +206,15 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         // so nested arrays share the same precise GC tracing as maps.
         for (auto& element : expression.arguments) {
             const auto actualType = analyzeExpression(*element);
-            const bool validElement = actualType == "int" || actualType == "string" ||
+            const bool validElement = actualType == "int" || actualType == "bool" ||
+                                      actualType == "float" || actualType == "unsigned" ||
+                                      actualType == "string" ||
                                       actualType == "null" || actualType == "any" ||
                                       isMapType(actualType) || isArrayType(actualType) ||
                                       classes_.find(actualType) != classes_.end();
             if (!validElement) {
                 throw DiagnosticError(element->location,
-                                      "array elements must be int, string, a class reference, "
+                                      "array elements must be scalar, string, a class reference, "
                                       "an array, a map, null, or 'any'; found " + actualType);
             }
         }
@@ -198,13 +228,15 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                       "map keys must have type string");
             }
             const auto valueType = analyzeExpression(*expression.arguments[index + 1]);
-            const bool validValue = valueType == "int" || valueType == "string" ||
+            const bool validValue = valueType == "int" || valueType == "bool" ||
+                                    valueType == "float" || valueType == "unsigned" ||
+                                    valueType == "string" ||
                                     valueType == "null" || valueType == "any" ||
                                     valueType == "array" || valueType == "map" ||
                                     classes_.find(valueType) != classes_.end();
             if (!validValue) {
                 throw DiagnosticError(expression.arguments[index + 1]->location,
-                                      "map values must be int, string, a collection, a class "
+                                      "map values must be scalar, string, a collection, a class "
                                       "reference, null, or 'any'; found " + valueType);
             }
         }
@@ -444,28 +476,68 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         return method->returnType;
     }
-    case ExpressionKind::Unary:
-        if (analyzeExpression(*expression.left) != "int") {
-            throw DiagnosticError(expression.location, "unary operator requires an int operand");
+    case ExpressionKind::Unary: {
+        const auto operand = analyzeExpression(*expression.left);
+        if (expression.value == "!") {
+            if (operand != "bool") {
+                throw DiagnosticError(expression.location,
+                                      "logical negation requires a bool operand");
+            }
+            return "bool";
         }
-        return "int";
+        if ((expression.value == "+" && (operand == "int" || operand == "float" ||
+                                         operand == "unsigned")) ||
+            (expression.value == "-" && (operand == "int" || operand == "float"))) {
+            return operand;
+        }
+        throw DiagnosticError(expression.location,
+                              "unary operator '" + expression.value +
+                                  "' does not support operand type " + operand);
+    }
     case ExpressionKind::Binary: {
         const auto left = analyzeExpression(*expression.left);
         const auto right = analyzeExpression(*expression.right);
         const auto& operation = expression.value;
-        if (operation == "==" || operation == "!=") {
-            if (left != "int" || right != "int") {
+        if (operation == "&&" || operation == "||") {
+            if (left != "bool" || right != "bool") {
                 throw DiagnosticError(expression.location,
-                                      "equality is implemented only for int values; strings, "
-                                      "objects, collections, and 'any' do not support equality");
+                                      "logical operator '" + operation +
+                                          "' requires bool operands");
             }
-            return "int";
+            return "bool";
         }
-        if (left != "int" || right != "int") {
+        if (operation == "==" || operation == "!=") {
+            if (left != right ||
+                (left != "int" && left != "bool" && left != "float" &&
+                 left != "unsigned")) {
+                throw DiagnosticError(expression.location,
+                                      "equality requires matching int, bool, float, or unsigned "
+                                      "operands");
+            }
+            return "bool";
+        }
+        const bool sameArithmeticType = left == right &&
+            (left == "int" || left == "float" || left == "unsigned");
+        if (operation == "<" || operation == "<=" || operation == ">" ||
+            operation == ">=") {
+            if (!sameArithmeticType) {
+                throw DiagnosticError(expression.location,
+                                      "comparison operator '" + operation +
+                                          "' requires matching int, float, or unsigned operands");
+            }
+            return "bool";
+        }
+        if (!sameArithmeticType ||
+            (operation == "%" && left == "float")) {
+            const auto reason = operation == "%" && left == "float"
+                                    ? " (float remainder is unsupported)"
+                                    : "";
             throw DiagnosticError(expression.location,
-                                  "operator '" + operation + "' requires int operands");
+                                  "operator '" + operation +
+                                      "' requires matching int, float, or unsigned operands" +
+                                      reason);
         }
-        return "int";
+        return left;
     }
     }
     throw DiagnosticError(expression.location, "invalid expression");

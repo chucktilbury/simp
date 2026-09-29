@@ -156,6 +156,9 @@ OutOfLineMethodDefinition Parser::parseOutOfLineMethodDefinition() {
 std::string Parser::parseType(bool allowVoid) {
     std::string type;
     if (match(TokenType::Int)) type = "int";
+    else if (match(TokenType::Bool)) type = "bool";
+    else if (match(TokenType::FloatType)) type = "float";
+    else if (match(TokenType::Unsigned)) type = "unsigned";
     else if (match(TokenType::StringType)) type = "string";
     else if (match(TokenType::ArrayType)) type = "array";
     else if (match(TokenType::MapType)) type = "map";
@@ -192,6 +195,9 @@ MethodDeclaration Parser::parseMethod(const Token& typeOrName, const Token& meth
     method.name = methodName.text;
     method.returnType = constructor ? "void" : !returnType.empty() ? returnType :
                         (typeOrName.type == TokenType::Int ? "int" :
+                         typeOrName.type == TokenType::Bool ? "bool" :
+                         typeOrName.type == TokenType::FloatType ? "float" :
+                         typeOrName.type == TokenType::Unsigned ? "unsigned" :
                          typeOrName.type == TokenType::StringType ? "string" :
                          typeOrName.type == TokenType::Void ? "void" : typeOrName.text);
     method.location = typeOrName.location;

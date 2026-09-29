@@ -56,34 +56,56 @@ void CodeGenerator::emitPrint(const Statement& statement) {
         for (std::size_t index = 0; index < format.value.size(); ++index) {
             if (format.value[index] != '{') continue;
             emitStringBytes(format.value.substr(segmentStart, index - segmentStart));
-            const auto value = emitIntegerExpression(*statement.expressions[argumentIndex++]);
-            instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i32 " +
-                             value.operand + ")\n";
+            const auto value = emitExpression(*statement.expressions[argumentIndex++]);
+            emitPrintValue(value, statement.location);
             index += 1;
             segmentStart = index + 1;
         }
         emitStringBytes(format.value.substr(segmentStart));
     } else {
         const auto value = emitExpression(*statement.expressions.front());
-        if (value.type == "string") {
-            const auto data = newTemporary();
-            const auto length = newTemporary();
-            instructions_ += "  " + data + " = extractvalue %SimpleString " + value.operand + ", 0\n";
-            instructions_ += "  " + length + " = extractvalue %SimpleString " + value.operand + ", 1\n";
-            const auto stream = newTemporary();
-            instructions_ += "  " + stream + " = load ptr, ptr @stdout\n";
-            instructions_ += "  call i64 @fwrite(ptr " + data + ", i64 1, i64 " + length +
-                             ", ptr " + stream + ")\n";
-        } else if (value.type == "int") {
-            instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i32 " +
-                             value.operand + ")\n";
-        } else if (value.type == "any") {
-            emitPrintDynamicValue(value);
-        } else {
-            unsupported(statement.location, "printing object references");
-        }
+        emitPrintValue(value, statement.location);
     }
     emitStringBytes("\n");
+}
+
+void CodeGenerator::emitPrintValue(const Value& value, const SourceLocation& location) {
+    if (value.type == "int") {
+        instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i32 " +
+                         value.operand + ")\n";
+    } else if (value.type == "unsigned") {
+        instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.unsigned.format, i64 " +
+                         value.operand + ")\n";
+    } else if (value.type == "float") {
+        instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.float.format, double " +
+                         value.operand + ")\n";
+    } else if (value.type == "bool") {
+        const auto trueLabel = freshLabel("print.bool.true");
+        const auto falseLabel = freshLabel("print.bool.false");
+        const auto endLabel = freshLabel("print.bool.end");
+        instructions_ += "  br i1 " + value.operand + ", label %" + trueLabel +
+                         ", label %" + falseLabel + "\n"
+                         + trueLabel + ":\n";
+        emitStringBytes("true");
+        instructions_ += "  br label %" + endLabel + "\n" + falseLabel + ":\n";
+        emitStringBytes("false");
+        instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
+    } else if (value.type == "string") {
+        const auto data = newTemporary();
+        const auto length = newTemporary();
+        instructions_ += "  " + data + " = extractvalue %SimpleString " + value.operand +
+                         ", 0\n";
+        instructions_ += "  " + length + " = extractvalue %SimpleString " + value.operand +
+                         ", 1\n";
+        const auto stream = newTemporary();
+        instructions_ += "  " + stream + " = load ptr, ptr @stdout\n";
+        instructions_ += "  call i64 @fwrite(ptr " + data + ", i64 1, i64 " + length +
+                         ", ptr " + stream + ")\n";
+    } else if (value.type == "any") {
+        emitPrintDynamicValue(value);
+    } else {
+        unsupported(location, "printing object references");
+    }
 }
 
 void CodeGenerator::emitPrintDynamicValue(const Value& value) {
@@ -91,12 +113,17 @@ void CodeGenerator::emitPrintDynamicValue(const Value& value) {
     instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " + value.operand + ", 0\n";
     const auto intLabel = freshLabel("print.any.int");
     const auto stringLabel = freshLabel("print.any.string");
+    const auto boolLabel = freshLabel("print.any.bool");
+    const auto floatLabel = freshLabel("print.any.float");
+    const auto unsignedLabel = freshLabel("print.any.unsigned");
     const auto objectLabel = freshLabel("print.any.object");
     const auto nullLabel = freshLabel("print.any.null");
     const auto instanceLabel = freshLabel("print.any.instance");
     const auto endLabel = freshLabel("print.any.end");
     instructions_ += "  switch i64 " + tag + ", label %" + objectLabel + " [ i64 1, label %" +
-                     intLabel + " i64 2, label %" + stringLabel + " ]\n";
+                     intLabel + " i64 2, label %" + stringLabel + " i64 6, label %" + boolLabel +
+                     " i64 7, label %" + floatLabel + " i64 8, label %" + unsignedLabel +
+                     " ]\n";
     instructions_ += intLabel + ":\n";
     const auto stored = newTemporary();
     const auto truncated = newTemporary();
@@ -106,6 +133,28 @@ void CodeGenerator::emitPrintDynamicValue(const Value& value) {
                      "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i32 " + truncated +
                      ")\n"
                      "  br label %" + endLabel + "\n";
+    instructions_ += boolLabel + ":\n";
+    const auto boolStored = newTemporary();
+    const auto boolValue = newTemporary();
+    instructions_ += "  " + boolStored + " = extractvalue %SimpleArrayValue " + value.operand +
+                     ", 1\n"
+                     "  " + boolValue + " = trunc i64 " + boolStored + " to i1\n";
+    emitPrintValue({"bool", boolValue}, {});
+    instructions_ += "  br label %" + endLabel + "\n";
+    instructions_ += floatLabel + ":\n";
+    const auto floatStored = newTemporary();
+    const auto floatValue = newTemporary();
+    instructions_ += "  " + floatStored + " = extractvalue %SimpleArrayValue " + value.operand +
+                     ", 1\n"
+                     "  " + floatValue + " = bitcast i64 " + floatStored + " to double\n";
+    emitPrintValue({"float", floatValue}, {});
+    instructions_ += "  br label %" + endLabel + "\n";
+    instructions_ += unsignedLabel + ":\n";
+    const auto unsignedValue = newTemporary();
+    instructions_ += "  " + unsignedValue + " = extractvalue %SimpleArrayValue " +
+                     value.operand + ", 1\n";
+    emitPrintValue({"unsigned", unsignedValue}, {});
+    instructions_ += "  br label %" + endLabel + "\n";
     instructions_ += stringLabel + ":\n";
     const auto stringData = newTemporary();
     const auto stringLength = newTemporary();

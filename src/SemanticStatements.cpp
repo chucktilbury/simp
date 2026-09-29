@@ -171,22 +171,26 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         }
         if (types.size() > 1) {
             for (std::size_t index = 1; index < types.size(); ++index) {
-                if (types[index] != "int") {
+                if (types[index] != "int" && types[index] != "bool" &&
+                    types[index] != "float" && types[index] != "unsigned") {
                     throw DiagnosticError(statement.expressions[index]->location,
-                                          "formatted print arguments must have type int");
+                                          "formatted print arguments must have type int, bool, "
+                                          "float, or unsigned");
                 }
             }
-        } else if (!types.empty() && types.front() != "int" && types.front() != "string" &&
-                  types.front() != "any") {
+        } else if (!types.empty() && types.front() != "int" && types.front() != "bool" &&
+                   types.front() != "float" && types.front() != "unsigned" &&
+                   types.front() != "string" && types.front() != "any") {
             throw DiagnosticError(statement.location,
-                                  "print supports int, string, or 'any' values only");
+                                  "print supports int, bool, float, unsigned, string, or 'any' "
+                                  "values only");
         }
         return;
     }
     case StatementKind::If: {
-        if (analyzeExpression(*statement.expressions.front()) != "int") {
+        if (analyzeExpression(*statement.expressions.front()) != "bool") {
             throw DiagnosticError(statement.expressions.front()->location,
-                                  "if condition must have type int");
+                                  "if condition must have type bool");
         }
         const auto before = initializationState();
         scopes_.emplace_back();
@@ -208,17 +212,33 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         return;
     }
     case StatementKind::While:
-        if (analyzeExpression(*statement.expressions.front()) != "int") {
+        if (analyzeExpression(*statement.expressions.front()) != "bool") {
             throw DiagnosticError(statement.expressions.front()->location,
-                                  "while condition must have type int");
+                                  "while condition must have type bool");
         } else {
             const auto before = initializationState();
             scopes_.emplace_back();
+            ++loopDepth_;
             analyzeStatements(statement.body);
+            --loopDepth_;
             scopes_.pop_back();
             restoreInitializationState(before);
         }
         return;
+    case StatementKind::DoWhile: {
+        if (analyzeExpression(*statement.expressions.front()) != "bool") {
+            throw DiagnosticError(statement.expressions.front()->location,
+                                  "while condition must have type bool");
+        }
+        const auto before = initializationState();
+        scopes_.emplace_back();
+        ++loopDepth_;
+        analyzeStatements(statement.body);
+        --loopDepth_;
+        scopes_.pop_back();
+        restoreInitializationState(before);
+        return;
+    }
     case StatementKind::ForEach: {
         const auto collectionType = analyzeExpression(*statement.expressions.front());
         const bool array = collectionType == "array";
@@ -245,11 +265,23 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         const auto valueIndex = symbols_.size();
         symbols_.push_back({statement.name, "any", true, statement.location});
         scopes_.back().emplace(statement.name, valueIndex);
+        ++loopDepth_;
         analyzeStatements(statement.body);
+        --loopDepth_;
         scopes_.pop_back();
         restoreInitializationState(before);
         return;
     }
+    case StatementKind::Break:
+        if (loopDepth_ == 0) {
+            throw DiagnosticError(statement.location, "'break' outside of a loop");
+        }
+        return;
+    case StatementKind::Continue:
+        if (loopDepth_ == 0) {
+            throw DiagnosticError(statement.location, "'continue' outside of a loop");
+        }
+        return;
     case StatementKind::Raise:
         if (analyzeExpression(*statement.expressions.front()) != "string") {
             throw DiagnosticError(statement.expressions.front()->location,
@@ -328,12 +360,14 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
                                       "inline capture type '" + capture.type +
                                           "' is not supported");
             }
-            if (capture.type != "int" && capture.type != "string" &&
+            if (capture.type != "int" && capture.type != "bool" &&
+                capture.type != "float" && capture.type != "unsigned" &&
+                capture.type != "string" &&
                 capture.type != "array" && capture.type != "map" &&
                 classes_.find(capture.type) == classes_.end()) {
                 throw DiagnosticError(capture.location,
-                                      "inline capture type must be int, string, array, map, "
-                                      "or a declared class type");
+                                      "inline capture type must be int, bool, float, unsigned, "
+                                      "string, array, map, or a declared class type");
             }
         }
         std::unordered_set<std::string> captureNames;

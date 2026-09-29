@@ -218,6 +218,22 @@ int main() {
         {"reserved keywords", [] {
              expectDiagnostic("start {\n int While = 0\n}", "keywords are reserved");
          }},
+        {"scalar keywords and literals", [] {
+             simp::Lexer lexer("start { bool ready = true float value = 3.14 "
+                               "unsigned count = 42u }", "scalar.simp");
+             const auto tokens = lexer.tokenize();
+             bool foundTrue = false;
+             bool foundFloat = false;
+             bool foundUnsigned = false;
+             for (const auto& token : tokens) {
+                 foundTrue |= token.type == simp::TokenType::True;
+                 foundFloat |= token.type == simp::TokenType::Float && token.text == "3.14";
+                 foundUnsigned |= token.type == simp::TokenType::UnsignedInteger &&
+                                  token.text == "42u";
+             }
+             require(foundTrue && foundFloat && foundUnsigned,
+                     "boolean, float, or unsigned literal token missing");
+         }},
         {"import keyword is case-insensitive and reserved", [] {
              simp::Lexer lexer("IMPORT network AS Net\nstart {}", "import-keyword.simp");
              const auto tokens = lexer.tokenize();
@@ -419,11 +435,14 @@ int main() {
          }},
         {"string condition rejected", [] {
              expectDiagnostic("start { if (\"not a condition\") { } }",
-                              "if condition must have type int");
+                              "if condition must have type bool");
          }},
         {"string equality rejected", [] {
              expectDiagnostic("start {\n string a = \"a\"\n print(a == \"a\")\n}",
-                              "equality is implemented only for int values");
+                              "equality requires matching int, bool, float, or unsigned operands");
+         }},
+        {"integer condition rejected", [] {
+             expectDiagnostic("start { if (1) { } }", "if condition must have type bool");
          }},
         {"semantic type mismatch", [] {
              expectDiagnostic("start {\n int value = \"wrong\"\n}",
@@ -441,12 +460,12 @@ int main() {
                               "variable 'value' may be uninitialized");
          }},
         {"semantic branch initialization", [] {
-             expectDiagnostic("start {\n int value\n if (1) { value = 1 }\n print(value)\n}",
+             expectDiagnostic("start {\n int value\n if (true) { value = 1 }\n print(value)\n}",
                               "variable 'value' may be uninitialized");
          }},
         {"semantic initialized in both branches", [] {
              const auto program = parse(
-                 "start {\n int value\n if (1) { value = 1 } else { value = 2 }\n print(value)\n}");
+                 "start {\n int value\n if (true) { value = 1 } else { value = 2 }\n print(value)\n}");
              require(program.statements.size() == 3, "expected declaration, if, and print");
          }},
         {"virtual-base initializer rejected outside constructors", [] {
@@ -610,7 +629,7 @@ int main() {
         {"array and 'any' equality is rejected", [] {
              expectDiagnostic("start {\n  array bag = [1]\n  array other = [1]\n"
                               "  int same = bag == other\n}",
-                              "equality is implemented only for int values");
+                              "equality requires matching int, bool, float, or unsigned operands");
          }},
         {"map type and literal keys are accepted", [] {
              expectValid("start {\n"
@@ -636,12 +655,12 @@ int main() {
         {"map equality is rejected", [] {
              expectDiagnostic("start {\n map values = {}\n map other = {}\n"
                               " int same = values == other\n}",
-                              "equality is implemented only for int values");
+                              "equality requires matching int, bool, float, or unsigned operands");
          }},
         {"'any' equality is rejected", [] {
              expectDiagnostic("start {\n any value = 1\n"
                               " int same = value == value\n}",
-                              "equality is implemented only for int values");
+                              "equality requires matching int, bool, float, or unsigned operands");
          }},
         {"map slicing accepts integer insertion-order bounds", [] {
              expectValid("start {\n map values = {\"a\": 1, \"b\": 2}\n"

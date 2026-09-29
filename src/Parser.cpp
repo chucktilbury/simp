@@ -47,6 +47,9 @@ bool Parser::startsOutOfLineDefinition() const {
         }
         break;
     case TokenType::Int:
+    case TokenType::Bool:
+    case TokenType::FloatType:
+    case TokenType::Unsigned:
     case TokenType::StringType:
     case TokenType::ArrayType:
     case TokenType::MapType:
@@ -260,7 +263,9 @@ Statement Parser::parseStatement() {
     if (check(TokenType::Inline)) {
         return parseInlineC();
     }
-    if (check(TokenType::Int) || check(TokenType::StringType) || check(TokenType::ArrayType) ||
+    if (check(TokenType::Int) || check(TokenType::Bool) ||
+        check(TokenType::FloatType) || check(TokenType::Unsigned) ||
+        check(TokenType::StringType) || check(TokenType::ArrayType) ||
         check(TokenType::MapType) || check(TokenType::AnyType) || check(TokenType::Void)) {
         return parseDeclaration();
     }
@@ -276,8 +281,14 @@ Statement Parser::parseStatement() {
     if (check(TokenType::While)) {
         return parseWhile();
     }
+    if (check(TokenType::Do)) {
+        return parseDoWhile();
+    }
     if (check(TokenType::For)) {
         return parseForEach();
+    }
+    if (check(TokenType::Break) || check(TokenType::Continue)) {
+        return parseLoopControl();
     }
     if (check(TokenType::Raise)) {
         return parseRaise();
@@ -489,6 +500,21 @@ Statement Parser::parseWhile() {
     return statement;
 }
 
+Statement Parser::parseDoWhile() {
+    const auto keyword = consume(TokenType::Do, "'do'");
+    Statement statement;
+    statement.kind = StatementKind::DoWhile;
+    statement.location = keyword.location;
+    skipNewlines();
+    statement.body = parseBlock();
+    skipNewlines();
+    consume(TokenType::While, "'while' after do-while body");
+    consume(TokenType::LeftParen, "'(' after while");
+    statement.expressions.push_back(parseExpression());
+    consume(TokenType::RightParen, "')' after do-while condition");
+    return statement;
+}
+
 Statement Parser::parseForEach() {
     const auto keyword = consume(TokenType::For, "'for'");
     Statement statement;
@@ -507,6 +533,17 @@ Statement Parser::parseForEach() {
     consume(TokenType::RightParen, "')' after collection expression");
     skipNewlines();
     statement.body = parseBlock();
+    return statement;
+}
+
+Statement Parser::parseLoopControl() {
+    const auto keyword = current();
+    ++current_;
+    Statement statement;
+    statement.kind = keyword.type == TokenType::Break ? StatementKind::Break
+                                                      : StatementKind::Continue;
+    statement.location = keyword.location;
+    consumeStatementTerminator();
     return statement;
 }
 
@@ -551,6 +588,49 @@ Statement Parser::parseTry() {
 }
 
 std::unique_ptr<Expression> Parser::parseExpression() {
+    return parseOr();
+}
+
+std::unique_ptr<Expression> Parser::parseOr() {
+    auto expression = parseAnd();
+    while (check(TokenType::Or) || check(TokenType::OrOr)) {
+        const auto operation = tokens_[current_++];
+        auto combined = std::make_unique<Expression>();
+        combined->kind = ExpressionKind::Binary;
+        combined->location = operation.location;
+        combined->value = "||";
+        combined->left = std::move(expression);
+        combined->right = parseAnd();
+        expression = std::move(combined);
+    }
+    return expression;
+}
+
+std::unique_ptr<Expression> Parser::parseAnd() {
+    auto expression = parseNot();
+    while (check(TokenType::And) || check(TokenType::AndAnd)) {
+        const auto operation = tokens_[current_++];
+        auto combined = std::make_unique<Expression>();
+        combined->kind = ExpressionKind::Binary;
+        combined->location = operation.location;
+        combined->value = "&&";
+        combined->left = std::move(expression);
+        combined->right = parseNot();
+        expression = std::move(combined);
+    }
+    return expression;
+}
+
+std::unique_ptr<Expression> Parser::parseNot() {
+    if (check(TokenType::Bang)) {
+        const auto operation = tokens_[current_++];
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::Unary;
+        expression->location = operation.location;
+        expression->value = "!";
+        expression->left = parseNot();
+        return expression;
+    }
     return parseComparison();
 }
 
@@ -602,7 +682,7 @@ std::unique_ptr<Expression> Parser::parseMultiplication() {
 }
 
 std::unique_ptr<Expression> Parser::parseUnary() {
-    if (check(TokenType::Bang) || check(TokenType::Minus) || check(TokenType::Plus)) {
+    if (check(TokenType::Minus) || check(TokenType::Plus)) {
         const auto operation = tokens_[current_++];
         auto expression = std::make_unique<Expression>();
         expression->kind = ExpressionKind::Unary;
@@ -616,11 +696,32 @@ std::unique_ptr<Expression> Parser::parseUnary() {
 
 std::unique_ptr<Expression> Parser::parsePrimary() {
     const auto token = current();
+    if (match(TokenType::UnsignedInteger)) {
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::Unsigned;
+        expression->location = token.location;
+        expression->value = token.text;
+        return expression;
+    }
+    if (match(TokenType::Float)) {
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::Float;
+        expression->location = token.location;
+        expression->value = token.text;
+        return expression;
+    }
     if (match(TokenType::Integer)) {
         auto expression = std::make_unique<Expression>();
         expression->kind = ExpressionKind::Integer;
         expression->location = token.location;
         expression->value = token.text;
+        return expression;
+    }
+    if (match(TokenType::True) || match(TokenType::False)) {
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::Boolean;
+        expression->location = token.location;
+        expression->value = token.type == TokenType::True ? "true" : "false";
         return expression;
     }
     if (match(TokenType::String)) {
