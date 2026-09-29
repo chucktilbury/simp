@@ -5,23 +5,178 @@
  */
 #include "simp/RuntimeGc.h"
 
+#include <setjmp.h>
 #include <stdalign.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 typedef struct HeapNode {
     struct HeapNode *next;
+    struct HeapNode *destroy_previous;
+    struct HeapNode *construct_previous;
     void *object;
     int marked;
     int destroyed;
     int destroying;
+    int constructing;
 } HeapNode;
+
+typedef struct SimpExceptionFrame {
+    jmp_buf buffer;
+    struct SimpExceptionFrame *previous;
+    SimpRootFrame *saved_roots;
+    HeapNode *saved_destroys;
+    HeapNode *saved_constructions;
+    size_t message_length;
+    char *message;
+    int has_exception;
+} SimpExceptionFrame;
+
+_Static_assert(alignof(SimpExceptionFrame) <= 16,
+               "generated exception frames require at most 16-byte alignment");
 
 static HeapNode *heap = NULL;
 static SimpRootFrame *root_frame = NULL;
+static HeapNode *destroy_stack = NULL;
+static HeapNode *construction_stack = NULL;
+static SimpExceptionFrame *active_exception = NULL;
 static size_t object_count = 0;
 static int collecting = 0;
 static int running_destructor = 0;
+
+static HeapNode *find_object(const void *object);
+
+static void uncaught_exception(const char *message, size_t length) {
+    fputs("simp: uncaught runtime exception: ", stderr);
+    if (length != 0) fwrite(message, 1, length, stderr);
+    fputc('\n', stderr);
+    fflush(stderr);
+    abort();
+}
+
+void simp_gc_begin_construction(void *object) {
+    HeapNode *node = find_object(object);
+    if (node == NULL || node->destroyed || node->constructing) abort();
+    node->constructing = 1;
+    node->construct_previous = construction_stack;
+    construction_stack = node;
+}
+
+void simp_gc_end_construction(void *object) {
+    HeapNode *node = find_object(object);
+    if (node == NULL || !node->constructing || construction_stack != node) abort();
+    node->constructing = 0;
+    construction_stack = node->construct_previous;
+    node->construct_previous = NULL;
+}
+
+static void raise_exception(const char *message, uint64_t length, char *owned_message) {
+    if ((message == NULL && length != 0) || length > (uint64_t)SIZE_MAX) abort();
+    if (collecting || running_destructor) {
+        free(owned_message);
+        static const char finalizer_message[] =
+            "exceptions cannot escape a GC finalizer";
+        uncaught_exception(finalizer_message, sizeof(finalizer_message) - 1);
+    }
+    if (active_exception == NULL) {
+        uncaught_exception(message == NULL ? "" : message, (size_t)length);
+    }
+    SimpExceptionFrame *frame = active_exception;
+    char *copy = length == 0 ? NULL : (char *)malloc((size_t)length);
+    if (length != 0 && copy == NULL) {
+        free(owned_message);
+        static const char allocation_message[] =
+            "out of memory while raising runtime exception";
+        uncaught_exception(allocation_message, sizeof(allocation_message) - 1);
+    }
+    if (length != 0) memcpy(copy, message, (size_t)length);
+    free(owned_message);
+    free(frame->message);
+    frame->message = copy;
+    frame->message_length = (size_t)length;
+    frame->has_exception = 1;
+    active_exception = frame->previous;
+    frame->previous = NULL;
+    root_frame = frame->saved_roots;
+    while (destroy_stack != frame->saved_destroys) {
+        if (destroy_stack == NULL) abort();
+        destroy_stack->destroying = 0;
+        destroy_stack = destroy_stack->destroy_previous;
+    }
+    while (construction_stack != frame->saved_constructions) {
+        if (construction_stack == NULL) abort();
+        construction_stack->constructing = 0;
+        construction_stack->destroyed = 1;
+        construction_stack = construction_stack->construct_previous;
+    }
+    longjmp(frame->buffer, 1);
+}
+
+uint64_t simp_exception_frame_size(void) {
+    return (uint64_t)sizeof(SimpExceptionFrame);
+}
+
+void simp_exception_frame_init(void *storage) {
+    if (storage == NULL ||
+        (uintptr_t)storage % alignof(SimpExceptionFrame) != 0) {
+        abort();
+    }
+    memset(storage, 0, sizeof(SimpExceptionFrame));
+}
+
+void *simp_exception_frame_buffer(void *storage) {
+    if (storage == NULL) abort();
+    return ((SimpExceptionFrame *)storage)->buffer;
+}
+
+void simp_exception_push(void *storage) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL || active_exception == frame) abort();
+    frame->previous = active_exception;
+    frame->saved_roots = root_frame;
+    frame->saved_destroys = destroy_stack;
+    frame->saved_constructions = construction_stack;
+    free(frame->message);
+    frame->message = NULL;
+    frame->message_length = 0;
+    frame->has_exception = 0;
+    active_exception = frame;
+}
+
+void simp_exception_pop(void *storage) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL || active_exception != frame) abort();
+    active_exception = frame->previous;
+    frame->previous = NULL;
+    if (frame->has_exception) abort();
+    free(frame->message);
+    frame->message = NULL;
+}
+
+void simp_exception_clear(void *storage) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL) abort();
+    free(frame->message);
+    frame->message = NULL;
+    frame->message_length = 0;
+    frame->has_exception = 0;
+}
+
+void simp_exception_raise(const char *message, uint64_t length) {
+    raise_exception(message, length, NULL);
+}
+
+void simp_exception_rethrow(void *storage) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL || !frame->has_exception) abort();
+    char *message = frame->message;
+    const uint64_t length = (uint64_t)frame->message_length;
+    frame->message = NULL;
+    frame->message_length = 0;
+    frame->has_exception = 0;
+    raise_exception(message, length, message);
+}
 
 static int valid_reference_offset(const SimpClassMeta *metadata, uint64_t offset) {
     return offset >= sizeof(void *) &&
@@ -99,26 +254,29 @@ void simp_gc_require_alive(void *object) {
         return;
     }
     HeapNode *node = find_object(object);
-    if (node == NULL || (node->destroyed && !node->destroying)) {
-        abort();
-    }
+    if (node == NULL) simp_exception_raise("invalid object reference", 24);
+    if (node->destroyed && !node->destroying)
+        simp_exception_raise("object has been destroyed", 25);
 }
 
 void simp_gc_begin_destroy(void *object) {
     HeapNode *node = find_object(object);
-    if (node == NULL || node->destroyed) {
-        abort();
-    }
+    if (node == NULL) simp_exception_raise("invalid object reference", 24);
+    if (node->destroyed) simp_exception_raise("object has already been destroyed", 32);
     node->destroyed = 1;
     node->destroying = 1;
+    node->destroy_previous = destroy_stack;
+    destroy_stack = node;
 }
 
 void simp_gc_end_destroy(void *object) {
     HeapNode *node = find_object(object);
-    if (node == NULL || !node->destroying) {
+    if (node == NULL || !node->destroying || destroy_stack != node) {
         abort();
     }
     node->destroying = 0;
+    destroy_stack = node->destroy_previous;
+    node->destroy_previous = NULL;
 }
 
 static HeapNode **allocate_worklist(void) {
@@ -233,6 +391,9 @@ void *simp_gc_alloc(const SimpClassMeta *metadata) {
     node->marked = 0;
     node->destroyed = 0;
     node->destroying = 0;
+    node->destroy_previous = NULL;
+    node->constructing = 0;
+    node->construct_previous = NULL;
     node->next = heap;
     heap = node;
     ++object_count;

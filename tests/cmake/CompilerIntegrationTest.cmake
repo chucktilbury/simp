@@ -73,6 +73,11 @@ execute_process(
 )
 if(NOT run_result EQUAL 0)
     if(DEFINED EXPECT_RUNTIME_FAILURE)
+        if(DEFINED EXPECT_RUNTIME_DIAGNOSTIC AND
+           NOT run_stderr MATCHES "${EXPECT_RUNTIME_DIAGNOSTIC}")
+            message(FATAL_ERROR
+                "Expected runtime diagnostic '${EXPECT_RUNTIME_DIAGNOSTIC}', got:\n${run_stderr}")
+        endif()
         return()
     endif()
     message(FATAL_ERROR "Compiled Simple program exited ${run_result}:\n${run_stderr}")

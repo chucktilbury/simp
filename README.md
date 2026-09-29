@@ -75,7 +75,8 @@ and semantic errors.
   blocks are errors; other top-level forms are rejected.
 - Reserved keywords are case-insensitive: `start`, `int`, `string`, `if`,
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
-  `public`, `protected`, and `private`. Every capitalization is reserved.
+  `raise`, `try`, `except`, `finally`, `public`, `protected`, and `private`.
+  Every capitalization is reserved.
 - `int` and `string` declarations (with optional initializer), identifier
   assignment, `print`, `return`, and `super.Base(...)` statements end at a
   newline or closing brace. Newlines inside parentheses are treated as
@@ -87,6 +88,17 @@ and semantic errors.
   `while (condition) { ... }` execute in the LLVM backend. Conditions are
   integer expressions; zero is false and nonzero is true. An
   `else (condition)` form is explicitly rejected.
+- `raise "message"` throws a runtime exception. `try { ... } except { ... }`
+  catches any exception; `finally { ... }` is optional and runs after normal
+  completion or while an exception propagates. `try` must include `except`,
+  `finally`, or both. `except` is catch-all and does not bind or inspect the
+  exception. Exceptions raised inside `except` still run its paired `finally`;
+  an exception raised inside `finally` propagates outward.
+- Null dereferences, use of explicitly destroyed objects, repeated destruction,
+  and integer division/remainder by zero raise catchable runtime exceptions.
+  An uncaught exception prints `simp: uncaught runtime exception: <message>` to
+  standard error and aborts (nonzero process status). Runtime invariant failures
+  and exceptions escaping GC finalizers remain fatal.
 - `print(expr)` prints one integer or string value followed by a newline.
 - Basic formatting uses a double-quoted literal followed by an expression list:
   `print("value: {}"(value))`. Each `{}` substitutes exactly one integer
@@ -135,7 +147,8 @@ and semantic errors.
   Constructors are named exactly after their class. A class may declare a
   zero-argument `void destroy()` method; an explicit `object.destroy()` warns,
   invokes it once, and marks the object unusable. Further object use or another
-  destruction attempt aborts at runtime. Explicit destruction is currently
+  destruction attempt raises a catchable runtime exception. Explicit
+  destruction is currently
   limited to classes outside an inheritance hierarchy. The GC invokes
   `destroy()` once for unreachable objects not already explicitly destroyed;
   finalizer allocation aborts, and inheritance destructors are unsupported.
@@ -153,7 +166,7 @@ and semantic errors.
   supported along the primary-base chain; secondary-base method dispatch is
   rejected. Overrides on supported paths must exactly preserve inherited
   return and parameter types. Inherited field redeclaration, incompatible
-  overrides, member-level access control, and shared/virtual bases are
+  overrides, and shared/virtual bases are
   unsupported.
 
   Each direct base may be marked `public`, `protected`, or `private`; omitted
@@ -168,7 +181,8 @@ and semantic errors.
 
   Class bodies support `public:`, `protected:`, and `private:` sections; the
   default section is public. These sections apply to subsequent fields,
-  methods, constructors, and destructor declarations.   Private members are accessible only in their declaring class; inherited
+  methods, constructors, and destructor declarations. Private members are
+  accessible only in their declaring class; inherited
   private members are not accessible to further-derived classes. Protected
   members are accessible in their declaring class and derived-class method
   bodies. Constructors are
@@ -183,8 +197,9 @@ and semantic errors.
   declared fields. The
   metadata contains class name/field count, a base-stable virtual method table,
   object size, and compiler-generated offsets for class-reference fields;
-  instances do not contain method copies. Class references may be `null`; dereferencing null
-  aborts through a runtime guard. Newly allocated fields are zero-initialized
+  instances do not contain method copies. Class references may be `null`;
+  dereferencing null raises a catchable runtime exception. Newly allocated
+  fields are zero-initialized
   before the constructor runs. Constructor overloading, method overloading,
   and default field initializer syntax are unsupported.
 
@@ -198,7 +213,8 @@ the declarations and initialization state seen by semantic analysis.
 The backend emits textual LLVM IR using opaque pointers, then the configured
 Clang executable compiles and links it. It supports integer and string
 declarations/assignments, integer expressions and comparisons, integer
-`if`/`else` and `while`, single-value integer or string printing, and the
+`if`/`else` and `while`, `raise`/catch-all `try`/`except`/`finally`,
+single-value integer or string printing, and the
 limited `{}` integer formatting form described above. It also supports object
 layout/allocation/constructor/method/field operations for classes
 and single- and multiple-inheritance layouts. Base-path field access
@@ -226,10 +242,16 @@ method table is used after collection.
 
 The parser and semantic analyzer accept more syntax than the backend executes.
 String comparisons and other non-integer formatted values produce precise
-backend/semantic errors. There is no string concatenation, object-to-string
-conversion, code-point-aware operation, full language runtime, or
-division-by-zero handling; signed division follows LLVM integer operation
-semantics. The collector has limited finalizers for non-inherited classes, but
+backend/semantic errors. Exception handling uses direct LLVM `setjmp` calls
+paired with the C runtime's `longjmp`; generated frames snapshot and restore
+the precise GC root chain and explicitly running destructor chain before
+catching. Catch clauses are untyped and have no exception binding or stack
+trace. Returns from inside `try`/`except`/`finally` are rejected. Exceptions
+cannot escape a GC finalizer; finalizer exceptions and collector invariant
+failures remain fatal. This is a single-threaded host-C ABI implementation,
+not LLVM landing-pad or cross-platform exception support. There is no string
+concatenation, object-to-string conversion, or code-point-aware operation.
+The collector has limited finalizers for non-inherited classes, but
 no weak references, multithreading,
 incremental/concurrent collection, or configurable allocation threshold.
 Generated roots conservatively include every object-typed slot in a function,
@@ -238,8 +260,8 @@ has stress/unit coverage but is not a production-validated memory manager.
 Multiple inheritance is limited to deterministic non-virtual subobject layout
 and qualified field access. Secondary-base constructors, implicit upcasts,
 and virtual dispatch are not implemented; a shared ancestor in a diamond is
-represented as two separate subobjects. Method overloading, visibility/access
-control, and reflection are also unsupported.
+represented as two separate subobjects. Method overloading and reflection are
+also unsupported.
 
 ## Deferred
 
@@ -250,7 +272,7 @@ optimization pipeline. Building the compiler requires Clang on `PATH`; the
 current driver launches it through the host POSIX shell. Full language type
 checking and name-resolution rules, OOP beyond the supported single- and
 limited multiple-inheritance slices (including secondary-base constructor and
-virtual-dispatch support, member-level access control, and access to protected
+virtual-dispatch support, and access to protected
 base members from further-derived classes),
 production GC features, modules and native libraries, inline C, GTK, package
 manager, IDE, and debugger remain deferred. The full grammar, collections,

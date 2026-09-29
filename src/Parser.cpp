@@ -145,6 +145,12 @@ Statement Parser::parseStatement() {
     if (check(TokenType::While)) {
         return parseWhile();
     }
+    if (check(TokenType::Raise)) {
+        return parseRaise();
+    }
+    if (check(TokenType::Try)) {
+        return parseTry();
+    }
     if (check(TokenType::LeftBrace)) {
         Statement block;
         block.kind = StatementKind::Block;
@@ -302,6 +308,42 @@ Statement Parser::parseWhile() {
     consume(TokenType::RightParen, "')' after while condition");
     skipNewlines();
     statement.body = parseBlock();
+    return statement;
+}
+
+Statement Parser::parseRaise() {
+    const auto keyword = consume(TokenType::Raise, "'raise'");
+    Statement statement;
+    statement.kind = StatementKind::Raise;
+    statement.location = keyword.location;
+    statement.expressions.push_back(parseExpression());
+    consumeStatementTerminator();
+    return statement;
+}
+
+Statement Parser::parseTry() {
+    const auto keyword = consume(TokenType::Try, "'try'");
+    Statement statement;
+    statement.kind = StatementKind::Try;
+    statement.location = keyword.location;
+    skipNewlines();
+    statement.body = parseBlock();
+    skipNewlines();
+    if (match(TokenType::Except)) {
+        statement.hasAlternate = true;
+        skipNewlines();
+        statement.alternate = parseBlock();
+        skipNewlines();
+    }
+    if (match(TokenType::Finally)) {
+        statement.hasCleanup = true;
+        skipNewlines();
+        statement.cleanup = parseBlock();
+        skipNewlines();
+    }
+    if (!statement.hasAlternate && !statement.hasCleanup) {
+        error(current(), "'try' requires an 'except' or 'finally' block");
+    }
     return statement;
 }
 

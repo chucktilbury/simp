@@ -38,6 +38,7 @@ private:
     void emitMain(const Program& program);
     void emitStatements(const std::vector<Statement>& statements);
     void emitStatement(const Statement& statement);
+    void emitTry(const Statement& statement);
     Value emitExpression(const Expression& expression, const std::string& expectedType = {});
     Value emitIntegerExpression(const Expression& expression);
     Value rootObjectValue(Value value);
@@ -84,6 +85,7 @@ private:
     std::size_t nextTemporary_ = 0;
     std::size_t nextVariable_ = 0;
     std::size_t nextRoot_ = 0;
+    std::size_t nextExceptionFrame_ = 0;
     std::size_t nextLabel_ = 0;
     std::size_t nextString_ = 0;
     bool blockTerminated_ = false;

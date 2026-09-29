@@ -108,8 +108,8 @@ The prototype spells construction as `ClassName(args)`, matching the
 class-named constructor rule above. `destroy` is the destructor name, but
 the prototype supports explicit zero-argument `void destroy()` calls. An
 explicit call warns, marks the object destroyed before invocation, and
-executes at most once; another call or later use of the object aborts at
-runtime. Explicit destruction is currently rejected for classes participating
+executes at most once; another call or later use raises a catchable runtime
+exception. Explicit destruction is currently rejected for classes participating
 in inheritance because destructor chaining and dynamic-type destructor choice
 are not defined by this slice. `super.Base(args)` is the explicit
 primary-base constructor spelling. Multiple direct bases are laid out as
@@ -126,8 +126,8 @@ is default-constructible only if its bases also have no explicit constructors.
 - `public`, `private`, and `protected` member access are part of the language
   design. The prototype supports access sections inside class bodies and
   enforces them for field/method access, construction, and base-constructor
-  calls. Destructor declarations retain access metadata, but destructor
-  execution is not implemented.
+  calls. Destructor declarations retain access metadata, and the prototype
+  implements destructor execution for the documented non-inherited subset.
 - Namespaces concatenate into symbol paths.
 - A name is a compile-time symbol-tree path, not merely a textual identifier.
 - Simple compilation is multi-pass: a name may be referenced before its
@@ -150,7 +150,7 @@ is default-constructible only if its bases also have no explicit constructors.
   derived classes from accessing inherited members. Protected members are
   accessible from their declaring class and derived-class method bodies. Constructor access is
   checked for object construction and `super.Base(...)`. Destructor access is
-  checked on reference, but execution remains deferred. The prototype does not
+  checked on reference. The prototype does not
   yet enforce C++'s protected receiver-expression restriction and has no friend
   declarations, overloads, or per-member inline access labels.
 - An explicit base-constructor call uses `super.Base(args)`, naming the
@@ -168,6 +168,29 @@ statements on one line are not supported. The lexer recognizes `;`, `#`, and
 `//` as single-line comment introducers and `/* ... */` as a block comment;
 block-comment newlines continue to terminate statements. A semicolon never
 acts as a statement terminator.
+
+The prototype also supports a bounded exception syntax:
+
+```simple
+try {
+    mightFail()
+} except {
+    print("caught")
+} finally {
+    print("always runs")
+}
+```
+
+`raise "message"` raises a string-valued runtime exception. `except` catches
+all exceptions and exposes neither a binding nor typed matching. A `try` must
+have an `except` block, a `finally` block, or both. `finally` runs after
+successful completion, after a caught exception, and when an exception from
+the protected body or handler propagates. An exception raised inside `finally`
+propagates outward. Returns nested inside these constructs are not supported.
+Null dereferences, destroyed-object use or repeated destruction, and integer
+division/remainder by zero are catchable. An uncaught exception prints
+`simp: uncaught runtime exception: <message>` to standard error and aborts;
+the message has no source location or stack trace.
 
 ## Syntax and examples
 
@@ -248,16 +271,34 @@ destroy()` calls only for classes outside inheritance hierarchies. The
 collector first marks the graph, invokes each unmarked object's destructor at
 most once before sweeping, then traces roots again before reclamation. Explicit
 destruction marks the object, suppressing its later finalizer. The heap marks
-an object destroyed before invoking its callback; reentrant or repeated
-destruction aborts. Generated object-value uses validate liveness. Finalizer
+an object destroyed before invoking its callback; repeated explicit destruction
+raises a catchable runtime exception. Generated object-value uses validate
+liveness. Finalizer
 callbacks cannot allocate: allocation during collection aborts to prevent
 reentrant collection from invalidating the sweep. If a finalizer attaches its
 own object to a live object's reference field, the second trace retains the
 object, but it remains destroyed and unusable; its finalizer will not run a
 second time. Destructor chaining and dynamic-type selection for inherited
 objects remain unsupported.
-- Any use of an object after its destructor has run aborts in this prototype.
-  Catchable language exceptions are not implemented yet.
+- Use of an object after its destructor has run raises a catchable runtime
+  exception in the current prototype. Exceptions cannot escape a GC finalizer;
+  the runtime prints a fatal diagnostic and aborts instead.
+
+### Prototype exception runtime
+
+The runtime uses C `setjmp`/`longjmp` directly from generated LLVM code. Each
+generated handler keeps an opaque, dynamically sized runtime frame on its
+function stack. Raising restores the saved precise-GC root-frame head and
+unwinds explicit destructor state before jumping to the nearest handler.
+`finally` paths are emitted for normal and exceptional control flow, including
+exceptions raised in an `except` body. This is a single-threaded host-ABI
+mechanism, not LLVM landing-pad or cross-platform exception support. Typed
+matching, exception objects/bindings, source locations and stack traces,
+exceptions from GC finalizers, and recovery from collector invariant failures
+remain unsupported. An uncaught language exception reports its message on
+standard error and aborts with a nonzero process status. An exception escaping
+a constructor marks the partially initialized allocation destroyed so GC
+reclaims it without invoking its destructor.
 
 The prototype's collector retains an object resurrected during finalization
 after re-tracing roots, but it remains destroyed and unusable. Whether the

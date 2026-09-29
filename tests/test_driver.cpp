@@ -173,6 +173,27 @@ int main() {
              require(tree.find("Binary [+]") != std::string::npos, "addition absent from AST");
              require(tree.find("Binary [*]") != std::string::npos, "multiplication absent from AST");
          }},
+        {"raise, catch-all, and finally syntax", [] {
+             const auto program = parse(
+                 "start {\n"
+                 "  try { raise \"failure\" } except { print(\"caught\") } "
+                 "finally { print(\"done\") }\n"
+                 "}");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             require(output.str().find("Try") != std::string::npos &&
+                         output.str().find("Raise") != std::string::npos &&
+                         output.str().find("Except") != std::string::npos &&
+                         output.str().find("Finally") != std::string::npos,
+                     "exception constructs missing from AST");
+         }},
+        {"try requires a handler or finally", [] {
+             expectDiagnostic("start { try { print(1) } }",
+                              "requires an 'except' or 'finally' block");
+         }},
+        {"raise requires string", [] {
+             expectDiagnostic("start { raise 42 }", "raise requires a string expression");
+         }},
         {"newline statement boundaries", [] {
              const auto program = parse(
                  "class Base {\n"

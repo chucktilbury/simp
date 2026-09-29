@@ -29,7 +29,8 @@ struct Expression {
 };
 
 enum class StatementKind {
-    Declaration, Assignment, Print, If, While, Block, Return, Expression, SuperConstructorCall
+    Declaration, Assignment, Print, If, While, Block, Return, Expression, SuperConstructorCall,
+    Raise, Try
 };
 
 struct Statement {
@@ -41,7 +42,9 @@ struct Statement {
     std::vector<std::unique_ptr<Expression>> expressions;
     std::vector<Statement> body;
     std::vector<Statement> alternate;
+    std::vector<Statement> cleanup;
     bool hasAlternate = false;
+    bool hasCleanup = false;
 };
 
 struct Parameter {

@@ -298,6 +298,26 @@ add_test(NAME simp_rejects_destructor_inheritance
         "-DEXPECTED_DIAGNOSTIC=destructors in inheritance hierarchies are not supported"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+add_test(NAME simp_compile_and_run_runtime_exceptions
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_runtime_exceptions.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_runtime_exceptions"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_runtime_exceptions.ll"
+        "-DEXPECTED_OUTPUT=caught raise\nfinally after exception\n1\nfinally after success\ncaught method raise\ncaught constructor raise\ncaught destructor raise\ncaught destroyed after destructor raise\nfinally after handler error\ncaught handler raise\n2\ncaught finally raise\ncaught repeated destruction\ncaught destroyed object\ncaught null reference\ncaught division by zero\ncaught conditional raise\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_uncaught_runtime_exception
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_uncaught_exception.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_uncaught_exception"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_uncaught_exception.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=simp: uncaught runtime exception: uncaught sentinel"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
 add_test(NAME simp_rejects_private_super_constructor
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"

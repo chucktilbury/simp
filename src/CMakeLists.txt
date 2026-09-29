@@ -43,9 +43,11 @@ add_library(simp_frontend
     Ast.cpp
     CodeGenerator.cpp
     CodeGeneratorDispatch.cpp
+    CodeGeneratorExceptions.cpp
     CodeGeneratorLayout.cpp
     CodeGeneratorModule.cpp
     CodeGeneratorPrint.cpp
+    CodeGeneratorStatements.cpp
     Diagnostic.cpp
     Lexer.cpp
     Parser.cpp
@@ -53,6 +55,7 @@ add_library(simp_frontend
     SemanticAnalyzer.cpp
     SemanticInheritance.cpp
     SemanticExpressions.cpp
+    SemanticStatements.cpp
 )
 target_link_libraries(simp_frontend PUBLIC simp_headers)
 set_target_properties(simp_frontend PROPERTIES

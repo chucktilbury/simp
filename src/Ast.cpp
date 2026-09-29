@@ -72,6 +72,8 @@ void dumpStatement(const Statement& statement, std::ostream& output, int depth) 
     case StatementKind::SuperConstructorCall:
         output << "Super constructor [" << statement.name << "]\n";
         break;
+    case StatementKind::Raise: output << "Raise\n"; break;
+    case StatementKind::Try: output << "Try\n"; break;
     }
     if (statement.target) {
         dumpExpression(*statement.target, output, depth + 1);
@@ -84,8 +86,13 @@ void dumpStatement(const Statement& statement, std::ostream& output, int depth) 
     }
     if (statement.hasAlternate) {
         indent(output, depth + 1);
-        output << "Else\n";
+        output << (statement.kind == StatementKind::Try ? "Except\n" : "Else\n");
         dumpStatements(statement.alternate, output, depth + 2);
+    }
+    if (statement.hasCleanup) {
+        indent(output, depth + 1);
+        output << "Finally\n";
+        dumpStatements(statement.cleanup, output, depth + 2);
     }
 }
 

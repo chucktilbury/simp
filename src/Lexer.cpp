@@ -95,6 +95,10 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Else: return "'else'";
     case TokenType::While: return "'while'";
     case TokenType::Print: return "'print'";
+    case TokenType::Raise: return "'raise'";
+    case TokenType::Try: return "'try'";
+    case TokenType::Except: return "'except'";
+    case TokenType::Finally: return "'finally'";
     case TokenType::LeftBrace: return "'{'";
     case TokenType::RightBrace: return "'}'";
     case TokenType::LeftParen: return "'('";
@@ -221,7 +225,9 @@ Token Lexer::scanIdentifierOrInteger() {
         {"start", TokenType::Start}, {"int", TokenType::Int},
         {"string", TokenType::StringType}, {"if", TokenType::If},
         {"else", TokenType::Else}, {"while", TokenType::While},
-        {"print", TokenType::Print}, {"class", TokenType::Class},
+        {"print", TokenType::Print}, {"raise", TokenType::Raise},
+        {"try", TokenType::Try}, {"except", TokenType::Except},
+        {"finally", TokenType::Finally}, {"class", TokenType::Class},
         {"public", TokenType::Public}, {"protected", TokenType::Protected},
         {"private", TokenType::Private},
         {"super", TokenType::Super},

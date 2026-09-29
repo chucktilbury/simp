@@ -109,6 +109,7 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
     nextTemporary_ = 0;
     nextVariable_ = 0;
     nextRoot_ = 0;
+    nextExceptionFrame_ = 0;
     nextLabel_ = 0;
     blockTerminated_ = false;
     for (const auto& field : owner.fields) {
@@ -181,6 +182,7 @@ void CodeGenerator::emitMain(const Program& program) {
     nextTemporary_ = 0;
     nextVariable_ = 0;
     nextRoot_ = 0;
+    nextExceptionFrame_ = 0;
     nextLabel_ = 0;
     blockTerminated_ = false;
     emitStatements(program.statements);
@@ -209,6 +211,8 @@ std::string CodeGenerator::generate(const Program& program) {
            << "target triple = \"" << targetTriple_ << "\"\n\n"
            << typeDefinitions_
            << "@.simp.int.format = private unnamed_addr constant [3 x i8] c\"%d\\00\"\n"
+           << "@.simp.null.message = private unnamed_addr constant [14 x i8] c\"null reference\"\n"
+           << "@.simp.division.message = private unnamed_addr constant [16 x i8] c\"division by zero\"\n"
            << "@stdout = external global ptr\n"
            << stringGlobals_ << metadataGlobals_ << "\n"
            << "declare i32 @printf(ptr, ...)\n"
@@ -217,19 +221,31 @@ std::string CodeGenerator::generate(const Program& program) {
            << "declare void @simp_gc_pop_or_abort(ptr)\n"
            << "declare ptr @simp_gc_alloc(ptr)\n"
            << "declare void @simp_gc_require_alive(ptr)\n"
+           << "declare void @simp_gc_begin_construction(ptr)\n"
+           << "declare void @simp_gc_end_construction(ptr)\n"
            << "declare void @simp_gc_begin_destroy(ptr)\n"
            << "declare void @simp_gc_end_destroy(ptr)\n"
+           << "declare i64 @simp_exception_frame_size()\n"
+           << "declare void @simp_exception_frame_init(ptr)\n"
+           << "declare ptr @simp_exception_frame_buffer(ptr)\n"
+           << "declare void @simp_exception_push(ptr)\n"
+           << "declare void @simp_exception_pop(ptr)\n"
+           << "declare void @simp_exception_clear(ptr)\n"
+           << "declare void @simp_exception_raise(ptr, i64) noreturn\n"
+           << "declare void @simp_exception_rethrow(ptr) noreturn\n"
+           << "declare i32 @setjmp(ptr) returns_twice\n"
            << "declare void @abort()\n\n"
            << "define void @simp.require_nonnull(ptr %object) {\n"
            << "entry:\n"
            << "  %isnull = icmp eq ptr %object, null\n"
            << "  br i1 %isnull, label %fail, label %ok\n"
            << "fail:\n"
-           << "  call void @abort()\n"
+           << "  call void @simp_exception_raise(ptr @.simp.null.message, i64 14)\n"
            << "  unreachable\n"
            << "ok:\n"
            << "  ret void\n"
            << "}\n\n"
+           << "attributes #0 = { returns_twice }\n\n"
            << methods << main;
     return module.str();
 }

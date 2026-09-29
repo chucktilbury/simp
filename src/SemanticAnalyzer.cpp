@@ -23,6 +23,9 @@ bool containsReturn(const Statement& statement) {
     for (const auto& child : statement.alternate) {
         if (containsReturn(child)) return true;
     }
+    for (const auto& child : statement.cleanup) {
+        if (containsReturn(child)) return true;
+    }
     return false;
 }
 
@@ -32,6 +35,9 @@ bool containsSuperCall(const Statement& statement) {
         if (containsSuperCall(child)) return true;
     }
     for (const auto& child : statement.alternate) {
+        if (containsSuperCall(child)) return true;
+    }
+    for (const auto& child : statement.cleanup) {
         if (containsSuperCall(child)) return true;
     }
     return false;
@@ -291,179 +297,6 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
     scopes_.pop_back();
     currentClass_ = nullptr;
     currentMethod_ = nullptr;
-}
-
-void SemanticAnalyzer::analyzeStatements(const std::vector<Statement>& statements) {
-    for (const auto& statement : statements) {
-        analyzeStatement(statement);
-    }
-}
-
-void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
-    switch (statement.kind) {
-    case StatementKind::Declaration: {
-        validateType(statement.declaredType, statement.location);
-        auto& scope = scopes_.back();
-        if (scope.find(statement.name) != scope.end()) {
-            throw DiagnosticError(statement.location,
-                                  "variable '" + statement.name + "' is already declared in this scope");
-        }
-        const auto index = symbols_.size();
-        symbols_.push_back({statement.name, statement.declaredType, false, statement.location});
-        scope.emplace(statement.name, index);
-        if (!statement.expressions.empty()) {
-            const auto initializerType = analyzeExpression(*statement.expressions.front());
-            if (!isAssignable(statement.declaredType, initializerType) &&
-                !(initializerType == "null" && classes_.find(statement.declaredType) != classes_.end())) {
-                throw DiagnosticError(statement.expressions.front()->location,
-                                      "cannot initialize " + statement.declaredType +
-                                          " variable with " + initializerType);
-            }
-            symbols_[index].initialized = true;
-        }
-        return;
-    }
-    case StatementKind::SuperConstructorCall: {
-        if (currentClass_ == nullptr || currentMethod_ == nullptr ||
-            !currentMethod_->constructor || currentClass_->baseClassName.empty() ||
-            statement.name != currentClass_->baseClassName) {
-            throw DiagnosticError(statement.location,
-                                  "super call must name the direct base class and appear in its constructor");
-        }
-        const auto* base = findClass(statement.name, statement.location);
-        const MethodDeclaration* constructor = nullptr;
-        for (const auto& candidate : base->methods) {
-            if (candidate.constructor) {
-                constructor = &candidate;
-                break;
-            }
-        }
-        if (constructor != nullptr &&
-            !memberAccessible(*base, constructor->name, true)) {
-            throw DiagnosticError(statement.location,
-                                  "base constructor for class '" + base->name +
-                                      "' is not accessible here");
-        }
-        const std::size_t expectedCount = constructor == nullptr ? 0 : constructor->parameters.size();
-        if (statement.expressions.size() != expectedCount) {
-            throw DiagnosticError(statement.location,
-                                  "base constructor argument count does not match class '" +
-                                      statement.name + "'");
-        }
-        for (std::size_t index = 0; index < statement.expressions.size(); ++index) {
-            const auto actual = analyzeExpression(*statement.expressions[index]);
-            const auto expected = constructor->parameters[index].type;
-            if (!isAssignable(expected, actual) &&
-                !(actual == "null" && classes_.find(expected) != classes_.end())) {
-                throw DiagnosticError(statement.expressions[index]->location,
-                                      "base constructor argument type does not match parameter '" +
-                                          constructor->parameters[index].name + "'");
-            }
-        }
-        return;
-    }
-    case StatementKind::Assignment: {
-        const auto targetType = analyzeLValue(*statement.target);
-        const auto valueType = analyzeExpression(*statement.expressions.front());
-        if (!isAssignable(targetType, valueType) &&
-            !(valueType == "null" && classes_.find(targetType) != classes_.end())) {
-            throw DiagnosticError(statement.expressions.front()->location,
-                                  "cannot assign " + valueType + " to " + targetType +
-                                      " variable '" + statement.target->value + "'");
-        }
-        if (statement.target->kind == ExpressionKind::Identifier) {
-            const auto index = findSymbolIndex(statement.target->value);
-            if (index != symbols_.size()) {
-                symbols_[index].initialized = true;
-            }
-        }
-        return;
-    }
-    case StatementKind::Print: {
-        std::vector<std::string> types;
-        for (const auto& expression : statement.expressions) {
-            types.push_back(analyzeExpression(*expression));
-        }
-        if (types.size() > 1) {
-            for (std::size_t index = 1; index < types.size(); ++index) {
-                if (types[index] != "int") {
-                    throw DiagnosticError(statement.expressions[index]->location,
-                                          "formatted print arguments must have type int");
-                }
-            }
-        } else if (!types.empty() && types.front() != "int" && types.front() != "string") {
-            throw DiagnosticError(statement.location, "print supports int or string values only");
-        }
-        return;
-    }
-    case StatementKind::If: {
-        if (analyzeExpression(*statement.expressions.front()) != "int") {
-            throw DiagnosticError(statement.expressions.front()->location,
-                                  "if condition must have type int");
-        }
-        const auto before = initializationState();
-        scopes_.emplace_back();
-        analyzeStatements(statement.body);
-        scopes_.pop_back();
-        const auto thenState = initializationState();
-        if (!statement.hasAlternate) {
-            restoreInitializationState(before);
-            return;
-        }
-        restoreInitializationState(before);
-        scopes_.emplace_back();
-        analyzeStatements(statement.alternate);
-        scopes_.pop_back();
-        const auto elseState = initializationState();
-        for (std::size_t index = 0; index < before.size(); ++index) {
-            symbols_[index].initialized = thenState[index] && elseState[index];
-        }
-        return;
-    }
-    case StatementKind::While:
-        if (analyzeExpression(*statement.expressions.front()) != "int") {
-            throw DiagnosticError(statement.expressions.front()->location,
-                                  "while condition must have type int");
-        } else {
-            const auto before = initializationState();
-            scopes_.emplace_back();
-            analyzeStatements(statement.body);
-            scopes_.pop_back();
-            restoreInitializationState(before);
-        }
-        return;
-    case StatementKind::Block:
-        scopes_.emplace_back();
-        analyzeStatements(statement.body);
-        scopes_.pop_back();
-        return;
-    case StatementKind::Return: {
-        if (currentMethod_ == nullptr) {
-            throw DiagnosticError(statement.location, "return is only valid inside a class method");
-        }
-        if (currentMethod_->returnType == "void") {
-            if (!statement.expressions.empty()) {
-                throw DiagnosticError(statement.location, "void method cannot return a value");
-            }
-        } else {
-            if (statement.expressions.empty()) {
-                throw DiagnosticError(statement.location, "non-void method must return a value");
-            }
-            const auto returnType = analyzeExpression(*statement.expressions.front());
-            if (!isAssignable(currentMethod_->returnType, returnType) &&
-                !(returnType == "null" && classes_.find(currentMethod_->returnType) != classes_.end())) {
-                throw DiagnosticError(statement.expressions.front()->location,
-                                      "return type does not match method return type");
-            }
-        }
-        return;
-    }
-    case StatementKind::Expression:
-        if (analyzeExpression(*statement.expressions.front()) == "void") {
-            return;
-        }
-        return;
-    }
 }
 
 void SemanticAnalyzer::dumpSymbolTable(std::ostream& output) const {

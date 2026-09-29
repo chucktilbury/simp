@@ -165,6 +165,16 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                          owner->name + ")\n";
         rootObjectValue({owner->name, object});
         emitNullCheck(object);
+        const MethodDeclaration* constructor = nullptr;
+        for (const auto& method : owner->methods) {
+            if (method.constructor) {
+                constructor = &method;
+                break;
+            }
+        }
+        if (constructor != nullptr) {
+            instructions_ += "  call void @simp_gc_begin_construction(ptr " + object + ")\n";
+        }
         for (const auto& method : owner->methods) {
             if (!method.constructor) continue;
             std::string arguments = "ptr " + object;
@@ -175,6 +185,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             }
             instructions_ += "  call void " + methodSymbol(owner->name, method.name) +
                              "(" + arguments + ")\n";
+            instructions_ += "  call void @simp_gc_end_construction(ptr " + object + ")\n";
             break;
         }
         return {owner->name, object};
@@ -281,6 +292,16 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             return {"int", result};
         }
         if (operation == "/" || operation == "%") {
+            const auto zero = newTemporary();
+            const auto failureLabel = freshLabel("division.zero");
+            const auto successLabel = freshLabel("division.ok");
+            instructions_ += "  " + zero + " = icmp eq i32 " + right.operand + ", 0\n"
+                             "  br i1 " + zero + ", label %" + failureLabel +
+                             ", label %" + successLabel + "\n"
+                             + failureLabel + ":\n"
+                             "  call void @simp_exception_raise(ptr @.simp.division.message, i64 16)\n"
+                             "  unreachable\n"
+                             + successLabel + ":\n";
             const char* instruction = operation == "/" ? "sdiv" : "srem";
             instructions_ += "  " + result + " = " + instruction + " i32 " + left.operand +
                              ", " + right.operand + "\n";
@@ -302,159 +323,6 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
     }
     }
     unsupported(expression.location, "expression");
-}
-
-void CodeGenerator::emitStatements(const std::vector<Statement>& statements) {
-    for (const auto& statement : statements) {
-        if (!blockTerminated_) emitStatement(statement);
-    }
-}
-
-void CodeGenerator::emitStatement(const Statement& statement) {
-    switch (statement.kind) {
-    case StatementKind::Declaration: {
-        const auto pointer = "%v" + std::to_string(nextVariable_++);
-        scopes_.back().emplace(statement.name, Binding{statement.declaredType, pointer, 0, false});
-        entryAllocas_ += "  " + pointer + " = alloca " + llvmType(statement.declaredType) + "\n";
-        if (classes_.find(statement.declaredType) != classes_.end()) {
-            rootSlots_.push_back(pointer);
-        }
-        if (!statement.expressions.empty()) {
-            const auto value = emitExpression(*statement.expressions.front(), statement.declaredType);
-            instructions_ += "  store " + llvmType(statement.declaredType) + " " + value.operand +
-                             ", ptr " + pointer + "\n";
-        }
-        return;
-    }
-    case StatementKind::Assignment: {
-        const auto valueType = emitExpression(*statement.expressions.front());
-        const auto binding = statement.target->kind == ExpressionKind::Identifier
-                                 ? findVariable(statement.target->value, statement.target->location)
-                                 : Binding{valueType.type, "", 0, false};
-        std::string address;
-        if (statement.target->kind == ExpressionKind::Member) {
-            const Expression* root = nullptr;
-            const ClassDeclaration* owner = nullptr;
-            std::vector<std::string> basePath;
-            const bool qualified = resolveBaseQualifier(*statement.target->left, root, owner,
-                                                        basePath);
-            const auto receiver = emitExpression(qualified ? *root : *statement.target->left);
-            emitNullCheck(receiver.operand);
-            if (!qualified) owner = classes_.at(receiver.type);
-            std::size_t fieldIndex = 0;
-            (void)findField(*owner, statement.target->value, fieldIndex);
-            if (qualified) {
-                fieldIndex += basePathFieldOffset(*classes_.at(receiver.type), basePath);
-            }
-            address = newTemporary();
-            instructions_ += "  " + address + " = getelementptr inbounds %Class." + receiver.type +
-                             ", ptr " + receiver.operand + ", i32 0, i32 " +
-                             std::to_string(fieldIndex + 1) + "\n";
-        } else {
-            address = emitAddress(binding, statement.location);
-        }
-        instructions_ += "  store " + llvmType(binding.type) + " " + valueType.operand +
-                         ", ptr " + address + "\n";
-        return;
-    }
-    case StatementKind::Print:
-        emitPrint(statement);
-        return;
-    case StatementKind::Expression:
-        (void)emitExpression(*statement.expressions.front());
-        return;
-    case StatementKind::Return:
-        if (statement.expressions.empty()) {
-            emitRootFramePop();
-            instructions_ += "  ret void\n";
-        } else {
-            const auto value = emitExpression(*statement.expressions.front(),
-                                              currentMethod_->returnType);
-            emitRootFramePop();
-            instructions_ += "  ret " + llvmType(value.type) + " " + value.operand + "\n";
-        }
-        blockTerminated_ = true;
-        return;
-    case StatementKind::SuperConstructorCall: {
-        const auto base = classes_.find(statement.name);
-        if (base == classes_.end()) {
-            throw DiagnosticError(statement.location, "unknown base class '" + statement.name + "'");
-        }
-        const MethodDeclaration* constructor = nullptr;
-        for (const auto& method : base->second->methods) {
-            if (method.constructor) {
-                constructor = &method;
-                break;
-            }
-        }
-        if (constructor == nullptr) return;
-        std::string arguments = "ptr %this";
-        for (std::size_t index = 0; index < statement.expressions.size(); ++index) {
-            const auto value = emitExpression(*statement.expressions[index],
-                                              constructor->parameters[index].type);
-            arguments += ", " + llvmType(constructor->parameters[index].type) + " " +
-                         value.operand;
-        }
-        instructions_ += "  call void " + methodSymbol(statement.name, constructor->name) +
-                         "(" + arguments + ")\n";
-        return;
-    }
-    case StatementKind::Block:
-        scopes_.emplace_back();
-        emitStatements(statement.body);
-        scopes_.pop_back();
-        return;
-    case StatementKind::If: {
-        const auto condition = emitIntegerExpression(*statement.expressions.front());
-        const auto flag = newTemporary();
-        const auto thenLabel = freshLabel("if.then");
-        const auto elseLabel = freshLabel("if.else");
-        const auto endLabel = freshLabel("if.end");
-        instructions_ += "  " + flag + " = icmp ne i32 " + condition.operand + ", 0\n";
-        instructions_ += "  br i1 " + flag + ", label %" + thenLabel + ", label %" +
-                         (statement.hasAlternate ? elseLabel : endLabel) + "\n";
-        instructions_ += thenLabel + ":\n";
-        scopes_.emplace_back();
-        blockTerminated_ = false;
-        emitStatements(statement.body);
-        const bool thenTerminated = blockTerminated_;
-        scopes_.pop_back();
-        if (!thenTerminated) instructions_ += "  br label %" + endLabel + "\n";
-        bool elseTerminated = false;
-        if (statement.hasAlternate) {
-            instructions_ += elseLabel + ":\n";
-            scopes_.emplace_back();
-            blockTerminated_ = false;
-            emitStatements(statement.alternate);
-            elseTerminated = blockTerminated_;
-            scopes_.pop_back();
-            if (!elseTerminated) instructions_ += "  br label %" + endLabel + "\n";
-        }
-        instructions_ += endLabel + ":\n";
-        blockTerminated_ = thenTerminated && statement.hasAlternate && elseTerminated;
-        return;
-    }
-    case StatementKind::While: {
-        const auto conditionLabel = freshLabel("while.cond");
-        const auto bodyLabel = freshLabel("while.body");
-        const auto endLabel = freshLabel("while.end");
-        instructions_ += "  br label %" + conditionLabel + "\n" + conditionLabel + ":\n";
-        const auto condition = emitIntegerExpression(*statement.expressions.front());
-        const auto flag = newTemporary();
-        instructions_ += "  " + flag + " = icmp ne i32 " + condition.operand + ", 0\n";
-        instructions_ += "  br i1 " + flag + ", label %" + bodyLabel + ", label %" + endLabel + "\n";
-        instructions_ += bodyLabel + ":\n";
-        scopes_.emplace_back();
-        blockTerminated_ = false;
-        emitStatements(statement.body);
-        const bool bodyTerminated = blockTerminated_;
-        scopes_.pop_back();
-        if (!bodyTerminated) instructions_ += "  br label %" + conditionLabel + "\n";
-        instructions_ += endLabel + ":\n";
-        blockTerminated_ = false;
-        return;
-    }
-    }
 }
 
 } // namespace simp
