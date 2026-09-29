@@ -150,6 +150,13 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
             }
         }
         const auto valueType = analyzeExpression(*statement.expressions.front(), targetType);
+        if (targetType == "buffer-byte") {
+            if (valueType != "int" && valueType != "unsigned") {
+                throw DiagnosticError(statement.expressions.front()->location,
+                                      "buffer element assignment requires int or unsigned");
+            }
+            return;
+        }
         if (!isAssignable(targetType, valueType) &&
             !(valueType == "null" && classes_.find(targetType) != classes_.end())) {
             throw DiagnosticError(statement.expressions.front()->location,
@@ -364,10 +371,11 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
                 capture.type != "float" && capture.type != "unsigned" &&
                 capture.type != "string" &&
                 capture.type != "array" && capture.type != "map" &&
+                capture.type != "handle" &&
                 classes_.find(capture.type) == classes_.end()) {
                 throw DiagnosticError(capture.location,
                                       "inline capture type must be int, bool, float, unsigned, "
-                                      "string, array, map, or a declared class type");
+                                      "string, array, map, handle, or a declared class type");
             }
         }
         std::unordered_set<std::string> captureNames;
@@ -387,6 +395,7 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
                                           "' does not match " + symbols_[index].type +
                                           " variable '" + capture.name + "'");
             }
+            symbols_[index].initialized = true;
         }
         return;
     }

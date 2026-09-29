@@ -66,6 +66,7 @@ private:
     Value extractTypedValue(Value value, const std::string& expectedType,
                             const SourceLocation& location);
     Value rootObjectValue(Value value, const SourceLocation& location);
+    Value copyBufferValue(Value value, const SourceLocation& location);
     void registerRootSlot(const std::string& pointer, const std::string& type);
     std::string rootFrameInitialization() const;
     std::string rootFramePush() const;
@@ -120,12 +121,13 @@ private:
     void emitStringBytes(const std::string& bytes);
     void emitPrint(const Statement& statement);
     void emitPrintValue(const Value& value, const SourceLocation& location);
-    void emitPrintDynamicValue(const Value& value);
+    void emitPrintDynamicValue(const Value& value, const SourceLocation& location);
     void emitInlineC(const Statement& statement);
     std::string inlineSymbol(const Statement& statement) const;
     void emitNullCheck(const std::string& pointer, const SourceLocation& location);
     bool isArrayType(const std::string& type) const;
     bool isMapType(const std::string& type) const;
+    bool isBufferType(const std::string& type) const;
     bool isManagedReferenceType(const std::string& type) const;
     bool isDynamicValueType(const std::string& type) const;
     [[noreturn]] void unsupported(const SourceLocation& location, const std::string& feature) const;
@@ -148,6 +150,7 @@ private:
     std::unordered_set<std::string> declaredInlineSymbols_;
     std::unordered_map<std::string, std::string> inlineShims_;
     std::vector<std::string> rootSlots_;
+    std::vector<std::string> rootTagSlots_;
     std::vector<LoopTarget> loopTargets_;
     std::vector<ActiveTryTransfer> activeTryTransfers_;
     std::size_t nextTemporary_ = 0;

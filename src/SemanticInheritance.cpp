@@ -308,16 +308,18 @@ bool SemanticAnalyzer::isAssignable(const std::string& target,
     if (target == "any") {
         return source == "int" || source == "bool" || source == "float" ||
                source == "unsigned" || source == "string" || source == "null" ||
-               source == "array" || source == "map" || classes_.find(source) != classes_.end();
+               source == "array" || source == "map" || source == "buffer" ||
+               source == "handle" || classes_.find(source) != classes_.end();
     }
     if (source == "any") {
         return target == "int" || target == "bool" || target == "float" ||
                target == "unsigned" || target == "string" || target == "map" ||
-               target == "array" ||
+               target == "array" || target == "buffer" || target == "handle" ||
                classes_.find(target) != classes_.end();
     }
     if (source == "null") {
-        return classes_.find(target) != classes_.end();
+        return target == "buffer" || target == "handle" ||
+               classes_.find(target) != classes_.end();
     }
     const auto found = classes_.find(source);
     if (classes_.find(target) == classes_.end() || found == classes_.end() ||

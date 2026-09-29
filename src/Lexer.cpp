@@ -90,6 +90,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::StringType: return "'string'";
     case TokenType::ArrayType: return "'array'";
     case TokenType::MapType: return "'map'";
+    case TokenType::BufferType: return "'buffer'";
+    case TokenType::HandleType: return "'handle'";
     case TokenType::AnyType: return "'any'";
     case TokenType::Class: return "'class'";
     case TokenType::Namespace: return "'namespace'";
@@ -289,6 +291,7 @@ Token Lexer::scanIdentifierOrInteger() {
         {"string", TokenType::StringType},
         {"array", TokenType::ArrayType}, {"list", TokenType::ArrayType},
         {"map", TokenType::MapType}, {"dict", TokenType::MapType},
+        {"buffer", TokenType::BufferType}, {"handle", TokenType::HandleType},
         {"any", TokenType::AnyType}, {"if", TokenType::If},
         {"else", TokenType::Else}, {"while", TokenType::While},
         {"do", TokenType::Do}, {"for", TokenType::For},

@@ -73,6 +73,7 @@ private:
     std::size_t current_ = 0;
     std::ostream* traceOutput_ = nullptr;
     std::vector<std::string> namespacePath_;
+    std::vector<Statement> pendingStatements_;
 };
 
 } // namespace simp

@@ -19,6 +19,8 @@ typedef struct SimpDemoNative {
     int32_t marker;
 } SimpDemoNative;
 
+static int demo_handle_resource;
+
 static void require_demo_native_receiver(void *receiver) {
     const SimpDemoNative *native = (const SimpDemoNative *)receiver;
     if (native == NULL || native->metadata == NULL ||
@@ -52,4 +54,19 @@ SimpString simp_method_demo_string_identity(void *receiver, SimpString text) {
 void *simp_method_demo_identity(void *receiver, void *object) {
     require_demo_native_receiver(receiver);
     return object;
+}
+
+void *simp_method_demo_handle_create(void *receiver) {
+    require_demo_native_receiver(receiver);
+    return &demo_handle_resource;
+}
+
+void simp_method_demo_handle_consume(void *receiver, void *handle) {
+    require_demo_native_receiver(receiver);
+    if (handle == NULL) abort();
+}
+
+void *simp_method_demo_handle_identity(void *receiver, void *handle) {
+    require_demo_native_receiver(receiver);
+    return handle;
 }

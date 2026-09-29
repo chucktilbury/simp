@@ -24,6 +24,14 @@ bool isMapType(const std::string& type) {
     return type == "map";
 }
 
+bool isBufferType(const std::string& type) {
+    return type == "buffer";
+}
+
+bool isOpaqueHandleType(const std::string& type) {
+    return type == "handle";
+}
+
 bool isDynamicValueType(const std::string& type) {
     return type == "any";
 }
@@ -173,6 +181,15 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                       "maps support only the read-only 'length' member and "
                                       "'contains' and 'remove' methods");
             }
+            if (isBufferType(receiverType)) {
+                if (expression.value == "length") return "int";
+                throw DiagnosticError(expression.location,
+                                      "buffers support only the read-only 'length' member");
+            }
+            if (isOpaqueHandleType(receiverType)) {
+                throw DiagnosticError(expression.location,
+                                      "handle has no built-in operations");
+            }
             if (isDynamicValueType(receiverType)) {
                 throw DiagnosticError(expression.location,
                                       "'any' has no members; assign it to a typed variable "
@@ -211,11 +228,14 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                       actualType == "string" ||
                                       actualType == "null" || actualType == "any" ||
                                       isMapType(actualType) || isArrayType(actualType) ||
+                                      isBufferType(actualType) ||
+                                      isOpaqueHandleType(actualType) ||
                                       classes_.find(actualType) != classes_.end();
             if (!validElement) {
                 throw DiagnosticError(element->location,
                                       "array elements must be scalar, string, a class reference, "
-                                      "an array, a map, null, or 'any'; found " + actualType);
+                                  "an array, a map, a buffer, a handle, null, or 'any'; found " +
+                                      actualType);
             }
         }
         return "array";
@@ -233,11 +253,13 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                     valueType == "string" ||
                                     valueType == "null" || valueType == "any" ||
                                     valueType == "array" || valueType == "map" ||
+                                    valueType == "buffer" || valueType == "handle" ||
                                     classes_.find(valueType) != classes_.end();
             if (!validValue) {
                 throw DiagnosticError(expression.arguments[index + 1]->location,
                                       "map values must be scalar, string, a collection, a class "
-                                      "reference, null, or 'any'; found " + valueType);
+                                      "reference, a buffer, a handle, null, or 'any'; found " +
+                                          valueType);
             }
         }
         return "map";
@@ -271,11 +293,30 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             }
             return "any";
         }
+        if (isBufferType(collectionType)) {
+            for (auto& bound : expression.arguments) {
+                if (analyzeExpression(*bound) != "int") {
+                    throw DiagnosticError(bound->location,
+                                          "buffer index and slice bounds must be int");
+                }
+            }
+            return expression.kind == ExpressionKind::Slice ? "buffer" : "unsigned";
+        }
         throw DiagnosticError(expression.location,
                               expression.kind == ExpressionKind::Slice
-                                  ? "slicing requires an array or map"
-                                  : "indexing requires an array or map");
+                                  ? "slicing requires an array, map, or buffer"
+                                  : "indexing requires an array, map, or buffer");
     }
+    case ExpressionKind::BufferConstructor:
+        if (expression.arguments.size() != 1) {
+            throw DiagnosticError(expression.location,
+                                  "buffer constructor expects one int length");
+        }
+        if (analyzeExpression(*expression.arguments.front()) != "int") {
+            throw DiagnosticError(expression.arguments.front()->location,
+                                  "buffer length must have type int");
+        }
+        return "buffer";
     case ExpressionKind::ConstructorCall: {
         expression.value =
             resolveClassName(expression.value, currentNamespace_, expression.location);
@@ -398,6 +439,45 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 }
                 return "int";
             }
+            if (isBufferType(receiverType)) {
+                if (target.value != "resize" && target.value != "clear" &&
+                    target.value != "append") {
+                    throw DiagnosticError(target.location,
+                                          "buffers support only resize(int), clear(), and "
+                                          "append(int or unsigned)");
+                }
+                if (target.value == "resize") {
+                    if (expression.arguments.size() != 1 ||
+                        analyzeExpression(*expression.arguments.front()) != "int") {
+                        throw DiagnosticError(expression.location,
+                                              "buffer 'resize' expects one int length");
+                    }
+                    return "void";
+                }
+                if (target.value == "clear") {
+                    if (!expression.arguments.empty()) {
+                        throw DiagnosticError(expression.location,
+                                              "buffer 'clear' expects no arguments");
+                    }
+                    return "void";
+                }
+                if (target.value == "append") {
+                    if (expression.arguments.size() != 1) {
+                        throw DiagnosticError(expression.location,
+                                              "buffer 'append' expects one int or unsigned value");
+                    }
+                    const auto valueType = analyzeExpression(*expression.arguments.front());
+                    if (valueType != "int" && valueType != "unsigned") {
+                        throw DiagnosticError(expression.arguments.front()->location,
+                                              "buffer append value must have type int or unsigned");
+                    }
+                    return "void";
+                }
+            }
+            if (isOpaqueHandleType(receiverType)) {
+                throw DiagnosticError(target.location,
+                                      "handle has no built-in operations");
+            }
             owner = findClass(receiverType, target.location);
         }
         if (target.value == "destroy") {
@@ -507,6 +587,12 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             return "bool";
         }
         if (operation == "==" || operation == "!=") {
+            if ((isBufferType(left) && right == "null") ||
+                (left == "null" && isBufferType(right)) ||
+                (isOpaqueHandleType(left) && right == "null") ||
+                (left == "null" && isOpaqueHandleType(right))) {
+                return "bool";
+            }
             if (left != right ||
                 (left != "int" && left != "bool" && left != "float" &&
                  left != "unsigned")) {
@@ -590,7 +676,15 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
             }
             return "any";
         }
-        throw DiagnosticError(expression.location, "index assignment requires an array or map");
+        if (isBufferType(collectionType)) {
+            if (analyzeExpression(*expression.arguments.front()) != "int") {
+                throw DiagnosticError(expression.arguments.front()->location,
+                                      "buffer index must be int");
+            }
+            return "buffer-byte";
+        }
+        throw DiagnosticError(expression.location,
+                              "index assignment requires an array, map, or buffer");
     }
     if (expression.kind == ExpressionKind::Slice) {
         throw DiagnosticError(expression.location,

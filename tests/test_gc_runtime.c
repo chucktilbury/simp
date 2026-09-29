@@ -18,7 +18,7 @@ typedef struct TestNode {
 
 static const uint64_t reference_offsets[] = {offsetof(TestNode, next)};
 static const SimpClassMeta node_metadata = {
-    "TestNode", 8, 2, NULL, 0, sizeof(TestNode), 1, reference_offsets, NULL
+    "TestNode", 8, 2, NULL, 0, sizeof(TestNode), 1, reference_offsets, NULL, 0, NULL
 };
 
 typedef struct FinalizeNode {
@@ -38,7 +38,7 @@ static void count_finalizer(void *object) {
 }
 
 static const SimpClassMeta finalize_metadata = {
-    "FinalizeNode", 12, 1, NULL, 0, sizeof(FinalizeNode), 0, NULL, count_finalizer
+    "FinalizeNode", 12, 1, NULL, 0, sizeof(FinalizeNode), 0, NULL, count_finalizer, 0, NULL
 };
 
 static int fail(const char *message) {
@@ -233,6 +233,26 @@ int main(void) {
     if (simp_gc_heap_count() != 0 || !simp_gc_pop(&map_frame)) {
         return fail("map and slice roots were not released cleanly");
     }
+    SimpRootFrame tagged_frame = {0};
+    SimpArrayValue dynamic_value = {0};
+    void *dynamic_slots[] = {&dynamic_value.pointer};
+    const uint64_t *dynamic_tags[] = {&dynamic_value.tag};
+    simp_gc_push_tagged_or_abort(&tagged_frame, dynamic_slots, dynamic_tags, 1);
+    dynamic_value.tag = SIMP_ARRAY_BUFFER;
+    dynamic_value.pointer = simp_buffer_new(2, "runtime-test.simp", 17, 1, 1);
+    simp_gc_collect();
+    const SimpBuffer *buffer = (const SimpBuffer *)dynamic_value.pointer;
+    if (simp_gc_heap_count() != 1 || buffer->length != 2 ||
+        buffer->data[0] != 0 || buffer->data[1] != 0) {
+        return fail("tagged roots did not preserve a zero-filled buffer");
+    }
+    dynamic_value.tag = SIMP_ARRAY_HANDLE;
+    dynamic_value.pointer = simp_gc_alloc(&node_metadata);
+    simp_gc_collect();
+    if (simp_gc_heap_count() != 0) {
+        return fail("opaque handle payload was traced as a GC reference");
+    }
+    simp_gc_pop_or_abort(&tagged_frame);
     puts("PASS precise roots, reclamation, finalization, destruction, and frame lifecycle");
     return 0;
 }

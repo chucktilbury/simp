@@ -29,6 +29,7 @@ const char* expressionName(ExpressionKind kind) {
     case ExpressionKind::Member: return "Member";
     case ExpressionKind::Call: return "Call";
     case ExpressionKind::ConstructorCall: return "ConstructorCall";
+    case ExpressionKind::BufferConstructor: return "BufferConstructor";
     case ExpressionKind::Null: return "Null";
     case ExpressionKind::ArrayLiteral: return "ArrayLiteral";
     case ExpressionKind::MapLiteral: return "MapLiteral";

@@ -52,8 +52,10 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     typeDefinitions_ += "%SimpleArray = type { ptr, i64, [0 x %SimpleArrayValue] }\n";
     typeDefinitions_ += "%SimpleMap = type { ptr, i64, i64, ptr, i64, ptr }\n";
     typeDefinitions_ += "%SimpleMapEntry = type { ptr, i64, i64, %SimpleArrayValue }\n";
-    typeDefinitions_ += "%SimpRootFrame = type { ptr, i64, ptr }\n";
-    typeDefinitions_ += "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr }\n";
+    typeDefinitions_ += "%SimpleBuffer = type { ptr, i64, i64, ptr }\n";
+    typeDefinitions_ += "%SimpRootFrame = type { ptr, i64, ptr, ptr }\n";
+    typeDefinitions_ +=
+        "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr, i64, ptr }\n";
     typeDefinitions_ += "%SimpleMethodMeta = type { ptr, i64, ptr }\n";
     for (const auto& owner : program.classes) {
         typeDefinitions_ += "%Class." + owner.name + " = type { ptr";
@@ -76,6 +78,7 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     for (const auto& owner : program.classes) {
         const auto className = internString(owner.name);
         std::vector<std::string> referenceOffsets;
+        std::vector<std::string> dynamicReferenceOffsets;
         for (const auto& subobject : subobjects(owner)) {
             for (std::size_t localFieldIndex = 0;
                  localFieldIndex < subobject.second->fields.size(); ++localFieldIndex) {
@@ -85,7 +88,8 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
                 const auto offset = "i64 " + subobjectFieldOffset(
                     owner, subobject.first,
                     fieldIndex(*subobject.second, localFieldIndex), dynamic);
-                referenceOffsets.push_back(std::move(offset));
+                if (dynamic) dynamicReferenceOffsets.push_back(offset);
+                else referenceOffsets.push_back(offset);
             }
         }
         const auto offsets = "@.simp.reference.offsets." + owner.name;
@@ -101,6 +105,18 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         const auto objectSize = "ptrtoint (ptr getelementptr (%Class." + owner.name +
                                ", ptr null, i32 1) to i64)";
         const auto offsetPointer = referenceOffsets.empty() ? "null" : offsets;
+        const auto dynamicOffsets = "@.simp.dynamic.reference.offsets." + owner.name;
+        if (!dynamicReferenceOffsets.empty()) {
+            metadataGlobals_ += dynamicOffsets + " = private constant [" +
+                                std::to_string(dynamicReferenceOffsets.size()) + " x i64] [";
+            for (std::size_t index = 0; index < dynamicReferenceOffsets.size(); ++index) {
+                if (index != 0) metadataGlobals_ += ", ";
+                metadataGlobals_ += dynamicReferenceOffsets[index];
+            }
+            metadataGlobals_ += "]\n";
+        }
+        const auto dynamicOffsetPointer =
+            dynamicReferenceOffsets.empty() ? "null" : dynamicOffsets;
         const auto containsDestructor = [this](const auto& self,
                                                const ClassDeclaration& declaration) -> bool {
             if (std::any_of(declaration.methods.begin(), declaration.methods.end(),
@@ -143,6 +159,8 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
                                 ", i64 " + std::to_string(referenceOffsets.size()) +
                                 ", ptr " + offsetPointer + ", ptr " +
                                 (hasDestructor ? "@simp.finalize." + owner.name : "null") +
+                                ", i64 " + std::to_string(dynamicReferenceOffsets.size()) +
+                                ", ptr " + dynamicOffsetPointer +
                                 " }\n";
         }
     }
@@ -163,6 +181,7 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
     entryAllocas_.clear();
     functionPrologue_.clear();
     rootSlots_.clear();
+    rootTagSlots_.clear();
     loopTargets_.clear();
     activeTryTransfers_.clear();
     instructions_.clear();
@@ -187,6 +206,7 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
     const auto thisPointer = "%v" + std::to_string(nextVariable_++);
     entryAllocas_ += "  " + thisPointer + " = alloca ptr\n";
     rootSlots_.push_back(thisPointer);
+    rootTagSlots_.emplace_back();
     functionPrologue_ += "  store ptr %this, ptr " + thisPointer + "\n";
     for (const auto& parameter : method.parameters) {
         const auto argument = "%arg." + parameter.name;
@@ -573,6 +593,7 @@ void CodeGenerator::emitMain(const Program& program) {
     entryAllocas_.clear();
     functionPrologue_.clear();
     rootSlots_.clear();
+    rootTagSlots_.clear();
     loopTargets_.clear();
     activeTryTransfers_.clear();
     instructions_.clear();
@@ -644,13 +665,22 @@ std::string CodeGenerator::generate(const Program& program,
            << externDeclarations_
            << inlineDeclarations_
            << "declare i32 @printf(ptr, ...)\n"
-           << "declare i64 @fwrite(ptr, i64, i64, ptr)\n"           << "declare void @simp_gc_push_or_abort(ptr, ptr, i64)\n"
+           << "declare i64 @fwrite(ptr, i64, i64, ptr)\n"
+           << "declare void @simp_gc_push_tagged_or_abort(ptr, ptr, ptr, i64)\n"
            << "declare void @simp_gc_pop_or_abort(ptr)\n"
            << "declare ptr @simp_gc_alloc(ptr)\n"
            << "declare ptr @simp_gc_alloc_array(i64)\n"
            << "declare ptr @simp_array_index(ptr, i32, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_array_slice(ptr, i32, i32, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_gc_alloc_map()\n"
+           << "declare ptr @simp_buffer_new(i32, ptr, i64, i64, i64)\n"
+           << "declare ptr @simp_buffer_copy(ptr, ptr, i64, i64, i64)\n"
+           << "declare ptr @simp_buffer_slice(ptr, i32, i32, ptr, i64, i64, i64)\n"
+           << "declare void @simp_buffer_resize(ptr, i32, ptr, i64, i64, i64)\n"
+           << "declare void @simp_buffer_clear(ptr, ptr, i64, i64, i64)\n"
+           << "declare void @simp_buffer_append(ptr, i64, ptr, i64, i64, i64)\n"
+           << "declare i64 @simp_buffer_get(ptr, i32, ptr, i64, i64, i64)\n"
+           << "declare void @simp_buffer_set(ptr, i32, i64, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_map_get(ptr, ptr, i64, ptr, i64, i64, i64)\n"
            << "declare i32 @simp_map_contains(ptr, ptr, i64, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_map_entry_at(ptr, i64, ptr, i64, i64, i64)\n"
@@ -662,6 +692,8 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare void @simp_value_require_class(i64, ptr, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_map(i64, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_array(i64, ptr, ptr, i64, i64, i64)\n"
+           << "declare void @simp_value_require_buffer(i64, ptr, ptr, i64, i64, i64)\n"
+           << "declare void @simp_value_require_handle(i64, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_begin_construction(ptr)\n"
            << "declare void @simp_gc_end_construction(ptr)\n"
            << "declare void @simp_gc_begin_destroy(ptr, ptr, i64, i64, i64)\n"

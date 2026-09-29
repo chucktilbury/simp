@@ -26,6 +26,8 @@ enum class TokenType {
     StringType,
     ArrayType,
     MapType,
+    BufferType,
+    HandleType,
     AnyType,
     Class,
     Namespace,

@@ -102,13 +102,14 @@ void CodeGenerator::emitPrintValue(const Value& value, const SourceLocation& loc
         instructions_ += "  call i64 @fwrite(ptr " + data + ", i64 1, i64 " + length +
                          ", ptr " + stream + ")\n";
     } else if (value.type == "any") {
-        emitPrintDynamicValue(value);
+        emitPrintDynamicValue(value, location);
     } else {
         unsupported(location, "printing object references");
     }
 }
 
-void CodeGenerator::emitPrintDynamicValue(const Value& value) {
+void CodeGenerator::emitPrintDynamicValue(const Value& value,
+                                         const SourceLocation& location) {
     const auto tag = newTemporary();
     instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " + value.operand + ", 0\n";
     const auto intLabel = freshLabel("print.any.int");
@@ -119,10 +120,12 @@ void CodeGenerator::emitPrintDynamicValue(const Value& value) {
     const auto objectLabel = freshLabel("print.any.object");
     const auto nullLabel = freshLabel("print.any.null");
     const auto instanceLabel = freshLabel("print.any.instance");
+    const auto invalidLabel = freshLabel("print.any.invalid");
     const auto endLabel = freshLabel("print.any.end");
     instructions_ += "  switch i64 " + tag + ", label %" + objectLabel + " [ i64 1, label %" +
                      intLabel + " i64 2, label %" + stringLabel + " i64 6, label %" + boolLabel +
                      " i64 7, label %" + floatLabel + " i64 8, label %" + unsignedLabel +
+                     " i64 9, label %" + invalidLabel + " i64 10, label %" + invalidLabel +
                      " ]\n";
     instructions_ += intLabel + ":\n";
     const auto stored = newTemporary();
@@ -167,6 +170,15 @@ void CodeGenerator::emitPrintDynamicValue(const Value& value) {
                      "  call i64 @fwrite(ptr " + stringData + ", i64 1, i64 " + stringLength +
                      ", ptr " + stringStream + ")\n"
                      "  br label %" + endLabel + "\n";
+    instructions_ += invalidLabel + ":\n";
+    const auto file = internString(location.file);
+    const auto message = internString("buffer and handle values are not printable");
+    instructions_ += "  call void @simp_exception_raise(ptr " + message + ", i64 " +
+                     std::to_string(std::string("buffer and handle values are not printable").size()) +
+                     ", ptr " + file + ", i64 " + std::to_string(location.file.size()) +
+                     ", i64 " + std::to_string(location.line) + ", i64 " +
+                     std::to_string(location.column) + ")\n"
+                     "  unreachable\n";
     instructions_ += objectLabel + ":\n";
     const auto objectPointer = newTemporary();
     const auto isNull = newTemporary();

@@ -63,6 +63,7 @@ typedef struct HeapNode {
     int marked;
     int is_array;
     int is_map;
+    int is_buffer;
     int destroyed;
     int destroying;
     int constructing;
@@ -102,10 +103,13 @@ static int running_destructor = 0;
 static RetainedExceptionMessage *retained_exception_messages = NULL;
 static int retained_message_cleanup_registered = 0;
 static const SimpClassMeta array_metadata = {
-    "array", 5, 0, NULL, 0, sizeof(SimpArray), 0, NULL, NULL
+    "array", 5, 0, NULL, 0, sizeof(SimpArray), 0, NULL, NULL, 0, NULL
 };
 static const SimpClassMeta map_metadata = {
-    "map", 3, 0, NULL, 0, sizeof(SimpMap), 0, NULL, NULL
+    "map", 3, 0, NULL, 0, sizeof(SimpMap), 0, NULL, NULL, 0, NULL
+};
+static const SimpClassMeta buffer_metadata = {
+    "buffer", 6, 0, NULL, 0, sizeof(SimpBuffer), 0, NULL, NULL, 0, NULL
 };
 
 static HeapNode *find_object(const void *object);
@@ -367,7 +371,8 @@ static void mark_object(void *object, HeapNode **worklist, size_t *work_count) {
     worklist[(*work_count)++] = node;
 }
 
-int simp_gc_push(SimpRootFrame *frame, void *const *slots, uint64_t count) {
+static int gc_push(SimpRootFrame *frame, void *const *slots,
+                   const uint64_t *const *tags, uint64_t count) {
     if (frame == NULL || (count != 0 && slots == NULL)) {
         return 0;
     }
@@ -384,8 +389,13 @@ int simp_gc_push(SimpRootFrame *frame, void *const *slots, uint64_t count) {
     frame->previous = root_frame;
     frame->count = count;
     frame->slots = slots;
+    frame->tags = tags;
     root_frame = frame;
     return 1;
+}
+
+int simp_gc_push(SimpRootFrame *frame, void *const *slots, uint64_t count) {
+    return gc_push(frame, slots, NULL, count);
 }
 
 int simp_gc_pop(SimpRootFrame *frame) {
@@ -396,6 +406,7 @@ int simp_gc_pop(SimpRootFrame *frame) {
     frame->previous = NULL;
     frame->count = 0;
     frame->slots = NULL;
+    frame->tags = NULL;
     return 1;
 }
 
@@ -403,6 +414,11 @@ void simp_gc_push_or_abort(SimpRootFrame *frame, void *const *slots, uint64_t co
     if (!simp_gc_push(frame, slots, count)) {
         abort();
     }
+}
+
+void simp_gc_push_tagged_or_abort(SimpRootFrame *frame, void *const *slots,
+                                  const uint64_t *const *tags, uint64_t count) {
+    if (!gc_push(frame, slots, tags, count)) abort();
 }
 
 void simp_gc_pop_or_abort(SimpRootFrame *frame) {
@@ -481,6 +497,34 @@ void simp_value_require_array(uint64_t actual_tag, void *pointer, const char *fi
     }
 }
 
+static int dynamic_value_is_gc_reference(uint64_t tag) {
+    return tag == SIMP_ARRAY_OBJECT || tag == SIMP_ARRAY_MAP ||
+           tag == SIMP_ARRAY_ARRAY || tag == SIMP_ARRAY_BUFFER;
+}
+
+void simp_value_require_buffer(uint64_t actual_tag, void *pointer, const char *file,
+                               uint64_t file_length, uint64_t line, uint64_t column) {
+    static const char message[] = "'any' value does not hold a buffer reference";
+    if (actual_tag == SIMP_ARRAY_OBJECT && pointer == NULL) return;
+    if (actual_tag != SIMP_ARRAY_BUFFER || pointer == NULL) {
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    HeapNode *node = find_object(pointer);
+    if (node == NULL || !node->is_buffer) {
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+}
+
+void simp_value_require_handle(uint64_t actual_tag, void *pointer, const char *file,
+                               uint64_t file_length, uint64_t line, uint64_t column) {
+    static const char message[] = "'any' value does not hold a handle";
+    if ((actual_tag == SIMP_ARRAY_HANDLE) ||
+        (actual_tag == SIMP_ARRAY_OBJECT && pointer == NULL)) {
+        return;
+    }
+    simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+}
+
 
 void *simp_gc_root(void *object) {
     HeapNode *node = find_containing_object(object);
@@ -528,6 +572,11 @@ static void mark_roots(HeapNode **worklist, size_t *work_count) {
             if (frame->slots == NULL || frame->slots[index] == NULL) abort();
             void *object = NULL;
             memcpy(&object, frame->slots[index], sizeof(object));
+            if (frame->tags != NULL && frame->tags[index] != NULL) {
+                uint64_t tag = 0;
+                memcpy(&tag, frame->tags[index], sizeof(tag));
+                if (!dynamic_value_is_gc_reference(tag)) continue;
+            }
             mark_object(object, worklist, work_count);
         }
     }
@@ -540,8 +589,7 @@ static void trace_graph(HeapNode **worklist, size_t *work_count) {
             const SimpArray *array = (const SimpArray *)node->object;
             for (uint64_t index = 0; index < array->length; ++index) {
                 const SimpArrayValue *value = &array->values[index];
-                if (value->tag == SIMP_ARRAY_OBJECT || value->tag == SIMP_ARRAY_MAP ||
-                    value->tag == SIMP_ARRAY_ARRAY) {
+                if (dynamic_value_is_gc_reference(value->tag)) {
                     mark_object(value->pointer, worklist, work_count);
                 }
             }
@@ -551,8 +599,7 @@ static void trace_graph(HeapNode **worklist, size_t *work_count) {
             const SimpMap *map = (const SimpMap *)node->object;
             for (uint64_t index = 0; index < map->length; ++index) {
                 const SimpArrayValue *value = &map->entries[index].value;
-                if (value->tag == SIMP_ARRAY_OBJECT || value->tag == SIMP_ARRAY_MAP ||
-                    value->tag == SIMP_ARRAY_ARRAY) {
+                if (dynamic_value_is_gc_reference(value->tag)) {
                     mark_object(value->pointer, worklist, work_count);
                 }
             }
@@ -564,6 +611,19 @@ static void trace_graph(HeapNode **worklist, size_t *work_count) {
         for (uint64_t index = 0; index < metadata->reference_field_count; ++index) {
             const uint64_t offset = metadata->reference_field_offsets[index];
             if (!valid_reference_offset(metadata, offset)) abort();
+            void *child = NULL;
+            memcpy(&child, (const unsigned char *)node->object + offset, sizeof(child));
+            mark_object(child, worklist, work_count);
+        }
+        for (uint64_t index = 0; index < metadata->dynamic_reference_field_count; ++index) {
+            const uint64_t offset = metadata->dynamic_reference_field_offsets[index];
+            if (!valid_reference_offset(metadata, offset) ||
+                offset < offsetof(SimpArrayValue, pointer)) abort();
+            uint64_t tag = 0;
+            memcpy(&tag, (const unsigned char *)node->object +
+                             offset - offsetof(SimpArrayValue, pointer),
+                   sizeof(tag));
+            if (!dynamic_value_is_gc_reference(tag)) continue;
             void *child = NULL;
             memcpy(&child, (const unsigned char *)node->object + offset, sizeof(child));
             mark_object(child, worklist, work_count);
@@ -617,6 +677,7 @@ void simp_gc_collect(void) {
                 free(map->entries);
                 free(map->buckets);
             }
+            if (node->is_buffer) free(((SimpBuffer *)node->object)->data);
             free(node->object);
             free(node);
             --object_count;
@@ -632,12 +693,21 @@ void *simp_gc_alloc(const SimpClassMeta *metadata) {
     if (metadata == NULL || metadata->object_size < sizeof(void *) ||
         metadata->object_size > (uint64_t)SIZE_MAX ||
         (metadata->reference_field_count != 0 &&
-         metadata->reference_field_offsets == NULL)) {
+         metadata->reference_field_offsets == NULL) ||
+        (metadata->dynamic_reference_field_count != 0 &&
+         metadata->dynamic_reference_field_offsets == NULL)) {
         abort();
     }
     for (uint64_t index = 0; index < metadata->reference_field_count; ++index) {
         const uint64_t offset = metadata->reference_field_offsets[index];
         if (!valid_reference_offset(metadata, offset)) {
+            abort();
+        }
+    }
+    for (uint64_t index = 0; index < metadata->dynamic_reference_field_count; ++index) {
+        const uint64_t offset = metadata->dynamic_reference_field_offsets[index];
+        if (!valid_reference_offset(metadata, offset) ||
+            offset < offsetof(SimpArrayValue, pointer)) {
             abort();
         }
     }
@@ -654,6 +724,7 @@ void *simp_gc_alloc(const SimpClassMeta *metadata) {
     node->allocation_size = (size_t)metadata->object_size;
     node->is_array = 0;
     node->is_map = 0;
+    node->is_buffer = metadata == &buffer_metadata;
     node->marked = 0;
     node->destroyed = 0;
     node->destroying = 0;
@@ -687,6 +758,7 @@ void *simp_gc_alloc_array(uint64_t length) {
     node->allocation_size = allocation_size;
     node->is_array = 1;
     node->is_map = 0;
+    node->is_buffer = 0;
     node->marked = 0;
     node->destroyed = 0;
     node->destroying = 0;
@@ -714,6 +786,7 @@ void *simp_gc_alloc_map(void) {
     node->allocation_size = sizeof(*map);
     node->is_array = 0;
     node->is_map = 1;
+    node->is_buffer = 0;
     node->marked = 0;
     node->destroyed = 0;
     node->destroying = 0;
@@ -752,6 +825,139 @@ static SimpMap *checked_map(void *object, const char *file, uint64_t file_length
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     return (SimpMap *)object;
+}
+
+static SimpBuffer *checked_buffer(void *object, const char *file, uint64_t file_length,
+                                  uint64_t line, uint64_t column) {
+    if (object == NULL) {
+        static const char message[] = "null buffer reference";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    HeapNode *node = find_object(object);
+    if (node == NULL || !node->is_buffer) {
+        static const char message[] = "invalid buffer reference";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    return (SimpBuffer *)object;
+}
+
+static void buffer_reserve(SimpBuffer *buffer, uint64_t capacity) {
+    if (capacity > (uint64_t)SIZE_MAX) abort();
+    if (capacity <= buffer->capacity) return;
+    uint64_t grown = buffer->capacity == 0 ? 8 : buffer->capacity;
+    while (grown < capacity) {
+        if (grown > (uint64_t)INT32_MAX / 2) {
+            grown = capacity;
+            break;
+        }
+        grown *= 2;
+    }
+    uint8_t *data = (uint8_t *)realloc(buffer->data, (size_t)grown);
+    if (data == NULL) abort();
+    buffer->data = data;
+    buffer->capacity = grown;
+}
+
+void *simp_buffer_new(int32_t length, const char *file, uint64_t file_length,
+                      uint64_t line, uint64_t column) {
+    if (length < 0) {
+        static const char message[] = "buffer length cannot be negative";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    SimpBuffer *buffer = (SimpBuffer *)simp_gc_alloc(&buffer_metadata);
+    if (length > 0) {
+        buffer->data = (uint8_t *)calloc((size_t)length, sizeof(*buffer->data));
+        if (buffer->data == NULL) abort();
+        buffer->length = (uint64_t)length;
+        buffer->capacity = (uint64_t)length;
+    }
+    return buffer;
+}
+
+void *simp_buffer_copy(void *object, const char *file, uint64_t file_length,
+                       uint64_t line, uint64_t column) {
+    if (object == NULL) return NULL;
+    SimpBuffer *source = checked_buffer(object, file, file_length, line, column);
+    SimpBuffer *copy = (SimpBuffer *)simp_gc_alloc(&buffer_metadata);
+    if (source->length != 0) {
+        copy->data = (uint8_t *)malloc((size_t)source->length);
+        if (copy->data == NULL) abort();
+        memcpy(copy->data, source->data, (size_t)source->length);
+        copy->length = source->length;
+        copy->capacity = source->length;
+    }
+    return copy;
+}
+
+void *simp_buffer_slice(void *object, int32_t start, int32_t end, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpBuffer *source = checked_buffer(object, file, file_length, line, column);
+    if (start < 0 || end < start || (uint64_t)end > source->length) {
+        static const char message[] = "buffer slice bounds out of bounds";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    const uint64_t length = (uint64_t)(end - start);
+    SimpBuffer *copy = (SimpBuffer *)simp_gc_alloc(&buffer_metadata);
+    if (length != 0) {
+        copy->data = (uint8_t *)malloc((size_t)length);
+        if (copy->data == NULL) abort();
+        memcpy(copy->data, source->data + start, (size_t)length);
+        copy->length = length;
+        copy->capacity = length;
+    }
+    return copy;
+}
+
+void simp_buffer_resize(void *object, int32_t length, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpBuffer *buffer = checked_buffer(object, file, file_length, line, column);
+    if (length < 0) {
+        static const char message[] = "buffer length cannot be negative";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    const uint64_t new_length = (uint64_t)length;
+    if (new_length > buffer->length) {
+        buffer_reserve(buffer, new_length);
+        memset(buffer->data + buffer->length, 0,
+               (size_t)(new_length - buffer->length));
+    }
+    buffer->length = new_length;
+}
+
+void simp_buffer_clear(void *object, const char *file, uint64_t file_length,
+                       uint64_t line, uint64_t column) {
+    simp_buffer_resize(object, 0, file, file_length, line, column);
+}
+
+void simp_buffer_append(void *object, uint64_t value, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpBuffer *buffer = checked_buffer(object, file, file_length, line, column);
+    if (buffer->length >= (uint64_t)INT32_MAX) {
+        static const char message[] = "buffer length out of bounds";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    buffer_reserve(buffer, buffer->length + 1);
+    buffer->data[buffer->length++] = (uint8_t)value;
+}
+
+uint64_t simp_buffer_get(void *object, int32_t index, const char *file,
+                         uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpBuffer *buffer = checked_buffer(object, file, file_length, line, column);
+    if (index < 0 || (uint64_t)index >= buffer->length) {
+        static const char message[] = "buffer index out of bounds";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    return buffer->data[index];
+}
+
+void simp_buffer_set(void *object, int32_t index, uint64_t value, const char *file,
+                     uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpBuffer *buffer = checked_buffer(object, file, file_length, line, column);
+    if (index < 0 || (uint64_t)index >= buffer->length) {
+        static const char message[] = "buffer index out of bounds";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    buffer->data[index] = (uint8_t)value;
 }
 
 static int map_key_matches(const SimpMapEntry *entry, const char *key,

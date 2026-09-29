@@ -1,5 +1,53 @@
 [
   {
+    "name": "positive_buffer_handle.simp",
+    "friendly_name": "functional byte buffers and opaque handles",
+    "expected_diagnostic": "",
+    "enabled": true
+  },
+  {
+    "name": "negative_buffer_element_bool.simp",
+    "friendly_name": "functional bool buffer element write rejected",
+    "expected_diagnostic": "buffer element assignment requires int or unsigned",
+    "enabled": true
+  },
+  {
+    "name": "negative_buffer_element_float.simp",
+    "friendly_name": "functional float buffer element write rejected",
+    "expected_diagnostic": "buffer element assignment requires int or unsigned",
+    "enabled": true
+  },
+  {
+    "name": "negative_buffer_element_string.simp",
+    "friendly_name": "functional string buffer element write rejected",
+    "expected_diagnostic": "buffer element assignment requires int or unsigned",
+    "enabled": true
+  },
+  {
+    "name": "negative_buffer_equality.simp",
+    "friendly_name": "functional buffer equality rejected",
+    "expected_diagnostic": "equality requires matching int, bool, float, or unsigned operands",
+    "enabled": true
+  },
+  {
+    "name": "negative_buffer_addition.simp",
+    "friendly_name": "functional buffer arithmetic rejected",
+    "expected_diagnostic": "operator '+' requires matching int, float, or unsigned operands",
+    "enabled": true
+  },
+  {
+    "name": "negative_handle_operator.simp",
+    "friendly_name": "functional handle operator rejected",
+    "expected_diagnostic": "equality requires matching int, bool, float, or unsigned operands",
+    "enabled": true
+  },
+  {
+    "name": "negative_handle_length.simp",
+    "friendly_name": "functional handle built-in member rejected",
+    "expected_diagnostic": "handle has no built-in operations",
+    "enabled": true
+  },
+  {
     "name": "positive_control_flow.simp",
     "friendly_name": "functional valid control flow",
     "expected_diagnostic": "",

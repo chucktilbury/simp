@@ -160,6 +160,7 @@ void SemanticAnalyzer::normalizeType(
     const SourceLocation& location) const {
     if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
         type == "string" || type == "array" || type == "map" ||
+        type == "buffer" || type == "handle" ||
         type == "any" || type == "void") {
         return;
     }
@@ -568,7 +569,8 @@ void SemanticAnalyzer::analyze(Program& program) {
 void SemanticAnalyzer::validateType(const std::string& type, const SourceLocation& location,
                                    bool allowVoid) const {
     if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
-        type == "string" || type == "array" || type == "map" || type == "any" ||
+        type == "string" || type == "array" || type == "map" ||
+        type == "buffer" || type == "handle" || type == "any" ||
         (allowVoid && type == "void")) {
         return;
     }

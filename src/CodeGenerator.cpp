@@ -43,12 +43,17 @@ bool CodeGenerator::isMapType(const std::string& type) const {
     return type == "map";
 }
 
+bool CodeGenerator::isBufferType(const std::string& type) const {
+    return type == "buffer";
+}
+
 bool CodeGenerator::isDynamicValueType(const std::string& type) const {
     return type == "any";
 }
 
 bool CodeGenerator::isManagedReferenceType(const std::string& type) const {
-    return isArrayType(type) || isMapType(type) || classes_.find(type) != classes_.end();
+    return isArrayType(type) || isMapType(type) || isBufferType(type) ||
+           classes_.find(type) != classes_.end();
 }
 
 [[noreturn]] void CodeGenerator::unsupported(const SourceLocation& location,
@@ -70,12 +75,19 @@ CodeGenerator::Value CodeGenerator::rootObjectValue(Value value,
         // here because the pointer may instead be string byte data that the GC
         // heap does not manage.
         const auto pointer = newTemporary();
+        const auto tag = newTemporary();
         instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " + value.operand +
-                         ", 2\n";
+                         ", 2\n"
+                         "  " + tag + " = extractvalue %SimpleArrayValue " + value.operand +
+                         ", 0\n";
         const auto slot = "%root." + std::to_string(nextRoot_++);
+        const auto tagSlot = "%roottag." + std::to_string(nextRoot_++);
         entryAllocas_ += "  " + slot + " = alloca ptr\n";
+        entryAllocas_ += "  " + tagSlot + " = alloca i64\n";
         instructions_ += "  store ptr " + pointer + ", ptr " + slot + "\n";
+        instructions_ += "  store i64 " + tag + ", ptr " + tagSlot + "\n";
         rootSlots_.push_back(slot);
+        rootTagSlots_.push_back(tagSlot);
         return value;
     }
     if (!isManagedReferenceType(value.type) || value.operand == "null") {
@@ -91,6 +103,7 @@ CodeGenerator::Value CodeGenerator::rootObjectValue(Value value,
     entryAllocas_ += "  " + slot + " = alloca ptr\n";
     instructions_ += "  store ptr " + value.operand + ", ptr " + slot + "\n";
     rootSlots_.push_back(slot);
+    rootTagSlots_.emplace_back();
     return value;
 }
 
@@ -100,13 +113,18 @@ void CodeGenerator::registerRootSlot(const std::string& pointer, const std::stri
         // pointer sub-field can ever hold a GC reference, so root that sub-field
         // directly inside the variable's alloca rather than the whole aggregate.
         const auto slot = "%vroot" + std::to_string(nextRoot_++);
+        const auto tagSlot = "%vtagroot" + std::to_string(nextRoot_++);
         entryAllocas_ += "  " + slot + " = getelementptr inbounds %SimpleArrayValue, ptr " +
-                         pointer + ", i32 0, i32 2\n";
+                         pointer + ", i32 0, i32 2\n"
+                         "  " + tagSlot + " = getelementptr inbounds %SimpleArrayValue, ptr " +
+                         pointer + ", i32 0, i32 0\n";
         rootSlots_.push_back(slot);
+        rootTagSlots_.push_back(tagSlot);
         return;
     }
     if (isManagedReferenceType(type)) {
         rootSlots_.push_back(pointer);
+        rootTagSlots_.emplace_back();
     }
 }
 
@@ -178,6 +196,19 @@ CodeGenerator::Value CodeGenerator::emitIntegerExpression(const Expression& expr
     return value;
 }
 
+CodeGenerator::Value CodeGenerator::copyBufferValue(Value value,
+                                                     const SourceLocation& location) {
+    if (!isBufferType(value.type) || value.operand == "null") return value;
+    const auto file = internString(location.file);
+    const auto copy = newTemporary();
+    instructions_ += "  " + copy + " = call ptr @simp_buffer_copy(ptr " + value.operand +
+                     ", ptr " + file + ", i64 " +
+                     std::to_string(location.file.size()) + ", i64 " +
+                     std::to_string(location.line) + ", i64 " +
+                     std::to_string(location.column) + ")\n";
+    return rootObjectValue({"buffer", copy}, location);
+}
+
 void CodeGenerator::emitArrayElementStore(const std::string& valuePointer, Value value,
                                           const SourceLocation& location) {
     const auto dynamic = buildDynamicValue(std::move(value), location);
@@ -221,7 +252,9 @@ CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
                           isArrayType(value.type) ? "5" :
                           value.type == "bool" ? "6" :
                           value.type == "float" ? "7" :
-                          value.type == "unsigned" ? "8" : "3";
+                          value.type == "unsigned" ? "8" :
+                          isBufferType(value.type) ? "9" :
+                          value.type == "handle" ? "10" : "3";
     instructions_ += "  " + tag + " = insertvalue %SimpleArrayValue zeroinitializer, i64 " +
                      valueTag + ", 0\n";
     std::string stored = tag;
@@ -332,6 +365,24 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
                          ")\n";
         return {expectedType, rootObjectValue({expectedType, pointer}, location).operand};
     }
+    if (expectedType == "buffer") {
+        const auto pointer = newTemporary();
+        instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " +
+                         value.operand + ", 2\n"
+                         "  call void @simp_value_require_buffer(i64 " + tag + ", ptr " +
+                         pointer + ", ptr " + file + ", i64 " + fileLength + ", i64 " +
+                         line + ", i64 " + column + ")\n";
+        return rootObjectValue({"buffer", pointer}, location);
+    }
+    if (expectedType == "handle") {
+        const auto pointer = newTemporary();
+        instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " +
+                         value.operand + ", 2\n"
+                         "  call void @simp_value_require_handle(i64 " + tag + ", ptr " +
+                         pointer + ", ptr " + file + ", i64 " + fileLength + ", i64 " +
+                         line + ", i64 " + column + ")\n";
+        return {"handle", pointer};
+    }
     // Otherwise expectedType names a class: the value must tag as an object
     // reference, and (unless it is null) its runtime class metadata must match
     // exactly. This prototype does not support extracting a proper subclass
@@ -349,7 +400,8 @@ std::string CodeGenerator::rootFrameInitialization() const {
     std::ostringstream setup;
     setup << "  %simp.root.frame = alloca %SimpRootFrame\n";
     if (!rootSlots_.empty()) {
-        setup << "  %simp.root.slots = alloca [" << rootSlots_.size() << " x ptr]\n";
+        setup << "  %simp.root.slots = alloca [" << rootSlots_.size() << " x ptr]\n"
+              << "  %simp.root.tags = alloca [" << rootSlots_.size() << " x ptr]\n";
     }
     for (std::size_t index = 0; index < rootSlots_.size(); ++index) {
         const auto slotAddress = "%simp.root.slot.addr." + std::to_string(index);
@@ -357,14 +409,24 @@ std::string CodeGenerator::rootFrameInitialization() const {
               << "  " << slotAddress << " = getelementptr inbounds [" << rootSlots_.size()
               << " x ptr], ptr %simp.root.slots, i64 0, i64 " << index << "\n"
               << "  store ptr " << rootSlots_[index] << ", ptr " << slotAddress << "\n";
+        if (!rootTagSlots_[index].empty()) {
+            setup << "  store i64 0, ptr " << rootTagSlots_[index] << "\n";
+        }
+        const auto tagAddress = "%simp.root.tag.addr." + std::to_string(index);
+        setup << "  " << tagAddress << " = getelementptr inbounds [" << rootSlots_.size()
+              << " x ptr], ptr %simp.root.tags, i64 0, i64 " << index << "\n"
+              << "  store ptr "
+              << (rootTagSlots_[index].empty() ? "null" : rootTagSlots_[index])
+              << ", ptr " << tagAddress << "\n";
     }
     return setup.str();
 }
 
 std::string CodeGenerator::rootFramePush() const {
     std::ostringstream setup;
-    setup << "  call void @simp_gc_push_or_abort(ptr %simp.root.frame, ptr "
-          << (rootSlots_.empty() ? "null" : "%simp.root.slots") << ", i64 "
+    setup << "  call void @simp_gc_push_tagged_or_abort(ptr %simp.root.frame, ptr "
+          << (rootSlots_.empty() ? "null" : "%simp.root.slots") << ", ptr "
+          << (rootSlots_.empty() ? "null" : "%simp.root.tags") << ", i64 "
           << rootSlots_.size() << ")\n";
     return setup.str();
 }
@@ -474,6 +536,22 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              "  " + result + " = trunc i64 " + length + " to i32\n";
             return {"int", result};
         }
+        if (!qualified && isBufferType(receiver.type)) {
+            if (expression.value != "length") {
+                throw DiagnosticError(expression.location,
+                                      "buffers support only the read-only 'length' member");
+            }
+            emitNullCheck(receiver.operand, expression.location);
+            const auto lengthAddress = newTemporary();
+            const auto length = newTemporary();
+            const auto result = newTemporary();
+            instructions_ += "  " + lengthAddress +
+                             " = getelementptr inbounds %SimpleBuffer, ptr " + receiver.operand +
+                             ", i32 0, i32 1\n"
+                             "  " + length + " = load i64, ptr " + lengthAddress + "\n"
+                             "  " + result + " = trunc i64 " + length + " to i32\n";
+            return {"int", result};
+        }
         const auto object = qualified ? emitExpression(*root) : receiver;
         if (classes_.find(object.type) == classes_.end()) {
             throw DiagnosticError(expression.location, "member receiver is not an object");
@@ -513,6 +591,16 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              std::to_string(expression.location.column) + ")\n"
                              "  " + loaded + " = load %SimpleArrayValue, ptr " +
                              valuePointer + "\n";
+        } else if (isBufferType(collection.type)) {
+            const auto index = emitIntegerExpression(*expression.arguments.front());
+            const auto result = newTemporary();
+            instructions_ += "  " + result + " = call i64 @simp_buffer_get(ptr " +
+                             collection.operand + ", i32 " + index.operand + ", ptr " + file +
+                             ", i64 " +
+                             std::to_string(expression.location.file.size()) + ", i64 " +
+                             std::to_string(expression.location.line) + ", i64 " +
+                             std::to_string(expression.location.column) + ")\n";
+            return {"unsigned", result};
         } else {
             const auto key = emitExpression(*expression.arguments.front());
             const auto keyData = newTemporary();
@@ -540,13 +628,27 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto end = emitIntegerExpression(*expression.arguments[1]);
         const auto file = internString(expression.location.file);
         const auto result = newTemporary();
-        const auto function = isMapType(collection.type) ? "simp_map_slice" : "simp_array_slice";
+        const auto function = isBufferType(collection.type)
+                                  ? "simp_buffer_slice"
+                                  : isMapType(collection.type) ? "simp_map_slice"
+                                                               : "simp_array_slice";
         instructions_ += "  " + result + " = call ptr @" + function + "(ptr " + collection.operand +
                          ", i32 " + start.operand + ", i32 " + end.operand + ", ptr " + file +
                          ", i64 " + std::to_string(expression.location.file.size()) +
                          ", i64 " + std::to_string(expression.location.line) + ", i64 " +
                          std::to_string(expression.location.column) + ")\n";
         return rootObjectValue({collection.type, result}, expression.location);
+    }
+    case ExpressionKind::BufferConstructor: {
+        const auto length = emitIntegerExpression(*expression.arguments.front());
+        const auto file = internString(expression.location.file);
+        const auto result = newTemporary();
+        instructions_ += "  " + result + " = call ptr @simp_buffer_new(i32 " + length.operand +
+                         ", ptr " + file + ", i64 " +
+                         std::to_string(expression.location.file.size()) + ", i64 " +
+                         std::to_string(expression.location.line) + ", i64 " +
+                         std::to_string(expression.location.column) + ")\n";
+        return rootObjectValue({"buffer", result}, expression.location);
     }
     case ExpressionKind::ConstructorCall: {
         const auto found = classes_.find(expression.value);
@@ -681,6 +783,35 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              std::to_string(target.location.line) + ", i64 " +
                              std::to_string(target.location.column) + ")\n";
             return {"int", result};
+        }
+        if (isBufferType(receiver.type)) {
+            emitNullCheck(receiver.operand, target.location);
+            const auto file = internString(target.location.file);
+            const auto common = ", ptr " + file + ", i64 " +
+                                std::to_string(target.location.file.size()) + ", i64 " +
+                                std::to_string(target.location.line) + ", i64 " +
+                                std::to_string(target.location.column) + ")\n";
+            if (target.value == "resize") {
+                const auto length = emitIntegerExpression(*expression.arguments.front());
+                instructions_ += "  call void @simp_buffer_resize(ptr " + receiver.operand +
+                                 ", i32 " + length.operand + common;
+            } else if (target.value == "clear") {
+                instructions_ += "  call void @simp_buffer_clear(ptr " + receiver.operand +
+                                 common;
+            } else if (target.value == "append") {
+                const auto value = emitExpression(*expression.arguments.front());
+                std::string valueOperand = value.operand;
+                if (value.type == "int") {
+                    valueOperand = newTemporary();
+                    instructions_ += "  " + valueOperand + " = zext i32 " + value.operand +
+                                     " to i64\n";
+                }
+                instructions_ += "  call void @simp_buffer_append(ptr " + receiver.operand +
+                                 ", i64 " + valueOperand + common;
+            } else {
+                throw DiagnosticError(target.location, "unknown buffer operation");
+            }
+            return {"void", ""};
         }
         const auto found = classes_.find(receiver.type);
         if (found == classes_.end()) {

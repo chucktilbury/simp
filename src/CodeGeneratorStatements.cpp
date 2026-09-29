@@ -122,11 +122,16 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         entryAllocas_ += "  " + pointer + " = alloca " + llvmType(statement.declaredType) + "\n";
         registerRootSlot(pointer, statement.declaredType);
         if (!statement.expressions.empty()) {
-            const auto value = emitExpression(*statement.expressions.front(), statement.declaredType);
-            const auto converted = convertObjectValue(value, statement.declaredType,
-                                                       statement.expressions.front()->location);
+            auto value = emitExpression(*statement.expressions.front(), statement.declaredType);
+            auto converted = convertObjectValue(value, statement.declaredType,
+                                                 statement.expressions.front()->location);
+            converted = copyBufferValue(std::move(converted),
+                                        statement.expressions.front()->location);
             instructions_ += "  store " + llvmType(statement.declaredType) + " " +
                              converted.operand + ", ptr " + pointer + "\n";
+        } else {
+            instructions_ += "  store " + llvmType(statement.declaredType) +
+                             " zeroinitializer, ptr " + pointer + "\n";
         }
         return;
     }
@@ -135,7 +140,10 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         std::string address;
         bool arrayElementTarget = false;
         bool mapElementTarget = false;
+        bool bufferElementTarget = false;
         std::string mapPointer;
+        std::string bufferPointer;
+        Value bufferIndex;
         Value mapKey;
         if (statement.target->kind == ExpressionKind::Identifier) {
             binding = findVariable(statement.target->value, statement.target->location);
@@ -156,6 +164,11 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                                  std::to_string(statement.target->location.line) + ", i64 " +
                                  std::to_string(statement.target->location.column) + ")\n";
                 arrayElementTarget = true;
+            } else if (isBufferType(collection.type)) {
+                bufferPointer = collection.operand;
+                bufferIndex = emitIntegerExpression(*statement.target->arguments.front());
+                binding.type = "buffer-byte";
+                bufferElementTarget = true;
             } else {
                 mapPointer = collection.operand;
                 mapKey = emitExpression(*statement.target->arguments.front());
@@ -193,8 +206,27 @@ void CodeGenerator::emitStatement(const Statement& statement) {
             emitMapElementStore(mapPointer, mapKey, value, statement.target->location);
             return;
         }
-        const auto converted = convertObjectValue(value, binding.type,
-                                                   statement.expressions.front()->location);
+        if (bufferElementTarget) {
+            const auto value64 = newTemporary();
+            if (value.type == "int") {
+                instructions_ += "  " + value64 + " = zext i32 " + value.operand +
+                                 " to i64\n";
+            } else {
+                instructions_ += "  " + value64 + " = add i64 " + value.operand + ", 0\n";
+            }
+            const auto file = internString(statement.target->location.file);
+            instructions_ += "  call void @simp_buffer_set(ptr " + bufferPointer + ", i32 " +
+                             bufferIndex.operand + ", i64 " + value64 + ", ptr " + file +
+                             ", i64 " +
+                             std::to_string(statement.target->location.file.size()) + ", i64 " +
+                             std::to_string(statement.target->location.line) + ", i64 " +
+                             std::to_string(statement.target->location.column) + ")\n";
+            return;
+        }
+        auto converted = convertObjectValue(value, binding.type,
+                                            statement.expressions.front()->location);
+        converted = copyBufferValue(std::move(converted),
+                                    statement.expressions.front()->location);
         instructions_ += "  store " + llvmType(binding.type) + " " + converted.operand +
                          ", ptr " + address + "\n";
         return;

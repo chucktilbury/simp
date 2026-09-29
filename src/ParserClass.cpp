@@ -162,6 +162,8 @@ std::string Parser::parseType(bool allowVoid) {
     else if (match(TokenType::StringType)) type = "string";
     else if (match(TokenType::ArrayType)) type = "array";
     else if (match(TokenType::MapType)) type = "map";
+    else if (match(TokenType::BufferType)) type = "buffer";
+    else if (match(TokenType::HandleType)) type = "handle";
     else if (match(TokenType::AnyType)) type = "any";
     else if (allowVoid && match(TokenType::Void)) type = "void";
     else if (check(TokenType::Identifier)) {

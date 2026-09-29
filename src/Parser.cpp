@@ -53,6 +53,8 @@ bool Parser::startsOutOfLineDefinition() const {
     case TokenType::StringType:
     case TokenType::ArrayType:
     case TokenType::MapType:
+    case TokenType::BufferType:
+    case TokenType::HandleType:
     case TokenType::AnyType:
     case TokenType::Void:
         ++afterType;
@@ -247,6 +249,10 @@ std::vector<Statement> Parser::parseBlock() {
             break;
         }
         statements.push_back(parseStatement());
+        while (!pendingStatements_.empty()) {
+            statements.push_back(std::move(pendingStatements_.front()));
+            pendingStatements_.erase(pendingStatements_.begin());
+        }
     }
     consume(TokenType::RightBrace, "'}'");
     return statements;
@@ -266,7 +272,8 @@ Statement Parser::parseStatement() {
     if (check(TokenType::Int) || check(TokenType::Bool) ||
         check(TokenType::FloatType) || check(TokenType::Unsigned) ||
         check(TokenType::StringType) || check(TokenType::ArrayType) ||
-        check(TokenType::MapType) || check(TokenType::AnyType) || check(TokenType::Void)) {
+        check(TokenType::MapType) || check(TokenType::BufferType) ||
+        check(TokenType::HandleType) || check(TokenType::AnyType) || check(TokenType::Void)) {
         return parseDeclaration();
     }
     if (check(TokenType::Identifier)) {
@@ -345,6 +352,15 @@ Statement Parser::parseDeclaration() {
     statement.declaredType = typeName;
     if (match(TokenType::Equal)) {
         statement.expressions.push_back(parseExpression());
+    }
+    if (check(TokenType::Inline)) {
+        if (!statement.expressions.empty()) {
+            error(current(), "inline capture declaration cannot have an initializer");
+        }
+        pendingStatements_.push_back(parseInlineC());
+        auto& inlineStatement = pendingStatements_.back();
+        inlineStatement.inlineCaptures.push_back({typeName, name.text, type.location});
+        return statement;
     }
     consumeStatementTerminator();
     return statement;
@@ -696,6 +712,19 @@ std::unique_ptr<Expression> Parser::parseUnary() {
 
 std::unique_ptr<Expression> Parser::parsePrimary() {
     const auto token = current();
+    if (match(TokenType::BufferType)) {
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::BufferConstructor;
+        expression->location = token.location;
+        consume(TokenType::LeftParen, "'(' after buffer");
+        if (!check(TokenType::RightParen)) {
+            do {
+                expression->arguments.push_back(parseExpression());
+            } while (match(TokenType::Comma));
+        }
+        consume(TokenType::RightParen, "')' after buffer length");
+        return expression;
+    }
     if (match(TokenType::UnsignedInteger)) {
         auto expression = std::make_unique<Expression>();
         expression->kind = ExpressionKind::Unsigned;

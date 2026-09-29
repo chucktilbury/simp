@@ -195,6 +195,7 @@ function(add_inline_diagnostic_test name expected_diagnostic)
 endfunction()
 
 set(FUNCTIONAL_RUN_TESTS
+    "simp_compile_and_run_buffer_handle|positive_buffer_handle.simp|2\n44\n44\n255\n4\n0\n0\n4\n2\n5\n254\n44\n9\n44\n7\n0\nbuffer index out of bounds\n0\n9\n0\n0\n2\n4\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n|gc"
     "simp_compile_and_run_loop_logic|positive_loop_logic.simp|4\n1\n2\n4\n1\n2\nfalse\nfalse\ntrue\ntrue\n0\ntrue\ntrue\nfalse\ntrue\n4\n0\n0\n2\n5\n1\n|-"
     "simp_compile_and_run_scalar_types|positive_scalar_types.simp|true\nfalse\ntrue\ntrue\ntrue\nbool condition\n3\n1\n3.64\n0.0015\ntrue\n18446744073709551615\n6148914691236517205\n2\ntrue\nformatted false 0.0015 42\ntrue\n3.64\n18446744073709551615\ntrue\n3.64\n18446744073709551615\nfalse\n0.0015\n42\ntrue\n3.64\n18446744073709551615\n2\ntrue\n1.5\n7\n|gc"
     "simp_compile_and_run_float_literal_forms|positive_float_literal_forms.simp|0.5\n5\n3.14\n1000\n50\n500\n0\n|gc"
@@ -255,6 +256,13 @@ foreach(test_row IN LISTS FUNCTIONAL_RUN_TESTS)
 endforeach()
 
 set(FUNCTIONAL_REJECT_TESTS
+    "simp_rejects_buffer_bool_element|negative_buffer_element_bool.simp|buffer element assignment requires int or unsigned|-"
+    "simp_rejects_buffer_float_element|negative_buffer_element_float.simp|buffer element assignment requires int or unsigned|-"
+    "simp_rejects_buffer_string_element|negative_buffer_element_string.simp|buffer element assignment requires int or unsigned|-"
+    "simp_rejects_buffer_equality|negative_buffer_equality.simp|equality requires matching int, bool, float, or unsigned operands|-"
+    "simp_rejects_buffer_addition|negative_buffer_addition.simp|requires matching int, float, or unsigned operands|-"
+    "simp_rejects_handle_operator|negative_handle_operator.simp|equality requires matching int, bool, float, or unsigned operands|-"
+    "simp_rejects_handle_builtin_member|negative_handle_length.simp|handle has no built-in operations|-"
     "simp_rejects_integer_condition|negative_int_condition.simp|if condition must have type bool|-"
     "simp_rejects_float_int_mixing|negative_float_int_mixing.simp|requires matching int, float, or unsigned operands|-"
     "simp_rejects_unsigned_int_mixing|negative_unsigned_int_mixing.simp|requires matching int, float, or unsigned operands|-"

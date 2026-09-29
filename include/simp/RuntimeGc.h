@@ -28,6 +28,8 @@ typedef struct SimpClassMeta {
     uint64_t reference_field_count;
     const uint64_t *reference_field_offsets;
     void (*finalize)(void *object);
+    uint64_t dynamic_reference_field_count;
+    const uint64_t *dynamic_reference_field_offsets;
 } SimpClassMeta;
 
 typedef enum SimpArrayValueTag {
@@ -38,7 +40,9 @@ typedef enum SimpArrayValueTag {
     SIMP_ARRAY_ARRAY = 5,
     SIMP_ARRAY_BOOLEAN = 6,
     SIMP_ARRAY_FLOAT = 7,
-    SIMP_ARRAY_UNSIGNED = 8
+    SIMP_ARRAY_UNSIGNED = 8,
+    SIMP_ARRAY_BUFFER = 9,
+    SIMP_ARRAY_HANDLE = 10
 } SimpArrayValueTag;
 
 typedef struct SimpArrayValue {
@@ -70,11 +74,20 @@ typedef struct SimpMap {
     uint64_t *buckets;
 } SimpMap;
 
+typedef struct SimpBuffer {
+    const SimpClassMeta *metadata;
+    uint64_t length;
+    uint64_t capacity;
+    uint8_t *data;
+} SimpBuffer;
+
 typedef struct SimpRootFrame {
     struct SimpRootFrame *previous;
     uint64_t count;
     /* Each element is the address of one pointer-typed object-reference slot. */
     void *const *slots;
+    /* Optional dynamic-value tag slots; opaque handles are deliberately skipped. */
+    const uint64_t *const *tags;
 } SimpRootFrame;
 
 /* C-ABI mirror of the compiler's %SimpleString value ({ ptr, i64 }). Native
@@ -101,6 +114,8 @@ void simp_inline_cstr_end(void);
 int simp_gc_push(SimpRootFrame *frame, void *const *slots, uint64_t count);
 int simp_gc_pop(SimpRootFrame *frame);
 void simp_gc_push_or_abort(SimpRootFrame *frame, void *const *slots, uint64_t count);
+void simp_gc_push_tagged_or_abort(SimpRootFrame *frame, void *const *slots,
+                                  const uint64_t *const *tags, uint64_t count);
 void simp_gc_pop_or_abort(SimpRootFrame *frame);
 
 /* Collect before allocating; the returned object's header and fields are zeroed. */
@@ -111,6 +126,22 @@ void *simp_array_index(void *array, int32_t index, const char *file,
 void *simp_array_slice(void *array, int32_t start, int32_t end, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_gc_alloc_map(void);
+void *simp_buffer_new(int32_t length, const char *file, uint64_t file_length,
+                      uint64_t line, uint64_t column);
+void *simp_buffer_copy(void *buffer, const char *file, uint64_t file_length,
+                       uint64_t line, uint64_t column);
+void *simp_buffer_slice(void *buffer, int32_t start, int32_t end, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column);
+void simp_buffer_resize(void *buffer, int32_t length, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column);
+void simp_buffer_clear(void *buffer, const char *file, uint64_t file_length,
+                       uint64_t line, uint64_t column);
+void simp_buffer_append(void *buffer, uint64_t value, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column);
+uint64_t simp_buffer_get(void *buffer, int32_t index, const char *file,
+                         uint64_t file_length, uint64_t line, uint64_t column);
+void simp_buffer_set(void *buffer, int32_t index, uint64_t value, const char *file,
+                     uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_map_get(void *map, const char *key, uint64_t key_length, const char *file,
                    uint64_t file_length, uint64_t line, uint64_t column);
 int32_t simp_map_contains(void *map, const char *key, uint64_t key_length,
@@ -141,6 +172,10 @@ void simp_value_require_map(uint64_t actual_tag, void *pointer, const char *file
                             uint64_t file_length, uint64_t line, uint64_t column);
 void simp_value_require_array(uint64_t actual_tag, void *pointer, const char *file,
                               uint64_t file_length, uint64_t line, uint64_t column);
+void simp_value_require_buffer(uint64_t actual_tag, void *pointer, const char *file,
+                               uint64_t file_length, uint64_t line, uint64_t column);
+void simp_value_require_handle(uint64_t actual_tag, void *pointer, const char *file,
+                               uint64_t file_length, uint64_t line, uint64_t column);
 void simp_gc_begin_construction(void *object);
 void simp_gc_end_construction(void *object);
 void simp_gc_begin_destroy(void *object, const char *file, uint64_t file_length,

@@ -26,5 +26,8 @@ void simp_method_demo_ignore(void *receiver, int32_t value);
 int32_t simp_method_demo_string_length(void *receiver, SimpString text);
 SimpString simp_method_demo_string_identity(void *receiver, SimpString text);
 void *simp_method_demo_identity(void *receiver, void *object);
+void *simp_method_demo_handle_create(void *receiver);
+void simp_method_demo_handle_consume(void *receiver, void *handle);
+void *simp_method_demo_handle_identity(void *receiver, void *handle);
 
 #endif /* SIMP_RUNTIME_DEMO_SHIMS_H */
