@@ -1,0 +1,11 @@
+class Root {
+}
+
+class Left : virtual Root {
+    Left() {
+        super.Root()
+    }
+}
+
+start {
+}

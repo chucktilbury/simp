@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <sstream>
 #include <utility>
+#include <unordered_set>
 #include <vector>
 
 namespace simp {
@@ -56,8 +57,15 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         for (const auto& baseName : owner.baseClassNames) {
             typeDefinitions_ += ", %Class." + baseName;
         }
+        const auto virtualBases = virtualBaseNames(owner);
+        for (std::size_t index = 0; index < virtualBases.size(); ++index) {
+            typeDefinitions_ += ", ptr";
+        }
         for (const auto& field : owner.fields) {
             typeDefinitions_ += ", " + llvmType(field.type);
+        }
+        for (const auto& baseName : virtualBases) {
+            typeDefinitions_ += ", %Class." + baseName;
         }
         typeDefinitions_ += " }\n";
     }
@@ -66,12 +74,12 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         std::vector<std::string> referenceOffsets;
         for (const auto& subobject : subobjects(owner)) {
             const auto prefix = directBasePath(owner, subobject.first);
-            for (std::size_t fieldIndex = 0;
-                 fieldIndex < subobject.second->fields.size(); ++fieldIndex) {
-                const auto& field = subobject.second->fields[fieldIndex];
+            for (std::size_t localFieldIndex = 0;
+                 localFieldIndex < subobject.second->fields.size(); ++localFieldIndex) {
+                const auto& field = subobject.second->fields[localFieldIndex];
                 if (classes_.find(field.type) == classes_.end()) continue;
                 auto indices = prefix;
-                indices.push_back(subobject.second->baseClassNames.size() + fieldIndex + 2);
+                indices.push_back(fieldIndex(*subobject.second, localFieldIndex));
                 std::string offset = "i64 ptrtoint (ptr getelementptr (%Class." + owner.name +
                                      ", ptr null, i32 0";
                 for (const auto index : indices) {
@@ -295,22 +303,46 @@ void CodeGenerator::emitClassMethods(const Program& program) {
             std::vector<std::string> path;
         };
         std::vector<DestructorCall> chain;
-        const auto collect = [this, &chain](const auto& self,
-                                            const ClassDeclaration& declaration,
-                                            std::vector<std::string> path) -> void {
+        std::vector<DestructorCall> virtualChain;
+        std::unordered_set<std::string> virtualSeen;
+        const auto collect = [this, &chain, &virtualChain, &virtualSeen](
+                                 const auto& self, const ClassDeclaration& declaration,
+                                 std::vector<std::string> path) -> void {
             for (const auto& method : declaration.methods) {
                 if (method.destructor) chain.push_back({&declaration, &method, path});
             }
-            for (auto base = declaration.baseClassNames.rbegin();
-                 base != declaration.baseClassNames.rend(); ++base) {
-                const auto found = classes_.find(*base);
+            for (std::size_t reverse = declaration.baseClassNames.size(); reverse > 0;
+                 --reverse) {
+                const auto index = reverse - 1;
+                const auto& baseName = declaration.baseClassNames[index];
+                const auto found = classes_.find(baseName);
                 if (found == classes_.end()) continue;
                 auto basePath = path;
-                basePath.push_back(*base);
-                self(self, *found->second, std::move(basePath));
+                basePath.push_back(baseName);
+                if (declaration.baseVirtual[index]) {
+                    if (!virtualSeen.emplace(baseName).second) continue;
+                    for (const auto& method : found->second->methods) {
+                        if (method.destructor) {
+                            virtualChain.push_back(
+                                {found->second, &method, std::move(basePath)});
+                            break;
+                        }
+                    }
+                } else {
+                    self(self, *found->second, std::move(basePath));
+                }
             }
         };
         collect(collect, dynamicOwner, {});
+        const auto virtualBases = virtualBaseNames(dynamicOwner);
+        for (auto baseName = virtualBases.rbegin(); baseName != virtualBases.rend(); ++baseName) {
+            const auto found = std::find_if(
+                virtualChain.begin(), virtualChain.end(),
+                [&baseName](const DestructorCall& call) {
+                    return call.owner->name == *baseName;
+                });
+            if (found != virtualChain.end()) chain.push_back(*found);
+        }
         if (chain.empty()) continue;
         for (std::size_t index = 0; index < chain.size(); ++index) {
             const auto& call = chain[index];

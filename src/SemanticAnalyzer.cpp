@@ -65,7 +65,20 @@ void SemanticAnalyzer::analyze(const Program& program) {
                 throw DiagnosticError(declaration.baseLocations[index],
                                       "duplicate base class '" + baseName + "'");
             }
-            findClass(baseName, declaration.baseLocations[index]);
+            const auto* base = findClass(baseName, declaration.baseLocations[index]);
+            if (declaration.baseVirtual[index]) {
+                if (!base->baseClassNames.empty()) {
+                    throw DiagnosticError(declaration.baseLocations[index],
+                                          "virtual bases must be root classes with no bases");
+                }
+                for (const auto& method : base->methods) {
+                    if (method.constructor && !method.parameters.empty()) {
+                        throw DiagnosticError(method.location,
+                                              "virtual base '" + baseName +
+                                                  "' constructor must take no arguments");
+                    }
+                }
+            }
         }
         std::unordered_set<std::string> path{declaration.name};
         std::vector<const ClassDeclaration*> pending{&declaration};
@@ -114,6 +127,7 @@ void SemanticAnalyzer::analyze(const Program& program) {
                 [](const MethodDeclaration& method) { return method.constructor; });
             if (!hasConstructor) {
                 for (std::size_t index = 0; index < declaration.baseClassNames.size(); ++index) {
+                    if (declaration.baseVirtual[index]) continue;
                     const auto* base = findClass(declaration.baseClassNames[index],
                                                  declaration.baseLocations[index]);
                     const bool baseHasConstructor = std::any_of(
@@ -229,21 +243,37 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                                      const MethodDeclaration& method) {
     std::size_t leadingCalls = 0;
     if (method.constructor && !owner.baseClassNames.empty()) {
+        std::vector<std::size_t> requiredBases;
+        for (std::size_t index = 0; index < owner.baseClassNames.size(); ++index) {
+            if (!owner.baseVirtual[index]) requiredBases.push_back(index);
+        }
         std::size_t nextBase = 0;
         for (const auto& statement : method.body) {
             if (statement.kind != StatementKind::SuperConstructorCall) break;
-            const auto base = std::find(owner.baseClassNames.begin() +
-                                            static_cast<std::ptrdiff_t>(nextBase),
-                                        owner.baseClassNames.end(), statement.name);
-            if (base == owner.baseClassNames.end()) {
+            const auto directBase = std::find(owner.baseClassNames.begin(),
+                                              owner.baseClassNames.end(), statement.name);
+            if (directBase != owner.baseClassNames.end() &&
+                owner.baseVirtual[static_cast<std::size_t>(
+                    std::distance(owner.baseClassNames.begin(), directBase))]) {
+                throw DiagnosticError(statement.location,
+                                      "virtual base constructors are initialized automatically; "
+                                      "do not call super." + statement.name);
+            }
+            const auto found = std::find_if(
+                requiredBases.begin() + static_cast<std::ptrdiff_t>(nextBase),
+                requiredBases.end(), [&owner, &statement](std::size_t index) {
+                    return owner.baseClassNames[index] == statement.name;
+                });
+            if (found == requiredBases.end()) {
                 throw DiagnosticError(statement.location,
                                       "base constructors must be initialized once in declared order");
             }
             const auto foundIndex = static_cast<std::size_t>(
-                std::distance(owner.baseClassNames.begin(), base));
-            for (std::size_t index = nextBase; index < foundIndex; ++index) {
-                const auto* skipped = findClass(owner.baseClassNames[index],
-                                                owner.baseLocations[index]);
+                std::distance(requiredBases.begin(), found));
+            for (std::size_t offset = nextBase; offset < foundIndex; ++offset) {
+                const auto baseIndex = requiredBases[offset];
+                const auto* skipped = findClass(owner.baseClassNames[baseIndex],
+                                                owner.baseLocations[baseIndex]);
                 if (std::any_of(skipped->methods.begin(), skipped->methods.end(),
                                 [](const MethodDeclaration& candidate) {
                                     return candidate.constructor;
@@ -257,7 +287,8 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
             nextBase = foundIndex + 1;
             ++leadingCalls;
         }
-        for (std::size_t index = nextBase; index < owner.baseClassNames.size(); ++index) {
+        for (std::size_t offset = nextBase; offset < requiredBases.size(); ++offset) {
+            const auto index = requiredBases[offset];
             const auto* skipped = findClass(owner.baseClassNames[index],
                                             owner.baseLocations[index]);
             if (std::any_of(skipped->methods.begin(), skipped->methods.end(),

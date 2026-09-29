@@ -82,6 +82,7 @@ struct ClassDeclaration {
     std::vector<std::string> baseClassNames;
     std::vector<SourceLocation> baseLocations;
     std::vector<AccessLevel> baseAccess;
+    std::vector<bool> baseVirtual;
     std::vector<FieldDeclaration> fields;
     std::vector<MethodDeclaration> methods;
 };

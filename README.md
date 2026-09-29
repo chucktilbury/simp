@@ -81,7 +81,8 @@ and semantic errors.
   blocks are errors; other top-level forms are rejected.
 - Reserved keywords are case-insensitive: `start`, `int`, `string`, `if`,
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
-  `raise`, `try`, `except`, `finally`, `public`, `protected`, and `private`.
+  `raise`, `try`, `except`, `finally`, `public`, `protected`, `private`, and
+  `virtual`.
   Every capitalization is reserved.
 - `int` and `string` declarations (with optional initializer), identifier
   assignment, `print`, `return`, and `super.Base(...)` statements end at a
@@ -131,7 +132,8 @@ and semantic errors.
   typed methods; `Class(args)` construction/allocation; nullable class-reference
   variables; field access/assignment; method calls; and direct `return`
   statements at the end of methods. Inheritance uses `class Child : Base` or
-  `class Diamond : Left, Right`.
+  `class Diamond : Left, Right`; `virtual` marks a shared root base, for
+  example `class Left : virtual Root`.
 
   ```simple
   class Counter {
@@ -155,30 +157,36 @@ and semantic errors.
   zero-argument `void destroy()` method; an explicit `object.destroy()` warns,
   invokes the destructor chain once, and marks the object unusable. Further
   object use or another destruction attempt raises a catchable runtime
-  exception. Destructors execute from the most-derived class through bases in
-  reverse declaration/depth-first construction order, including distinct
-  secondary-base subobjects. Explicit destruction and GC finalization use the
+  exception. Destructors execute from the most-derived class through
+  non-virtual bases in reverse construction order, then shared virtual bases
+  once in reverse virtual-base construction order. Explicit destruction and GC finalization use the
   same chain. A destructor error cannot make an object eligible for a second
   destructor run; explicit destruction continues through the remaining bases
   before propagating the first destructor exception. Finalizer allocation
   aborts.
-  Direct bases have distinct, non-shared subobjects in declared
-  order; qualified field and method paths select a specific subobject. Ambiguous
+  Direct non-virtual bases have distinct subobjects in declared order; qualified
+  field and method paths select a specific subobject. A supported virtual root
+  base is shared by every path in the complete object. Ambiguous
   inherited fields must be qualified, for example
   `diamond.Left.Root.value`; unqualified ambiguous fields or methods are
-  compile-time errors. `super.Base(args)` initializes a direct base; required
-  base constructors must be called once, in declared-base order, before the
-  constructor body. Implicit upcasts adjust to the unique accessible base
+  compile-time errors. `super.Base(args)` initializes a direct non-virtual base;
+  required non-virtual base constructors must be called once, in declared-base
+  order, before the constructor body. Virtual bases are initialized once by the
+  complete object, before non-virtual bases. A virtual base may not itself have
+  bases, and its explicit constructor must take no arguments; forwarding
+  virtual-base constructor arguments is unsupported. Implicit upcasts adjust
+  to the unique accessible base
   subobject; ambiguous conversions are errors. Virtual dispatch uses per-view
   metadata and adjusts `this` to the selected implementation's subobject.
   The first declared base retains the primary designation and first layout
   position, but construction and dispatch support every direct base.
   Overrides must exactly preserve inherited return and parameter types.
-  Inherited field redeclaration, incompatible overrides, and shared/virtual
-  bases are unsupported.
+  Inherited field redeclaration and incompatible overrides are unsupported.
 
   Each direct base may be marked `public`, `protected`, or `private`; omitted
   visibility defaults to `public` for compatibility with the current subset.
+  The `virtual` modifier may precede or follow visibility, as in
+  `public virtual Root` or `virtual public Root`.
   External code may access inherited fields/methods only through public base
   paths. Protected/private paths are available to members of the class that
   declares the path but are hidden from `start` and unrelated classes. This
@@ -202,7 +210,9 @@ and semantic errors.
 
   Objects have stable, non-moving addresses. The root object and each base
   subobject have a metadata header and link to the containing allocation, with
-  direct bases embedded in declared order before the class's fields. Metadata
+  direct non-virtual bases embedded in declared order before the class's fields.
+  Each complete object stores one physical instance of every supported virtual
+  root base; all paths resolve to that subobject. Metadata
   contains the dynamic class name/field count, per-view virtual method tables,
   object size, and compiler-generated offsets for class-reference fields;
   instances do not contain method copies. Class references may be `null`;
@@ -225,9 +235,11 @@ declarations/assignments, integer expressions and comparisons, integer
 single-value integer or string printing, and the
 limited `{}` integer formatting form described above. It also supports object
 layout/allocation/constructor/method/field operations for classes
-and single- and multiple-inheritance layouts. Base-path field access
-distinguishes repeated subobjects in a diamond. Base constructors, unique-path
-upcasts, and virtual dispatch work through primary and secondary base paths.
+and single- and multiple-inheritance layouts, including shared virtual root
+bases. Base-path field access distinguishes repeated non-virtual subobjects
+while paths to a shared base select one instance. Base constructors,
+unique-subobject upcasts, and virtual dispatch work through primary, secondary,
+and virtual base views.
 Method-table slots are inherited in stable order and an override replaces its
 inherited slot; per-subobject dispatch thunks adjust the receiver before
 invoking the selected implementation. Strings
@@ -269,9 +281,14 @@ incremental/concurrent collection, or configurable allocation threshold.
 Generated roots conservatively include every object-typed slot in a function,
 but do not scan non-reference values or the native stack. This small runtime
 has stress/unit coverage but is not a production-validated memory manager.
-Multiple inheritance uses deterministic, non-virtual subobject layout; a shared
-ancestor in a diamond is represented as two separate subobjects. Method
-overloading and reflection are also unsupported.
+Multiple inheritance uses deterministic layout; repeated non-virtual ancestors
+remain distinct, while supported virtual root ancestors are shared. Method
+overloading and reflection are also unsupported. Virtual-base constructors run
+once in depth-first, left-to-right base-declaration order before non-virtual
+base constructors; destruction runs non-virtual bases in reverse order, then
+shared virtual bases once in reverse virtual-base construction order. If
+virtual-base construction throws, the partial complete object is marked failed
+and its destructor chain is not run.
 
 ## Deferred
 

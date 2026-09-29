@@ -119,21 +119,30 @@ bool SemanticAnalyzer::memberAccessible(const ClassDeclaration& owner,
 
 const FieldDeclaration* SemanticAnalyzer::findField(const ClassDeclaration& declaration,
                                                     const std::string& name) const {
-    for (const auto& field : declaration.fields) {
-        if (field.name == name) return &field;
-    }
-    const FieldDeclaration* result = nullptr;
-    for (const auto& baseName : declaration.baseClassNames) {
-        const auto base = classes_.find(baseName);
-        if (base == classes_.end() ||
-            !basePathAccessible(declaration, {baseName}) ||
-            !memberAccessible(*base->second, name, false)) continue;
-        const auto* candidate = findField(*base->second, name);
-        if (candidate == nullptr) continue;
-        if (result != nullptr) return nullptr;
-        result = candidate;
-    }
-    return result;
+    std::unordered_set<std::string> seenVirtual;
+    const auto visit = [this, &name, &seenVirtual](
+                           const auto& self, const ClassDeclaration& current,
+                           bool virtualSubobject) -> const FieldDeclaration* {
+        if (virtualSubobject && !seenVirtual.emplace(current.name).second) return nullptr;
+        for (const auto& field : current.fields) {
+            if (field.name == name) return &field;
+        }
+        const FieldDeclaration* result = nullptr;
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto& baseName = current.baseClassNames[index];
+            const auto base = classes_.find(baseName);
+            if (base == classes_.end() ||
+                !basePathAccessible(current, {baseName}) ||
+                !memberAccessible(*base->second, name, false)) continue;
+            const auto* candidate =
+                self(self, *base->second, virtualSubobject || current.baseVirtual[index]);
+            if (candidate == nullptr) continue;
+            if (result != nullptr) return nullptr;
+            result = candidate;
+        }
+        return result;
+    };
+    return visit(visit, declaration, false);
 }
 
 std::size_t SemanticAnalyzer::accessibleMemberCount(const ClassDeclaration& declaration,
@@ -150,28 +159,66 @@ std::size_t SemanticAnalyzer::accessibleMemberCount(const ClassDeclaration& decl
             [&name](const FieldDeclaration& item) { return item.name == name; });
     }
     if (declaredHere) return memberAccessible(declaration, name, method) ? 1 : 0;
-
+    std::unordered_set<std::string> seenVirtual;
+    const auto visit = [this, &name, method, &seenVirtual](
+                           const auto& self, const ClassDeclaration& current,
+                           bool virtualSubobject) -> std::size_t {
+        if (virtualSubobject && !seenVirtual.emplace(current.name).second) return 0;
+        bool hasMember = false;
+        if (method) {
+            hasMember = std::any_of(current.methods.begin(), current.methods.end(),
+                                    [&name](const MethodDeclaration& item) {
+                                        return item.name == name && !item.constructor;
+                                    });
+        } else {
+            hasMember = std::any_of(current.fields.begin(), current.fields.end(),
+                                    [&name](const FieldDeclaration& item) {
+                                        return item.name == name;
+                                    });
+        }
+        if (hasMember) return memberAccessible(current, name, method) ? 1 : 0;
+        std::size_t count = 0;
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto base = classes_.find(current.baseClassNames[index]);
+            if (base == classes_.end() ||
+                !basePathAccessible(current, {current.baseClassNames[index]})) continue;
+            count += self(self, *base->second,
+                          virtualSubobject || current.baseVirtual[index]);
+        }
+        return count;
+    };
     std::size_t count = 0;
-    for (const auto& baseName : declaration.baseClassNames) {
-        const auto base = classes_.find(baseName);
-        if (base == classes_.end() || !basePathAccessible(declaration, {baseName})) continue;
-        count += accessibleMemberCount(*base->second, name, method);
+    for (std::size_t index = 0; index < declaration.baseClassNames.size(); ++index) {
+        const auto base = classes_.find(declaration.baseClassNames[index]);
+        if (base == classes_.end() ||
+            !basePathAccessible(declaration, {declaration.baseClassNames[index]})) continue;
+        count += visit(visit, *base->second, declaration.baseVirtual[index]);
     }
     return count;
 }
 
 std::size_t SemanticAnalyzer::countFields(const ClassDeclaration& declaration,
                                           const std::string& name) const {
-    std::size_t count = 0;
-    for (const auto& field : declaration.fields) {
-        if (field.name == name) ++count;
-    }
-    if (count != 0) return count;
-    for (const auto& baseName : declaration.baseClassNames) {
-        const auto base = classes_.find(baseName);
-        if (base != classes_.end()) count += countFields(*base->second, name);
-    }
-    return count;
+    std::unordered_set<std::string> seenVirtual;
+    const auto visit = [this, &name, &seenVirtual](const auto& self,
+                                                   const ClassDeclaration& current,
+                                                   bool virtualSubobject) -> std::size_t {
+        if (virtualSubobject && !seenVirtual.emplace(current.name).second) return 0;
+        std::size_t count = 0;
+        for (const auto& field : current.fields) {
+            if (field.name == name) ++count;
+        }
+        if (count != 0) return count;
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto base = classes_.find(current.baseClassNames[index]);
+            if (base != classes_.end()) {
+                count += self(self, *base->second,
+                              virtualSubobject || current.baseVirtual[index]);
+            }
+        }
+        return count;
+    };
+    return visit(visit, declaration, false);
 }
 
 const MethodDeclaration* SemanticAnalyzer::findMethod(const ClassDeclaration& declaration,
@@ -193,15 +240,25 @@ const MethodDeclaration* SemanticAnalyzer::findMethod(const ClassDeclaration& de
 
 std::size_t SemanticAnalyzer::countMethods(const ClassDeclaration& declaration,
                                            const std::string& name) const {
-    for (const auto& method : declaration.methods) {
-        if (method.name == name && !method.constructor) return 1;
-    }
-    std::size_t count = 0;
-    for (const auto& baseName : declaration.baseClassNames) {
-        const auto base = classes_.find(baseName);
-        if (base != classes_.end()) count += countMethods(*base->second, name);
-    }
-    return count;
+    std::unordered_set<std::string> seenVirtual;
+    const auto visit = [this, &name, &seenVirtual](const auto& self,
+                                                   const ClassDeclaration& current,
+                                                   bool virtualSubobject) -> std::size_t {
+        if (virtualSubobject && !seenVirtual.emplace(current.name).second) return 0;
+        for (const auto& method : current.methods) {
+            if (method.name == name && !method.constructor) return 1;
+        }
+        std::size_t count = 0;
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto base = classes_.find(current.baseClassNames[index]);
+            if (base != classes_.end()) {
+                count += self(self, *base->second,
+                              virtualSubobject || current.baseVirtual[index]);
+            }
+        }
+        return count;
+    };
+    return visit(visit, declaration, false);
 }
 
 bool SemanticAnalyzer::isSubclassOf(const std::string& type, const std::string& base) const {
@@ -228,20 +285,28 @@ bool SemanticAnalyzer::isAssignable(const std::string& target,
     const auto found = classes_.find(source);
     if (classes_.find(target) == classes_.end() || found == classes_.end() ||
         !isSubclassOf(source, target)) return false;
-    const auto countPaths = [this, &target](const auto& self,
-                                            const ClassDeclaration& owner) -> std::size_t {
+    std::unordered_set<std::string> seenVirtual;
+    const auto countPaths = [this, &target, &seenVirtual](
+                                const auto& self, const ClassDeclaration& owner,
+                                bool virtualSubobject) -> std::size_t {
+        if (virtualSubobject && !seenVirtual.emplace(owner.name).second) return 0;
         std::size_t count = 0;
-        for (const auto& baseName : owner.baseClassNames) {
+        for (std::size_t index = 0; index < owner.baseClassNames.size(); ++index) {
+            const auto& baseName = owner.baseClassNames[index];
             if (baseName == target) {
-                ++count;
+                if (!owner.baseVirtual[index] ||
+                    seenVirtual.emplace(baseName).second) ++count;
             } else {
                 const auto base = classes_.find(baseName);
-                if (base != classes_.end()) count += self(self, *base->second);
+                if (base != classes_.end()) {
+                    count += self(self, *base->second,
+                                  virtualSubobject || owner.baseVirtual[index]);
+                }
             }
         }
         return count;
     };
-    if (countPaths(countPaths, *found->second) != 1) return false;
+    if (countPaths(countPaths, *found->second, false) != 1) return false;
     const auto findPath = [this, &target](const auto& self,
                                           const ClassDeclaration& owner,
                                           std::vector<std::pair<const ClassDeclaration*,

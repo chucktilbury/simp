@@ -43,12 +43,23 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
     }
     case StatementKind::SuperConstructorCall: {
         if (currentClass_ == nullptr || currentMethod_ == nullptr ||
-            !currentMethod_->constructor ||
-            std::find(currentClass_->baseClassNames.begin(),
-                      currentClass_->baseClassNames.end(), statement.name) ==
-                currentClass_->baseClassNames.end()) {
+            !currentMethod_->constructor) {
             throw DiagnosticError(statement.location,
                                   "super call must name the direct base class and appear in its constructor");
+        }
+        const auto basePosition = std::find(currentClass_->baseClassNames.begin(),
+                                            currentClass_->baseClassNames.end(),
+                                            statement.name);
+        if (basePosition == currentClass_->baseClassNames.end()) {
+            throw DiagnosticError(statement.location,
+                                  "super call must name the direct base class and appear in its constructor");
+        }
+        const auto baseIndex = static_cast<std::size_t>(
+            std::distance(currentClass_->baseClassNames.begin(), basePosition));
+        if (currentClass_->baseVirtual[baseIndex]) {
+            throw DiagnosticError(statement.location,
+                                  "virtual base constructors are initialized automatically; "
+                                  "do not call super." + statement.name);
         }
         const auto* base = findClass(statement.name, statement.location);
         const MethodDeclaration* constructor = nullptr;

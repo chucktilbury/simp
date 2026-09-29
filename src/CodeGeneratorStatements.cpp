@@ -63,13 +63,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                 throw DiagnosticError(statement.target->location, "backend could not resolve field");
             }
             binding.type = field->type;
-            address = newTemporary();
-            instructions_ += "  " + address + " = getelementptr inbounds %Class." + owner->name +
-                             ", ptr " + receiver.operand + ", i32 0";
-            for (const auto index : fieldPath) {
-                instructions_ += ", i32 " + std::to_string(index);
-            }
-            instructions_ += "\n";
+            address = emitFieldAddress(receiver.operand, *owner, fieldPath);
         }
         const auto value = emitExpression(*statement.expressions.front(), binding.type);
         const auto converted = convertObjectValue(value, binding.type,

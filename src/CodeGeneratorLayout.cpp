@@ -8,7 +8,9 @@
 #include "simp/Diagnostic.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
+#include <unordered_set>
 
 namespace simp {
 
@@ -21,13 +23,22 @@ const FieldDeclaration* CodeGenerator::findField(const ClassDeclaration& owner,
         for (std::size_t index = 0; index < declaration.baseClassNames.size(); ++index) {
             const auto base = classes_.find(declaration.baseClassNames[index]);
             if (base == classes_.end()) continue;
-            fieldPath.push_back(index + 2);
+            if (declaration.baseVirtual[index]) {
+                const auto names = virtualBaseNames(declaration);
+                const auto slot = static_cast<std::size_t>(std::distance(
+                    names.begin(),
+                    std::find(names.begin(), names.end(),
+                              declaration.baseClassNames[index])));
+                fieldPath.push_back(std::numeric_limits<std::size_t>::max() - slot);
+            } else {
+                fieldPath.push_back(index + 2);
+            }
             if (const auto* field = self(self, *base->second, fieldPath)) return field;
             fieldPath.pop_back();
         }
         for (std::size_t index = 0; index < declaration.fields.size(); ++index) {
             if (declaration.fields[index].name == name) {
-                fieldPath.push_back(declaration.baseClassNames.size() + index + 2);
+                fieldPath.push_back(fieldIndex(declaration, index));
                 return &declaration.fields[index];
             }
         }
@@ -38,12 +49,65 @@ const FieldDeclaration* CodeGenerator::findField(const ClassDeclaration& owner,
 }
 
 std::size_t CodeGenerator::flattenedFieldCount(const ClassDeclaration& owner) const {
-    std::size_t count = owner.fields.size();
-    for (const auto& baseName : owner.baseClassNames) {
-        const auto base = classes_.find(baseName);
-        if (base != classes_.end()) count += flattenedFieldCount(*base->second);
-    }
+    std::size_t count = 0;
+    std::unordered_set<std::string> virtualSeen;
+    const auto visit = [this, &count, &virtualSeen](const auto& self,
+                                                   const ClassDeclaration& current,
+                                                   bool virtualSubobject) -> void {
+        if (virtualSubobject && !virtualSeen.emplace(current.name).second) return;
+        count += current.fields.size();
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto base = classes_.find(current.baseClassNames[index]);
+            if (base == classes_.end()) continue;
+            self(self, *base->second,
+                 virtualSubobject || current.baseVirtual[index]);
+        }
+    };
+    visit(visit, owner, false);
     return count;
+}
+
+std::vector<std::string> CodeGenerator::virtualBaseNames(
+    const ClassDeclaration& owner) const {
+    std::vector<std::string> result;
+    std::unordered_set<std::string> seen;
+    const auto visit = [this, &result, &seen](const auto& self,
+                                              const ClassDeclaration& current) -> void {
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto& baseName = current.baseClassNames[index];
+            if (current.baseVirtual[index]) {
+                if (seen.emplace(baseName).second) result.push_back(baseName);
+            } else {
+                const auto base = classes_.find(baseName);
+                if (base != classes_.end()) self(self, *base->second);
+            }
+        }
+    };
+    visit(visit, owner);
+    return result;
+}
+
+std::size_t CodeGenerator::virtualBasePointerIndex(
+    const ClassDeclaration& owner, const std::string& baseName) const {
+    const auto names = virtualBaseNames(owner);
+    const auto found = std::find(names.begin(), names.end(), baseName);
+    if (found == names.end()) throw std::logic_error("unknown virtual base slot");
+    return owner.baseClassNames.size() + 2 +
+           static_cast<std::size_t>(std::distance(names.begin(), found));
+}
+
+std::size_t CodeGenerator::virtualBaseStorageIndex(
+    const ClassDeclaration& owner, const std::string& baseName) const {
+    const auto names = virtualBaseNames(owner);
+    const auto found = std::find(names.begin(), names.end(), baseName);
+    if (found == names.end()) throw std::logic_error("unknown virtual base storage");
+    return owner.baseClassNames.size() + 2 + names.size() + owner.fields.size() +
+           static_cast<std::size_t>(std::distance(names.begin(), found));
+}
+
+std::size_t CodeGenerator::fieldIndex(const ClassDeclaration& owner,
+                                      std::size_t field) const {
+    return owner.baseClassNames.size() + 2 + virtualBaseNames(owner).size() + field;
 }
 
 std::vector<std::size_t> CodeGenerator::directBasePath(
@@ -56,9 +120,12 @@ std::vector<std::size_t> CodeGenerator::directBasePath(
         if (position == current->baseClassNames.end()) {
             throw std::logic_error("invalid qualified base path");
         }
-        indices.push_back(static_cast<std::size_t>(
-                              std::distance(current->baseClassNames.begin(), position)) +
-                          2);
+        const auto baseIndex = static_cast<std::size_t>(
+            std::distance(current->baseClassNames.begin(), position));
+        if (current->baseVirtual[baseIndex]) {
+            return {virtualBaseStorageIndex(owner, baseName)};
+        }
+        indices.push_back(baseIndex + 2);
         current = classes_.at(baseName);
     }
     return indices;
@@ -67,19 +134,68 @@ std::vector<std::size_t> CodeGenerator::directBasePath(
 std::vector<std::pair<std::vector<std::string>, const ClassDeclaration*>>
 CodeGenerator::subobjects(const ClassDeclaration& owner) const {
     std::vector<std::pair<std::vector<std::string>, const ClassDeclaration*>> result;
-    const auto visit = [this, &result](const auto& self, const ClassDeclaration& current,
-                                       std::vector<std::string> path) -> void {
+    std::unordered_set<std::string> virtualSeen;
+    const auto visit = [this, &result, &virtualSeen](const auto& self,
+                                                     const ClassDeclaration& current,
+                                                     std::vector<std::string> path) -> void {
         result.emplace_back(path, &current);
-        for (const auto& baseName : current.baseClassNames) {
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto& baseName = current.baseClassNames[index];
             const auto base = classes_.find(baseName);
             if (base == classes_.end()) continue;
             auto basePath = path;
             basePath.push_back(baseName);
-            self(self, *base->second, std::move(basePath));
+            if (current.baseVirtual[index]) {
+                if (virtualSeen.emplace(baseName).second) {
+                    result.emplace_back(std::move(basePath), base->second);
+                }
+            } else {
+                self(self, *base->second, std::move(basePath));
+            }
         }
     };
     visit(visit, owner, {});
     return result;
+}
+
+std::string CodeGenerator::emitFieldAddress(
+    const std::string& pointer, const ClassDeclaration& owner,
+    const std::vector<std::size_t>& path) {
+    std::string address = pointer;
+    const ClassDeclaration* current = &owner;
+    for (const auto index : path) {
+        const auto virtualNames = virtualBaseNames(*current);
+        if (index >= std::numeric_limits<std::size_t>::max() - virtualNames.size()) {
+            const auto slot = std::numeric_limits<std::size_t>::max() - index;
+            if (slot >= virtualNames.size()) throw std::logic_error("invalid virtual field path");
+            const auto slotAddress = newTemporary();
+            instructions_ += "  " + slotAddress + " = getelementptr inbounds %Class." +
+                             current->name + ", ptr " + address + ", i32 0, i32 " +
+                             std::to_string(virtualBasePointerIndex(*current, virtualNames[slot])) +
+                             "\n";
+            const auto loaded = newTemporary();
+            instructions_ += "  " + loaded + " = load ptr, ptr " + slotAddress + "\n";
+            address = loaded;
+            current = classes_.at(virtualNames[slot]);
+            continue;
+        }
+        if (index >= 2 && index < current->baseClassNames.size() + 2) {
+            const auto baseIndex = index - 2;
+            const auto next = newTemporary();
+            instructions_ += "  " + next + " = getelementptr inbounds %Class." +
+                             current->name + ", ptr " + address + ", i32 0, i32 " +
+                             std::to_string(index) + "\n";
+            address = next;
+            current = classes_.at(current->baseClassNames[baseIndex]);
+            continue;
+        }
+        const auto field = newTemporary();
+        instructions_ += "  " + field + " = getelementptr inbounds %Class." +
+                         current->name + ", ptr " + address + ", i32 0, i32 " +
+                         std::to_string(index) + "\n";
+        return field;
+    }
+    throw std::logic_error("field path has no field index");
 }
 
 std::string CodeGenerator::emitSubobjectAddress(
@@ -153,15 +269,8 @@ CodeGenerator::Binding CodeGenerator::findVariable(const std::string& name,
 
 std::string CodeGenerator::emitAddress(const Binding& binding, const SourceLocation& location) {
     if (!binding.field) return binding.pointer;
-    const auto pointer = newTemporary();
-    instructions_ += "  " + pointer + " = getelementptr inbounds %Class." +
-                     currentFieldClass_->name + ", ptr %this, i32 0";
-    for (const auto index : binding.fieldPath) {
-        instructions_ += ", i32 " + std::to_string(index);
-    }
-    instructions_ += "\n";
     (void)location;
-    return pointer;
+    return emitFieldAddress("%this", *currentFieldClass_, binding.fieldPath);
 }
 
 CodeGenerator::Value CodeGenerator::convertObjectValue(

@@ -119,6 +119,7 @@ void dumpAst(const Program& program, std::ostream& output) {
                                                ? "protected "
                                                : "private ";
                 output << access;
+                if (declaration.baseVirtual[index]) output << "virtual ";
                 output << declaration.baseClassNames[index];
             }
         }

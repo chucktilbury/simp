@@ -18,13 +18,23 @@ ClassDeclaration Parser::parseClass() {
     if (match(TokenType::Colon)) {
         do {
             AccessLevel access = AccessLevel::Public;
-            if (match(TokenType::Public)) access = AccessLevel::Public;
-            else if (match(TokenType::Protected)) access = AccessLevel::Protected;
-            else if (match(TokenType::Private)) access = AccessLevel::Private;
+            bool isVirtual = false;
+            for (;;) {
+                if (match(TokenType::Public)) access = AccessLevel::Public;
+                else if (match(TokenType::Protected)) access = AccessLevel::Protected;
+                else if (match(TokenType::Private)) access = AccessLevel::Private;
+                else if (match(TokenType::Virtual)) {
+                    if (isVirtual) error(previous(), "duplicate 'virtual' base modifier");
+                    isVirtual = true;
+                } else {
+                    break;
+                }
+            }
             const auto base = consume(TokenType::Identifier, "base class name");
             declaration.baseClassNames.push_back(base.text);
             declaration.baseLocations.push_back(base.location);
             declaration.baseAccess.push_back(access);
+            declaration.baseVirtual.push_back(isVirtual);
             if (declaration.baseClassNames.size() == 1) {
                 declaration.baseClassName = base.text;
                 declaration.baseLocation = base.location;

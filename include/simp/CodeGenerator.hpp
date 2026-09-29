@@ -57,6 +57,14 @@ private:
                                             const std::vector<std::string>& path) const;
     std::vector<std::pair<std::vector<std::string>, const ClassDeclaration*>>
     subobjects(const ClassDeclaration& owner) const;
+    std::vector<std::string> virtualBaseNames(const ClassDeclaration& owner) const;
+    std::size_t virtualBasePointerIndex(const ClassDeclaration& owner,
+                                        const std::string& baseName) const;
+    std::size_t virtualBaseStorageIndex(const ClassDeclaration& owner,
+                                        const std::string& baseName) const;
+    std::size_t fieldIndex(const ClassDeclaration& owner, std::size_t field) const;
+    std::string emitFieldAddress(const std::string& pointer, const ClassDeclaration& owner,
+                                 const std::vector<std::size_t>& path);
     std::string emitSubobjectAddress(const std::string& pointer,
                                      const ClassDeclaration& owner,
                                      const std::vector<std::string>& path);

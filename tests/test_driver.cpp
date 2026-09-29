@@ -164,6 +164,21 @@ int main() {
              require(output.str().find("Super constructor [Base]") != std::string::npos,
                      "explicit base constructor missing from AST");
          }},
+        {"virtual base syntax is retained in AST", [] {
+             const auto program = parse(
+                 "class Root {}\n"
+                 "class Left : public virtual Root {}\n"
+                 "class Other : virtual public Root {}\n"
+                 "start {}");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             require(output.str().find("Class [Left : public virtual Root]") !=
+                         std::string::npos,
+                     "virtual base modifier missing from AST");
+             require(output.str().find("Class [Other : public virtual Root]") !=
+                         std::string::npos,
+                     "virtual/access modifier ordering was not accepted");
+         }},
         {"parser precedence and AST", [] {
              const auto program = parse("start {\n int x = 1 + 2 * 3\n print(x)\n}");
              require(program.statements.size() == 2, "expected declaration and print");
@@ -322,6 +337,21 @@ int main() {
         {"functional secondary-base constructor initialization required", [] {
              runFunctional("negative_secondary_base_constructor.simp",
                            "derived constructor must initialize base 'Secondary'");
+         }},
+        {"functional virtual-base construction and shared identity", [] {
+             runFunctional("positive_virtual_base_inheritance.simp");
+         }},
+        {"functional parameterized virtual base rejected", [] {
+             runFunctional("negative_virtual_base_constructor_args.simp",
+                           "virtual base 'Root' constructor must take no arguments");
+         }},
+        {"functional non-root virtual base rejected", [] {
+             runFunctional("negative_virtual_base_nonroot.simp",
+                           "virtual bases must be root classes with no bases");
+         }},
+        {"functional explicit virtual-base constructor call rejected", [] {
+             runFunctional("negative_virtual_base_explicit_super.simp",
+                           "virtual base constructors are initialized automatically");
          }},
          {"functional exception binding is read-only", [] {
               runFunctional("negative_exception_binding_assignment.simp",

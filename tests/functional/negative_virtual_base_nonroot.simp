@@ -1,0 +1,11 @@
+class Ancestor {
+}
+
+class Root : Ancestor {
+}
+
+class Left : virtual Root {
+}
+
+start {
+}

@@ -60,11 +60,11 @@ The first object-runtime prototype uses the following architectural direction;
 details remain subject to validation as the runtime grows:
 
 - Heap object addresses are stable and non-moving for the lifetime of an
-  allocation. The root object and each non-virtual base subobject have a
-  metadata header and a link to the containing allocation. Direct bases are
+  allocation. The root object and each base subobject have a metadata header
+  and a link to the containing allocation. Direct non-virtual bases are
   embedded in declared order before fields declared by the derived class.
-  Repeated ancestors in a diamond are separate subobjects; virtual/shared-base
-  semantics remain deferred. The first declared base retains the primary
+  Supported virtual root bases have one physical subobject per complete object,
+  shared by every inheritance path. The first declared base retains the primary
   designation and first layout position, but does not receive special
   construction or dispatch behavior.
 - Methods are shared class metadata/code entries, never copied into instances.
@@ -78,10 +78,11 @@ details remain subject to validation as the runtime grows:
   slots at function boundaries; conservative stack scanning is not used.
 
 The current compiler prototype validates single- and multiple-inheritance
-layouts, qualified field and method access through base paths, direct-base
-`super.Base(args)` constructor chaining, unique-path implicit upcasts, typed
-methods, allocation, virtual dispatch through all non-virtual base paths, and a
-minimal precise collector.
+layouts, including shared identity for supported virtual root bases; qualified
+field and method access through base paths; direct non-virtual-base
+`super.Base(args)` constructor chaining; unique-subobject implicit upcasts;
+typed methods; allocation; virtual dispatch through non-virtual and shared
+virtual base views; and a minimal precise collector.
 Overrides must preserve the exact return and parameter
 types. Objects use stable, non-moving allocations with
 a metadata pointer in the header. Generated code registers
@@ -115,17 +116,31 @@ subobject in reverse declaration/depth-first construction order. Explicit
 destruction and GC finalization use this same chain. If a destructor raises,
 explicit destruction still invokes the remaining base destructors and then
 propagates the first error; the object remains destroyed and cannot be
-finalized again. `super.Base(args)` initializes a named direct base. Explicit base
-constructors must be called once in declared order before the derived
-constructor body. A base without an explicit constructor needs no call;
-calling its implicit zero-argument constructor is a no-op. Multiple direct
-bases are laid out as distinct subobjects in declared order; for example,
-`diamond.Left.Root.value` selects one of two `Root` subobjects in a diamond.
-Unqualified ambiguous inherited fields, methods, and base conversions are
-errors. Unique accessible paths support adjusted upcasts and virtual method
-calls through any direct or indirect non-virtual base. Shared/virtual bases
-remain unsupported. A class without an explicit constructor is
-default-constructible only if its bases also have no explicit constructors.
+finalized again. `super.Base(args)` initializes a named direct non-virtual base. Required
+non-virtual base constructors must be called once in declared order before the
+derived constructor body. A supported shared base is marked with
+`class Left : virtual Root` (the access and `virtual` modifiers may appear in
+either order). Virtual bases are restricted to root classes with no bases and
+must have either no explicit constructor or a zero-argument constructor.
+Virtual-base constructors are initialized once by the complete object in
+depth-first, left-to-right base-declaration order, before direct non-virtual
+bases; intermediate constructors do not initialize them again and cannot
+forward arguments. A thrown exception during this phase fails construction and
+suppresses the partial object's destructor chain.
+
+Multiple direct non-virtual bases are distinct subobjects in declared order.
+All qualified paths to a shared virtual root, such as
+`diamond.Left.Root.value` and `diamond.Right.Root.value`, address the same
+subobject. That identity also governs inherited-member ambiguity and implicit
+upcasts: one shared virtual root is a unique conversion target, while repeated
+non-virtual ancestors remain ambiguous. Virtual dispatch uses one metadata view
+for that shared subobject and adjusts `this` to the selected implementation.
+GC reference offsets include each shared virtual subobject exactly once, so
+references stored through any path remain traceable. Destruction runs the
+complete object's destructor and non-virtual bases in reverse declaration/depth
+order, then each virtual base once in reverse virtual-base construction order.
+A class without an explicit constructor is default-constructible only if its
+non-virtual bases also have no explicit constructors.
 
 ### Names, scopes, namespaces, and access
 
@@ -146,7 +161,9 @@ default-constructible only if its bases also have no explicit constructors.
   implements base-path qualification for field reads and assignments.
 - An unqualified inherited member that is ambiguous under multiple inheritance is a compile-time error; the prototype implements this for fields and methods.
 - Base classes may be marked `public`, `protected`, or `private`. The prototype
-  defaults omitted visibility to public. Public inheritance preserves inherited
+  defaults omitted visibility to public. The supported `virtual` base modifier
+  can appear before or after visibility, as in `virtual public Root`. Public
+  inheritance preserves inherited
   access, protected inheritance maps inherited public/protected members to
   protected, and private inheritance maps them to private; a base-private
   member remains inaccessible through inheritance. Class-body `public:`,
@@ -278,8 +295,9 @@ destroy()` calls through inheritance hierarchies. The collector first marks
 the graph, invokes each unmarked object's destructor chain at most once before
 sweeping, then traces roots again before reclamation. Each class destructor
 runs once, most-derived first, followed by direct bases in reverse declaration
-order and recursively through their bases. Repeated base classes in a diamond
-are distinct subobjects and are each destroyed. Explicit destruction marks
+order and recursively through their bases. Repeated non-virtual base classes
+in a diamond are distinct subobjects and are each destroyed; a shared virtual
+root base is destroyed once after the non-virtual bases. Explicit destruction marks
 the object, suppressing its later finalizer. The heap marks an object destroyed
 before invoking its callback; repeated explicit destruction raises a catchable
 runtime exception. If an explicit destructor raises, the object remains

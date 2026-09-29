@@ -159,13 +159,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             throw DiagnosticError(expression.location,
                                   "class '" + owner->name + "' has no field '" + expression.value + "'");
         }
-        const auto address = newTemporary();
-        instructions_ += "  " + address + " = getelementptr inbounds %Class." + owner->name +
-                         ", ptr " + objectView + ", i32 0";
-        for (const auto index : fieldPath) {
-            instructions_ += ", i32 " + std::to_string(index);
-        }
-        instructions_ += "\n";
+        const auto address = emitFieldAddress(objectView, *owner, fieldPath);
         const auto result = newTemporary();
         instructions_ += "  " + result + " = load " + llvmType(field->type) + ", ptr " +
                          address + "\n";
@@ -199,6 +193,23 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              view.second->name + ", ptr " + viewAddress + ", i32 0, i32 1\n"
                              "  store ptr " + object + ", ptr " + ownerLinkAddress + "\n";
         }
+        for (const auto& view : subobjects(*owner)) {
+            const auto viewAddress = emitSubobjectAddress(object, *owner, view.first);
+            for (const auto& baseName : virtualBaseNames(*view.second)) {
+                const auto canonicalAddress = newTemporary();
+                const auto slotAddress = newTemporary();
+                instructions_ += "  " + canonicalAddress + " = getelementptr inbounds %Class." +
+                                 owner->name + ", ptr " + object + ", i32 0, i32 " +
+                                 std::to_string(virtualBaseStorageIndex(*owner, baseName)) +
+                                 "\n"
+                                 "  " + slotAddress + " = getelementptr inbounds %Class." +
+                                 view.second->name + ", ptr " + viewAddress + ", i32 0, i32 " +
+                                 std::to_string(virtualBasePointerIndex(*view.second, baseName)) +
+                                 "\n"
+                                 "  store ptr " + canonicalAddress + ", ptr " + slotAddress +
+                                 "\n";
+            }
+        }
         const MethodDeclaration* constructor = nullptr;
         for (const auto& method : owner->methods) {
             if (method.constructor) {
@@ -206,8 +217,29 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                 break;
             }
         }
-        if (constructor != nullptr) {
+        std::vector<std::pair<const ClassDeclaration*, std::string>> virtualConstructors;
+        for (const auto& baseName : virtualBaseNames(*owner)) {
+            const auto* base = classes_.at(baseName);
+            for (const auto& method : base->methods) {
+                if (method.constructor) {
+                    virtualConstructors.emplace_back(base, method.name);
+                    break;
+                }
+            }
+        }
+        if (constructor != nullptr || !virtualConstructors.empty()) {
             instructions_ += "  call void @simp_gc_begin_construction(ptr " + object + ")\n";
+        }
+        for (const auto& virtualConstructor : virtualConstructors) {
+            const auto virtualAddress = newTemporary();
+            instructions_ += "  " + virtualAddress + " = getelementptr inbounds %Class." +
+                             owner->name + ", ptr " + object + ", i32 0, i32 " +
+                             std::to_string(virtualBaseStorageIndex(
+                                 *owner, virtualConstructor.first->name)) +
+                             "\n  call void " +
+                             methodSymbol(virtualConstructor.first->name,
+                                          virtualConstructor.second) +
+                             "(ptr " + virtualAddress + ")\n";
         }
         for (const auto& method : owner->methods) {
             if (!method.constructor) continue;
@@ -222,8 +254,10 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             }
             instructions_ += "  call void " + methodSymbol(owner->name, method.name) +
                              "(" + arguments + ")\n";
-            instructions_ += "  call void @simp_gc_end_construction(ptr " + object + ")\n";
             break;
+        }
+        if (constructor != nullptr || !virtualConstructors.empty()) {
+            instructions_ += "  call void @simp_gc_end_construction(ptr " + object + ")\n";
         }
         return {owner->name, object};
     }

@@ -1,0 +1,10 @@
+class Root {
+    Root(int value) {
+    }
+}
+
+class Left : virtual Root {
+}
+
+start {
+}
