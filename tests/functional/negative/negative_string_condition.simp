@@ -1,0 +1,6 @@
+# Rejects using a string expression as an if condition, which requires int.
+start {
+    if ("not an integer") {
+        print(1)
+    }
+}

@@ -1,0 +1,158 @@
+# Exercises a transitive virtual-base diamond, shared state, construction/destruction order, failure cleanup, and GC.
+class Payload {
+    int value
+
+    Payload(int initial) {
+        value = initial
+    }
+}
+
+class Common {
+    Payload item
+    int marker
+
+    Common(int initial) {
+        marker = initial
+        print("Common+")
+    }
+
+    void destroy() {
+        print("Common-")
+    }
+}
+
+class Ancestor : Common {
+    int value
+
+    Ancestor(int initial) {
+        super.Common(initial + 1)
+        value = initial
+        print("Ancestor+")
+    }
+
+    int read() {
+        return value
+    }
+
+    int baseRead() {
+        return value
+    }
+
+    void destroy() {
+        print("Ancestor-")
+    }
+}
+
+class Root : virtual Ancestor {
+    int rootValue
+
+    Root(int initial) {
+        rootValue = initial
+        print("Root+")
+    }
+
+    void destroy() {
+        print("Root-")
+    }
+}
+
+class Left : virtual Root {
+    Left() {
+        print("Left+")
+    }
+
+    void destroy() {
+        print("Left-")
+    }
+}
+
+class Right : virtual Root {
+    Right() {
+        print("Right+")
+    }
+
+    void destroy() {
+        print("Right-")
+    }
+}
+
+class Diamond : Left, Right {
+    Diamond(int rootInitial, int ancestorInitial) {
+        super.virtual Ancestor(ancestorInitial)
+        super.virtual Root(rootInitial)
+        super.Left()
+        super.Right()
+        print("Diamond+")
+    }
+
+    int read() {
+        return 77
+    }
+
+    void destroy() {
+        print("Diamond-")
+    }
+}
+
+class FailedAncestor {
+    FailedAncestor(int initial) {
+        raise "transitive initialization failed"
+    }
+
+    void destroy() {
+        print("wrong FailedAncestor destroy")
+    }
+}
+
+class FailedSide : virtual FailedAncestor {
+    FailedSide() {
+    }
+}
+
+class FailedDiamond : FailedSide {
+    FailedDiamond() {
+        super.virtual FailedAncestor(1)
+        super.FailedSide()
+    }
+
+    void destroy() {
+        print("wrong FailedDiamond destroy")
+    }
+}
+
+class Maker {
+    void release() {
+        Diamond temporary = Diamond(11, 3)
+    }
+}
+
+start {
+    Diamond diamond = Diamond(40, 7)
+    Root root = diamond
+    Ancestor ancestor = diamond
+    Common common = diamond
+    print(diamond.Left.Root.Ancestor.value)
+    print(diamond.Right.Root.Ancestor.value)
+    diamond.Left.Root.Ancestor.Common.item = Payload(50)
+    Payload trigger = Payload(9)
+    print(diamond.Right.Root.Ancestor.Common.item.value)
+    print(common.marker)
+    print(common.item.value)
+    print(diamond.baseRead())
+    print(root.read())
+    print(ancestor.read())
+    print(diamond.Left.Root.rootValue)
+    diamond.destroy()
+
+    try {
+        FailedDiamond failed = FailedDiamond()
+    } except message {
+        print(message)
+    }
+
+    Maker maker = Maker()
+    maker.release()
+    print("before collection")
+    Payload collector = Payload(12)
+    print("after collection")
+}

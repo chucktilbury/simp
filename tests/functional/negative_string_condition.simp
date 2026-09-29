@@ -1,5 +1,0 @@
-start {
-    if ("not an integer") {
-        print(1)
-    }
-}

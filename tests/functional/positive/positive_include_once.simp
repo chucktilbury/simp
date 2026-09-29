@@ -1,0 +1,8 @@
+# Includes the same source twice and verifies it is processed only once.
+include "../include_parts/once.simp"
+include "../include_parts/once.simp"
+
+start {
+    IncludedOnce value = IncludedOnce()
+    print(value.answer())
+}

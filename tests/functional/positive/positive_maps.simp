@@ -1,0 +1,70 @@
+# Covers heterogeneous maps, aliases, string keys, nested collections, typed extraction, and retained references.
+class Node {
+    int value
+    Node(int initial) {
+        value = initial
+    }
+    int read() {
+        return value
+    }
+}
+
+class Catalog {
+    map content
+    Catalog(map initial) {
+        content = initial
+    }
+    map read() {
+        return content
+    }
+}
+
+start {
+    map table = {"number": 7, "text": "seven", "node": Node(64), "items": [Node(77)], "child": {"value": 9, "node": Node(88)}}
+    Catalog catalog = Catalog(table)
+    print(table.length)
+    print(table["number"])
+    int number = table["number"]
+    string text = table["text"]
+    print(number)
+    print(text)
+
+    dict alias = table
+    alias["number"] = 11
+    print(table["number"])
+    map repeated = {"same": 1, "same": 2}
+    print(repeated.length)
+    print(repeated["same"])
+    map keySemantics = {"Key": 1, "key": 2, "café": 3}
+    print(keySemantics.length)
+    print(keySemantics["Key"])
+    print(keySemantics["key"])
+    print(keySemantics["café"])
+
+    array holder = [table]
+    map fieldMap = catalog.read()
+    map recovered = holder[0]
+    any dynamic = recovered
+    map recoveredAgain = dynamic
+    Node scratch = Node(0)
+    int count = 0
+    while (count < 8) {
+        scratch = Node(count)
+        count = count + 1
+    }
+    Node retainedNode = recoveredAgain["node"]
+    print(retainedNode.read())
+    map retainedChild = recoveredAgain["child"]
+    print(retainedChild["value"])
+    Node retainedChildNode = retainedChild["node"]
+    print(retainedChildNode.read())
+    array retainedItems = recoveredAgain["items"]
+    Node retained = retainedItems[0]
+    print(retained.read())
+
+    try {
+        any absent = table["absent"]
+    } except error {
+        print(error)
+    }
+}

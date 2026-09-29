@@ -1,0 +1,5 @@
+# Rejects passing a string to a formatted-print placeholder that requires an integer.
+start {
+    string value = "not an integer"
+    print("value: {}"(value))
+}

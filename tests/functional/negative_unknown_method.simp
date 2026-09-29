@@ -1,8 +1,0 @@
-class Counter {
-    int value
-}
-
-start {
-    Counter counter = Counter()
-    print(counter.missing())
-}

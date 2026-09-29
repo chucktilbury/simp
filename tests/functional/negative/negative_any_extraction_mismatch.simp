@@ -1,0 +1,9 @@
+# Rejects extracting a string-valued array element into an int at runtime.
+start {
+    // Extracting a concrete type from 'any' is runtime-checked: this array
+    // slot holds a string, so extracting it into 'int' must raise instead of
+    // silently reinterpreting the bits.
+    array values = [1, "two", 3]
+    int mismatched = values[1]
+    print(mismatched)
+}

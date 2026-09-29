@@ -1,0 +1,5 @@
+# Rejects assigning to the read-only length property of a map.
+start {
+    map values = {}
+    values.length = 1
+}

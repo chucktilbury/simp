@@ -1,3 +1,0 @@
-start {
-    map values = {1: "value"}
-}

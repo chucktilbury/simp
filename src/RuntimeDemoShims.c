@@ -5,7 +5,7 @@
  *
  * See RuntimeDemoShims.h for why this file exists separately from
  * RuntimeGc.c: it has nothing to do with garbage collection and exists only
- * to give tests/functional/positive_extern_functions.simp real C-bound
+ * to give tests/functional/positive/positive_extern_functions.simp real C-bound
  * method implementations to link against.
  */
 #include "simp/RuntimeDemoShims.h"

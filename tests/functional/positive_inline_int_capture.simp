@@ -1,7 +1,0 @@
-start {
-    int value = 7
-    inline (int value) {
-        *value += 5;
-    }
-    print(value)
-}

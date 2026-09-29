@@ -1,0 +1,7 @@
+# Rejects one-variable iteration over a map, which requires key/value bindings.
+start {
+    map values = {"key": 1}
+    for (value in values) {
+        print(value)
+    }
+}

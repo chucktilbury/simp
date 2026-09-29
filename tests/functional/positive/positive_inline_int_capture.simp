@@ -1,0 +1,8 @@
+# Verifies inline C can mutate a captured integer and the change is visible to Simple code.
+start {
+    int value = 7
+    inline (int value) {
+        *value += 5;
+    }
+    print(value)
+}

@@ -1,0 +1,20 @@
+# Rejects placing a virtual-base initializer after a direct-base initializer.
+class Root {
+    Root(int value) {
+    }
+}
+
+class Left : virtual Root {
+    Left() {
+    }
+}
+
+class Leaf : Left {
+    Leaf() {
+        super.Left()
+        super.virtual Root(1)
+    }
+}
+
+start {
+}

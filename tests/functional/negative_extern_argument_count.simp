@@ -1,9 +1,0 @@
-class Native {
-    int absolute(int value)
-}
-
-int Native.absolute(int value) from "simp_method_demo_abs"
-
-start {
-    print(Native().absolute(1, 2))
-}

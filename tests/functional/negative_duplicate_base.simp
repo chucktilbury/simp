@@ -1,8 +1,0 @@
-class Base {
-}
-
-class Duplicate : Base, Base {
-}
-
-start {
-}

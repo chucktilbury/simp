@@ -1,0 +1,15 @@
+# Rejects a virtual-base initializer that omits the base constructor's required argument.
+class Root {
+    Root(int value) {
+    }
+}
+
+class Leaf : virtual Root {
+    Leaf() {
+        super.virtual Root()
+    }
+}
+
+start {
+    Leaf leaf = Leaf()
+}

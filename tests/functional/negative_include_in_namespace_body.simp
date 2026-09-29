@@ -1,5 +1,0 @@
-namespace Invalid {
-    include "missing.simp"
-}
-
-start {}

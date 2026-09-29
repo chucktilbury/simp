@@ -1,3 +1,0 @@
-start {
-  print(1 / 0)
-}

@@ -1,6 +1,0 @@
-start {
-    int value = 1
-    inline (int value, int value) {
-        (void)value;
-    }
-}

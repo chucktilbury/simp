@@ -1,7 +1,0 @@
-class Native {
-    int missing(int value)
-}
-
-start {
-    print(1)
-}

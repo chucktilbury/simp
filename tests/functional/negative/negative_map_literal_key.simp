@@ -1,0 +1,4 @@
+# Rejects a map literal whose key is an integer instead of a string literal.
+start {
+    map values = {1: "value"}
+}

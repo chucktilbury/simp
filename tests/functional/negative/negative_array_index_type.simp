@@ -1,0 +1,5 @@
+# Rejects using a string rather than an integer as an array index.
+start {
+    array values = [1, 2]
+    print(values["zero"])
+}

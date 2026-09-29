@@ -5,7 +5,7 @@
  *
  * These functions exist solely to exercise the native-bound method ABI
  * (see SIMPLE-LANGUAGE-NOTES.md, "Out-of-line methods and native C
- * bindings") end-to-end in tests/functional/positive_extern_functions.simp.
+ * bindings") end-to-end in tests/functional/positive/positive_extern_functions.simp.
  * They are not part of the language runtime proper and are not meant to be
  * called from real Simple programs; they live in their own translation
  * unit, separate from the GC/runtime core in RuntimeGc.c, purely for

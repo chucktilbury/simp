@@ -1,0 +1,63 @@
+# Covers ordered map slices and removal, mutation during iteration, array iteration, and nested collection references.
+class Node {
+    int value
+    Node(int initial) {
+        value = initial
+    }
+    int read() {
+        return value
+    }
+}
+
+start {
+    map table = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5}
+    map middle = table[1:4]
+    print(middle.length)
+    middle["second"] = 20
+    print(table["second"])
+    print(middle["second"])
+
+    print(table.remove("third"))
+    print(table.remove("missing"))
+    table["third"] = 30
+    int seen = 0
+    for (value in table) {
+        print(value)
+        if (seen == 0) {
+            table.remove("second")
+            table["new"] = 99
+        }
+        seen = seen + 1
+    }
+    print(seen)
+    print(table.length)
+
+    for (key, value in middle) {
+        print(key)
+    }
+
+    array items = [10, 20, 30]
+    seen = 0
+    for (value in items) {
+        print(value)
+        if (seen == 0) {
+            items[1] = 200
+        }
+        seen = seen + 1
+    }
+    print(items[1])
+
+    array inner = [Node(77)]
+    array nested = [inner, [1, 2]]
+    map graph = {"nested": nested}
+    array recovered = graph["nested"]
+    array recoveredInner = recovered[0]
+    Node retained = recoveredInner[0]
+    Node scratch = Node(0)
+    int churn = 0
+    while (churn < 8) {
+        scratch = Node(churn)
+        churn = churn + 1
+    }
+    print(retained.read())
+}

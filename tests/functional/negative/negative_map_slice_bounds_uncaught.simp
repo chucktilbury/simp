@@ -1,0 +1,6 @@
+# Raises an uncaught runtime error when a map slice extends beyond its entries.
+start {
+    map values = {"first": 1, "second": 2}
+    map copy = values[0:3]
+    print(copy.length)
+}

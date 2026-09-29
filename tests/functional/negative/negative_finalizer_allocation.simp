@@ -1,0 +1,18 @@
+# Raises at runtime when a destructor attempts to allocate another object during finalization.
+class Resource {
+    void destroy() {
+        Resource nested = Resource()
+    }
+}
+
+class Maker {
+    void make() {
+        Resource item = Resource()
+    }
+}
+
+start {
+    Maker maker = Maker()
+    maker.make()
+    Resource trigger = Resource()
+}

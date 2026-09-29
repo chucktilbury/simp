@@ -1,6 +1,0 @@
-start {
-    string value = "text"
-    inline (int value) {
-        (void)value;
-    }
-}

@@ -1,0 +1,10 @@
+# Fails to link when a native method names a C symbol that does not exist.
+class Native {
+    int missing(int value)
+}
+
+int Native.missing(int value) from "simp_symbol_that_does_not_exist"
+
+start {
+    print(Native().missing(1))
+}

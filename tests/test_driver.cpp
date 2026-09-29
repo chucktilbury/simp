@@ -24,6 +24,12 @@ namespace {
 
 using Test = std::pair<std::string, std::function<void()>>;
 
+struct FunctionalCase {
+    const char* description;
+    const char* fixture;
+    const char* expectedDiagnostic;
+};
+
 void require(bool condition, const std::string& message) {
     if (!condition) {
         throw std::runtime_error(message);
@@ -79,7 +85,7 @@ void expectValid(const std::string& source) {
 } // namespace
 
 int main() {
-    const std::vector<Test> tests{
+    std::vector<Test> tests{
         {"lexer keywords and strings", [] {
              simp::Lexer lexer("StArT {\n INT n = 12\n string s = \"a\\n\"\n}", "lexer.simp");
              const auto tokens = lexer.tokenize();
@@ -372,57 +378,6 @@ int main() {
                  "start {\n int value\n if (1) { value = 1 } else { value = 2 }\n print(value)\n}");
              require(program.statements.size() == 3, "expected declaration, if, and print");
          }},
-        {"functional valid control flow", [] {
-             runFunctional("positive_control_flow.simp");
-         }},
-        {"functional newline-only statements", [] {
-             runFunctional("positive_newline_statements.simp");
-         }},
-        {"functional adjacent statements rejected", [] {
-             runFunctional("negative_adjacent_statements.simp",
-                           "expected newline after statement");
-         }},
-        {"functional secondary-base construction and dispatch", [] {
-             runFunctional("positive_secondary_bases.simp");
-         }},
-        {"functional secondary-base constructor initialization required", [] {
-             runFunctional("negative_secondary_base_constructor.simp",
-                           "derived constructor must initialize base 'Secondary'");
-         }},
-        {"functional virtual-base construction and shared identity", [] {
-             runFunctional("positive_virtual_base_inheritance.simp");
-         }},
-        {"functional parameterized virtual-base arguments in a diamond", [] {
-             runFunctional("positive_parameterized_virtual_base.simp");
-         }},
-        {"functional parameterized virtual base rejected", [] {
-             runFunctional("negative_virtual_base_constructor_args.simp",
-                           "most-derived constructor must initialize virtual base 'Root'");
-         }},
-        {"functional missing virtual-base initializer rejected", [] {
-             runFunctional("negative_virtual_base_missing_initializer.simp",
-                           "most-derived constructor must initialize virtual base 'Root'");
-         }},
-        {"functional duplicate virtual-base initializer rejected", [] {
-             runFunctional("negative_virtual_base_duplicate_initializer.simp",
-                           "virtual base 'Root' is initialized more than once");
-         }},
-        {"functional virtual-base initializer type checked", [] {
-             runFunctional("negative_virtual_base_initializer_type.simp",
-                           "virtual base constructor argument type does not match");
-         }},
-        {"functional virtual-base initializer arity checked", [] {
-             runFunctional("negative_virtual_base_initializer_arity.simp",
-                           "virtual base constructor argument count does not match");
-         }},
-        {"functional virtual-base initializer order checked", [] {
-             runFunctional("negative_virtual_base_initializer_order.simp",
-                           "virtual base initializers must precede direct base");
-         }},
-        {"functional intermediate virtual-base initializer rejected", [] {
-             runFunctional("negative_virtual_base_initializer_in_intermediate.simp",
-                           "virtual base initializers are only allowed in most-derived classes");
-         }},
         {"virtual-base initializer rejected outside constructors", [] {
              expectDiagnostic(
                  "class Root { Root(int value) {} }\n"
@@ -431,45 +386,6 @@ int main() {
                  "}\n"
                  "start {}",
                  "super initializers must be direct leading constructor statements");
-         }},
-        {"functional transitive virtual-base inheritance", [] {
-             runFunctional("positive_transitive_virtual_bases.simp");
-         }},
-        {"functional transitive virtual-base initializer order", [] {
-             runFunctional("negative_transitive_virtual_base_initializer_order.simp",
-                           "virtual base initializers must follow virtual-base construction order");
-         }},
-        {"functional ambiguous virtual/non-virtual conversion rejected", [] {
-             runFunctional("negative_transitive_ambiguous_conversion.simp",
-                           "cannot initialize Ancestor variable with Diamond");
-         }},
-        {"functional ambiguous virtual/non-virtual field rejected", [] {
-             runFunctional("negative_transitive_ambiguous_field.simp",
-                           "ambiguous inherited field 'value'");
-         }},
-        {"functional ambiguous virtual/non-virtual method rejected", [] {
-             runFunctional("negative_transitive_ambiguous_method.simp",
-                           "ambiguous inherited method 'read'");
-         }},
-        {"functional explicit virtual-base constructor call rejected", [] {
-             runFunctional("negative_virtual_base_explicit_super.simp",
-                           "virtual base constructors must use super.virtual");
-         }},
-         {"functional exception binding is read-only", [] {
-              runFunctional("negative_exception_binding_assignment.simp",
-                            "exception binding 'message' is read-only");
-          }},
-        {"functional missing start", [] {
-             runFunctional("negative_missing_start.simp", "exactly one top-level 'start' block");
-         }},
-        {"functional duplicate start", [] {
-             runFunctional("negative_duplicate_start.simp", "more than one top-level 'start' block");
-         }},
-        {"functional conditional else", [] {
-             runFunctional("negative_conditional_else.simp", "unconditional 'else' cannot have a condition");
-         }},
-        {"functional reserved identifier", [] {
-             runFunctional("negative_keyword_identifier.simp", "keywords are reserved");
          }},
         {"out-of-line method body completes an in-class declaration", [] {
              expectValid(
@@ -562,12 +478,6 @@ int main() {
                  "extern int c_abs(int value) from \"abs\"\n"
                  "start {\n  print(1)\n}",
                  "program must contain exactly one top-level 'start' block");
-         }},
-        {"functional out-of-line native method example compiles and runs", [] {
-             runFunctional("positive_extern_functions.simp");
-         }},
-        {"functional native method missing symbol fails at link time", [] {
-             runFunctional("negative_extern_missing_symbol.simp");
          }},
         {"array literals accept mixed int, string, and class values", [] {
              expectValid(
@@ -785,6 +695,80 @@ int main() {
                   "unknown qualified class 'Known.Missing'");
          }}
     };
+
+    const std::vector<FunctionalCase> functionalCases{
+        {"functional valid control flow", "positive/positive_control_flow.simp", ""},
+        {"functional newline-only statements", "positive/positive_newline_statements.simp", ""},
+        {"functional adjacent statements rejected", "negative/negative_adjacent_statements.simp",
+         "expected newline after statement"},
+        {"functional secondary-base construction and dispatch",
+         "positive/positive_secondary_bases.simp", ""},
+        {"functional secondary-base constructor initialization required",
+         "negative/negative_secondary_base_constructor.simp",
+         "derived constructor must initialize base 'Secondary'"},
+        {"functional virtual-base construction and shared identity",
+         "positive/positive_virtual_base_inheritance.simp", ""},
+        {"functional parameterized virtual-base arguments in a diamond",
+         "positive/positive_parameterized_virtual_base.simp", ""},
+        {"functional parameterized virtual base rejected",
+         "negative/negative_virtual_base_constructor_args.simp",
+         "most-derived constructor must initialize virtual base 'Root'"},
+        {"functional missing virtual-base initializer rejected",
+         "negative/negative_virtual_base_missing_initializer.simp",
+         "most-derived constructor must initialize virtual base 'Root'"},
+        {"functional duplicate virtual-base initializer rejected",
+         "negative/negative_virtual_base_duplicate_initializer.simp",
+         "virtual base 'Root' is initialized more than once"},
+        {"functional virtual-base initializer type checked",
+         "negative/negative_virtual_base_initializer_type.simp",
+         "virtual base constructor argument type does not match"},
+        {"functional virtual-base initializer arity checked",
+         "negative/negative_virtual_base_initializer_arity.simp",
+         "virtual base constructor argument count does not match"},
+        {"functional virtual-base initializer order checked",
+         "negative/negative_virtual_base_initializer_order.simp",
+         "virtual base initializers must precede direct base"},
+        {"functional intermediate virtual-base initializer rejected",
+         "negative/negative_virtual_base_initializer_in_intermediate.simp",
+         "virtual base initializers are only allowed in most-derived classes"},
+        {"functional transitive virtual-base inheritance",
+         "positive/positive_transitive_virtual_bases.simp", ""},
+        {"functional transitive virtual-base initializer order",
+         "negative/negative_transitive_virtual_base_initializer_order.simp",
+         "virtual base initializers must follow virtual-base construction order"},
+        {"functional ambiguous virtual/non-virtual conversion rejected",
+         "negative/negative_transitive_ambiguous_conversion.simp",
+         "cannot initialize Ancestor variable with Diamond"},
+        {"functional ambiguous virtual/non-virtual field rejected",
+         "negative/negative_transitive_ambiguous_field.simp",
+         "ambiguous inherited field 'value'"},
+        {"functional ambiguous virtual/non-virtual method rejected",
+         "negative/negative_transitive_ambiguous_method.simp",
+         "ambiguous inherited method 'read'"},
+        {"functional explicit virtual-base constructor call rejected",
+         "negative/negative_virtual_base_explicit_super.simp",
+         "virtual base constructors must use super.virtual"},
+        {"functional exception binding is read-only",
+         "negative/negative_exception_binding_assignment.simp",
+         "exception binding 'message' is read-only"},
+        {"functional missing start", "negative/negative_missing_start.simp",
+         "exactly one top-level 'start' block"},
+        {"functional duplicate start", "negative/negative_duplicate_start.simp",
+         "more than one top-level 'start' block"},
+        {"functional conditional else", "negative/negative_conditional_else.simp",
+         "unconditional 'else' cannot have a condition"},
+        {"functional reserved identifier", "negative/negative_keyword_identifier.simp",
+         "keywords are reserved"},
+        {"functional out-of-line native method example compiles and runs",
+         "positive/positive_extern_functions.simp", ""},
+        {"functional native method missing symbol fails at link time",
+         "negative/negative_extern_missing_symbol.simp", ""},
+    };
+    for (const auto& functionalCase : functionalCases) {
+        tests.emplace_back(functionalCase.description, [functionalCase] {
+            runFunctional(functionalCase.fixture, functionalCase.expectedDiagnostic);
+        });
+    }
 
     std::size_t failures = 0;
     for (const auto& test : tests) {

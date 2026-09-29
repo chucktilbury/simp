@@ -1,0 +1,5 @@
+# Raises an uncaught runtime error when reading the array index equal to its length.
+start {
+    array values = [1, 2]
+    print(values[2])
+}

@@ -1,0 +1,107 @@
+# Verifies a diamond shares one virtual base and cleans up correctly when virtual-base construction fails.
+class Payload {
+    int value
+
+    Payload(int initial) {
+        value = initial
+    }
+}
+
+class Root {
+    Payload item
+    int value
+
+    Root() {
+        print("Root+")
+        value = 41
+    }
+
+    int read() {
+        return value
+    }
+
+    void destroy() {
+        print("Root-")
+    }
+}
+
+class Left : virtual Root {
+    Left() {
+        print("Left+")
+    }
+
+    void destroy() {
+        print("Left-")
+    }
+}
+
+class Right : virtual Root {
+    Right() {
+        print("Right+")
+    }
+
+    void destroy() {
+        print("Right-")
+    }
+}
+
+class Diamond : Left, Right {
+    Diamond() {
+        super.Left()
+        super.Right()
+        print("Diamond+")
+    }
+
+    int read() {
+        return 77
+    }
+
+    void destroy() {
+        print("Diamond-")
+    }
+}
+
+class FailedRoot {
+    FailedRoot() {
+        raise "virtual initialization failed"
+    }
+
+    void destroy() {
+        print("wrong FailedRoot destroy")
+    }
+}
+
+class FailedSide : virtual FailedRoot {
+    FailedSide() {
+        print("wrong side constructor")
+    }
+}
+
+class FailedDiamond : FailedSide {
+    FailedDiamond() {
+        super.FailedSide()
+    }
+
+    void destroy() {
+        print("wrong derived destroy")
+    }
+}
+
+start {
+    Diamond diamond = Diamond()
+    Root root = diamond
+    print(diamond.value)
+    print(diamond.Left.Root.value + diamond.Right.Root.value + root.value)
+    diamond.Left.Root.item = Payload(50)
+    Payload trigger = Payload(9)
+    print(diamond.Right.Root.item.value)
+    print(root.read())
+    print(diamond.Right.Root.read())
+    diamond.destroy()
+
+    try {
+        FailedDiamond failed = FailedDiamond()
+    } except message {
+        print(message)
+    }
+}

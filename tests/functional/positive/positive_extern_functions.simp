@@ -1,0 +1,66 @@
+# Exercises C-bound methods across scalar and reference types alongside an ordinary out-of-line method.
+class Native {
+    int marker
+
+    Native(int initialMarker) {
+        marker = initialMarker
+    }
+
+    int absolute(int value)
+    int stringLength(string text)
+    string stringIdentity(string text)
+    array identityArray(array items)
+    map identityMap(map items)
+    Counter identityCounter(Counter value)
+    void ignore(int value)
+}
+
+class Doubler {
+    int compute(int x)
+}
+
+# Counter is deliberately declared after Native: signatures resolve across
+# the whole source unit, including native-bound reference parameters/results.
+class Counter {
+    int value
+
+    Counter(int initial) {
+        value = initial
+    }
+}
+
+int Native.absolute(int value) from "simp_method_demo_abs"
+int Native.stringLength(string text) from "simp_method_demo_string_length"
+string Native.stringIdentity(string text) from "simp_method_demo_string_identity"
+array Native.identityArray(array items) from "simp_method_demo_identity"
+map Native.identityMap(map items) from "simp_method_demo_identity"
+Counter Native.identityCounter(Counter value) from "simp_method_demo_identity"
+void Native.ignore(int value) from "simp_method_demo_ignore"
+
+int Doubler.compute(int x) {
+    return x * 2
+}
+
+start {
+    # This direct same-file call stands in for the future import-based use;
+    # the import/registry system is not implemented yet.
+    Native native = Native(91)
+    print(native.absolute(0 - 7))
+    print(native.stringLength("hello"))
+    print(native.stringIdentity("hello"))
+    native.ignore(9)
+
+    array numbers = [1, 2, 3]
+    array same = native.identityArray(numbers)
+    print(same.length)
+
+    map values = {"answer": 42}
+    map sameMap = native.identityMap(values)
+    print(sameMap.length)
+
+    Counter counter = Counter(42)
+    Counter returned = native.identityCounter(counter)
+    print(returned.value)
+
+    print(Doubler().compute(5))
+}

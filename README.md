@@ -12,28 +12,28 @@ The root CMake project integrates the header, compiler, and test subprojects:
 cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
-./bin/simp tests/functional/positive_integer_output.simp -o bin/positive_integer_output
+./bin/simp tests/functional/positive/positive_integer_output.simp -o bin/positive_integer_output
 ./bin/positive_integer_output
 # Prints: 42
-./bin/simp tests/functional/positive_integer_control_flow.simp -o bin/positive_integer_control_flow
+./bin/simp tests/functional/positive/positive_integer_control_flow.simp -o bin/positive_integer_control_flow
 ./bin/positive_integer_control_flow
 # Prints: 9
-./bin/simp tests/functional/positive_string_format.simp -o bin/positive_string_format
+./bin/simp tests/functional/positive/positive_string_format.simp -o bin/positive_string_format
 ./bin/positive_string_format
 # Prints café and a blank line, then "value: 42" and "sum 21 21".
-./bin/simp tests/functional/positive_class_counter.simp -o bin/positive_class_counter
+./bin/simp tests/functional/positive/positive_class_counter.simp -o bin/positive_class_counter
 ./bin/positive_class_counter
 # Prints: 42, then 42
-./bin/simp tests/functional/positive_gc_object_graph.simp -o bin/positive_gc_object_graph
+./bin/simp tests/functional/positive/positive_gc_object_graph.simp -o bin/positive_gc_object_graph
 ./bin/positive_gc_object_graph
 # Prints: 1, 64, and 77 after repeated collections.
-./bin/simp tests/functional/positive_multiple_inheritance.simp -o bin/positive_multiple_inheritance
+./bin/simp tests/functional/positive/positive_multiple_inheritance.simp -o bin/positive_multiple_inheritance
 ./bin/positive_multiple_inheritance
 # Prints: 7, 7, 10, 20, and 3; the two Root subobjects hold separate Node references.
-./bin/simp tests/functional/positive_secondary_bases.simp -o bin/positive_secondary_bases
+./bin/simp tests/functional/positive/positive_secondary_bases.simp -o bin/positive_secondary_bases
 ./bin/positive_secondary_bases
 # Exercises secondary-base construction, conversions, dispatch, GC tracing, and destruction.
-./bin/simp tests/functional/positive_integer_output.simp \
+./bin/simp tests/functional/positive/positive_integer_output.simp \
   --emit-llvm build/positive_integer_output.ll -o bin/positive_integer_output
 ```
 
@@ -64,7 +64,7 @@ include depth (default: 16). LLVM IR is compiled to a native executable by the
 installed Clang driver; `--emit-llvm FILE` additionally saves the generated IR.
 Executables default to `./<input-basename>` in the compiler's current working
 directory; `-o FILE` selects another path. For example, running
-`../bin/simp ../tests/functional/positive_gc_object_graph.simp` from `build/`
+`../bin/simp ../tests/functional/positive/positive_gc_object_graph.simp` from `build/`
 creates `build/positive_gc_object_graph`.
 The emitted IR uses the GC runtime ABI; link it manually with the runtime
 archive, for example:
@@ -475,7 +475,7 @@ start {
   C code that allocates managed objects must use the runtime's root-frame API
   for its own temporary references.
 - A missing `<symbol>` is diagnosed by the linker at link time, not by
-  semantic analysis. `tests/functional/positive_extern_functions.simp`
+  semantic analysis. `tests/functional/positive/positive_extern_functions.simp`
   exercises `from` bindings for integer, string argument/return, array, and
   class-reference values; its bundled C shims include a call to libc `abs()`.
 - Compiled module imports are implemented using

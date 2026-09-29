@@ -1,0 +1,4 @@
+# Rejects an include directive placed after the top-level start block.
+start {}
+
+include "../include_parts/empty.simp"

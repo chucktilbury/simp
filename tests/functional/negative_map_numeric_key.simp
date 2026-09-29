@@ -1,4 +1,0 @@
-start {
-    map values = {}
-    any value = values[0]
-}

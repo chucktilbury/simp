@@ -1,6 +1,0 @@
-include "include_parts/cycle_a.simp"
-
-start {
-    CycleValue value = CycleValue()
-    print(value.answer())
-}

@@ -1,0 +1,5 @@
+# Raises an uncaught runtime error when indexing a map with an absent key.
+start {
+    map values = {}
+    print(values["missing"])
+}

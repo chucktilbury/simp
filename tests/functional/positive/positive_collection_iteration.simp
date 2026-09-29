@@ -1,0 +1,46 @@
+# Exercises map lookup and membership, key/value iteration, array iteration, and collection-held object references.
+class Node {
+    int value
+    Node(int initial) {
+        value = initial
+    }
+    int read() {
+        return value
+    }
+}
+
+start {
+    string selected = "dynamic"
+    map table = {"first": Node(10), selected: Node(20), "third": Node(30)}
+    print(table.length)
+    print(table.contains(selected))
+    print(table.contains("absent"))
+    table[selected] = Node(22)
+    print(table.length)
+    Node selectedValue = table[selected]
+    print(selectedValue.read())
+
+    int seen = 0
+    for (key, value in table) {
+        print(key)
+        Node current = value
+        print(current.read())
+        table["added"] = Node(99)
+        seen = seen + 1
+    }
+    print(seen)
+    print(table.length)
+
+    array mixed = [1, "two", Node(3), table]
+    for (item in mixed) {
+        print(item)
+    }
+
+    array references = [Node(42)]
+    for (item in references) {
+        Node retained = item
+        Node churn = Node(100)
+        print(retained.read())
+        print(churn.read())
+    }
+}

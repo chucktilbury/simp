@@ -1,0 +1,7 @@
+# Passes a Simple string into inline C and prints it through the runtime string helper.
+start {
+    string message = "hello from C"
+    inline (string message) {
+        printf("%s\n", simp_string_cstr(message));
+    }
+}

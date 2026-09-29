@@ -1,7 +1,0 @@
-start {
-    inline {
-        if (1) {
-            printf("inline { says } hello\n");
-        }
-    }
-}

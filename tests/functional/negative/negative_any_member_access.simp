@@ -1,0 +1,8 @@
+# Rejects member lookup on an any value before it has been extracted to a concrete type.
+start {
+    // 'any' has no members: it must be assigned to a typed variable (or
+    // extracted) before its value can be used further.
+    array values = [1, 2]
+    any element = values[0]
+    print(element.length)
+}

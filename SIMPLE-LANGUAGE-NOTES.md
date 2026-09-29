@@ -751,7 +751,7 @@ string Foo.echo(string value) from "c_foo_echo"
 - Unknown C symbols are reported by the linker at link time. Reusing one C
   symbol across several methods is accepted only when the lowered return and
   parameter ABI shapes match (including the receiver pointer).
-- The end-to-end test `tests/functional/positive_extern_functions.simp`
+- The end-to-end test `tests/functional/positive/positive_extern_functions.simp`
   demonstrates integer, string-argument/string-return, array, and
   class-reference methods. Its bundled C shims include a real call to libc
   `abs()`. The receiver is why the sample binds a C shim rather than binding

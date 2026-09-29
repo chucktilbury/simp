@@ -1,0 +1,48 @@
+# Checks named exception bindings, finally execution, saved exception text, and runtime errors exposed to handlers.
+class Box {
+  string note
+  int read() {
+    return 1
+  }
+}
+
+start {
+  Box saved = Box()
+  try {
+    raise "raised detail"
+  } except message {
+    print(message)
+  } finally {
+    print("finally after bound exception")
+  }
+
+  try {
+    raise "retained detail"
+  } except message {
+    saved.note = message
+  }
+  print(saved.note)
+
+  try {
+    print(7 / 0)
+  } except runtime {
+    print(runtime)
+  }
+
+  Box missing = null
+  try {
+    print(missing.read())
+  } except runtime {
+    print(runtime)
+  }
+
+  try {
+    try {
+      raise "original detail"
+    } except original {
+      raise "replacement detail"
+    }
+  } except replacement {
+    print(replacement)
+  }
+}

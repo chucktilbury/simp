@@ -1,4 +1,0 @@
-start {
-    map values = {}
-    print(values["missing"])
-}

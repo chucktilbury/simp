@@ -1,0 +1,29 @@
+# Checks explicit destruction and garbage-collector finalization of unreachable objects.
+class Resource {
+    int code
+    Resource(int value) {
+        code = value
+    }
+    void destroy() {
+        print(code)
+    }
+}
+
+class Maker {
+    void makeExplicit() {
+        Resource item = Resource(2)
+        item.destroy()
+    }
+
+    void makeImplicit() {
+        Resource item = Resource(1)
+    }
+}
+
+start {
+    Maker maker = Maker()
+    maker.makeExplicit()
+    maker.makeImplicit()
+    Resource trigger = Resource(3)
+    print(trigger.code)
+}

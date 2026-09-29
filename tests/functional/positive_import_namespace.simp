@@ -1,5 +1,0 @@
-import network as Net
-
-start {
-    print(Net.Http.Client().get("/"))
-}

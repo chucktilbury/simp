@@ -1,0 +1,5 @@
+# Rejects a formatted string containing a named placeholder instead of supported empty braces.
+start {
+    int value = 1
+    print("value: {x}"(value))
+}

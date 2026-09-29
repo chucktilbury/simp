@@ -1,0 +1,10 @@
+# Rejects an external method signature that uses any as its return type.
+class Native {
+    any dynamicValue(int value)
+}
+
+any Native.dynamicValue(int value) from "some_symbol"
+
+start {
+    print(1)
+}

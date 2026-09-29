@@ -1,4 +1,0 @@
-start {
-    int first = 1 int second = 2
-    print(first)
-}

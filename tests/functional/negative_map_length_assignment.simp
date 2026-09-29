@@ -1,4 +1,0 @@
-start {
-    map values = {}
-    values.length = 1
-}

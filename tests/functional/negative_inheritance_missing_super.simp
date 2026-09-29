@@ -1,9 +1,0 @@
-class Base {
-    Base() {}
-}
-
-class Child : Base {
-    Child() {}
-}
-
-start {}

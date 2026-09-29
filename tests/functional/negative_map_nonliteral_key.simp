@@ -1,5 +1,0 @@
-start {
-    map values = {}
-    any key = "present"
-    any value = values[key]
-}

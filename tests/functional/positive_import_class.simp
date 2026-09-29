@@ -1,5 +1,0 @@
-import greeting as Greeter
-
-start {
-    print(Greeter().answer())
-}

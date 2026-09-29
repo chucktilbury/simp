@@ -1,7 +1,0 @@
-start {
-    int count = 42
-    string message = "answer"
-    inline (int count, string message) {
-        printf("%s: %d\n", simp_string_cstr(message), *count);
-    }
-}

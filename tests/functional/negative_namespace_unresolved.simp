@@ -1,7 +1,0 @@
-namespace Known {
-    class Present {}
-}
-
-start {
-    Known.Missing item = Known.Missing()
-}

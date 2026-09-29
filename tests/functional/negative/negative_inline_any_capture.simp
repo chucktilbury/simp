@@ -1,0 +1,7 @@
+# Rejects capturing an any variable in inline C because that capture type is unsupported.
+start {
+    any value = 1
+    inline (any value) {
+        (void)value;
+    }
+}

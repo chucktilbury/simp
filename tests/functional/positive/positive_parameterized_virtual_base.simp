@@ -1,0 +1,36 @@
+# Passes constructor arguments to one shared virtual base from the most-derived diamond class.
+class Root {
+    int value
+
+    Root(int initial) {
+        value = initial
+        print("Root:{}"(initial))
+    }
+}
+
+class Left : virtual Root {
+    Left() {
+        print("Left+")
+    }
+}
+
+class Right : virtual Root {
+    Right() {
+        print("Right+")
+    }
+}
+
+class Diamond : Left, Right {
+    Diamond(int initial) {
+        super.virtual Root(initial)
+        super.Left()
+        super.Right()
+        print("Diamond+")
+    }
+}
+
+start {
+    Diamond diamond = Diamond(42)
+    print(diamond.Left.Root.value)
+    print(diamond.Right.Root.value)
+}
