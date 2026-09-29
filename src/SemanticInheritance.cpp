@@ -242,16 +242,41 @@ bool SemanticAnalyzer::isAssignable(const std::string& target,
         return count;
     };
     if (countPaths(countPaths, *found->second) != 1) return false;
-    auto* current = found->second;
-    while (current != nullptr && current->name != target) {
-        if (current->baseClassNames.empty()) return false;
-        if ((currentClass_ == nullptr || currentClass_->name != source) &&
-            current->baseAccess.front() != AccessLevel::Public) {
-            return false;
+    const auto findPath = [this, &target](const auto& self,
+                                          const ClassDeclaration& owner,
+                                          std::vector<std::pair<const ClassDeclaration*,
+                                                                std::size_t>>& path)
+        -> bool {
+        for (std::size_t index = 0; index < owner.baseClassNames.size(); ++index) {
+            const auto& baseName = owner.baseClassNames[index];
+            const auto base = classes_.find(baseName);
+            if (base == classes_.end()) continue;
+            path.emplace_back(&owner, index);
+            if (baseName == target || self(self, *base->second, path)) return true;
+            path.pop_back();
         }
-        current = classes_.at(current->baseClassNames.front());
+        return false;
+    };
+    std::vector<std::pair<const ClassDeclaration*, std::size_t>> path;
+    if (!findPath(findPath, *found->second, path)) return false;
+    AccessLevel effective = AccessLevel::Public;
+    std::string restrictedAt;
+    for (const auto& edge : path) {
+        const auto access = edge.first->baseAccess[edge.second];
+        if (access == AccessLevel::Private) {
+            effective = AccessLevel::Private;
+            restrictedAt = edge.first->name;
+        } else if (access == AccessLevel::Protected &&
+                   effective == AccessLevel::Public) {
+            effective = AccessLevel::Protected;
+            restrictedAt = edge.first->name;
+        }
     }
-    return current != nullptr;
+    if (effective == AccessLevel::Public) return true;
+    if (currentClass_ == nullptr) return false;
+    if (effective == AccessLevel::Private) return currentClass_->name == restrictedAt;
+    return currentClass_->name == restrictedAt ||
+           isSubclassOf(currentClass_->name, restrictedAt);
 }
 
 std::vector<const FieldDeclaration*> SemanticAnalyzer::inheritedFields(

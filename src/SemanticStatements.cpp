@@ -7,6 +7,8 @@
 
 #include "simp/Diagnostic.hpp"
 
+#include <algorithm>
+
 namespace simp {
 
 void SemanticAnalyzer::analyzeStatements(const std::vector<Statement>& statements) {
@@ -41,8 +43,10 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
     }
     case StatementKind::SuperConstructorCall: {
         if (currentClass_ == nullptr || currentMethod_ == nullptr ||
-            !currentMethod_->constructor || currentClass_->baseClassName.empty() ||
-            statement.name != currentClass_->baseClassName) {
+            !currentMethod_->constructor ||
+            std::find(currentClass_->baseClassNames.begin(),
+                      currentClass_->baseClassNames.end(), statement.name) ==
+                currentClass_->baseClassNames.end()) {
             throw DiagnosticError(statement.location,
                                   "super call must name the direct base class and appear in its constructor");
         }

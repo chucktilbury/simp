@@ -30,6 +30,9 @@ ctest --test-dir build --output-on-failure
 ./bin/simp tests/functional/positive_multiple_inheritance.simp -o bin/positive_multiple_inheritance
 ./bin/positive_multiple_inheritance
 # Prints: 7, 7, 10, 20, and 3; the two Root subobjects hold separate Node references.
+./bin/simp tests/functional/positive_secondary_bases.simp -o bin/positive_secondary_bases
+./bin/positive_secondary_bases
+# Exercises secondary-base construction, conversions, dispatch, GC tracing, and destruction.
 ./bin/simp tests/functional/positive_integer_output.simp \
   --emit-llvm build/positive_integer_output.ll -o bin/positive_integer_output
 ```
@@ -160,21 +163,19 @@ and semantic errors.
   before propagating the first destructor exception. Finalizer allocation
   aborts.
   Direct bases have distinct, non-shared subobjects in declared
-  order; fields are flattened depth-first through those paths. Ambiguous
+  order; qualified field and method paths select a specific subobject. Ambiguous
   inherited fields must be qualified, for example
   `diamond.Left.Root.value`; unqualified ambiguous fields or methods are
-  compile-time errors. Secondary-base method calls are rejected rather than
-  path-qualified in this slice. The first declared base is primary.
-  `super.Base(args)` may initialize
-  only that primary base and must appear first in a derived constructor.
-  Secondary-base constructors and implicit upcasts are not implemented.
-  Classes without explicit constructors are default-constructible only when
-  none of their bases declares one. Virtual dispatch and upcasts remain
-  supported along the primary-base chain; secondary-base method dispatch is
-  rejected. Overrides on supported paths must exactly preserve inherited
-  return and parameter types. Inherited field redeclaration, incompatible
-  overrides, and shared/virtual bases are
-  unsupported.
+  compile-time errors. `super.Base(args)` initializes a direct base; required
+  base constructors must be called once, in declared-base order, before the
+  constructor body. Implicit upcasts adjust to the unique accessible base
+  subobject; ambiguous conversions are errors. Virtual dispatch uses per-view
+  metadata and adjusts `this` to the selected implementation's subobject.
+  The first declared base retains the primary designation and first layout
+  position, but construction and dispatch support every direct base.
+  Overrides must exactly preserve inherited return and parameter types.
+  Inherited field redeclaration, incompatible overrides, and shared/virtual
+  bases are unsupported.
 
   Each direct base may be marked `public`, `protected`, or `private`; omitted
   visibility defaults to `public` for compatibility with the current subset.
@@ -199,10 +200,10 @@ and semantic errors.
   protected members. There are no friends, overloads, or access labels on
   individual declarations outside the section syntax.
 
-  Objects have stable, non-moving addresses. Their first word points to class
-  metadata, followed by distinct base subobjects in declared order and then
-  declared fields. The
-  metadata contains class name/field count, a base-stable virtual method table,
+  Objects have stable, non-moving addresses. The root object and each base
+  subobject have a metadata header and link to the containing allocation, with
+  direct bases embedded in declared order before the class's fields. Metadata
+  contains the dynamic class name/field count, per-view virtual method tables,
   object size, and compiler-generated offsets for class-reference fields;
   instances do not contain method copies. Class references may be `null`;
   dereferencing null raises a catchable runtime exception. Newly allocated
@@ -225,11 +226,11 @@ single-value integer or string printing, and the
 limited `{}` integer formatting form described above. It also supports object
 layout/allocation/constructor/method/field operations for classes
 and single- and multiple-inheritance layouts. Base-path field access
-distinguishes repeated subobjects in a diamond. Explicit base-constructor calls
-and virtual dispatch are limited to the primary-base chain. Method-table slots
-are inherited in stable order and an
-override replaces its inherited slot; generated calls load the object's class
-metadata and invoke the selected function pointer. Strings
+distinguishes repeated subobjects in a diamond. Base constructors, unique-path
+upcasts, and virtual dispatch work through primary and secondary base paths.
+Method-table slots are inherited in stable order and an override replaces its
+inherited slot; per-subobject dispatch thunks adjust the receiver before
+invoking the selected implementation. Strings
 store UTF-8 bytes plus an explicit byte count; `fwrite` writes those bytes
 without requiring a terminator. The program entry returns zero.
 
@@ -244,8 +245,9 @@ until their frame returns. The runtime unit test checks root-frame misuse,
 survival through an object-reference field, and reclamation after the last
 root is removed; an executable stress fixture allocates a linked object graph
 through repeated collections. Inheritance integration tests also call
-overridden methods through base-typed references and verify the most-derived
-method table is used after collection.
+overridden methods through primary and secondary base-typed references, verify
+nested reference tracing and construction-failure behavior, and check
+reverse-order destruction through secondary subobjects.
 
 The parser and semantic analyzer accept more syntax than the backend executes.
 String comparisons and other non-integer formatted values produce precise
@@ -267,11 +269,9 @@ incremental/concurrent collection, or configurable allocation threshold.
 Generated roots conservatively include every object-typed slot in a function,
 but do not scan non-reference values or the native stack. This small runtime
 has stress/unit coverage but is not a production-validated memory manager.
-Multiple inheritance is limited to deterministic non-virtual subobject layout
-and qualified field access. Secondary-base constructors, implicit upcasts,
-and virtual dispatch are not implemented; a shared ancestor in a diamond is
-represented as two separate subobjects. Method overloading and reflection are
-also unsupported.
+Multiple inheritance uses deterministic, non-virtual subobject layout; a shared
+ancestor in a diamond is represented as two separate subobjects. Method
+overloading and reflection are also unsupported.
 
 ## Deferred
 
@@ -281,8 +281,7 @@ Clang; it does not link the LLVM C++ API or provide a configurable LLVM
 optimization pipeline. Building the compiler requires Clang on `PATH`; the
 current driver launches it through the host POSIX shell. Full language type
 checking and name-resolution rules, OOP beyond the supported single- and
-limited multiple-inheritance slices (including secondary-base constructor and
-virtual-dispatch support, and access to protected
+multiple-inheritance slices (including access to protected
 base members from further-derived classes),
 production GC features, modules and native libraries, inline C, GTK, package
 manager, IDE, and debugger remain deferred. The full grammar, collections,

@@ -15,28 +15,28 @@ const MethodDeclaration* CodeGenerator::findMethod(const ClassDeclaration& owner
     for (const auto& method : owner.methods) {
         if (method.name == name && !method.constructor && !method.destructor) return &method;
     }
-    if (!owner.baseClassName.empty()) {
-        const auto base = classes_.find(owner.baseClassName);
-        if (base != classes_.end()) return findMethod(*base->second, name);
+    const MethodDeclaration* result = nullptr;
+    for (const auto& baseName : owner.baseClassNames) {
+        const auto base = classes_.find(baseName);
+        if (base == classes_.end()) continue;
+        if (const auto* candidate = findMethod(*base->second, name)) {
+            if (result != nullptr) return nullptr;
+            result = candidate;
+        }
     }
-    return nullptr;
+    return result;
 }
 
 std::vector<const MethodDeclaration*> CodeGenerator::methodSlots(
     const ClassDeclaration& owner) const {
-    std::vector<const ClassDeclaration*> hierarchy;
-    auto* current = &owner;
-    while (current != nullptr) {
-        hierarchy.push_back(current);
-        if (current->baseClassName.empty()) break;
-        const auto base = classes_.find(current->baseClassName);
-        current = base == classes_.end() ? nullptr : base->second;
-    }
-    std::reverse(hierarchy.begin(), hierarchy.end());
-
     std::vector<const MethodDeclaration*> slots;
-    for (const auto* declaration : hierarchy) {
-        for (const auto& method : declaration->methods) {
+    const auto append = [this, &slots](const auto& self,
+                                       const ClassDeclaration& declaration) -> void {
+        for (const auto& baseName : declaration.baseClassNames) {
+            const auto base = classes_.find(baseName);
+            if (base != classes_.end()) self(self, *base->second);
+        }
+        for (const auto& method : declaration.methods) {
             if (method.constructor || method.destructor) continue;
             const auto inherited = std::find_if(
                 slots.begin(), slots.end(), [&method](const MethodDeclaration* candidate) {
@@ -48,7 +48,8 @@ std::vector<const MethodDeclaration*> CodeGenerator::methodSlots(
                 *inherited = &method;
             }
         }
-    }
+    };
+    append(append, owner);
     return slots;
 }
 

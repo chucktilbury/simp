@@ -1,0 +1,135 @@
+class Payload {
+    int value
+
+    Payload(int initial) {
+        value = initial
+    }
+}
+
+class Root {
+    int value
+
+    Root(int initial) {
+        value = initial
+    }
+
+    int read() {
+        return value
+    }
+
+    int readValue() {
+        return value
+    }
+
+    void destroy() {
+        print(value)
+    }
+}
+
+class Left : Root {
+    Left(int initial) {
+        super.Root(initial)
+    }
+
+    void destroy() {
+        print("Left")
+    }
+}
+
+class Right : Root {
+    Payload payload
+
+    Right(int initial) {
+        super.Root(initial)
+        payload = Payload(initial + 20)
+    }
+
+    void destroy() {
+        print("Right")
+        raise "secondary destructor failure"
+    }
+}
+
+class Diamond : Left, Right {
+    Diamond(int left, int right) {
+        super.Left(left)
+        super.Right(right)
+    }
+
+    int read() {
+        return 77
+    }
+
+    int sum() {
+        return 77
+    }
+
+    void destroy() {
+        print("Diamond")
+    }
+}
+
+class Reader {
+    int readRoot(Root root) {
+        return root.read()
+    }
+}
+
+class Factory {
+    Root fromRight(Right right) {
+        return right
+    }
+}
+
+class FailingSide {
+    FailingSide() {
+        raise "secondary constructor failure"
+    }
+
+    void destroy() {
+        print("must not destroy failed object")
+    }
+}
+
+class Failing : Root, FailingSide {
+    Failing() {
+        super.Root(0)
+        super.FailingSide()
+    }
+
+    void destroy() {
+        print("must not destroy failed object")
+    }
+}
+
+start {
+    Diamond diamond = Diamond(4, 8)
+    Left leftView = diamond
+    Right rightView = diamond
+    Root leftRoot = leftView
+    Root rightRoot = rightView
+    Reader reader = Reader()
+    Factory factory = Factory()
+    print(leftRoot.read())
+    print(rightRoot.read())
+    print(diamond.Right.Root.read())
+    print(reader.readRoot(rightView))
+    print(factory.fromRight(rightView).read())
+    print(leftRoot.readValue())
+    print(rightRoot.readValue())
+    print(diamond.Left.Root.value + diamond.Right.Root.value)
+    print(diamond.Right.payload.value)
+    Payload trigger = Payload(99)
+    print(rightView.payload.value)
+    print(diamond.sum())
+    try {
+        rightView.destroy()
+    } except failure {
+        print(failure)
+    }
+    try {
+        Failing failed = Failing()
+    } except constructorFailure {
+        print(constructorFailure)
+    }
+}

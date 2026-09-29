@@ -146,20 +146,26 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             throw DiagnosticError(expression.location, "member receiver is not an object");
         }
         emitNullCheck(receiver.operand, expression.location);
-        if (!qualified) owner = classes_.at(receiver.type);
-        std::size_t fieldIndex = 0;
-        const auto* field = findField(*owner, expression.value, fieldIndex);
+        auto objectView = receiver.operand;
+        if (!qualified) {
+            owner = classes_.at(receiver.type);
+        } else {
+            objectView = emitSubobjectAddress(receiver.operand, *classes_.at(receiver.type),
+                                              basePath);
+        }
+        std::vector<std::size_t> fieldPath;
+        const auto* field = findField(*owner, expression.value, fieldPath);
         if (field == nullptr) {
             throw DiagnosticError(expression.location,
                                   "class '" + owner->name + "' has no field '" + expression.value + "'");
         }
-        if (qualified) {
-            fieldIndex += basePathFieldOffset(*classes_.at(receiver.type), basePath);
-        }
         const auto address = newTemporary();
-        instructions_ += "  " + address + " = getelementptr inbounds %Class." + receiver.type +
-                         ", ptr " + receiver.operand + ", i32 0, i32 " +
-                         std::to_string(fieldIndex + 1) + "\n";
+        instructions_ += "  " + address + " = getelementptr inbounds %Class." + owner->name +
+                         ", ptr " + objectView + ", i32 0";
+        for (const auto index : fieldPath) {
+            instructions_ += ", i32 " + std::to_string(index);
+        }
+        instructions_ += "\n";
         const auto result = newTemporary();
         instructions_ += "  " + result + " = load " + llvmType(field->type) + ", ptr " +
                          address + "\n";
@@ -176,6 +182,23 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                          owner->name + ")\n";
         rootObjectValue({owner->name, object}, expression.location);
         emitNullCheck(object, expression.location);
+        const auto rootLink = newTemporary();
+        instructions_ += "  " + rootLink + " = getelementptr inbounds %Class." +
+                         owner->name + ", ptr " + object + ", i32 0, i32 1\n"
+                         "  store ptr " + object + ", ptr " + rootLink + "\n";
+        for (const auto& view : subobjects(*owner)) {
+            if (view.first.empty()) continue;
+            const auto viewAddress = emitSubobjectAddress(object, *owner, view.first);
+            const auto metadataAddress = newTemporary();
+            const auto ownerLinkAddress = newTemporary();
+            instructions_ += "  " + metadataAddress + " = getelementptr inbounds %Class." +
+                             view.second->name + ", ptr " + viewAddress + ", i32 0, i32 0\n"
+                             "  store ptr " + viewMetadataSymbol(*owner, view.first) +
+                             ", ptr " + metadataAddress + "\n"
+                             "  " + ownerLinkAddress + " = getelementptr inbounds %Class." +
+                             view.second->name + ", ptr " + viewAddress + ", i32 0, i32 1\n"
+                             "  store ptr " + object + ", ptr " + ownerLinkAddress + "\n";
+        }
         const MethodDeclaration* constructor = nullptr;
         for (const auto& method : owner->methods) {
             if (method.constructor) {
@@ -192,7 +215,10 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
                 const auto value = emitExpression(*expression.arguments[index],
                                                   method.parameters[index].type);
-                arguments += ", " + llvmType(method.parameters[index].type) + " " + value.operand;
+                const auto converted = convertObjectValue(value, method.parameters[index].type,
+                                                           expression.arguments[index]->location);
+                arguments += ", " + llvmType(method.parameters[index].type) + " " +
+                             converted.operand;
             }
             instructions_ += "  call void " + methodSymbol(owner->name, method.name) +
                              "(" + arguments + ")\n";
@@ -210,13 +236,18 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const ClassDeclaration* owner = nullptr;
         std::vector<std::string> basePath;
         const bool qualified = resolveBaseQualifier(*target.left, root, owner, basePath);
-        const auto receiver = emitExpression(qualified ? *root : *target.left);
+        auto receiver = emitExpression(qualified ? *root : *target.left);
         const auto found = classes_.find(receiver.type);
         if (found == classes_.end()) {
             throw DiagnosticError(target.location, "method receiver is not an object");
         }
         emitNullCheck(receiver.operand, target.location);
-        if (!qualified) owner = found->second;
+        if (!qualified) {
+            owner = found->second;
+        } else {
+            receiver = {owner->name,
+                        emitSubobjectAddress(receiver.operand, *found->second, basePath)};
+        }
         if (target.value == "destroy") {
             if (qualified) {
                 throw DiagnosticError(target.location,
@@ -251,14 +282,17 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             const auto metadata = newTemporary();
             const auto finalizerAddress = newTemporary();
             const auto finalizer = newTemporary();
+            const auto rootObject = newTemporary();
             instructions_ += "  " + metadata + " = load ptr, ptr " + receiver.operand + "\n"
                              "  " + finalizerAddress +
                              " = getelementptr inbounds %SimpleClassMeta, ptr " + metadata +
                              ", i32 0, i32 8\n"
                              "  " + finalizer + " = load ptr, ptr " + finalizerAddress + "\n"
-                             "  call void " + finalizer + "(ptr " + receiver.operand + ")\n";
+                             "  " + rootObject + " = call ptr @simp_gc_root(ptr " +
+                             receiver.operand + ")\n"
+                             "  call void " + finalizer + "(ptr " + rootObject + ")\n";
             instructions_ += "  call void @simp_gc_end_destroy(ptr " +
-                             receiver.operand + ")\n";
+                             rootObject + ")\n";
             return {"void", ""};
         }
         const auto* method = findMethod(*owner, target.value);
@@ -269,7 +303,10 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         std::string arguments = "ptr " + receiver.operand;
         for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
             const auto value = emitExpression(*expression.arguments[index], method->parameters[index].type);
-            arguments += ", " + llvmType(method->parameters[index].type) + " " + value.operand;
+            const auto converted = convertObjectValue(value, method->parameters[index].type,
+                                                       expression.arguments[index]->location);
+            arguments += ", " + llvmType(method->parameters[index].type) + " " +
+                         converted.operand;
         }
         const auto metadata = newTemporary();
         instructions_ += "  " + metadata + " = load ptr, ptr " + receiver.operand + "\n";

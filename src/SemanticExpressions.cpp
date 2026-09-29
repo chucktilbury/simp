@@ -211,18 +211,6 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                       << ": warning: explicit destructor call does not reclaim the object\n";
             return "void";
         }
-        if (qualified) {
-            auto* pathOwner = classes_.at(analyzeExpression(*root));
-            for (const auto& baseName : basePath) {
-                const auto position = std::find(pathOwner->baseClassNames.begin(),
-                                                pathOwner->baseClassNames.end(), baseName);
-                if (position != pathOwner->baseClassNames.begin()) {
-                    throw DiagnosticError(target.location,
-                                          "virtual dispatch through a secondary base path is not supported");
-                }
-                pathOwner = classes_.at(baseName);
-            }
-        }
         const auto methodMatches = countMethods(*owner, target.value);
         const auto accessibleMethods = accessibleMemberCount(*owner, target.value, true);
         if (accessibleMethods > 1) {
@@ -243,26 +231,6 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
         if (method == nullptr) {
             throw DiagnosticError(target.location,
                                   "class '" + owner->name + "' has no method '" + target.value + "'");
-        }
-        if (!qualified) {
-            std::string declaringName;
-            for (const auto& entry : classes_) {
-                for (const auto& candidate : entry.second->methods) {
-                    if (&candidate == method) declaringName = entry.first;
-                }
-            }
-            auto* primary = owner;
-            while (primary != nullptr && primary->name != declaringName) {
-                if (primary->baseClassNames.empty()) {
-                    primary = nullptr;
-                } else {
-                    primary = classes_.at(primary->baseClassNames.front());
-                }
-            }
-            if (primary == nullptr) {
-                throw DiagnosticError(target.location,
-                                      "virtual dispatch through a secondary base is not supported");
-            }
         }
         if (method->parameters.size() != expression.arguments.size()) {
             throw DiagnosticError(expression.location,

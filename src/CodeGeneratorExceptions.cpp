@@ -93,7 +93,7 @@ void CodeGenerator::emitTry(const Statement& statement) {
             if (statement.hasExceptionBinding) {
                 scopes_.back().emplace(
                     statement.name,
-                    Binding{"string", caughtStringSlot, 0, false, true});
+                    Binding{"string", caughtStringSlot, {}, false, true});
             }
             blockTerminated_ = false;
             emitStatements(statement.alternate);
@@ -130,7 +130,7 @@ void CodeGenerator::emitTry(const Statement& statement) {
             if (statement.hasExceptionBinding) {
                 scopes_.back().emplace(
                     statement.name,
-                    Binding{"string", caughtStringSlot, 0, false, true});
+                    Binding{"string", caughtStringSlot, {}, false, true});
             }
             blockTerminated_ = false;
             emitStatements(statement.alternate);

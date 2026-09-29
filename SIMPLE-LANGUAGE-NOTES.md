@@ -60,17 +60,17 @@ The first object-runtime prototype uses the following architectural direction;
 details remain subject to validation as the runtime grows:
 
 - Heap object addresses are stable and non-moving for the lifetime of an
-  allocation. Objects begin with one header field that points to their class
-  metadata.
-- Instance fields follow that header in declaration order. The prototype lays
-  out distinct, non-virtual base subobjects depth-first in declared-base order,
-  followed by fields declared by the derived class. Repeated ancestors in a
-  diamond are separate subobjects; virtual/shared-base semantics remain
-  deferred.
+  allocation. The root object and each non-virtual base subobject have a
+  metadata header and a link to the containing allocation. Direct bases are
+  embedded in declared order before fields declared by the derived class.
+  Repeated ancestors in a diamond are separate subobjects; virtual/shared-base
+  semantics remain deferred. The first declared base retains the primary
+  designation and first layout position, but does not receive special
+  construction or dispatch behavior.
 - Methods are shared class metadata/code entries, never copied into instances.
-- In the primary-base chain, virtual method slots are inherited in stable
-  order; an override replaces its base slot, and calls dispatch through the
-  object's class metadata. Secondary-base virtual dispatch is deferred.
+- Each subobject view has stable virtual method slots; an override replaces
+  the inherited slot, and per-view dispatch thunks adjust `this` to the
+  implementation's subobject. Dispatch works through secondary bases.
 - Native `int` and `float` values remain unboxed. Class values are nullable
   object references; null is represented as a null pointer.
 - The selected collector direction is precise, stop-the-world, and non-moving.
@@ -78,9 +78,10 @@ details remain subject to validation as the runtime grows:
   slots at function boundaries; conservative stack scanning is not used.
 
 The current compiler prototype validates single- and multiple-inheritance
-layouts, qualified field access through base paths, primary-base
-`super.Base(args)` constructor chaining, typed methods, allocation, field
-access, primary-chain virtual method dispatch, and a minimal precise collector.
+layouts, qualified field and method access through base paths, direct-base
+`super.Base(args)` constructor chaining, unique-path implicit upcasts, typed
+methods, allocation, virtual dispatch through all non-virtual base paths, and a
+minimal precise collector.
 Overrides must preserve the exact return and parameter
 types. Objects use stable, non-moving allocations with
 a metadata pointer in the header. Generated code registers
@@ -99,10 +100,10 @@ only the limited finalizer support described below, no weak references, threads,
 or configurable thresholds. Runtime tests cover root-frame lifecycle errors,
 reachable-object survival through reference fields, and unreachable-object
 reclamation; an executable stress case performs repeated allocations through
-linked objects and nested constructor arguments. An inherited reference-field
-test also forces collection after construction and dispatches overridden
-methods through a primary-base reference. Secondary-base pointer adjustment
-is not implemented.
+linked objects and nested constructor arguments. Inheritance tests force
+collection with references stored in secondary subobjects, call overrides
+through primary and secondary typed references, and verify that an exception
+during a secondary constructor suppresses finalization of the partial object.
 
 The prototype spells construction as `ClassName(args)`, matching the
 class-named constructor rule above. `destroy` is the destructor name. An
@@ -114,15 +115,17 @@ subobject in reverse declaration/depth-first construction order. Explicit
 destruction and GC finalization use this same chain. If a destructor raises,
 explicit destruction still invokes the remaining base destructors and then
 propagates the first error; the object remains destroyed and cannot be
-finalized again. `super.Base(args)` is the explicit
-primary-base constructor spelling. Multiple direct bases are laid out as
-distinct subobjects in declared order; for example,
+finalized again. `super.Base(args)` initializes a named direct base. Explicit base
+constructors must be called once in declared order before the derived
+constructor body. A base without an explicit constructor needs no call;
+calling its implicit zero-argument constructor is a no-op. Multiple direct
+bases are laid out as distinct subobjects in declared order; for example,
 `diamond.Left.Root.value` selects one of two `Root` subobjects in a diamond.
-Unqualified ambiguous inherited fields and methods are errors. Constructor
-chaining, implicit upcasts, and virtual dispatch work only through the first
-declared (primary) base. Secondary-base constructors/upcasts/method calls and
-virtual/shared bases are unsupported. A class without an explicit constructor
-is default-constructible only if its bases also have no explicit constructors.
+Unqualified ambiguous inherited fields, methods, and base conversions are
+errors. Unique accessible paths support adjusted upcasts and virtual method
+calls through any direct or indirect non-virtual base. Shared/virtual bases
+remain unsupported. A class without an explicit constructor is
+default-constructible only if its bases also have no explicit constructors.
 
 ### Names, scopes, namespaces, and access
 

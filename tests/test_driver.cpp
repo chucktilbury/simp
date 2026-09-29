@@ -316,6 +316,13 @@ int main() {
              runFunctional("negative_adjacent_statements.simp",
                            "expected newline after statement");
          }},
+        {"functional secondary-base construction and dispatch", [] {
+             runFunctional("positive_secondary_bases.simp");
+         }},
+        {"functional secondary-base constructor initialization required", [] {
+             runFunctional("negative_secondary_base_constructor.simp",
+                           "derived constructor must initialize base 'Secondary'");
+         }},
          {"functional exception binding is read-only", [] {
               runFunctional("negative_exception_binding_assignment.simp",
                             "exception binding 'message' is read-only");

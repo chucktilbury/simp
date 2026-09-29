@@ -10,10 +10,10 @@ class Secondary {
     }
 }
 
-class Combined : Primary, Secondary {
+class QualifiedCombined : Primary, Secondary {
 }
 
 start {
-    Combined combined = Combined()
+    QualifiedCombined combined = QualifiedCombined()
     print(combined.Secondary.read())
 }

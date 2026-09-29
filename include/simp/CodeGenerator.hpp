@@ -10,6 +10,7 @@
 #include <iosfwd>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace simp {
@@ -23,7 +24,7 @@ private:
     struct Binding {
         std::string type;
         std::string pointer;
-        std::size_t fieldIndex = 0;
+        std::vector<std::size_t> fieldPath;
         bool field = false;
         bool readOnly = false;
     };
@@ -36,9 +37,7 @@ private:
     void emitClassTypesAndMetadata(const Program& program);
     void emitClassMethods(const Program& program);
     void emitMethod(const ClassDeclaration& owner, const MethodDeclaration& method,
-                    const ClassDeclaration* layoutOwner = nullptr,
-                    const std::string& symbolOverride = {},
-                    std::size_t fieldOffset = 0);
+                    const std::string& symbolOverride = {});
     void emitMain(const Program& program);
     void emitStatements(const std::vector<Statement>& statements);
     void emitStatement(const Statement& statement);
@@ -51,10 +50,20 @@ private:
     void emitRootFramePop();
     Binding findVariable(const std::string& name, const SourceLocation& location) const;
     const FieldDeclaration* findField(const ClassDeclaration& owner,
-                                      const std::string& name, std::size_t& index) const;
+                                      const std::string& name,
+                                      std::vector<std::size_t>& path) const;
     std::size_t flattenedFieldCount(const ClassDeclaration& owner) const;
-    std::size_t basePathFieldOffset(const ClassDeclaration& owner,
-                                    const std::vector<std::string>& path) const;
+    std::vector<std::size_t> directBasePath(const ClassDeclaration& owner,
+                                            const std::vector<std::string>& path) const;
+    std::vector<std::pair<std::vector<std::string>, const ClassDeclaration*>>
+    subobjects(const ClassDeclaration& owner) const;
+    std::string emitSubobjectAddress(const std::string& pointer,
+                                     const ClassDeclaration& owner,
+                                     const std::vector<std::string>& path);
+    std::string viewMetadataSymbol(const ClassDeclaration& owner,
+                                   const std::vector<std::string>& path) const;
+    Value convertObjectValue(Value value, const std::string& expectedType,
+                             const SourceLocation& location);
     bool resolveBaseQualifier(const Expression& receiver, const Expression*& root,
                               const ClassDeclaration*& view,
                               std::vector<std::string>& path) const;
@@ -79,7 +88,6 @@ private:
     const ClassDeclaration* currentClass_ = nullptr;
     const ClassDeclaration* currentFieldClass_ = nullptr;
     const MethodDeclaration* currentMethod_ = nullptr;
-    std::size_t currentFieldOffset_ = 0;
     std::vector<Scope> scopes_;
     std::string instructions_;
     std::string entryAllocas_;

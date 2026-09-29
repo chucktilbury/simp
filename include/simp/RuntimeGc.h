@@ -45,6 +45,7 @@ void simp_gc_pop_or_abort(SimpRootFrame *frame);
 
 /* Collect before allocating; the returned object's header and fields are zeroed. */
 void *simp_gc_alloc(const SimpClassMeta *metadata);
+void *simp_gc_root(void *object);
 void simp_gc_require_alive(void *object, const char *file, uint64_t file_length,
                            uint64_t line, uint64_t column);
 void simp_gc_begin_construction(void *object);

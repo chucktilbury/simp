@@ -127,17 +127,6 @@ void SemanticAnalyzer::analyze(const Program& program) {
                     }
                 }
             }
-            for (std::size_t index = 1; index < declaration.baseClassNames.size(); ++index) {
-                const auto* base = findClass(declaration.baseClassNames[index],
-                                             declaration.baseLocations[index]);
-                if (std::any_of(base->methods.begin(), base->methods.end(),
-                                [](const MethodDeclaration& method) {
-                                    return method.constructor;
-                                })) {
-                    throw DiagnosticError(declaration.baseLocations[index],
-                                          "constructors for secondary bases are not supported");
-                }
-            }
             for (const auto& field : declaration.fields) {
                 for (std::size_t index = 0; index < declaration.baseClassNames.size(); ++index) {
                     const auto* base = findClass(declaration.baseClassNames[index],
@@ -238,12 +227,54 @@ void SemanticAnalyzer::restoreInitializationState(const std::vector<bool>& state
 
 void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                                      const MethodDeclaration& method) {
-    if (method.constructor && !owner.baseClassName.empty() &&
-        (method.body.empty() ||
-         method.body.front().kind != StatementKind::SuperConstructorCall)) {
-        throw DiagnosticError(method.location,
-                              "derived constructor must begin with super." +
-                                  owner.baseClassName + "(...);");
+    std::size_t leadingCalls = 0;
+    if (method.constructor && !owner.baseClassNames.empty()) {
+        std::size_t nextBase = 0;
+        for (const auto& statement : method.body) {
+            if (statement.kind != StatementKind::SuperConstructorCall) break;
+            const auto base = std::find(owner.baseClassNames.begin() +
+                                            static_cast<std::ptrdiff_t>(nextBase),
+                                        owner.baseClassNames.end(), statement.name);
+            if (base == owner.baseClassNames.end()) {
+                throw DiagnosticError(statement.location,
+                                      "base constructors must be initialized once in declared order");
+            }
+            const auto foundIndex = static_cast<std::size_t>(
+                std::distance(owner.baseClassNames.begin(), base));
+            for (std::size_t index = nextBase; index < foundIndex; ++index) {
+                const auto* skipped = findClass(owner.baseClassNames[index],
+                                                owner.baseLocations[index]);
+                if (std::any_of(skipped->methods.begin(), skipped->methods.end(),
+                                [](const MethodDeclaration& candidate) {
+                                    return candidate.constructor;
+                                })) {
+                    throw DiagnosticError(method.location,
+                                          "derived constructor must initialize base '" +
+                                              skipped->name + "' with super." +
+                                              skipped->name + "(...)");
+                }
+            }
+            nextBase = foundIndex + 1;
+            ++leadingCalls;
+        }
+        for (std::size_t index = nextBase; index < owner.baseClassNames.size(); ++index) {
+            const auto* skipped = findClass(owner.baseClassNames[index],
+                                            owner.baseLocations[index]);
+            if (std::any_of(skipped->methods.begin(), skipped->methods.end(),
+                            [](const MethodDeclaration& candidate) {
+                                return candidate.constructor;
+                            })) {
+                if (index == 0) {
+                    throw DiagnosticError(method.location,
+                                          "derived constructor must begin with super." +
+                                              skipped->name + "(...);");
+                }
+                throw DiagnosticError(method.location,
+                                      "derived constructor must initialize base '" +
+                                          skipped->name + "' with super." + skipped->name +
+                                          "(...)");
+            }
+        }
     }
     if (method.returnType != "void" &&
         (method.body.empty() || method.body.back().kind != StatementKind::Return)) {
@@ -251,15 +282,12 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                               "non-void prototype methods must end with a direct return statement");
     }
     for (std::size_t index = 0; index < method.body.size(); ++index) {
-        const bool directLeadingSuper = index == 0 &&
+        const bool directLeadingSuper = method.constructor && index < leadingCalls &&
                                         method.body[index].kind ==
-                                            StatementKind::SuperConstructorCall &&
-                                        method.constructor &&
-                                        !owner.baseClassName.empty() &&
-                                        method.body[index].name == owner.baseClassName;
+                                            StatementKind::SuperConstructorCall;
         if (containsSuperCall(method.body[index]) && !directLeadingSuper) {
             throw DiagnosticError(method.body[index].location,
-                                  "super call must be the first direct constructor statement and name the direct base class");
+                                  "super calls must initialize direct bases first and in declared order");
         }
         const bool finalDirectReturn = index + 1 == method.body.size() &&
                                        method.body[index].kind == StatementKind::Return;

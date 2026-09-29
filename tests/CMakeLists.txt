@@ -184,6 +184,15 @@ add_test(NAME simp_compile_and_run_multiple_inheritance
         "-DEXPECTED_OUTPUT=7\n7\n10\n20\n3\n"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+add_test(NAME simp_compile_and_run_secondary_bases
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_secondary_bases.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_secondary_bases"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_secondary_bases.ll"
+        "-DEXPECTED_OUTPUT=77\n77\n77\n77\n77\n4\n8\n12\n28\n28\n77\nDiamond\nRight\n8\nLeft\n4\nsecondary destructor failure\nsecondary constructor failure\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
 add_test(NAME simp_compile_and_run_public_inheritance
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
@@ -456,20 +465,21 @@ add_test(NAME simp_rejects_ambiguous_base_conversion
         "-DEXPECTED_DIAGNOSTIC=cannot initialize Root variable with Diamond"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
-add_test(NAME simp_rejects_secondary_base_dispatch
+add_test(NAME simp_compile_and_run_qualified_secondary_base_dispatch
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
-        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_secondary_base_dispatch.simp"
-        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_secondary_base_dispatch"
-        "-DEXPECTED_DIAGNOSTIC=virtual dispatch through a secondary base path is not supported"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_qualified_secondary_base_dispatch.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_qualified_secondary_base_dispatch"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/secondary_base_dispatch.ll"
+        "-DEXPECTED_OUTPUT=2\n"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
-add_test(NAME simp_rejects_secondary_base_constructor
+add_test(NAME simp_rejects_missing_secondary_base_initialization
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_secondary_base_constructor.simp"
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_secondary_base_constructor"
-        "-DEXPECTED_DIAGNOSTIC=constructors for secondary bases are not supported"
+        "-DEXPECTED_DIAGNOSTIC=derived constructor must initialize base 'Secondary'"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_incompatible_override

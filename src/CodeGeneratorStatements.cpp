@@ -7,6 +7,8 @@
 
 #include "simp/Diagnostic.hpp"
 
+#include <algorithm>
+
 namespace simp {
 
 void CodeGenerator::emitStatements(const std::vector<Statement>& statements) {
@@ -19,46 +21,60 @@ void CodeGenerator::emitStatement(const Statement& statement) {
     switch (statement.kind) {
     case StatementKind::Declaration: {
         const auto pointer = "%v" + std::to_string(nextVariable_++);
-        scopes_.back().emplace(statement.name, Binding{statement.declaredType, pointer, 0, false});
+        scopes_.back().emplace(statement.name,
+                               Binding{statement.declaredType, pointer, {}, false});
         entryAllocas_ += "  " + pointer + " = alloca " + llvmType(statement.declaredType) + "\n";
         if (classes_.find(statement.declaredType) != classes_.end()) {
             rootSlots_.push_back(pointer);
         }
         if (!statement.expressions.empty()) {
             const auto value = emitExpression(*statement.expressions.front(), statement.declaredType);
-            instructions_ += "  store " + llvmType(statement.declaredType) + " " + value.operand +
-                             ", ptr " + pointer + "\n";
+            const auto converted = convertObjectValue(value, statement.declaredType,
+                                                       statement.expressions.front()->location);
+            instructions_ += "  store " + llvmType(statement.declaredType) + " " +
+                             converted.operand + ", ptr " + pointer + "\n";
         }
         return;
     }
     case StatementKind::Assignment: {
-        const auto valueType = emitExpression(*statement.expressions.front());
-        const auto binding = statement.target->kind == ExpressionKind::Identifier
-                                 ? findVariable(statement.target->value, statement.target->location)
-                                 : Binding{valueType.type, "", 0, false};
+        Binding binding;
         std::string address;
-        if (statement.target->kind == ExpressionKind::Member) {
+        if (statement.target->kind == ExpressionKind::Identifier) {
+            binding = findVariable(statement.target->value, statement.target->location);
+            address = emitAddress(binding, statement.location);
+        } else {
             const Expression* root = nullptr;
             const ClassDeclaration* owner = nullptr;
             std::vector<std::string> basePath;
             const bool qualified = resolveBaseQualifier(*statement.target->left, root, owner,
                                                         basePath);
-            const auto receiver = emitExpression(qualified ? *root : *statement.target->left);
+            auto receiver = emitExpression(qualified ? *root : *statement.target->left);
             emitNullCheck(receiver.operand, statement.target->location);
-            if (!qualified) owner = classes_.at(receiver.type);
-            std::size_t fieldIndex = 0;
-            (void)findField(*owner, statement.target->value, fieldIndex);
-            if (qualified) {
-                fieldIndex += basePathFieldOffset(*classes_.at(receiver.type), basePath);
+            if (!qualified) {
+                owner = classes_.at(receiver.type);
+            } else {
+                receiver = {owner->name,
+                            emitSubobjectAddress(receiver.operand, *classes_.at(receiver.type),
+                                                 basePath)};
             }
+            std::vector<std::size_t> fieldPath;
+            const auto* field = findField(*owner, statement.target->value, fieldPath);
+            if (field == nullptr) {
+                throw DiagnosticError(statement.target->location, "backend could not resolve field");
+            }
+            binding.type = field->type;
             address = newTemporary();
-            instructions_ += "  " + address + " = getelementptr inbounds %Class." + receiver.type +
-                             ", ptr " + receiver.operand + ", i32 0, i32 " +
-                             std::to_string(fieldIndex + 1) + "\n";
-        } else {
-            address = emitAddress(binding, statement.location);
+            instructions_ += "  " + address + " = getelementptr inbounds %Class." + owner->name +
+                             ", ptr " + receiver.operand + ", i32 0";
+            for (const auto index : fieldPath) {
+                instructions_ += ", i32 " + std::to_string(index);
+            }
+            instructions_ += "\n";
         }
-        instructions_ += "  store " + llvmType(binding.type) + " " + valueType.operand +
+        const auto value = emitExpression(*statement.expressions.front(), binding.type);
+        const auto converted = convertObjectValue(value, binding.type,
+                                                   statement.expressions.front()->location);
+        instructions_ += "  store " + llvmType(binding.type) + " " + converted.operand +
                          ", ptr " + address + "\n";
         return;
     }
@@ -75,8 +91,11 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         } else {
             const auto value = emitExpression(*statement.expressions.front(),
                                               currentMethod_->returnType);
+            const auto converted = convertObjectValue(value, currentMethod_->returnType,
+                                                       statement.expressions.front()->location);
             emitRootFramePop();
-            instructions_ += "  ret " + llvmType(value.type) + " " + value.operand + "\n";
+            instructions_ += "  ret " + llvmType(currentMethod_->returnType) + " " +
+                             converted.operand + "\n";
         }
         blockTerminated_ = true;
         return;
@@ -93,11 +112,23 @@ void CodeGenerator::emitStatement(const Statement& statement) {
             }
         }
         if (constructor == nullptr) return;
-        std::string arguments = "ptr %this";
+        const auto baseIndex = static_cast<std::size_t>(
+            std::distance(currentClass_->baseClassNames.begin(),
+                          std::find(currentClass_->baseClassNames.begin(),
+                                    currentClass_->baseClassNames.end(), statement.name)));
+        const auto basePointer = newTemporary();
+        instructions_ += "  " + basePointer + " = getelementptr inbounds %Class." +
+                         currentClass_->name + ", ptr %this, i32 0, i32 " +
+                         std::to_string(baseIndex + 2) + "\n";
+        std::string arguments = "ptr " + basePointer;
         for (std::size_t index = 0; index < statement.expressions.size(); ++index) {
             const auto value = emitExpression(*statement.expressions[index],
                                               constructor->parameters[index].type);
-            arguments += ", " + llvmType(constructor->parameters[index].type) + " " + value.operand;
+            const auto converted = convertObjectValue(value,
+                                                       constructor->parameters[index].type,
+                                                       statement.expressions[index]->location);
+            arguments += ", " + llvmType(constructor->parameters[index].type) + " " +
+                         converted.operand;
         }
         instructions_ += "  call void " + methodSymbol(statement.name, constructor->name) +
                          "(" + arguments + ")\n";

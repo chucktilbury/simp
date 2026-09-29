@@ -12,6 +12,35 @@
 
 namespace simp {
 
+namespace {
+
+std::string subobjectTag(const std::vector<std::string>& path,
+                         const ClassDeclaration&) {
+    if (path.empty()) return "root";
+    std::string tag = "p";
+    for (std::size_t index = 0; index < path.size(); ++index) {
+        if (tag.size() > 1) tag += "_";
+        tag += path[index];
+    }
+    return tag;
+}
+
+std::string methodTableName(const ClassDeclaration& owner,
+                            const std::vector<std::string>& path) {
+    const auto tag = subobjectTag(path, owner);
+    return path.empty() ? "@.simp.method.table." + owner.name
+                        : "@.simp.method.table." + owner.name + "." + tag;
+}
+
+std::string viewMetadataName(const ClassDeclaration& owner,
+                             const std::vector<std::string>& path) {
+    return path.empty() ? "@.simp.class.meta." + owner.name
+                        : "@.simp.view.meta." + owner.name + "." +
+                              subobjectTag(path, owner);
+}
+
+} // namespace
+
 void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     classes_.clear();
     for (const auto& declaration : program.classes) {
@@ -21,66 +50,50 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     typeDefinitions_ += "%SimpRootFrame = type { ptr, i64, ptr }\n";
     typeDefinitions_ += "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr }\n";
     typeDefinitions_ += "%SimpleMethodMeta = type { ptr, i64, ptr }\n";
-    const auto classFields = [this](const ClassDeclaration& owner) {
-        std::vector<const FieldDeclaration*> fields;
-        const auto append = [this, &fields](const auto& self,
-                                            const ClassDeclaration& current) -> void {
-            for (const auto& baseName : current.baseClassNames) {
-                const auto base = classes_.find(baseName);
-                if (base != classes_.end()) self(self, *base->second);
-            }
-            for (const auto& field : current.fields) fields.push_back(&field);
-        };
-        append(append, owner);
-        return fields;
-    };
     for (const auto& owner : program.classes) {
         typeDefinitions_ += "%Class." + owner.name + " = type { ptr";
-        for (const auto* field : classFields(owner)) {
-            typeDefinitions_ += ", " + llvmType(field->type);
+        typeDefinitions_ += ", ptr";
+        for (const auto& baseName : owner.baseClassNames) {
+            typeDefinitions_ += ", %Class." + baseName;
+        }
+        for (const auto& field : owner.fields) {
+            typeDefinitions_ += ", " + llvmType(field.type);
         }
         typeDefinitions_ += " }\n";
     }
     for (const auto& owner : program.classes) {
         const auto className = internString(owner.name);
-        const auto methods = methodSlots(owner);
-        const auto table = "@.simp.method.table." + owner.name;
-        if (!methods.empty()) {
-            metadataGlobals_ += table + " = private constant [" + std::to_string(methods.size()) +
-                                " x %SimpleMethodMeta] [";
-            for (std::size_t index = 0; index < methods.size(); ++index) {
-                if (index != 0) metadataGlobals_ += ", ";
-                const auto methodName = internString(methods[index]->name);
-                metadataGlobals_ += "%SimpleMethodMeta { ptr " + methodName + ", i64 " +
-                                    std::to_string(methods[index]->name.size()) + ", ptr " +
-                                    methodSymbol(declaringClass(*methods[index]),
-                                                 methods[index]->name) + " }";
+        std::vector<std::string> referenceOffsets;
+        for (const auto& subobject : subobjects(owner)) {
+            const auto prefix = directBasePath(owner, subobject.first);
+            for (std::size_t fieldIndex = 0;
+                 fieldIndex < subobject.second->fields.size(); ++fieldIndex) {
+                const auto& field = subobject.second->fields[fieldIndex];
+                if (classes_.find(field.type) == classes_.end()) continue;
+                auto indices = prefix;
+                indices.push_back(subobject.second->baseClassNames.size() + fieldIndex + 2);
+                std::string offset = "i64 ptrtoint (ptr getelementptr (%Class." + owner.name +
+                                     ", ptr null, i32 0";
+                for (const auto index : indices) {
+                    offset += ", i32 " + std::to_string(index);
+                }
+                offset += ") to i64)";
+                referenceOffsets.push_back(std::move(offset));
             }
-            metadataGlobals_ += "]\n";
-        }
-        std::vector<std::size_t> referenceFields;
-        std::size_t fieldCount = 0;
-        for (const auto* field : classFields(owner)) {
-            if (classes_.find(field->type) != classes_.end()) {
-                referenceFields.push_back(fieldCount + 1);
-            }
-            ++fieldCount;
         }
         const auto offsets = "@.simp.reference.offsets." + owner.name;
-        if (!referenceFields.empty()) {
+        if (!referenceOffsets.empty()) {
             metadataGlobals_ += offsets + " = private constant [" +
-                                std::to_string(referenceFields.size()) + " x i64] [";
-            for (std::size_t index = 0; index < referenceFields.size(); ++index) {
+                                std::to_string(referenceOffsets.size()) + " x i64] [";
+            for (std::size_t index = 0; index < referenceOffsets.size(); ++index) {
                 if (index != 0) metadataGlobals_ += ", ";
-                metadataGlobals_ += "i64 ptrtoint (ptr getelementptr (%Class." + owner.name +
-                                    ", ptr null, i32 0, i32 " +
-                                    std::to_string(referenceFields[index]) + ") to i64)";
+                metadataGlobals_ += referenceOffsets[index];
             }
             metadataGlobals_ += "]\n";
         }
         const auto objectSize = "ptrtoint (ptr getelementptr (%Class." + owner.name +
                                ", ptr null, i32 1) to i64)";
-        const auto offsetPointer = referenceFields.empty() ? "null" : offsets;
+        const auto offsetPointer = referenceOffsets.empty() ? "null" : offsets;
         const auto containsDestructor = [this](const auto& self,
                                                const ClassDeclaration& declaration) -> bool {
             if (std::any_of(declaration.methods.begin(), declaration.methods.end(),
@@ -93,26 +106,45 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
             return false;
         };
         const auto hasDestructor = containsDestructor(containsDestructor, owner);
-        metadataGlobals_ += "@.simp.class.meta." + owner.name +
-                            " = private constant %SimpleClassMeta { ptr " + className +
-                            ", i64 " + std::to_string(owner.name.size()) + ", i64 " +
-                            std::to_string(fieldCount) + ", ptr " +
-                            (methods.empty() ? "null" : table) + ", i64 " +
-                            std::to_string(methods.size()) + ", i64 " + objectSize +
-                            ", i64 " + std::to_string(referenceFields.size()) + ", ptr " +
-                            offsetPointer + ", ptr " +
-                            (hasDestructor ? "@simp.finalize." + owner.name : "null") +
-                            " }\n";
+        for (const auto& view : subobjects(owner)) {
+            const auto methods = methodSlots(*view.second);
+            const auto table = methodTableName(owner, view.first);
+            if (!methods.empty()) {
+                metadataGlobals_ += table + " = private constant [" +
+                                    std::to_string(methods.size()) +
+                                    " x %SimpleMethodMeta] [";
+                for (std::size_t index = 0; index < methods.size(); ++index) {
+                    if (index != 0) metadataGlobals_ += ", ";
+                    const auto methodName = internString(methods[index]->name);
+                    const auto thunk = "@simp.thunk." + owner.name + "." +
+                                       subobjectTag(view.first, owner) + "." +
+                                       std::to_string(index);
+                    metadataGlobals_ += "%SimpleMethodMeta { ptr " + methodName +
+                                        ", i64 " +
+                                        std::to_string(methods[index]->name.size()) +
+                                        ", ptr " + thunk + " }";
+                }
+                metadataGlobals_ += "]\n";
+            }
+            const auto metadata = viewMetadataName(owner, view.first);
+            metadataGlobals_ += metadata + " = private constant %SimpleClassMeta ";
+            metadataGlobals_ += "{ ptr " + className + ", i64 " +
+                                std::to_string(owner.name.size()) + ", i64 " +
+                                std::to_string(flattenedFieldCount(owner)) + ", ptr " +
+                                (methods.empty() ? "null" : table) + ", i64 " +
+                                std::to_string(methods.size()) + ", i64 " + objectSize +
+                                ", i64 " + std::to_string(referenceOffsets.size()) +
+                                ", ptr " + offsetPointer + ", ptr " +
+                                (hasDestructor ? "@simp.finalize." + owner.name : "null") +
+                                " }\n";
+        }
     }
 }
 
 void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclaration& method,
-                               const ClassDeclaration* layoutOwner,
-                               const std::string& symbolOverride,
-                               std::size_t fieldOffset) {
-    currentClass_ = layoutOwner == nullptr ? &owner : layoutOwner;
+                               const std::string& symbolOverride) {
+    currentClass_ = &owner;
     currentFieldClass_ = &owner;
-    currentFieldOffset_ = fieldOffset;
     currentMethod_ = &method;
     scopes_.clear();
     scopes_.emplace_back();
@@ -127,10 +159,10 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
     nextLabel_ = 0;
     blockTerminated_ = false;
     for (const auto& field : owner.fields) {
-        std::size_t index = 0;
-        (void)findField(owner, field.name, index);
+        std::vector<std::size_t> path;
+        (void)findField(owner, field.name, path);
         scopes_.front().emplace(field.name,
-                                Binding{field.type, "%this", index, true, false});
+                                Binding{field.type, "%this", std::move(path), true, false});
     }
     scopes_.emplace_back();
 
@@ -143,7 +175,8 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
         const auto argument = "%arg." + parameter.name;
         signature += ", " + llvmType(parameter.type) + " " + argument;
         const auto pointer = "%v" + std::to_string(nextVariable_++);
-        scopes_.back().emplace(parameter.name, Binding{parameter.type, pointer, 0, false});
+        scopes_.back().emplace(parameter.name,
+                               Binding{parameter.type, pointer, {}, false});
         entryAllocas_ += "  " + pointer + " = alloca " + llvmType(parameter.type) + "\n";
         if (classes_.find(parameter.type) != classes_.end()) {
             rootSlots_.push_back(pointer);
@@ -165,7 +198,6 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
                     functionPrologue_ + rootFramePush() + body + "}\n\n";
     currentClass_ = nullptr;
     currentFieldClass_ = nullptr;
-    currentFieldOffset_ = 0;
     currentMethod_ = nullptr;
 }
 
@@ -176,6 +208,84 @@ void CodeGenerator::emitClassMethods(const Program& program) {
         for (const auto& method : owner.methods) {
             emitMethod(owner, method);
             functions += instructions_;
+        }
+    }
+    for (const auto& dynamicOwner : program.classes) {
+        for (const auto& view : subobjects(dynamicOwner)) {
+            const auto slots = methodSlots(*view.second);
+            for (std::size_t slotIndex = 0; slotIndex < slots.size(); ++slotIndex) {
+                std::vector<std::pair<const ClassDeclaration*, std::vector<std::string>>>
+                    candidates{{&dynamicOwner, {}}};
+                auto candidatePath = std::vector<std::string>{};
+                for (const auto& baseName : view.first) {
+                    candidatePath.push_back(baseName);
+                    candidates.emplace_back(classes_.at(baseName), candidatePath);
+                }
+                for (const auto& nested : subobjects(*view.second)) {
+                    auto nestedPath = view.first;
+                    nestedPath.insert(nestedPath.end(), nested.first.begin(),
+                                      nested.first.end());
+                    if (nestedPath.empty()) continue;
+                    candidates.emplace_back(nested.second, std::move(nestedPath));
+                }
+                const MethodDeclaration* implementation = nullptr;
+                const ClassDeclaration* implementationOwner = nullptr;
+                std::vector<std::string> implementationPath;
+                for (const auto& candidate : candidates) {
+                    for (const auto& method : candidate.first->methods) {
+                        if (method.name == slots[slotIndex]->name &&
+                            !method.constructor && !method.destructor) {
+                            implementation = &method;
+                            implementationOwner = candidate.first;
+                            implementationPath = candidate.second;
+                            break;
+                        }
+                    }
+                    if (implementation != nullptr) break;
+                }
+                if (implementation == nullptr || implementationOwner == nullptr) continue;
+                const auto thunkName = "@simp.thunk." + dynamicOwner.name + "." +
+                                       subobjectTag(view.first, dynamicOwner) + "." +
+                                       std::to_string(slotIndex);
+                const auto returnType = llvmType(implementation->returnType);
+                std::string signature = "ptr %this";
+                std::string callArguments = "ptr %impl.this";
+                for (const auto& parameter : implementation->parameters) {
+                    signature += ", " + llvmType(parameter.type) + " %arg." + parameter.name;
+                    callArguments += ", " + llvmType(parameter.type) + " %arg." + parameter.name;
+                }
+                const auto rootAddress = "%root.addr";
+                const std::string root = "%root";
+                std::string thunk = "define " + returnType + " " + thunkName + "(" +
+                                    signature + ") {\nentry:\n"
+                                    "  " + rootAddress +
+                                    " = getelementptr inbounds %Class." + view.second->name +
+                                    ", ptr %this, i32 0, i32 1\n"
+                                    "  " + root + " = load ptr, ptr " + rootAddress + "\n";
+                const auto implementationIndices =
+                    directBasePath(dynamicOwner, implementationPath);
+                if (implementationIndices.empty()) {
+                    thunk += "  %impl.this = getelementptr i8, ptr " + root + ", i64 0\n";
+                } else {
+                    thunk += "  %impl.this = getelementptr inbounds %Class." +
+                             dynamicOwner.name + ", ptr " + root + ", i32 0";
+                    for (const auto index : implementationIndices) {
+                        thunk += ", i32 " + std::to_string(index);
+                    }
+                    thunk += "\n";
+                }
+                if (implementation->returnType == "void") {
+                    thunk += "  call void " + methodSymbol(implementationOwner->name,
+                                                           implementation->name) +
+                             "(" + callArguments + ")\n  ret void\n}\n\n";
+                } else {
+                    thunk += "  %result = call " + returnType + " " +
+                             methodSymbol(implementationOwner->name, implementation->name) +
+                             "(" + callArguments + ")\n  ret " + returnType +
+                             " %result\n}\n\n";
+                }
+                functions += thunk;
+            }
         }
     }
     for (const auto& dynamicOwner : program.classes) {
@@ -206,8 +316,7 @@ void CodeGenerator::emitClassMethods(const Program& program) {
             const auto& call = chain[index];
             const auto symbol = "@simp.destroy." + dynamicOwner.name + "." +
                                 std::to_string(index) + "." + call.owner->name;
-            emitMethod(*call.owner, *call.method, &dynamicOwner, symbol,
-                       basePathFieldOffset(dynamicOwner, call.path));
+            emitMethod(*call.owner, *call.method, symbol);
             functions += instructions_;
         }
         std::string finalizerBlocks;
@@ -226,6 +335,17 @@ void CodeGenerator::emitClassMethods(const Program& program) {
             const auto next = "destroy.next." + suffix;
             finalizerAllocas += "  " + size + " = call i64 @simp_exception_frame_size()\n"
                                 "  " + frame + " = alloca i8, i64 " + size + ", align 16\n";
+            std::string objectAddress = "%object";
+            const auto objectIndices = directBasePath(dynamicOwner, chain[index].path);
+            if (!objectIndices.empty()) {
+                objectAddress = "%simp.destroy.this." + suffix;
+                finalizerAllocas += "  " + objectAddress + " = getelementptr inbounds %Class." +
+                                    dynamicOwner.name + ", ptr %object, i32 0";
+                for (const auto fieldIndex : objectIndices) {
+                    finalizerAllocas += ", i32 " + std::to_string(fieldIndex);
+                }
+                finalizerAllocas += "\n";
+            }
             finalizerBlocks += invoke + ":\n"
                                "  call void @simp_exception_frame_init(ptr " + frame + ")\n"
                                "  " + buffer + " = call ptr @simp_exception_frame_buffer(ptr " +
@@ -238,7 +358,7 @@ void CodeGenerator::emitClassMethods(const Program& program) {
                                "  call void @simp_exception_push(ptr " + frame + ")\n"
                                "  call void @simp.destroy." + dynamicOwner.name + "." +
                                std::to_string(index) + "." + chain[index].owner->name +
-                               "(ptr %object)\n"
+                               "(ptr " + objectAddress + ")\n"
                                "  call void @simp_exception_pop(ptr " + frame + ")\n"
                                "  br label %" + next + "\n"
                                + caught + ":\n"
@@ -282,7 +402,6 @@ void CodeGenerator::emitClassMethods(const Program& program) {
 void CodeGenerator::emitMain(const Program& program) {
     currentClass_ = nullptr;
     currentFieldClass_ = nullptr;
-    currentFieldOffset_ = 0;
     currentMethod_ = nullptr;
     scopes_.clear();
     scopes_.emplace_back();
@@ -336,6 +455,7 @@ std::string CodeGenerator::generate(const Program& program) {
            << "declare void @simp_gc_end_construction(ptr)\n"
            << "declare void @simp_gc_begin_destroy(ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_end_destroy(ptr)\n"
+           << "declare ptr @simp_gc_root(ptr)\n"
            << "declare i64 @simp_exception_frame_size()\n"
            << "declare void @simp_exception_frame_init(ptr)\n"
            << "declare ptr @simp_exception_frame_buffer(ptr)\n"

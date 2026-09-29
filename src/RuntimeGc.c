@@ -278,7 +278,8 @@ void simp_exception_rethrow(void *storage) {
 }
 
 static int valid_reference_offset(const SimpClassMeta *metadata, uint64_t offset) {
-    return offset >= sizeof(void *) &&
+    return metadata->object_size >= sizeof(void *) &&
+           offset >= sizeof(void *) &&
            offset <= metadata->object_size - sizeof(void *) &&
            offset % alignof(void *) == 0;
 }
@@ -292,11 +293,23 @@ static HeapNode *find_object(const void *object) {
     return NULL;
 }
 
+static HeapNode *find_containing_object(const void *object) {
+    const uintptr_t address = (uintptr_t)object;
+    for (HeapNode *node = heap; node != NULL; node = node->next) {
+        const uintptr_t start = (uintptr_t)node->object;
+        const SimpClassMeta *metadata = NULL;
+        memcpy(&metadata, node->object, sizeof(metadata));
+        if (metadata == NULL || address < start) continue;
+        if (address - start < metadata->object_size) return node;
+    }
+    return NULL;
+}
+
 static void mark_object(void *object, HeapNode **worklist, size_t *work_count) {
     if (object == NULL) {
         return;
     }
-    HeapNode *node = find_object(object);
+    HeapNode *node = find_containing_object(object);
     if (node == NULL || node->marked) {
         return;
     }
@@ -353,16 +366,22 @@ void simp_gc_require_alive(void *object, const char *file, uint64_t file_length,
     if (object == NULL) {
         return;
     }
-    HeapNode *node = find_object(object);
+    HeapNode *node = find_containing_object(object);
     if (node == NULL)
         simp_exception_raise("invalid object reference", 24, file, file_length, line, column);
     if (node->destroyed && !node->destroying)
         simp_exception_raise("object has been destroyed", 25, file, file_length, line, column);
 }
 
+void *simp_gc_root(void *object) {
+    HeapNode *node = find_containing_object(object);
+    if (node == NULL) abort();
+    return node->object;
+}
+
 void simp_gc_begin_destroy(void *object, const char *file, uint64_t file_length,
                            uint64_t line, uint64_t column) {
-    HeapNode *node = find_object(object);
+    HeapNode *node = find_containing_object(object);
     if (node == NULL)
         simp_exception_raise("invalid object reference", 24, file, file_length, line, column);
     if (node->destroyed)
@@ -375,7 +394,7 @@ void simp_gc_begin_destroy(void *object, const char *file, uint64_t file_length,
 }
 
 void simp_gc_end_destroy(void *object) {
-    HeapNode *node = find_object(object);
+    HeapNode *node = find_containing_object(object);
     if (node == NULL || !node->destroying || destroy_stack != node) {
         abort();
     }
