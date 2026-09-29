@@ -14,11 +14,14 @@ typedef struct HeapNode {
     void *object;
     int marked;
     int destroyed;
+    int destroying;
 } HeapNode;
 
 static HeapNode *heap = NULL;
 static SimpRootFrame *root_frame = NULL;
 static size_t object_count = 0;
+static int collecting = 0;
+static int running_destructor = 0;
 
 static int valid_reference_offset(const SimpClassMeta *metadata, uint64_t offset) {
     return offset >= sizeof(void *) &&
@@ -96,7 +99,7 @@ void simp_gc_require_alive(void *object) {
         return;
     }
     HeapNode *node = find_object(object);
-    if (node == NULL || node->destroyed) {
+    if (node == NULL || (node->destroyed && !node->destroying)) {
         abort();
     }
 }
@@ -107,55 +110,85 @@ void simp_gc_begin_destroy(void *object) {
         abort();
     }
     node->destroyed = 1;
+    node->destroying = 1;
+}
+
+void simp_gc_end_destroy(void *object) {
+    HeapNode *node = find_object(object);
+    if (node == NULL || !node->destroying) {
+        abort();
+    }
+    node->destroying = 0;
+}
+
+static HeapNode **allocate_worklist(void) {
+    if (object_count > SIZE_MAX / sizeof(HeapNode *)) {
+        abort();
+    }
+    HeapNode **worklist = object_count == 0 ? NULL :
+        (HeapNode **)malloc(object_count * sizeof(*worklist));
+    if (object_count != 0 && worklist == NULL) abort();
+    return worklist;
+}
+
+static void mark_roots(HeapNode **worklist, size_t *work_count) {
+    for (SimpRootFrame *frame = root_frame; frame != NULL; frame = frame->previous) {
+        for (uint64_t index = 0; index < frame->count; ++index) {
+            if (frame->slots == NULL || frame->slots[index] == NULL) abort();
+            void *object = NULL;
+            memcpy(&object, frame->slots[index], sizeof(object));
+            mark_object(object, worklist, work_count);
+        }
+    }
+}
+
+static void trace_graph(HeapNode **worklist, size_t *work_count) {
+    while (*work_count != 0) {
+        HeapNode *node = worklist[--(*work_count)];
+        const SimpClassMeta *metadata = NULL;
+        memcpy(&metadata, node->object, sizeof(metadata));
+        if (metadata == NULL) abort();
+        for (uint64_t index = 0; index < metadata->reference_field_count; ++index) {
+            const uint64_t offset = metadata->reference_field_offsets[index];
+            if (!valid_reference_offset(metadata, offset)) abort();
+            void *child = NULL;
+            memcpy(&child, (const unsigned char *)node->object + offset, sizeof(child));
+            mark_object(child, worklist, work_count);
+        }
+    }
 }
 
 void simp_gc_collect(void) {
-    HeapNode **worklist = NULL;
-    if (object_count != 0) {
-        if (object_count > SIZE_MAX / sizeof(*worklist)) {
-            abort();
-        }
-        worklist = (HeapNode **)malloc(object_count * sizeof(*worklist));
-        if (worklist == NULL) {
-            abort();
-        }
-    }
+    if (collecting || running_destructor) abort();
+    collecting = 1;
     for (HeapNode *node = heap; node != NULL; node = node->next) {
         node->marked = 0;
     }
-
+    HeapNode **worklist = allocate_worklist();
     size_t work_count = 0;
-    for (SimpRootFrame *frame = root_frame; frame != NULL; frame = frame->previous) {
-        for (uint64_t index = 0; index < frame->count; ++index) {
-            if (frame->slots == NULL || frame->slots[index] == NULL) {
-                free(worklist);
-                abort();
-            }
-            void *object = NULL;
-            memcpy(&object, frame->slots[index], sizeof(object));
-            mark_object(object, worklist, &work_count);
-        }
-    }
+    mark_roots(worklist, &work_count);
+    trace_graph(worklist, &work_count);
 
-    while (work_count != 0) {
-        HeapNode *node = worklist[--work_count];
+    for (HeapNode *node = heap; node != NULL; node = node->next) {
+        if (node->marked || node->destroyed) continue;
         const SimpClassMeta *metadata = NULL;
         memcpy(&metadata, node->object, sizeof(metadata));
-        if (metadata == NULL) {
-            free(worklist);
-            abort();
-        }
-        for (uint64_t index = 0; index < metadata->reference_field_count; ++index) {
-            const uint64_t offset = metadata->reference_field_offsets[index];
-            if (!valid_reference_offset(metadata, offset)) {
-                free(worklist);
-                abort();
-            }
-            void *child = NULL;
-            memcpy(&child, (const unsigned char *)node->object + offset, sizeof(child));
-            mark_object(child, worklist, &work_count);
+        if (metadata == NULL) abort();
+        node->destroyed = 1;
+        if (metadata->finalize != NULL) {
+            node->destroying = 1;
+            running_destructor = 1;
+            metadata->finalize(node->object);
+            running_destructor = 0;
+            node->destroying = 0;
         }
     }
+
+    /* Finalizers may attach dead objects to live objects; retain, but keep them destroyed. */
+    for (HeapNode *node = heap; node != NULL; node = node->next) node->marked = 0;
+    work_count = 0;
+    mark_roots(worklist, &work_count);
+    trace_graph(worklist, &work_count);
     free(worklist);
 
     HeapNode **link = &heap;
@@ -170,9 +203,11 @@ void simp_gc_collect(void) {
             link = &node->next;
         }
     }
+    collecting = 0;
 }
 
 void *simp_gc_alloc(const SimpClassMeta *metadata) {
+    if (collecting || running_destructor) abort();
     if (metadata == NULL || metadata->object_size < sizeof(void *) ||
         metadata->object_size > (uint64_t)SIZE_MAX ||
         (metadata->reference_field_count != 0 &&
@@ -197,6 +232,7 @@ void *simp_gc_alloc(const SimpClassMeta *metadata) {
     node->object = object;
     node->marked = 0;
     node->destroyed = 0;
+    node->destroying = 0;
     node->next = heap;
     heap = node;
     ++object_count;

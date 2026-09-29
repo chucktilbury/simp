@@ -215,6 +215,8 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              receiver.operand + ")\n";
             instructions_ += "  call void " + methodSymbol(owner->name, destructor->name) +
                              "(ptr " + receiver.operand + ")\n";
+            instructions_ += "  call void @simp_gc_end_destroy(ptr " +
+                             receiver.operand + ")\n";
             return {"void", ""};
         }
         const auto* method = findMethod(*owner, target.value);

@@ -19,7 +19,7 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     }
     typeDefinitions_ += "%SimpleString = type { ptr, i64 }\n";
     typeDefinitions_ += "%SimpRootFrame = type { ptr, i64, ptr }\n";
-    typeDefinitions_ += "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr }\n";
+    typeDefinitions_ += "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr }\n";
     typeDefinitions_ += "%SimpleMethodMeta = type { ptr, i64, ptr }\n";
     const auto classFields = [this](const ClassDeclaration& owner) {
         std::vector<const FieldDeclaration*> fields;
@@ -81,6 +81,9 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         const auto objectSize = "ptrtoint (ptr getelementptr (%Class." + owner.name +
                                ", ptr null, i32 1) to i64)";
         const auto offsetPointer = referenceFields.empty() ? "null" : offsets;
+        const auto hasDestructor = std::any_of(
+            owner.methods.begin(), owner.methods.end(),
+            [](const MethodDeclaration& method) { return method.destructor; });
         metadataGlobals_ += "@.simp.class.meta." + owner.name +
                             " = private constant %SimpleClassMeta { ptr " + className +
                             ", i64 " + std::to_string(owner.name.size()) + ", i64 " +
@@ -88,7 +91,9 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
                             (methods.empty() ? "null" : table) + ", i64 " +
                             std::to_string(methods.size()) + ", i64 " + objectSize +
                             ", i64 " + std::to_string(referenceFields.size()) + ", ptr " +
-                            offsetPointer + " }\n";
+                            offsetPointer + ", ptr " +
+                            (hasDestructor ? "@simp.finalize." + owner.name : "null") +
+                            " }\n";
     }
 }
 
@@ -147,13 +152,21 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner, const MethodDeclar
 
 void CodeGenerator::emitClassMethods(const Program& program) {
     std::string functions;
+    std::string finalizers;
     for (const auto& owner : program.classes) {
         for (const auto& method : owner.methods) {
             emitMethod(owner, method);
             functions += instructions_;
+            if (method.destructor) {
+                finalizers += "define void @simp.finalize." + owner.name +
+                              "(ptr %object) {\nentry:\n"
+                              "  call void " + methodSymbol(owner.name, method.name) +
+                              "(ptr %object)\n"
+                              "  ret void\n}\n\n";
+            }
         }
     }
-    instructions_ = std::move(functions);
+    instructions_ = std::move(functions) + std::move(finalizers);
 }
 
 void CodeGenerator::emitMain(const Program& program) {
@@ -205,6 +218,7 @@ std::string CodeGenerator::generate(const Program& program) {
            << "declare ptr @simp_gc_alloc(ptr)\n"
            << "declare void @simp_gc_require_alive(ptr)\n"
            << "declare void @simp_gc_begin_destroy(ptr)\n"
+           << "declare void @simp_gc_end_destroy(ptr)\n"
            << "declare void @abort()\n\n"
            << "define void @simp.require_nonnull(ptr %object) {\n"
            << "entry:\n"

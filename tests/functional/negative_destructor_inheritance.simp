@@ -1,0 +1,11 @@
+class Base {
+    void destroy() {
+    }
+}
+
+class Child : Base {
+}
+
+start {
+    Child child = Child()
+}

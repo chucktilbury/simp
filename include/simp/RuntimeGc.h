@@ -27,6 +27,7 @@ typedef struct SimpClassMeta {
     uint64_t object_size;
     uint64_t reference_field_count;
     const uint64_t *reference_field_offsets;
+    void (*finalize)(void *object);
 } SimpClassMeta;
 
 typedef struct SimpRootFrame {
@@ -46,6 +47,7 @@ void simp_gc_pop_or_abort(SimpRootFrame *frame);
 void *simp_gc_alloc(const SimpClassMeta *metadata);
 void simp_gc_require_alive(void *object);
 void simp_gc_begin_destroy(void *object);
+void simp_gc_end_destroy(void *object);
 void simp_gc_collect(void);
 size_t simp_gc_heap_count(void);
 

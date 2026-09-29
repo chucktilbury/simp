@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct TestNode {
@@ -17,7 +18,27 @@ typedef struct TestNode {
 
 static const uint64_t reference_offsets[] = {offsetof(TestNode, next)};
 static const SimpClassMeta node_metadata = {
-    "TestNode", 8, 2, NULL, 0, sizeof(TestNode), 1, reference_offsets
+    "TestNode", 8, 2, NULL, 0, sizeof(TestNode), 1, reference_offsets, NULL
+};
+
+typedef struct FinalizeNode {
+    const SimpClassMeta *metadata;
+    int value;
+} FinalizeNode;
+
+static int finalizer_count = 0;
+static FinalizeNode **resurrection_slot = NULL;
+static int resurrect_during_finalization = 0;
+
+static void count_finalizer(void *object) {
+    FinalizeNode *node = (FinalizeNode *)object;
+    if (node->value != 73) abort();
+    ++finalizer_count;
+    if (resurrect_during_finalization) *resurrection_slot = node;
+}
+
+static const SimpClassMeta finalize_metadata = {
+    "FinalizeNode", 12, 1, NULL, 0, sizeof(FinalizeNode), 0, NULL, count_finalizer
 };
 
 static int fail(const char *message) {
@@ -100,6 +121,53 @@ int main(void) {
     if (!simp_gc_pop(&outer)) {
         return fail("could not pop outer root frame");
     }
-    puts("PASS precise GC roots, graph tracing, reclamation, and frame lifecycle");
+
+    SimpRootFrame finalizer_frame = {0};
+    FinalizeNode *rooted = NULL;
+    void *finalizer_slots[] = {&rooted};
+    if (!simp_gc_push(&finalizer_frame, finalizer_slots, 1)) {
+        return fail("could not push finalizer test root");
+    }
+    rooted = (FinalizeNode *)simp_gc_alloc(&finalize_metadata);
+    rooted->value = 73;
+    simp_gc_collect();
+    if (finalizer_count != 0 || simp_gc_heap_count() != 1) {
+        return fail("reachable object was finalized");
+    }
+    rooted = NULL;
+    simp_gc_collect();
+    if (finalizer_count != 1 || simp_gc_heap_count() != 0) {
+        return fail("unreachable object was not finalized and reclaimed exactly once");
+    }
+
+    rooted = (FinalizeNode *)simp_gc_alloc(&finalize_metadata);
+    rooted->value = 73;
+    resurrection_slot = &rooted;
+    resurrect_during_finalization = 1;
+    rooted = NULL;
+    simp_gc_collect();
+    resurrect_during_finalization = 0;
+    if (finalizer_count != 2 || simp_gc_heap_count() != 1 || rooted == NULL) {
+        return fail("resurrected object was not retained after one finalizer call");
+    }
+    rooted = NULL;
+    simp_gc_collect();
+    if (finalizer_count != 2 || simp_gc_heap_count() != 0) {
+        return fail("resurrected destroyed object was finalized twice or not reclaimed");
+    }
+
+    rooted = (FinalizeNode *)simp_gc_alloc(&finalize_metadata);
+    rooted->value = 73;
+    simp_gc_begin_destroy(rooted);
+    simp_gc_end_destroy(rooted);
+    rooted = NULL;
+    simp_gc_collect();
+    if (finalizer_count != 2 || simp_gc_heap_count() != 0) {
+        return fail("explicit destruction did not suppress GC finalization");
+    }
+    if (!simp_gc_pop(&finalizer_frame)) {
+        return fail("could not pop finalizer test root");
+    }
+    puts("PASS precise roots, reclamation, finalization, destruction, and frame lifecycle");
     return 0;
 }

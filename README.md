@@ -136,7 +136,10 @@ and semantic errors.
   zero-argument `void destroy()` method; an explicit `object.destroy()` warns,
   invokes it once, and marks the object unusable. Further object use or another
   destruction attempt aborts at runtime. Explicit destruction is currently
-  limited to classes outside an inheritance hierarchy. Direct bases have distinct, non-shared subobjects in declared
+  limited to classes outside an inheritance hierarchy. The GC invokes
+  `destroy()` once for unreachable objects not already explicitly destroyed;
+  finalizer allocation aborts, and inheritance destructors are unsupported.
+  Direct bases have distinct, non-shared subobjects in declared
   order; fields are flattened depth-first through those paths. Ambiguous
   inherited fields must be qualified, for example
   `diamond.Left.Root.value`; unqualified ambiguous fields or methods are
@@ -170,8 +173,7 @@ and semantic errors.
   members are accessible in their declaring class and derived-class method
   bodies. Constructors are
   checked at object creation and at `super.Base(...)`; destructor access is
-  checked on explicit invocation. GC finalizer fallback is not implemented:
-  unreachable objects are reclaimed without calling `destroy()`. Protected access currently checks the enclosing class
+  checked on explicit invocation. Protected access currently checks the enclosing class
   relationship but not C++'s additional receiver-expression restriction for
   protected members. There are no friends, overloads, or access labels on
   individual declarations outside the section syntax.
@@ -227,7 +229,8 @@ String comparisons and other non-integer formatted values produce precise
 backend/semantic errors. There is no string concatenation, object-to-string
 conversion, code-point-aware operation, full language runtime, or
 division-by-zero handling; signed division follows LLVM integer operation
-semantics. The collector has no finalizers, weak references, multithreading,
+semantics. The collector has limited finalizers for non-inherited classes, but
+no weak references, multithreading,
 incremental/concurrent collection, or configurable allocation threshold.
 Generated roots conservatively include every object-typed slot in a function,
 but do not scan non-reference values or the native stack. This small runtime

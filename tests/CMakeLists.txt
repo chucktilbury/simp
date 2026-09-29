@@ -271,6 +271,33 @@ add_test(NAME simp_rejects_use_after_destructor
         "-DEXPECT_RUNTIME_FAILURE=ON"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+add_test(NAME simp_compile_and_run_gc_finalizers
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_gc_finalizers.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_gc_finalizers"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_gc_finalizers.ll"
+        "-DEXPECTED_OUTPUT=2\n1\n3\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_finalizer_allocation
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_finalizer_allocation.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_finalizer_allocation"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_finalizer_allocation.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_destructor_inheritance
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_destructor_inheritance.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_destructor_inheritance"
+        "-DEXPECTED_DIAGNOSTIC=destructors in inheritance hierarchies are not supported"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
 add_test(NAME simp_rejects_private_super_constructor
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"

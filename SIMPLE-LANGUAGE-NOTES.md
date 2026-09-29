@@ -95,7 +95,7 @@ generated return.
 This is a safety-oriented prototype, not a production-validated memory
 manager. Root descriptors include all object-typed slots for a function's
 whole lifetime, so stale values can delay reclamation until return. There are
-no finalizers, weak references, threads, concurrent/incremental collection,
+only the limited finalizer support described below, no weak references, threads, concurrent/incremental collection,
 or configurable thresholds. Runtime tests cover root-frame lifecycle errors,
 reachable-object survival through reference fields, and unreachable-object
 reclamation; an executable stress case performs repeated allocations through
@@ -243,22 +243,27 @@ module design. The program-entry examples use the single permitted top-level
   invoking a destructor does not force the GC to reclaim the object's memory
   immediately.
 
-The current prototype implements only explicit, zero-argument `void
-destroy()` calls for classes outside inheritance hierarchies and
-destroyed-object checks. The heap records destroyed state,
-marks the object before calling the destructor (so reentrant or repeated
-destruction aborts), and generated object-value uses validate that the object
-is still live. GC finalizer fallback is deferred: the collector currently
-reclaims unreachable objects without invoking destructors. Safe finalization
-needs a defined policy for destructors that allocate or resurrect references
-and a non-reentrant collector finalization phase; do not rely on fallback
-cleanup in this prototype.
-- Any use of an object after its destructor has run raises an exception. If
-  that exception is uncaught, the program aborts.
+The current prototype supports explicit and GC-triggered zero-argument `void
+destroy()` calls only for classes outside inheritance hierarchies. The
+collector first marks the graph, invokes each unmarked object's destructor at
+most once before sweeping, then traces roots again before reclamation. Explicit
+destruction marks the object, suppressing its later finalizer. The heap marks
+an object destroyed before invoking its callback; reentrant or repeated
+destruction aborts. Generated object-value uses validate liveness. Finalizer
+callbacks cannot allocate: allocation during collection aborts to prevent
+reentrant collection from invalidating the sweep. If a finalizer attaches its
+own object to a live object's reference field, the second trace retains the
+object, but it remains destroyed and unusable; its finalizer will not run a
+second time. Destructor chaining and dynamic-type selection for inherited
+objects remain unsupported.
+- Any use of an object after its destructor has run aborts in this prototype.
+  Catchable language exceptions are not implemented yet.
 
-Whether object resurrection is possible remains undecided. GC timing and
-memory reclamation are also separate from the caller-controlled timing of
-explicit cleanup.
+The prototype's collector retains an object resurrected during finalization
+after re-tracing roots, but it remains destroyed and unusable. Whether the
+complete language should permit resurrection remains undecided. GC timing and
+memory reclamation are separate from the caller-controlled timing of explicit
+cleanup.
 
 ### Threads
 
