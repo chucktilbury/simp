@@ -1,0 +1,14 @@
+class Base {
+    private:
+    Base() {
+    }
+}
+
+class Child : public Base {
+    Child() {
+        super.Base();
+    }
+}
+
+start {
+}

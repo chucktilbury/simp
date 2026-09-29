@@ -1,0 +1,10 @@
+class Hidden {
+    private:
+    void destroy() {
+    }
+}
+
+start {
+    Hidden hidden = Hidden();
+    hidden.destroy();
+}

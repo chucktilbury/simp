@@ -163,7 +163,73 @@ add_test(NAME simp_compile_and_run_public_inheritance
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_public_inheritance.simp"
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_public_inheritance"
         "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_public_inheritance.ll"
-        "-DEXPECTED_OUTPUT=42\n0\n0\n0\n0\n"
+        "-DEXPECTED_OUTPUT=42\n0\n0\n0\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_member_access
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_member_access.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_member_access"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_member_access.ll"
+        "-DEXPECTED_OUTPUT=42\n0\n0\n7\n1\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_compile_and_run_mixed_member_visibility
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_mixed_member_visibility.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_mixed_member_visibility"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_mixed_member_visibility.ll"
+        "-DEXPECTED_OUTPUT=9\n"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_private_field_access
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_member.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_member"
+        "-DEXPECTED_DIAGNOSTIC=field 'value' is not accessible"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_protected_method_access
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_protected_member.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_protected_member"
+        "-DEXPECTED_DIAGNOSTIC=method 'read' is not accessible"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_private_method_access
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_method.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_method"
+        "-DEXPECTED_DIAGNOSTIC=method 'read' is not accessible"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_private_constructor
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_constructor.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_constructor"
+        "-DEXPECTED_DIAGNOSTIC=constructor for class 'Hidden' is not accessible"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_private_destructor
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_destructor.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_destructor"
+        "-DEXPECTED_DIAGNOSTIC=method 'destroy' is not accessible"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_private_super_constructor
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_super_constructor.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_super_constructor"
+        "-DEXPECTED_DIAGNOSTIC=base constructor for class 'Base' is not accessible"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_protected_inherited_member_access
@@ -180,6 +246,14 @@ add_test(NAME simp_rejects_private_inherited_member_access
         "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_inheritance.simp"
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_inheritance"
         "-DEXPECTED_DIAGNOSTIC=is not accessible through this inheritance path"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_rejects_private_member_from_further_derived_class
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_private_inheritance_context.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_private_inheritance_context"
+        "-DEXPECTED_DIAGNOSTIC=field 'value' is not accessible in this class"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_protected_base_conversion

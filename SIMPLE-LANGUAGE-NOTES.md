@@ -119,7 +119,10 @@ is default-constructible only if its bases also have no explicit constructors.
 ### Names, scopes, namespaces, and access
 
 - `public`, `private`, and `protected` member access are part of the language
-  design; the prototype currently implements only per-base visibility.
+  design. The prototype supports access sections inside class bodies and
+  enforces them for field/method access, construction, and base-constructor
+  calls. Destructor declarations retain access metadata, but destructor
+  execution is not implemented.
 - Namespaces concatenate into symbol paths.
 - A name is a compile-time symbol-tree path, not merely a textual identifier.
 - Simple compilation is multi-pass: a name may be referenced before its
@@ -132,17 +135,24 @@ is default-constructible only if its bases also have no explicit constructors.
   implements base-path qualification for field reads and assignments.
 - An unqualified inherited member that is ambiguous under multiple inheritance is a compile-time error; the prototype implements this for fields and methods.
 - Base classes may be marked `public`, `protected`, or `private`. The prototype
-  defaults omitted visibility to public, preserves inherited members on public
-  paths, and hides inherited members from unrelated code on protected/private
-  paths. Since member-level access sections are not implemented, all declared
-  fields/methods in the prototype behave as public; base-private members cannot
-  yet be expressed. Exact protected/private access across further-derived
-  classes remains deferred.
+  defaults omitted visibility to public. Public inheritance preserves inherited
+  access, protected inheritance maps inherited public/protected members to
+  protected, and private inheritance maps them to private; a base-private
+  member remains inaccessible through inheritance. Class-body `public:`,
+  `protected:`, and `private:` sections apply to subsequent fields, methods,
+  constructors, and destructor declarations. Private members are accessible
+  only within their declaring class, and private inheritance prevents further
+  derived classes from accessing inherited members. Protected members are
+  accessible from their declaring class and derived-class method bodies. Constructor access is
+  checked for object construction and `super.Base(...)`. Destructor access is
+  checked on reference, but execution remains deferred. The prototype does not
+  yet enforce C++'s protected receiver-expression restriction and has no friend
+  declarations, overloads, or per-member inline access labels.
 - An explicit base-constructor call uses `super.Base(args)`, naming the
   specified base class.
-- Base access and member accessibility are checked according to the intended
-  language access rules; only external access through public versus
-  protected/private base paths is enforced by the prototype.
+- Base and member accessibility are checked by the prototype within the
+  documented subset above; protected receiver-expression restrictions,
+  friendship, and destructor execution remain deferred.
 
 Keywords are case-insensitive and reserved under every capitalization. For example, `while`, `While`, and `wHiLe` are the same keyword, so `int While = 0` is a syntax error.
 

@@ -259,11 +259,6 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
     currentClass_ = &owner;
     currentMethod_ = &method;
     scopes_.emplace_back();
-    for (const auto* field : inheritedFields(owner)) {
-        const auto index = symbols_.size();
-        symbols_.push_back({field->name, field->type, true, field->location});
-        scopes_.back().emplace(field->name, index);
-    }
     scopes_.emplace_back();
     for (const auto& parameter : method.parameters) {
         if (scopes_.back().find(parameter.name) != scopes_.back().end()) {
@@ -324,6 +319,12 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
                 constructor = &candidate;
                 break;
             }
+        }
+        if (constructor != nullptr &&
+            !memberAccessible(*base, constructor->name, true)) {
+            throw DiagnosticError(statement.location,
+                                  "base constructor for class '" + base->name +
+                                      "' is not accessible here");
         }
         const std::size_t expectedCount = constructor == nullptr ? 0 : constructor->parameters.size();
         if (statement.expressions.size() != expectedCount) {

@@ -13,7 +13,7 @@ namespace simp {
 const MethodDeclaration* CodeGenerator::findMethod(const ClassDeclaration& owner,
                                                     const std::string& name) const {
     for (const auto& method : owner.methods) {
-        if (method.name == name && !method.constructor) return &method;
+        if (method.name == name && !method.constructor && !method.destructor) return &method;
     }
     if (!owner.baseClassName.empty()) {
         const auto base = classes_.find(owner.baseClassName);
@@ -37,7 +37,7 @@ std::vector<const MethodDeclaration*> CodeGenerator::methodSlots(
     std::vector<const MethodDeclaration*> slots;
     for (const auto* declaration : hierarchy) {
         for (const auto& method : declaration->methods) {
-            if (method.constructor) continue;
+            if (method.constructor || method.destructor) continue;
             const auto inherited = std::find_if(
                 slots.begin(), slots.end(), [&method](const MethodDeclaration* candidate) {
                     return candidate->name == method.name;

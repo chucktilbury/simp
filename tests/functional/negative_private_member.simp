@@ -1,0 +1,12 @@
+class Hidden {
+    private:
+    int value;
+    int read() {
+        return value;
+    }
+}
+
+start {
+    Hidden hidden = Hidden();
+    print(hidden.value);
+}

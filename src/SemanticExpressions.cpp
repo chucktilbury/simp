@@ -68,12 +68,23 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
             return symbols_[index].type;
         }
         if (currentClass_ != nullptr) {
+            if (countFields(*currentClass_, expression.value) != 0 &&
+                accessibleMemberCount(*currentClass_, expression.value, false) == 0) {
+                throw DiagnosticError(expression.location,
+                                      "field '" + expression.value +
+                                          "' is not accessible in this class");
+            }
             if (countFields(*currentClass_, expression.value) > 1) {
                 throw DiagnosticError(expression.location,
                                       "ambiguous inherited field '" + expression.value +
                                           "'; qualify it through a base class");
             }
             if (const auto* field = findField(*currentClass_, expression.value)) {
+                if (!memberAccessible(*currentClass_, expression.value, false)) {
+                    throw DiagnosticError(expression.location,
+                                          "field '" + expression.value +
+                                              "' is not accessible in this class");
+                }
                 return field->type;
             }
         }
@@ -89,15 +100,16 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
             owner = findClass(receiverType, expression.location);
         }
         const auto matches = countFields(*owner, expression.value);
-        if (matches > 1) {
+        const auto accessibleMatches = accessibleMemberCount(*owner, expression.value, false);
+        if (accessibleMatches > 1) {
             throw DiagnosticError(expression.location,
                                   "ambiguous inherited field '" + expression.value +
                                       "'; qualify it through a base class");
         }
         const auto& accessOwner = path.empty() ? *owner : *classes_.at(analyzeExpression(*root));
         if (matches != 0 &&
-            (!memberPubliclyAccessible(*owner, expression.value, false) ||
-             (!path.empty() && !basePathIsPublic(accessOwner, path)))) {
+            (accessibleMatches == 0 ||
+             (!path.empty() && !basePathAccessible(accessOwner, path)))) {
             throw DiagnosticError(expression.location,
                                   "field '" + expression.value +
                                       "' is not accessible through this inheritance path");
@@ -116,6 +128,12 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                 constructor = &method;
                 break;
             }
+        }
+        if (constructor != nullptr &&
+            !memberAccessible(*owner, constructor->name, true)) {
+            throw DiagnosticError(expression.location,
+                                  "constructor for class '" + owner->name +
+                                      "' is not accessible here");
         }
         if (constructor == nullptr) {
             if (!expression.arguments.empty()) {
@@ -166,16 +184,18 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
                 pathOwner = classes_.at(baseName);
             }
         }
-        if (countMethods(*owner, target.value) > 1) {
+        const auto methodMatches = countMethods(*owner, target.value);
+        const auto accessibleMethods = accessibleMemberCount(*owner, target.value, true);
+        if (accessibleMethods > 1) {
             throw DiagnosticError(target.location,
                                   "ambiguous inherited method '" + target.value +
                                       "'; qualify it through a base class");
         }
         const auto& accessOwner =
             basePath.empty() ? *owner : *classes_.at(analyzeExpression(*root));
-        if (countMethods(*owner, target.value) != 0 &&
-            (!memberPubliclyAccessible(*owner, target.value, true) ||
-             (!basePath.empty() && !basePathIsPublic(accessOwner, basePath)))) {
+        if (methodMatches != 0 &&
+            (accessibleMethods == 0 ||
+             (!basePath.empty() && !basePathAccessible(accessOwner, basePath)))) {
             throw DiagnosticError(target.location,
                                   "method '" + target.value +
                                       "' is not accessible through this inheritance path");
@@ -184,6 +204,10 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression) {
         if (method == nullptr) {
             throw DiagnosticError(target.location,
                                   "class '" + owner->name + "' has no method '" + target.value + "'");
+        }
+        if (method->destructor) {
+            throw DiagnosticError(target.location,
+                                  "destructor execution is not supported by this prototype");
         }
         if (!qualified) {
             std::string declaringName;
@@ -257,12 +281,23 @@ std::string SemanticAnalyzer::analyzeLValue(const Expression& expression) {
             return symbols_[index].type;
         }
         if (currentClass_ != nullptr) {
+            if (countFields(*currentClass_, expression.value) != 0 &&
+                accessibleMemberCount(*currentClass_, expression.value, false) == 0) {
+                throw DiagnosticError(expression.location,
+                                      "field '" + expression.value +
+                                          "' is not accessible in this class");
+            }
             if (countFields(*currentClass_, expression.value) > 1) {
                 throw DiagnosticError(expression.location,
                                       "ambiguous inherited field '" + expression.value +
                                           "'; qualify it through a base class");
             }
             if (const auto* field = findField(*currentClass_, expression.value)) {
+                if (!memberAccessible(*currentClass_, expression.value, false)) {
+                    throw DiagnosticError(expression.location,
+                                          "field '" + expression.value +
+                                              "' is not accessible in this class");
+                }
                 return field->type;
             }
         }
@@ -278,14 +313,16 @@ std::string SemanticAnalyzer::analyzeLValue(const Expression& expression) {
             owner = findClass(receiverType, expression.location);
         }
         const auto matches = countFields(*owner, expression.value);
-        if (matches > 1) {
+        const auto accessibleMatches = accessibleMemberCount(*owner, expression.value, false);
+        if (accessibleMatches > 1) {
             throw DiagnosticError(expression.location,
                                   "ambiguous inherited field '" + expression.value +
                                       "'; qualify it through a base class");
         }
         const auto& accessOwner = path.empty() ? *owner : *classes_.at(analyzeExpression(*root));
-        if (!memberPubliclyAccessible(*owner, expression.value, false) ||
-            (!path.empty() && !basePathIsPublic(accessOwner, path))) {
+        if (matches != 0 &&
+            (accessibleMatches == 0 ||
+             (!path.empty() && !basePathAccessible(accessOwner, path)))) {
             throw DiagnosticError(expression.location,
                                   "field '" + expression.value +
                                       "' is not accessible through this inheritance path");

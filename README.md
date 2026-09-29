@@ -147,9 +147,23 @@ and semantic errors.
   External code may access inherited fields/methods only through public base
   paths. Protected/private paths are available to members of the class that
   declares the path but are hidden from `start` and unrelated classes. This
-  models the effective public-vs-non-public result for currently public
-  members; it does not yet model `public:`, `protected:`, or `private:`
-  sections on fields/methods, so base-private members cannot yet be declared.
+  applies the standard access transformation: public inheritance preserves
+  member access, protected inheritance maps inherited public/protected members
+  to protected, and private inheritance maps them to private. A base-private
+  member remains inaccessible through inheritance.
+
+  Class bodies support `public:`, `protected:`, and `private:` sections; the
+  default section is public. These sections apply to subsequent fields,
+  methods, constructors, and destructor declarations.   Private members are accessible only in their declaring class; inherited
+  private members are not accessible to further-derived classes. Protected
+  members are accessible in their declaring class and derived-class method
+  bodies. Constructors are
+  checked at object creation and at `super.Base(...)`; destructors retain and
+  enforce their declared access when referenced, but destructor execution is
+  not implemented.   Protected access currently checks the enclosing class
+  relationship but not C++'s additional receiver-expression restriction for
+  protected members. There are no friends, overloads, or access labels on
+  individual declarations outside the section syntax.
 
   Objects have stable, non-moving addresses. Their first word points to class
   metadata, followed by distinct base subobjects in declared order and then
@@ -158,9 +172,8 @@ and semantic errors.
   object size, and compiler-generated offsets for class-reference fields;
   instances do not contain method copies. Class references may be `null`; dereferencing null
   aborts through a runtime guard. Newly allocated fields are zero-initialized
-  before the constructor runs. Member-level access control, constructor
-  overloading, method overloading, and default field initializer syntax are
-  unsupported.
+  before the constructor runs. Constructor overloading, method overloading,
+  and default field initializer syntax are unsupported.
 
 The parser is recursive descent and produces an AST that can be dumped with
 `--dump-ast`. Lexer, parser, and CLI diagnostics include file, line, and column.

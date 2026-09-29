@@ -1,0 +1,9 @@
+class Hidden {
+    private:
+    Hidden(int value) {
+    }
+}
+
+start {
+    Hidden hidden = Hidden(1);
+}

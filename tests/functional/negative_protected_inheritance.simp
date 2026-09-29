@@ -7,5 +7,5 @@ class ProtectedChild : protected Base {
 
 start {
     ProtectedChild child = ProtectedChild();
-    print(child.value);
+    print(child.Base.value);
 }

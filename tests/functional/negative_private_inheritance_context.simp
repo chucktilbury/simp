@@ -1,0 +1,15 @@
+class Base {
+    int value;
+}
+
+class PrivateChild : private Base {
+}
+
+class Grandchild : public PrivateChild {
+    int readValue() {
+        return value;
+    }
+}
+
+start {
+}

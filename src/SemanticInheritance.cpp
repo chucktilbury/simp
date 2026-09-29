@@ -10,10 +10,10 @@
 
 namespace simp {
 
-bool SemanticAnalyzer::basePathIsPublic(const ClassDeclaration& owner,
-                                        const std::vector<std::string>& path) const {
+bool SemanticAnalyzer::basePathAccessible(const ClassDeclaration& owner,
+                                          const std::vector<std::string>& path) const {
     const ClassDeclaration* current = &owner;
-    bool publicPath = true;
+    AccessLevel effective = AccessLevel::Public;
     std::string restrictedAt;
     for (const auto& baseName : path) {
         const auto base = std::find(current->baseClassNames.begin(),
@@ -22,83 +22,142 @@ bool SemanticAnalyzer::basePathIsPublic(const ClassDeclaration& owner,
         const auto index = static_cast<std::size_t>(
             std::distance(current->baseClassNames.begin(), base));
         const auto access = current->baseAccess[index];
-        if (!publicPath && access == AccessLevel::Private) {
-            return false;
-        }
-        if (publicPath && access != AccessLevel::Public) {
+        if (access == AccessLevel::Private) {
+            effective = AccessLevel::Private;
             restrictedAt = current->name;
-        }
-        publicPath = publicPath && access == AccessLevel::Public;
-        if (!publicPath && (currentClass_ == nullptr ||
-                            currentClass_->name != restrictedAt)) {
-            return false;
+        } else if (access == AccessLevel::Protected &&
+                   effective == AccessLevel::Public) {
+            effective = AccessLevel::Protected;
+            restrictedAt = current->name;
         }
         const auto declaration = classes_.find(baseName);
         if (declaration == classes_.end()) return false;
         current = declaration->second;
     }
-    return true;
+    if (effective == AccessLevel::Public) return true;
+    if (currentClass_ == nullptr) return false;
+    if (effective == AccessLevel::Private) {
+        return currentClass_->name == restrictedAt;
+    }
+    return currentClass_->name == restrictedAt ||
+           isSubclassOf(currentClass_->name, restrictedAt);
 }
 
-bool SemanticAnalyzer::memberPubliclyAccessible(const ClassDeclaration& owner,
-                                                const std::string& name,
-                                                bool method) const {
+bool SemanticAnalyzer::memberAccessible(const ClassDeclaration& owner,
+                                        const std::string& name,
+                                        bool method) const {
+    using InheritanceEdge = std::pair<const ClassDeclaration*, std::size_t>;
     const auto contains = [this, &name, method](const auto& self,
                                                 const ClassDeclaration& current,
-                                                bool publicPath,
-                                                const std::string& restrictedAt)
-        -> bool {
+                                                std::vector<InheritanceEdge>& path) -> bool {
+        AccessLevel declaredAccess = AccessLevel::Public;
+        bool declared = false;
         if (method) {
-            for (const auto& declaration : current.methods) {
-                if (!declaration.constructor && declaration.name == name) {
-                    return publicPath ||
-                           (currentClass_ != nullptr &&
-                            currentClass_->name == restrictedAt);
+            for (const auto& member : current.methods) {
+                if (member.name == name) {
+                    declaredAccess = member.access;
+                    declared = true;
+                    break;
                 }
             }
         } else {
-            for (const auto& declaration : current.fields) {
-                if (declaration.name == name) {
-                    return publicPath ||
-                           (currentClass_ != nullptr &&
-                            currentClass_->name == restrictedAt);
+            for (const auto& member : current.fields) {
+                if (member.name == name) {
+                    declaredAccess = member.access;
+                    declared = true;
+                    break;
                 }
             }
+        }
+        if (declared) {
+            if (currentClass_ == nullptr && declaredAccess != AccessLevel::Public) {
+                return false;
+            }
+            if (declaredAccess == AccessLevel::Private &&
+                (currentClass_ == nullptr || currentClass_->name != current.name)) return false;
+            if (declaredAccess == AccessLevel::Protected &&
+                (currentClass_ == nullptr ||
+                 (currentClass_->name != current.name &&
+                  !isSubclassOf(currentClass_->name, current.name)))) return false;
+
+            AccessLevel effective = declaredAccess;
+            std::string restrictedAt = current.name;
+            for (auto edge = path.rbegin(); edge != path.rend(); ++edge) {
+                const auto edgeAccess = edge->first->baseAccess[edge->second];
+                if (edgeAccess == AccessLevel::Private) {
+                    effective = AccessLevel::Private;
+                    restrictedAt = edge->first->name;
+                } else if (edgeAccess == AccessLevel::Protected &&
+                           effective == AccessLevel::Public) {
+                    effective = AccessLevel::Protected;
+                    restrictedAt = edge->first->name;
+                }
+            }
+            if (effective == AccessLevel::Public) return true;
+            if (currentClass_ == nullptr) return false;
+            if (effective == AccessLevel::Private) {
+                return currentClass_->name == restrictedAt;
+            }
+            return currentClass_->name == restrictedAt ||
+                   isSubclassOf(currentClass_->name, restrictedAt);
         }
         for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
             const auto base = classes_.find(current.baseClassNames[index]);
             if (base == classes_.end()) continue;
-            const auto access = current.baseAccess[index];
-            std::string nextRestrictedAt = restrictedAt;
-            if (!publicPath && access == AccessLevel::Private) {
-                return false;
-            }
-            if (publicPath && access != AccessLevel::Public) {
-                nextRestrictedAt = current.name;
-            }
-            if (self(self, *base->second,
-                     publicPath && access == AccessLevel::Public,
-                     nextRestrictedAt)) {
-                return true;
-            }
+            path.emplace_back(&current, index);
+            if (self(self, *base->second, path)) return true;
+            path.pop_back();
         }
         return false;
     };
-    return contains(contains, owner, true, {});
+    std::vector<InheritanceEdge> path;
+    if (contains(contains, owner, path)) {
+        return true;
+    }
+    return false;
 }
 
 const FieldDeclaration* SemanticAnalyzer::findField(const ClassDeclaration& declaration,
                                                     const std::string& name) const {
-    if (countFields(declaration, name) != 1) return nullptr;
     for (const auto& field : declaration.fields) {
         if (field.name == name) return &field;
     }
+    const FieldDeclaration* result = nullptr;
     for (const auto& baseName : declaration.baseClassNames) {
         const auto base = classes_.find(baseName);
-        if (base == classes_.end() || countFields(*base->second, name) == 0) continue;
-        return findField(*base->second, name);
+        if (base == classes_.end() ||
+            !basePathAccessible(declaration, {baseName}) ||
+            !memberAccessible(*base->second, name, false)) continue;
+        const auto* candidate = findField(*base->second, name);
+        if (candidate == nullptr) continue;
+        if (result != nullptr) return nullptr;
+        result = candidate;
     }
-    return nullptr;
+    return result;
+}
+
+std::size_t SemanticAnalyzer::accessibleMemberCount(const ClassDeclaration& declaration,
+                                                    const std::string& name,
+                                                    bool method) const {
+    bool declaredHere = false;
+    if (method) {
+        declaredHere = std::any_of(
+            declaration.methods.begin(), declaration.methods.end(),
+            [&name](const MethodDeclaration& item) { return item.name == name; });
+    } else {
+        declaredHere = std::any_of(
+            declaration.fields.begin(), declaration.fields.end(),
+            [&name](const FieldDeclaration& item) { return item.name == name; });
+    }
+    if (declaredHere) return memberAccessible(declaration, name, method) ? 1 : 0;
+
+    std::size_t count = 0;
+    for (const auto& baseName : declaration.baseClassNames) {
+        const auto base = classes_.find(baseName);
+        if (base == classes_.end() || !basePathAccessible(declaration, {baseName})) continue;
+        count += accessibleMemberCount(*base->second, name, method);
+    }
+    return count;
 }
 
 std::size_t SemanticAnalyzer::countFields(const ClassDeclaration& declaration,
@@ -120,10 +179,12 @@ const MethodDeclaration* SemanticAnalyzer::findMethod(const ClassDeclaration& de
     for (const auto& method : declaration.methods) {
         if (method.name == name && !method.constructor) return &method;
     }
-    if (countMethods(declaration, name) != 1) return nullptr;
+    if (accessibleMemberCount(declaration, name, true) != 1) return nullptr;
     for (const auto& baseName : declaration.baseClassNames) {
         const auto base = classes_.find(baseName);
-        if (base != classes_.end() && countMethods(*base->second, name) != 0) {
+        if (base != classes_.end() &&
+            basePathAccessible(declaration, {baseName}) &&
+            accessibleMemberCount(*base->second, name, true) != 0) {
             return findMethod(*base->second, name);
         }
     }

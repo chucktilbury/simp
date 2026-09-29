@@ -23,12 +23,6 @@ class ProtectedGrandchild : public ProtectedChild {
     }
 }
 
-class PrivateGrandchild : public PrivateChild {
-    int readAgain() {
-        return value;
-    }
-}
-
 start {
     PublicChild child = PublicChild();
     child.value = 42;
@@ -43,6 +37,4 @@ start {
     ProtectedGrandchild protectedGrandchild = ProtectedGrandchild();
     print(protectedGrandchild.readAgain());
 
-    PrivateGrandchild privateGrandchild = PrivateGrandchild();
-    print(privateGrandchild.readAgain());
 }
