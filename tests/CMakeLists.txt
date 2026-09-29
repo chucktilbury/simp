@@ -68,14 +68,6 @@ add_test(NAME simp_rejects_non_integer_array_index
         "-DEXPECTED_DIAGNOSTIC=array index and slice bounds must be int"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
-add_test(NAME simp_rejects_nested_array_literal
-    COMMAND "${CMAKE_COMMAND}"
-        "-DCOMPILER=$<TARGET_FILE:simp>"
-        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_array_element_type.simp"
-        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_element_type"
-        "-DEXPECTED_DIAGNOSTIC=array elements must be int, string, a class reference, a map, null, or 'any'; found array"
-        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
-)
 add_test(NAME simp_compile_and_run_heterogeneous_maps
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
@@ -112,12 +104,25 @@ add_test(NAME simp_rejects_numeric_map_index_key
         "-DEXPECTED_DIAGNOSTIC=map keys must have type string"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
-add_test(NAME simp_rejects_map_iteration_without_key
+add_test(NAME simp_compile_and_run_collection_followups
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
-        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_map_iteration_arity.simp"
-        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_iteration_arity"
-        "-DEXPECTED_DIAGNOSTIC=map iteration requires key and value variables"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/positive_collection_followups.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_collection_followups"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/positive_collection_followups.ll"
+        "-DEXPECTED_OUTPUT=3\n2\n20\n1\n0\n1\n2\n4\n5\n30\n5\n5\nsecond\nthird\nfourth\n10\n20\n30\n200\n77\n"
+        "-DREQUIRE_GC_ROOTS=ON"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
+add_test(NAME simp_reports_uncaught_map_slice_bounds
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative_map_slice_bounds_uncaught.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_slice_bounds_uncaught"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_map_slice_bounds_uncaught.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=uncaught runtime exception at .*negative_map_slice_bounds_uncaught.simp:3:[0-9]+: map slice bounds out of bounds"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
 add_test(NAME simp_rejects_array_key_value_iteration

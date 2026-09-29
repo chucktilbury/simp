@@ -54,6 +54,7 @@ typedef struct SimpArray {
 typedef struct SimpMapEntry {
     const char *key;
     uint64_t key_length;
+    uint64_t hash;
     SimpArrayValue value;
 } SimpMapEntry;
 
@@ -62,6 +63,8 @@ typedef struct SimpMap {
     uint64_t length;
     uint64_t capacity;
     SimpMapEntry *entries;
+    uint64_t bucket_capacity;
+    uint64_t *buckets;
 } SimpMap;
 
 typedef struct SimpRootFrame {
@@ -92,6 +95,11 @@ int32_t simp_map_contains(void *map, const char *key, uint64_t key_length,
                           uint64_t column);
 void *simp_map_entry_at(void *map, uint64_t index, const char *file,
                         uint64_t file_length, uint64_t line, uint64_t column);
+int32_t simp_map_remove(void *map, const char *key, uint64_t key_length,
+                        const char *file, uint64_t file_length, uint64_t line,
+                        uint64_t column);
+void *simp_map_slice(void *map, int32_t start, int32_t end, const char *file,
+                     uint64_t file_length, uint64_t line, uint64_t column);
 void simp_map_set(void *map, const char *key, uint64_t key_length,
                   const SimpArrayValue *value,
                   const char *file, uint64_t file_length, uint64_t line, uint64_t column);

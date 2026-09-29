@@ -320,7 +320,7 @@ int main() {
          }},
         {"string equality rejected", [] {
              expectDiagnostic("start {\n string a = \"a\"\n print(a == \"a\")\n}",
-                              "string equality is not implemented");
+                              "equality is implemented only for int values");
          }},
         {"semantic type mismatch", [] {
              expectDiagnostic("start {\n int value = \"wrong\"\n}",
@@ -492,10 +492,9 @@ int main() {
                  "start {\n  Widget[] values = [Widget(1)]\n}",
                  "expected expression");
          }},
-        {"nested array literals are rejected", [] {
-             expectDiagnostic("start {\n  array bag = [1, [2, 3]]\n}",
-                              "array elements must be int, string, a class reference, a map, "
-                              "null, or 'any'; found array");
+        {"nested array literals are accepted", [] {
+             expectValid("start {\n  array inner = [2, 3]\n"
+                         "  array bag = [1, inner, [4, 5]]\n}");
          }},
         {"'any' has no members until extracted", [] {
              expectDiagnostic("start {\n  array bag = [1]\n  any first = bag[0]\n"
@@ -503,10 +502,10 @@ int main() {
                               "'any' has no members; assign it to a typed variable first to "
                               "extract its value");
          }},
-        {"array and 'any' equality is not implemented", [] {
+        {"array and 'any' equality is rejected", [] {
              expectDiagnostic("start {\n  array bag = [1]\n  array other = [1]\n"
                               "  int same = bag == other\n}",
-                              "collection and 'any' equality are not implemented in this prototype");
+                              "equality is implemented only for int values");
          }},
         {"map type and literal keys are accepted", [] {
              expectValid("start {\n"
@@ -529,15 +528,40 @@ int main() {
              expectDiagnostic("start {\n map values = {}\n values.length = 1\n}",
                               "map length is read-only");
          }},
-        {"map and 'any' equality are not implemented", [] {
+        {"map equality is rejected", [] {
              expectDiagnostic("start {\n map values = {}\n map other = {}\n"
                               " int same = values == other\n}",
-                              "collection and 'any' equality are not implemented in this "
-                              "prototype");
+                              "equality is implemented only for int values");
          }},
-        {"map slicing is rejected", [] {
-             expectDiagnostic("start {\n map values = {}\n any value = values[\"a\":\"z\"]\n}",
-                              "slicing requires an array");
+        {"'any' equality is rejected", [] {
+             expectDiagnostic("start {\n any value = 1\n"
+                              " int same = value == value\n}",
+                              "equality is implemented only for int values");
+         }},
+        {"map slicing accepts integer insertion-order bounds", [] {
+             expectValid("start {\n map values = {\"a\": 1, \"b\": 2}\n"
+                         " map copy = values[0:1]\n"
+                         " print(copy.length)\n}");
+         }},
+        {"map removal accepts one string key", [] {
+             expectValid("start {\n map values = {\"a\": 1}\n"
+                         " int removed = values.remove(\"a\")\n"
+                         " print(removed)\n}");
+         }},
+        {"map removal rejects a non-string key", [] {
+             expectDiagnostic("start {\n map values = {}\n"
+                              " int removed = values.remove(1)\n}",
+                              "map key must have type string");
+         }},
+        {"map removal rejects incorrect arity", [] {
+             expectDiagnostic("start {\n map values = {}\n"
+                              " int removed = values.remove()\n}",
+                              "map 'remove' expects one string key");
+         }},
+        {"map slice bounds require integers", [] {
+             expectDiagnostic("start {\n map values = {}\n"
+                              " map copy = values[\"a\":\"z\"]\n}",
+                              "map index and slice bounds must be int");
          }},
          {"map contains and collection iteration are accepted", [] {
               expectValid("start {\n"
@@ -549,10 +573,12 @@ int main() {
                           "  for (item in items) { print(item) }\n"
                           "}");
          }},
-         {"map iteration requires key and value variables", [] {
-              expectDiagnostic("start {\n map values = {}\n"
-                               " for (value in values) { print(value) }\n}",
-                               "map iteration requires key and value variables");
+         {"map iteration supports value-only and key/value bindings", [] {
+              expectValid("start {\n"
+                          "  map values = {\"one\": 1}\n"
+                          "  for (value in values) { print(value) }\n"
+                          "  for (key, value in values) { print(key) }\n"
+                          "}");
          }},
          {"array iteration accepts one value variable", [] {
               expectDiagnostic("start {\n array values = []\n"

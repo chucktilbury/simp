@@ -447,17 +447,18 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         return rootObjectValue({"any", loaded}, expression.location);
     }
     case ExpressionKind::Slice: {
-        const auto array = emitExpression(*expression.left);
+        const auto collection = emitExpression(*expression.left);
         const auto start = emitIntegerExpression(*expression.arguments[0]);
         const auto end = emitIntegerExpression(*expression.arguments[1]);
         const auto file = internString(expression.location.file);
         const auto result = newTemporary();
-        instructions_ += "  " + result + " = call ptr @simp_array_slice(ptr " + array.operand +
+        const auto function = isMapType(collection.type) ? "simp_map_slice" : "simp_array_slice";
+        instructions_ += "  " + result + " = call ptr @" + function + "(ptr " + collection.operand +
                          ", i32 " + start.operand + ", i32 " + end.operand + ", ptr " + file +
                          ", i64 " + std::to_string(expression.location.file.size()) +
                          ", i64 " + std::to_string(expression.location.line) + ", i64 " +
                          std::to_string(expression.location.column) + ")\n";
-        return rootObjectValue({array.type, result}, expression.location);
+        return rootObjectValue({collection.type, result}, expression.location);
     }
     case ExpressionKind::ConstructorCall: {
         const auto found = classes_.find(expression.value);
@@ -568,20 +569,24 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const bool qualified = resolveBaseQualifier(*target.left, root, owner, basePath);
         auto receiver = emitExpression(qualified ? *root : *target.left);
         if (isMapType(receiver.type)) {
-            if (target.value != "contains" || expression.arguments.size() != 1) {
+            if ((target.value != "contains" && target.value != "remove") ||
+                expression.arguments.size() != 1) {
                 throw DiagnosticError(target.location,
-                                      "maps support only 'contains(string)'");
+                                      "maps support only 'contains(string)' and 'remove(string)'");
             }
             const auto key = emitExpression(*expression.arguments.front());
             const auto keyData = newTemporary();
             const auto keyLength = newTemporary();
             const auto file = internString(target.location.file);
             const auto result = newTemporary();
+            const auto function = target.value == "contains"
+                                      ? "simp_map_contains"
+                                      : "simp_map_remove";
             instructions_ += "  " + keyData + " = extractvalue %SimpleString " + key.operand +
                              ", 0\n"
                              "  " + keyLength + " = extractvalue %SimpleString " + key.operand +
                              ", 1\n"
-                             "  " + result + " = call i32 @simp_map_contains(ptr " +
+                             "  " + result + " = call i32 @" + function + "(ptr " +
                              receiver.operand + ", ptr " + keyData + ", i64 " + keyLength +
                              ", ptr " + file + ", i64 " +
                              std::to_string(target.location.file.size()) + ", i64 " +

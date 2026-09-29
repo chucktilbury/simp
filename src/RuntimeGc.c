@@ -573,6 +573,7 @@ void simp_gc_collect(void) {
                     free((void *)map->entries[index].key);
                 }
                 free(map->entries);
+                free(map->buckets);
             }
             free(node->object);
             free(node);
@@ -717,15 +718,54 @@ static int map_key_matches(const SimpMapEntry *entry, const char *key,
            (key_length == 0 || memcmp(entry->key, key, (size_t)key_length) == 0);
 }
 
+static uint64_t map_key_hash(const char *key, uint64_t key_length) {
+    uint64_t hash = UINT64_C(14695981039346656037);
+    for (uint64_t index = 0; index < key_length; ++index) {
+        hash ^= (unsigned char)key[index];
+        hash *= UINT64_C(1099511628211);
+    }
+    return hash;
+}
+
+static uint64_t map_find_index(const SimpMap *map, const char *key,
+                               uint64_t key_length, uint64_t hash) {
+    if (map->bucket_capacity == 0) return UINT64_MAX;
+    const uint64_t mask = map->bucket_capacity - 1;
+    uint64_t bucket = hash & mask;
+    for (uint64_t probes = 0; probes < map->bucket_capacity; ++probes) {
+        const uint64_t stored = map->buckets[bucket];
+        if (stored == 0) return UINT64_MAX;
+        const uint64_t index = stored - 1;
+        const SimpMapEntry *entry = &map->entries[index];
+        if (entry->hash == hash && map_key_matches(entry, key, key_length)) return index;
+        bucket = (bucket + 1) & mask;
+    }
+    return UINT64_MAX;
+}
+
+static void map_rebuild_index(SimpMap *map, uint64_t capacity) {
+    if (capacity < 8 || (capacity & (capacity - 1)) != 0 ||
+        capacity > SIZE_MAX / sizeof(uint64_t)) abort();
+    uint64_t *buckets = (uint64_t *)calloc((size_t)capacity, sizeof(*buckets));
+    if (buckets == NULL) abort();
+    const uint64_t mask = capacity - 1;
+    for (uint64_t index = 0; index < map->length; ++index) {
+        uint64_t bucket = map->entries[index].hash & mask;
+        while (buckets[bucket] != 0) bucket = (bucket + 1) & mask;
+        buckets[bucket] = index + 1;
+    }
+    free(map->buckets);
+    map->buckets = buckets;
+    map->bucket_capacity = capacity;
+}
+
 void *simp_map_get(void *object, const char *key, uint64_t key_length, const char *file,
                    uint64_t file_length, uint64_t line, uint64_t column) {
     SimpMap *map = checked_map(object, file, file_length, line, column);
     if ((key == NULL && key_length != 0) || key_length > (uint64_t)SIZE_MAX) abort();
-    for (uint64_t index = 0; index < map->length; ++index) {
-        if (map_key_matches(&map->entries[index], key, key_length)) {
-            return &map->entries[index].value;
-        }
-    }
+    const uint64_t index = map_find_index(map, key, key_length,
+                                          map_key_hash(key, key_length));
+    if (index != UINT64_MAX) return &map->entries[index].value;
     static const char message[] = "map key not found";
     simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     abort();
@@ -736,10 +776,8 @@ int32_t simp_map_contains(void *object, const char *key, uint64_t key_length,
                           uint64_t column) {
     SimpMap *map = checked_map(object, file, file_length, line, column);
     if ((key == NULL && key_length != 0) || key_length > (uint64_t)SIZE_MAX) abort();
-    for (uint64_t index = 0; index < map->length; ++index) {
-        if (map_key_matches(&map->entries[index], key, key_length)) return 1;
-    }
-    return 0;
+    return map_find_index(map, key, key_length, map_key_hash(key, key_length)) !=
+                   UINT64_MAX;
 }
 
 void *simp_map_entry_at(void *object, uint64_t index, const char *file,
@@ -758,11 +796,11 @@ void simp_map_set(void *object, const char *key, uint64_t key_length,
     SimpMap *map = checked_map(object, file, file_length, line, column);
     if (value == NULL || (key == NULL && key_length != 0) ||
         key_length > (uint64_t)SIZE_MAX) abort();
-    for (uint64_t index = 0; index < map->length; ++index) {
-        if (map_key_matches(&map->entries[index], key, key_length)) {
-            map->entries[index].value = *value;
-            return;
-        }
+    const uint64_t hash = map_key_hash(key, key_length);
+    const uint64_t existing = map_find_index(map, key, key_length, hash);
+    if (existing != UINT64_MAX) {
+        map->entries[existing].value = *value;
+        return;
     }
     if (map->length >= INT32_MAX) abort();
     char *key_copy = (char *)malloc(key_length == 0 ? 1 : (size_t)key_length);
@@ -781,10 +819,64 @@ void simp_map_set(void *object, const char *key, uint64_t key_length,
         map->entries = entries;
         map->capacity = capacity;
     }
+    if (map->bucket_capacity == 0 ||
+        map->length + 1 > map->bucket_capacity / 2) {
+        uint64_t bucket_capacity = map->bucket_capacity == 0 ? 8 : map->bucket_capacity;
+        while (map->length + 1 > bucket_capacity / 2) {
+            if (bucket_capacity > UINT64_MAX / 2) {
+                free(key_copy);
+                abort();
+            }
+            bucket_capacity *= 2;
+        }
+        map_rebuild_index(map, bucket_capacity);
+    }
     SimpMapEntry *entry = &map->entries[map->length++];
     entry->key = key_copy;
     entry->key_length = key_length;
+    entry->hash = hash;
     entry->value = *value;
+    uint64_t bucket = hash & (map->bucket_capacity - 1);
+    while (map->buckets[bucket] != 0) {
+        bucket = (bucket + 1) & (map->bucket_capacity - 1);
+    }
+    map->buckets[bucket] = map->length;
+}
+
+int32_t simp_map_remove(void *object, const char *key, uint64_t key_length,
+                        const char *file, uint64_t file_length, uint64_t line,
+                        uint64_t column) {
+    SimpMap *map = checked_map(object, file, file_length, line, column);
+    if ((key == NULL && key_length != 0) || key_length > (uint64_t)SIZE_MAX) abort();
+    const uint64_t index = map_find_index(map, key, key_length,
+                                          map_key_hash(key, key_length));
+    if (index == UINT64_MAX) return 0;
+    free((void *)map->entries[index].key);
+    if (index + 1 < map->length) {
+        memmove(&map->entries[index], &map->entries[index + 1],
+                (size_t)(map->length - index - 1) * sizeof(*map->entries));
+    }
+    --map->length;
+    if (map->bucket_capacity != 0) {
+        map_rebuild_index(map, map->bucket_capacity);
+    }
+    return 1;
+}
+
+void *simp_map_slice(void *object, int32_t start, int32_t end, const char *file,
+                     uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpMap *source = checked_map(object, file, file_length, line, column);
+    if (start < 0 || end < start || (uint64_t)end > source->length) {
+        static const char message[] = "map slice bounds out of bounds";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    SimpMap *copy = (SimpMap *)simp_gc_alloc_map();
+    for (int32_t index = start; index < end; ++index) {
+        const SimpMapEntry *entry = &source->entries[index];
+        simp_map_set(copy, entry->key, entry->key_length, &entry->value,
+                     file, file_length, line, column);
+    }
+    return copy;
 }
 
 void *simp_array_index(void *object, int32_t index, const char *file,

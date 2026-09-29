@@ -1,5 +1,0 @@
-start {
-    // Arrays are heterogeneous bags, but they cannot nest: an array literal
-    // element may not itself be another array (no tag exists for it yet).
-    array values = [1, [2, 3]]
-}

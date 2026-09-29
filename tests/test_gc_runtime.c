@@ -168,6 +168,71 @@ int main(void) {
     if (!simp_gc_pop(&finalizer_frame)) {
         return fail("could not pop finalizer test root");
     }
+
+    SimpRootFrame map_frame = {0};
+    SimpMap *map = NULL;
+    SimpMap *slice = NULL;
+    void *map_slots[] = {&map, &slice};
+    if (!simp_gc_push(&map_frame, map_slots, 2)) {
+        return fail("could not push map test roots");
+    }
+    map = (SimpMap *)simp_gc_alloc_map();
+    for (int index = 0; index < 64; ++index) {
+        char key[8];
+        const int key_length = snprintf(key, sizeof(key), "k%02d", index);
+        SimpArrayValue value = {SIMP_ARRAY_INTEGER, index, NULL, 0};
+        simp_map_set(map, key, (uint64_t)key_length, &value,
+                     "runtime-test.simp", 17, 1, 1);
+    }
+    for (int index = 0; index < 64; ++index) {
+        char key[8];
+        const int key_length = snprintf(key, sizeof(key), "k%02d", index);
+        SimpArrayValue *value = (SimpArrayValue *)simp_map_get(
+            map, key, (uint64_t)key_length, "runtime-test.simp", 17, 1, 1);
+        if (value->tag != SIMP_ARRAY_INTEGER || value->integer != index) {
+            return fail("hashed map lookup returned the wrong insertion");
+        }
+    }
+    if (simp_map_remove(map, "k20", 3, "runtime-test.simp", 17, 1, 1) != 1 ||
+        simp_map_remove(map, "absent", 6, "runtime-test.simp", 17, 1, 1) != 0 ||
+        map->length != 63) {
+        return fail("map removal returned an invalid result or length");
+    }
+    SimpArrayValue tail_value = {SIMP_ARRAY_INTEGER, 99, NULL, 0};
+    simp_map_set(map, "tail", 4, &tail_value, "runtime-test.simp", 17, 1, 1);
+    const SimpMapEntry *first = (const SimpMapEntry *)simp_map_entry_at(
+        map, 20, "runtime-test.simp", 17, 1, 1);
+    if (first->key_length != 3 || memcmp(first->key, "k21", 3) != 0) {
+        return fail("map removal did not preserve insertion-order iteration");
+    }
+    slice = (SimpMap *)simp_map_slice(map, 10, 12, "runtime-test.simp", 17, 1, 1);
+    const SimpMapEntry *slice_first = (const SimpMapEntry *)simp_map_entry_at(
+        slice, 0, "runtime-test.simp", 17, 1, 1);
+    if (slice->length != 2 || slice_first->key_length != 3 ||
+        memcmp(slice_first->key, "k10", 3) != 0) {
+        return fail("map slice did not make an insertion-order shallow copy");
+    }
+    SimpArray *nested = (SimpArray *)simp_gc_alloc_array(0);
+    SimpArrayValue nested_value = {SIMP_ARRAY_ARRAY, 0, nested, 0};
+    simp_map_set(map, "nested", 6, &nested_value, "runtime-test.simp", 17, 1, 1);
+    nested = NULL;
+    simp_gc_collect();
+    if (simp_gc_heap_count() != 3) {
+        return fail("map did not retain a nested array through GC tracing");
+    }
+    if (simp_map_remove(map, "nested", 6, "runtime-test.simp", 17, 1, 1) != 1) {
+        return fail("map could not remove its nested array value");
+    }
+    simp_gc_collect();
+    if (simp_gc_heap_count() != 2) {
+        return fail("removed collection value remained reachable through its map");
+    }
+    map = NULL;
+    slice = NULL;
+    simp_gc_collect();
+    if (simp_gc_heap_count() != 0 || !simp_gc_pop(&map_frame)) {
+        return fail("map and slice roots were not released cleanly");
+    }
     puts("PASS precise roots, reclamation, finalization, destruction, and frame lifecycle");
     return 0;
 }

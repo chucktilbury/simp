@@ -123,13 +123,14 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
             }
             if (isMapType(receiverType)) {
                 if (expression.value == "length") return "int";
-                if (expression.value == "contains") {
+                if (expression.value == "contains" || expression.value == "remove") {
                     throw DiagnosticError(expression.location,
-                                          "map 'contains' must be called with a string key");
+                                          "map '" + expression.value +
+                                              "' must be called with a string key");
                 }
                 throw DiagnosticError(expression.location,
                                       "maps support only the read-only 'length' member and "
-                                      "'contains' method");
+                                      "'contains' and 'remove' methods");
             }
             if (isDynamicValueType(receiverType)) {
                 throw DiagnosticError(expression.location,
@@ -160,19 +161,18 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
                               "class '" + owner->name + "' has no field '" + expression.value + "'");
     }
     case ExpressionKind::ArrayLiteral: {
-        // Arrays are heterogeneous bags: each element may independently be an int,
-        // a string, a class reference, null, or another dynamic 'any' value. Nested
-        // arrays are not supported as elements in this prototype.
+        // Arrays are heterogeneous bags. Collection references remain tagged values,
+        // so nested arrays share the same precise GC tracing as maps.
         for (const auto& element : expression.arguments) {
             const auto actualType = analyzeExpression(*element);
             const bool validElement = actualType == "int" || actualType == "string" ||
                                       actualType == "null" || actualType == "any" ||
-                                      isMapType(actualType) ||
+                                      isMapType(actualType) || isArrayType(actualType) ||
                                       classes_.find(actualType) != classes_.end();
             if (!validElement) {
                 throw DiagnosticError(element->location,
                                       "array elements must be int, string, a class reference, "
-                                      "a map, null, or 'any'; found " + actualType);
+                                      "an array, a map, null, or 'any'; found " + actualType);
             }
         }
         return "array";
@@ -209,6 +209,15 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
             }
             return expression.kind == ExpressionKind::Slice ? "array" : "any";
         }
+        if (isMapType(collectionType) && expression.kind == ExpressionKind::Slice) {
+            for (const auto& bound : expression.arguments) {
+                if (analyzeExpression(*bound) != "int") {
+                    throw DiagnosticError(bound->location,
+                                          "map index and slice bounds must be int");
+                }
+            }
+            return "map";
+        }
         if (isMapType(collectionType) && expression.kind == ExpressionKind::Index) {
             const auto& key = *expression.arguments.front();
             if (analyzeExpression(key) != "string") {
@@ -219,7 +228,7 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
         }
         throw DiagnosticError(expression.location,
                               expression.kind == ExpressionKind::Slice
-                                  ? "slicing requires an array"
+                                  ? "slicing requires an array or map"
                                   : "indexing requires an array or map");
     }
     case ExpressionKind::ConstructorCall: {
@@ -310,13 +319,14 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
         if (!qualified) {
             const auto receiverType = analyzeExpression(*target.left);
             if (isMapType(receiverType)) {
-                if (target.value != "contains") {
+                if (target.value != "contains" && target.value != "remove") {
                     throw DiagnosticError(target.location,
-                                          "maps support only the 'contains' method");
+                                          "maps support only the 'contains' and 'remove' methods");
                 }
                 if (expression.arguments.size() != 1) {
                     throw DiagnosticError(expression.location,
-                                          "map 'contains' expects one string key");
+                                          "map '" + target.value +
+                                              "' expects one string key");
                 }
                 if (analyzeExpression(*expression.arguments.front()) != "string") {
                     throw DiagnosticError(expression.arguments.front()->location,
@@ -412,19 +422,10 @@ std::string SemanticAnalyzer::analyzeExpression(const Expression& expression,
         const auto right = analyzeExpression(*expression.right);
         const auto& operation = expression.value;
         if (operation == "==" || operation == "!=") {
-            if (isArrayType(left) || isArrayType(right) || isMapType(left) || isMapType(right) ||
-                isDynamicValueType(left) ||
-                isDynamicValueType(right)) {
+            if (left != "int" || right != "int") {
                 throw DiagnosticError(expression.location,
-                                      "collection and 'any' equality are not implemented in this "
-                                      "prototype");
-            }
-            if (left == "string" && right == "string") {
-                throw DiagnosticError(expression.location,
-                                      "string equality is not implemented in this prototype");
-            }
-            if (left != right) {
-                throw DiagnosticError(expression.location, "comparison operands must be matching ints");
+                                      "equality is implemented only for int values; strings, "
+                                      "objects, collections, and 'any' do not support equality");
             }
             return "int";
         }

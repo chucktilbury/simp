@@ -297,19 +297,21 @@ dynamic `any` value type rather than a statically-known concrete type; assigning
 `values[index] = expr` accepts any supported element type directly.
 `values.length` is a read-only `int`, and `values[start:end]` copies the
 half-open range `[start, end)` into independent storage. Copying is shallow
-for class references. Arrays have a fixed length; array assignment aliases
+for class references and nested collections. Arrays have a fixed length; array assignment aliases
 the same mutable storage. Negative/out-of-range indices and invalid slice
 bounds raise catchable, source-located exceptions. `any` is the explicit
 dynamic/tagged value type: it can be declared directly, holds an `int`,
 `string`, class reference, map reference, or `null`, has no members of its own,
 and must be assigned to a concretely typed variable/field/parameter to extract
 its value (a runtime-checked operation that raises on a tag or exact-class mismatch;
-there is no covariant/polymorphic downcast support). Direct nested-array
-elements, direct array-to-`any` conversion, and append/resize operations are
-not implemented; collection/`any` equality (`==`/`!=`) is also not implemented.
-Arrays and maps can be carried through tagged values produced by map lookup.
-The runtime traces class-reference and nested collection references reached
-through arrays, maps, `any` values, and object fields.
+there is no covariant/polymorphic downcast support). Nested arrays and
+collections are supported as elements and are traced by the GC. Direct
+array-to-`any` conversion and append/resize operations are not implemented.
+Equality and ordering comparisons are limited to `int`; strings, objects,
+arrays, maps, and `any` do not support `==` or `!=`. Arrays and maps can be
+carried through tagged values produced by collection indexing. The runtime
+traces class-reference and nested collection references reached through arrays,
+maps, `any` values, and object fields.
 
 Maps are implemented as the corresponding keyed collection using `map` (with
 `dict` as an alias), brace literals such as `{"name": "Ada", "age": 37}`, and
@@ -323,19 +325,31 @@ access raises a source-located runtime exception that can be caught with
 `try`/`except`. Map assignment aliases its mutable storage.
 
 Map values accept ints, strings, class references, null, `any`, arrays, and
-maps. Maps may nest maps and arrays, and arrays may hold maps; arrays remain
-one-dimensional and array-to-`any` conversion is still unsupported. Array and
-map references in tagged values use distinct tags, so typed extraction checks
-the requested collection kind. The precise collector traces class references
-and nested map/array references stored in both collection kinds, including
-values reached through `any`. Array iteration uses `for (value in array)` and
-binds each element as `any` in increasing index order. Map iteration uses
-`for (key, value in map)` and binds a `string` key plus an `any` value in
-insertion order. Map iteration snapshots the entry count at loop start, so
-insertions during the loop are deferred; replacement preserves entry position,
-and values are read when their entries are reached. Runtime-owned copies of
-map key bytes avoid retaining pointers into transient string expressions.
-Deletion, map slicing, and collection equality are not yet implemented.
+maps. Arrays and maps may recursively contain either collection type. Array
+and map references in tagged values use distinct tags, so typed extraction
+checks the requested collection kind. The precise collector traces
+class-reference and nested collection references in both collection kinds,
+including values reached through `any`. Map lookup and membership use a
+hash index over exact UTF-8 key bytes; iteration uses a separate ordered entry
+sequence, keeping insertion order deterministic. Runtime-owned copies of map
+key bytes avoid retaining pointers into transient string expressions.
+
+`map.remove(key)` returns integer `1` if the key existed and was deleted, or
+`0` if it was absent. Deletion preserves the relative order of remaining
+entries; reinserting a deleted key places it at the end. `map[start:end]`
+copies the half-open range of entries in insertion order into an independent,
+shallow map. Its keys and values are copied, but referenced objects and nested
+collections are shared. Invalid map slice bounds raise a catchable,
+source-located exception.
+
+Array iteration uses `for (value in array)` and binds each element as `any` in
+increasing index order. Map iteration accepts `for (value in map)` for
+value-only binding or `for (key, value in map)` for both a `string` key and an
+`any` value. Both forms iterate over a shallow snapshot of entries and values
+taken when the loop starts. Mutations to the original collection during the
+loop—including inserting, deleting, or replacing entries/elements—do not
+change which values the current loop observes; referenced objects remain
+shared through the snapshot.
 
 ### Examples that guide the design
 

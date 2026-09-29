@@ -93,10 +93,12 @@ and semantic errors.
   begin single-line comments, while `/* ... */` is a block comment.
 - Expressions include integer and string literals, identifiers, parentheses,
   unary `+`, `-`, `!`, arithmetic `+ - * / %`, comparisons `== != < <= > >=`,
-  array and map literals, zero-based indexing, copying array slices, and the
-  map key check `mapValue.contains(stringExpression)`.
+  array and map literals, zero-based indexing, copying array/map slices, and
+  map operations `mapValue.contains(stringExpression)` and
+  `mapValue.remove(stringExpression)`.
 - `if (condition) { ... }`, unconditional `else { ... }`, and
-  `while (condition) { ... }`, `for (value in arrayValue) { ... }`, and
+  `while (condition) { ... }`, `for (value in arrayValue) { ... }`,
+  `for (value in mapValue) { ... }`, and
   `for (key, value in mapValue) { ... }` execute in the LLVM backend.
   Conditions are integer expressions; zero is false and nonzero is true. An
   `else (condition)` form is explicitly rejected.
@@ -128,7 +130,8 @@ and semantic errors.
 - Arrays (`array`, with `list` accepted as an alias keyword for the exact same
   type) are heterogeneous bags: a single literal such as
   `[1, "two", Node(3), null]` may freely mix ints, strings, class references,
-  maps, and `null` in one collection; an empty literal `[]` is always allowed.
+  arrays, maps, and `null` in one collection; an empty literal `[]` is always
+  allowed. Nested arrays and collections are traced by the GC.
   Reading an element with `values[index]` yields the explicit dynamic `any`
   value type — it does not statically know whether that slot holds an `int`,
   a `string`, a class reference, or a map reference. Assigning
@@ -141,12 +144,11 @@ and semantic errors.
   to the same objects). Invalid indices and slice bounds raise catchable
   runtime exceptions with source locations.
 - Array iteration visits elements in index order and binds each element as
-  `any`; map iteration binds a string key and an `any` value in insertion order.
-  A map loop snapshots its entry count at loop start, so keys inserted in the
-  body are not visited until a later loop. Replacing an existing key preserves
-  its position; replacing a value before its iteration is observed when that
-  entry is reached. `contains(key)` returns `1` or `0` and does not throw for a
-  missing key.
+  `any`; map iteration binds an `any` value alone or a string key and `any`
+  value in insertion order. Both forms snapshot their entries (including
+  values) at loop start: insertion, removal, or replacement during the loop
+  does not change the current iteration. The snapshot is shallow, so referenced
+  objects and nested collections remain shared.
 - Maps (`map`, with `dict` as an alias) are mutable heterogeneous dictionaries.
   A literal uses `{ "name": "Ada", "age": 37 }`; keys are string expressions
   and are compared by exact UTF-8 bytes (case-sensitive, without normalization).
@@ -157,10 +159,16 @@ and semantic errors.
   assignment aliases the same mutable storage. Values may be ints, strings,
   class references, null, `any`, arrays, or maps; array/map references extracted
   from `any` are runtime-checked. Maps can contain nested maps and arrays, and
-  arrays can contain maps. Keys must have statically known type `string`; an
+  arrays can contain nested arrays. Exact UTF-8 byte hashing provides expected
+  constant-time lookup while a separate insertion-order sequence keeps
+  iteration deterministic. Keys must have statically known type `string`; an
   `any` value is not accepted as a key without an implemented type-test or
-  extraction. Deletion, map slicing, and collection equality are not
-  implemented.
+  extraction. `values.remove(key)` returns `1` when an entry was removed and
+  `0` when it was absent; removing a key preserves the order of other entries,
+  and reinserting it appends it. `values[start:end]` makes an independent
+  shallow map copy from the half-open insertion-order range `[start, end)`.
+- Equality and ordering comparisons are intentionally limited to `int`.
+  Strings, objects, arrays, maps, and `any` do not support `==` or `!=`.
 - `any` is the explicit dynamic/tagged value type: it can hold an `int`, a
   `string`, a class reference, `null`, or a map reference; map lookups can also
   carry array references through it. It can be declared directly
@@ -177,11 +185,10 @@ and semantic errors.
   payload prints its value; an object reference prints a fixed `<object>`
   placeholder (or `null`), including map and array references, since
   user-defined `toString()` dispatch is not implemented.
-- The array/map/`any` subset is deliberately bounded: arrays reject statically
-  known nested-array elements, and direct array-to-`any` conversion is
-  unsupported (an array can still be carried through a map value). Append/resize
-  operations, omitted slice bounds, slice steps, and collection/`any` equality
-  (`==`/`!=`) are unsupported.
+- The array/map/`any` subset is deliberately bounded: direct array-to-`any`
+  conversion is unsupported (an array can still be carried through a map value
+  or a collection element). Append/resize operations, omitted slice bounds,
+  slice steps, and non-integer equality are unsupported.
   Class-reference and collection values reachable through arrays, maps, and
   `any` are traced by the GC.
 - `;`, `#`, and `//` line comments, `/* ... */` block comments, and basic

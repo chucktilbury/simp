@@ -217,15 +217,26 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         return;
     }
     case StatementKind::ForEach: {
-        const auto collection = emitExpression(*statement.expressions.front());
-        const bool array = isArrayType(collection.type);
+        const auto source = emitExpression(*statement.expressions.front());
+        const bool array = isArrayType(source.type);
         const auto lengthAddress = newTemporary();
         const auto length = newTemporary();
         instructions_ += "  " + lengthAddress +
                          " = getelementptr inbounds " +
                          (array ? "%SimpleArray" : "%SimpleMap") + ", ptr " +
-                         collection.operand + ", i32 0, i32 1\n"
+                         source.operand + ", i32 0, i32 1\n"
                          "  " + length + " = load i64, ptr " + lengthAddress + "\n";
+        const auto narrowedLength = newTemporary();
+        const auto snapshot = newTemporary();
+        const auto file = internString(statement.location.file);
+        const auto sliceFunction = array ? "simp_array_slice" : "simp_map_slice";
+        instructions_ += "  " + narrowedLength + " = trunc i64 " + length + " to i32\n"
+                         "  " + snapshot + " = call ptr @" + sliceFunction + "(ptr " +
+                         source.operand + ", i32 0, i32 " + narrowedLength + ", ptr " + file +
+                         ", i64 " + std::to_string(statement.location.file.size()) +
+                         ", i64 " + std::to_string(statement.location.line) + ", i64 " +
+                         std::to_string(statement.location.column) + ")\n";
+        const auto collection = rootObjectValue({source.type, snapshot}, statement.location);
 
         const auto indexSlot = "%v" + std::to_string(nextVariable_++);
         entryAllocas_ += "  " + indexSlot + " = alloca i64\n";
@@ -254,7 +265,6 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                          endLabel + "\n" + bodyLabel + ":\n";
         if (array) {
             const auto narrowed = newTemporary();
-            const auto file = internString(statement.location.file);
             const auto element = newTemporary();
             const auto loaded = newTemporary();
             instructions_ += "  " + narrowed + " = trunc i64 " + index + " to i32\n"
@@ -268,39 +278,40 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                              "  store %SimpleArrayValue " + loaded + ", ptr " + valueSlot +
                              "\n";
         } else {
-            const auto file = internString(statement.location.file);
             const auto entry = newTemporary();
-            const auto keyDataAddress = newTemporary();
-            const auto keyData = newTemporary();
-            const auto keyLengthAddress = newTemporary();
-            const auto keyLength = newTemporary();
-            const auto keyFirst = newTemporary();
-            const auto keyValue = newTemporary();
             const auto valueAddress = newTemporary();
             const auto value = newTemporary();
             instructions_ += "  " + entry + " = call ptr @simp_map_entry_at(ptr " +
                              collection.operand + ", i64 " + index + ", ptr " + file +
                              ", i64 " + std::to_string(statement.location.file.size()) +
                              ", i64 " + std::to_string(statement.location.line) + ", i64 " +
-                             std::to_string(statement.location.column) + ")\n"
-                             "  " + keyDataAddress +
+                             std::to_string(statement.location.column) + ")\n";
+            if (!statement.keyName.empty()) {
+                const auto keyDataAddress = newTemporary();
+                const auto keyData = newTemporary();
+                const auto keyLengthAddress = newTemporary();
+                const auto keyLength = newTemporary();
+                const auto keyFirst = newTemporary();
+                const auto keyValue = newTemporary();
+                instructions_ += "  " + keyDataAddress +
+                                 " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
+                                 ", i32 0, i32 0\n"
+                                 "  " + keyData + " = load ptr, ptr " + keyDataAddress + "\n"
+                                 "  " + keyLengthAddress +
+                                 " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
+                                 ", i32 0, i32 1\n"
+                                 "  " + keyLength + " = load i64, ptr " + keyLengthAddress +
+                                 "\n"
+                                 "  " + keyFirst + " = insertvalue %SimpleString poison, ptr " +
+                                 keyData + ", 0\n"
+                                 "  " + keyValue + " = insertvalue %SimpleString " + keyFirst +
+                                 ", i64 " + keyLength + ", 1\n"
+                                 "  store %SimpleString " + keyValue + ", ptr " +
+                                 scopes_.back().at(statement.keyName).pointer + "\n";
+            }
+            instructions_ += "  " + valueAddress +
                              " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
-                             ", i32 0, i32 0\n"
-                             "  " + keyData + " = load ptr, ptr " + keyDataAddress + "\n"
-                             "  " + keyLengthAddress +
-                             " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
-                             ", i32 0, i32 1\n"
-                             "  " + keyLength + " = load i64, ptr " + keyLengthAddress +
-                             "\n"
-                             "  " + keyFirst + " = insertvalue %SimpleString poison, ptr " +
-                             keyData + ", 0\n"
-                             "  " + keyValue + " = insertvalue %SimpleString " + keyFirst +
-                             ", i64 " + keyLength + ", 1\n"
-                             "  store %SimpleString " + keyValue + ", ptr " +
-                             scopes_.back().at(statement.keyName).pointer + "\n"
-                             "  " + valueAddress +
-                             " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
-                             ", i32 0, i32 2\n"
+                             ", i32 0, i32 3\n"
                              "  " + value + " = load %SimpleArrayValue, ptr " + valueAddress +
                              "\n"
                              "  store %SimpleArrayValue " + value + ", ptr " + valueSlot +

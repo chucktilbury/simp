@@ -1,0 +1,5 @@
+start {
+    map values = {"first": 1, "second": 2}
+    map copy = values[0:3]
+    print(copy.length)
+}

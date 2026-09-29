@@ -231,10 +231,6 @@ void SemanticAnalyzer::analyzeStatement(const Statement& statement) {
             throw DiagnosticError(statement.location,
                                   "array iteration accepts one value variable");
         }
-        if (map && statement.keyName.empty()) {
-            throw DiagnosticError(statement.location,
-                                  "map iteration requires key and value variables");
-        }
         if (!statement.keyName.empty() && statement.keyName == statement.name) {
             throw DiagnosticError(statement.location,
                                   "map key and value iteration variables must be distinct");
