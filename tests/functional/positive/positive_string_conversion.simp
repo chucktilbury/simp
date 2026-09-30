@@ -1,0 +1,68 @@
+# Exercises string-to-number conversion (s.toInt(), s.toUnsigned(),
+# s.toFloat()): the built-in, non-class dot-operations on 'string', in the
+# same style as array.length/buffer.resize(). Covers success, a leading
+# '+', overflow, invalid characters (including trailing garbage and an
+# empty string), a negative sign rejected by toUnsigned, and a null
+# receiver raising instead of crashing.
+start {
+    string a = "42"
+    string b = "-17"
+    string c = "3.14"
+    string d = "255"
+
+    print(a.toInt())
+    print(b.toInt())
+    print(d.toUnsigned())
+    print(c.toFloat())
+
+    string plus = "+5"
+    print(plus.toInt())
+
+    string sci = "1.5e2"
+    print(sci.toFloat())
+
+    string maxUnsigned = "18446744073709551615"
+    print(maxUnsigned.toUnsigned())
+
+    try {
+        string bad = "abc"
+        print(bad.toInt())
+    } except e {
+        print(e)
+    }
+
+    try {
+        string trailing = "12x"
+        print(trailing.toInt())
+    } except e {
+        print(e)
+    }
+
+    try {
+        string empty = ""
+        print(empty.toInt())
+    } except e {
+        print(e)
+    }
+
+    try {
+        string overflow = "99999999999"
+        print(overflow.toInt())
+    } except e {
+        print(e)
+    }
+
+    try {
+        string negative = "-5"
+        print(negative.toUnsigned())
+    } except e {
+        print(e)
+    }
+
+    try {
+        string n = null
+        print(n.toInt())
+    } except e {
+        print("null reference")
+    }
+}

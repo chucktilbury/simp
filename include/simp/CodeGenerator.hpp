@@ -6,6 +6,7 @@
 #pragma once
 
 #include "simp/Ast.hpp"
+#include "simp/Mangling.hpp"
 
 #include <iosfwd>
 #include <string>
@@ -36,7 +37,7 @@ private:
         // (confirmed)" note in SIMPLE-LANGUAGE-NOTES.md). Empty for every
         // other binding (fields, parameters, non-scalar locals), meaning
         // "not tracked" / statically non-null.
-        std::string nullFlagAddress;
+        std::string nullFlagAddress{};
     };
     struct Value {
         std::string type;
@@ -45,7 +46,7 @@ private:
         // name of an i1 SSA register that is true when the value is null.
         // Empty means "statically known non-null" (the common case), which
         // keeps generated IR for non-null code paths unchanged.
-        std::string nullFlag;
+        std::string nullFlag{};
     };
     struct LoopTarget {
         std::string breakLabel;
@@ -124,12 +125,19 @@ private:
                               std::vector<std::string>& path) const;
     const MethodDeclaration* findMethod(const ClassDeclaration& owner,
                                         const std::string& name) const;
+    const MethodDeclaration* findMethod(const ClassDeclaration& owner,
+                                        const std::string& name,
+                                        const std::string& signature) const;
     std::vector<const MethodDeclaration*> methodSlots(const ClassDeclaration& owner) const;
     std::size_t methodSlot(const ClassDeclaration& owner, const std::string& name) const;
+    std::size_t methodSlot(const ClassDeclaration& owner, const std::string& name,
+                           const std::string& signature) const;
     std::string declaringClass(const MethodDeclaration& method) const;
     std::string emitAddress(const Binding& binding, const SourceLocation& location);
     std::string llvmType(const std::string& type) const;
     std::string methodSymbol(const std::string& className, const std::string& methodName) const;
+    std::string methodSymbol(const std::string& className,
+                             const MethodDeclaration& method) const;
     std::string newTemporary();
     std::string freshLabel(const std::string& prefix);
     std::string internString(const std::string& bytes);

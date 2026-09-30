@@ -233,6 +233,9 @@ set(FUNCTIONAL_RUN_TESTS
     "simp_compile_and_run_include_relative_path|positive_include_relative_path.simp|33\n|-"
     "simp_compile_and_run_return_parentheses|positive_return_parentheses.simp|10\n1\n|-"
     "simp_compile_and_run_threads|positive_threads.simp|42\n8\n800\n|gc"
+    "simp_compile_and_run_overload_out_of_line|positive_overload_out_of_line.simp|10\n15\n|-"
+    "simp_compile_and_run_method_overloads|positive_method_overloads.simp|1\n15\n2\n3\n7\n1\n105\n2\n55\n7\n1\n105\n7\n|-"
+    "simp_compile_and_run_string_conversion|positive_string_conversion.simp|42\n-17\n255\n3.14\n5\n150\n18446744073709551615\nstring does not contain a valid integer\nstring does not contain a valid integer\nstring does not contain a valid integer\nstring integer value is out of range\nstring does not contain a valid unsigned integer\nnull reference\n|-"
 )
 foreach(test_row IN LISTS FUNCTIONAL_RUN_TESTS)
     string(REPLACE "|" ";" test_fields "${test_row}")
@@ -319,6 +322,9 @@ set(FUNCTIONAL_REJECT_TESTS
     "simp_rejects_ambiguous_transitive_virtual_method|negative_transitive_ambiguous_method.simp|ambiguous inherited method|-"
     "simp_rejects_explicit_virtual_base_initialization|negative_virtual_base_explicit_super.simp|virtual base constructors must use super.virtual|-"
     "simp_rejects_incompatible_override|negative_incompatible_override.simp|override of 'value' must preserve the inherited method signature|-"
+    "simp_rejects_duplicate_overload|negative_duplicate_overload.simp|duplicate method 'area' in class 'Shape'|-"
+    "simp_rejects_ambiguous_overload|negative_ambiguous_overload.simp|is ambiguous between overloads|-"
+    "simp_rejects_unmatched_overload|negative_unmatched_overload.simp|matches these argument types|-"
     "simp_rejects_inheritance_missing_super|negative_inheritance_missing_super.simp|derived constructor must begin with super.Base|-"
     "simp_rejects_inheritance_cycle|negative_inheritance_cycle.simp|inheritance cycle|-"
     "simp_rejects_unknown_class|negative_unknown_class.simp|unknown type or class 'Missing'|-"

@@ -169,7 +169,8 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
 void CodeGenerator::emitMethod(const ClassDeclaration& owner,
                                const MethodDeclaration& declaration,
                                const std::string& symbolOverride) {
-    const auto definition = methodDefinitions_.find(owner.name + "." + declaration.name);
+    const auto definition =
+        methodDefinitions_.find(owner.name + "." + methodSignatureKey(declaration));
     const MethodDeclaration& method = definition == methodDefinitions_.end()
                                          ? declaration
                                          : definition->second->method;
@@ -219,7 +220,7 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
         functionPrologue_ += "  store " + llvmType(parameter.type) + " " + argument +
                              ", ptr " + pointer + "\n";
     }
-    const auto symbol = symbolOverride.empty() ? methodSymbol(owner.name, method.name)
+    const auto symbol = symbolOverride.empty() ? methodSymbol(owner.name, method)
                                                : symbolOverride;
     const auto returnType = llvmType(method.returnType);
     if (method.constructor) {
@@ -353,7 +354,7 @@ void CodeGenerator::emitClassMethods(const Program& program) {
                     signature += ", " + llvmType(parameter.type);
                 }
                 functions += "declare " + llvmType(method.returnType) + " " +
-                             methodSymbol(owner.name, method.name) + "(" + signature + ")\n";
+                             methodSymbol(owner.name, method) + "(" + signature + ")\n";
             }
             functions += "declare void @simp.finalize." + owner.name + "(ptr)\n";
             continue;
@@ -387,6 +388,7 @@ void CodeGenerator::emitClassMethods(const Program& program) {
                 for (const auto& candidate : candidates) {
                     for (const auto& method : candidate.first->methods) {
                         if (method.name == slots[slotIndex]->name &&
+                            sameParameterTypes(method, *slots[slotIndex]) &&
                             !method.constructor && !method.destructor) {
                             implementation = &method;
                             implementationOwner = candidate.first;
@@ -427,11 +429,11 @@ void CodeGenerator::emitClassMethods(const Program& program) {
                 }
                 if (implementation->returnType == "void") {
                     thunk += "  call void " + methodSymbol(implementationOwner->name,
-                                                           implementation->name) +
+                                                           *implementation) +
                              "(" + callArguments + ")\n  ret void\n}\n\n";
                 } else {
                     thunk += "  %result = call " + returnType + " " +
-                             methodSymbol(implementationOwner->name, implementation->name) +
+                             methodSymbol(implementationOwner->name, *implementation) +
                              "(" + callArguments + ")\n  ret " + returnType +
                              " %result\n}\n\n";
                 }
@@ -630,8 +632,8 @@ std::string CodeGenerator::generate(const Program& program,
     nextString_ = 0;
     std::unordered_set<std::string> declaredExternalSymbols;
     for (const auto& definition : program.outOfLineMethods) {
-        methodDefinitions_.emplace(definition.className + "." + definition.method.name,
-                                   &definition);
+        methodDefinitions_.emplace(
+            definition.className + "." + methodSignatureKey(definition.method), &definition);
         if (definition.method.externalBinding &&
             declaredExternalSymbols.insert(definition.method.externalSymbol).second) {
             const auto owner = std::find_if(
@@ -690,6 +692,9 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare i32 @simp_map_remove(ptr, ptr, i64, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_map_slice(ptr, i32, i32, ptr, i64, i64, i64)\n"
            << "declare void @simp_map_set(ptr, ptr, i64, ptr, ptr, i64, i64, i64)\n"
+           << "declare i32 @simp_string_to_int(ptr, i64, ptr, i64, i64, i64)\n"
+           << "declare i64 @simp_string_to_unsigned(ptr, i64, ptr, i64, i64, i64)\n"
+           << "declare double @simp_string_to_float(ptr, i64, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_require_alive(ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_tag(i64, i64, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_class(i64, ptr, ptr, ptr, i64, i64, i64)\n"

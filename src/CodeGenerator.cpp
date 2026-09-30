@@ -182,6 +182,16 @@ std::string CodeGenerator::methodSymbol(const std::string& className,
     return "@simp." + className + "." + methodName;
 }
 
+std::string CodeGenerator::methodSymbol(const std::string& className,
+                                        const MethodDeclaration& method) const {
+    // Constructors and destructors are not overloadable, so they keep their
+    // plain symbol and stay callable through the name-only overload.
+    if (method.constructor || method.destructor) {
+        return methodSymbol(className, method.name);
+    }
+    return methodSymbol(className, method.name) + mangleParameters(method.parameters);
+}
+
 void CodeGenerator::emitNullCheck(const std::string& pointer,
                                  const SourceLocation& location) {
     const auto file = internString(location.file);
@@ -798,6 +808,42 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         std::vector<std::string> basePath;
         const bool qualified = resolveBaseQualifier(*target.left, root, owner, basePath);
         auto receiver = emitExpression(qualified ? *root : *target.left);
+        if (receiver.type == "string") {
+            if (target.value != "toInt" && target.value != "toUnsigned" &&
+                target.value != "toFloat") {
+                throw DiagnosticError(target.location,
+                                      "strings support only 'toInt()', 'toUnsigned()', and "
+                                      "'toFloat()'");
+            }
+            if (!expression.arguments.empty()) {
+                throw DiagnosticError(target.location,
+                                      "'" + target.value + "' takes no arguments");
+            }
+            const auto data = newTemporary();
+            const auto length = newTemporary();
+            instructions_ += "  " + data + " = extractvalue %SimpleString " + receiver.operand +
+                             ", 0\n"
+                             "  " + length + " = extractvalue %SimpleString " +
+                             receiver.operand + ", 1\n";
+            emitNullCheck(data, target.location);
+            const auto file = internString(target.location.file);
+            const auto result = newTemporary();
+            const auto function = target.value == "toInt"      ? "simp_string_to_int"
+                                  : target.value == "toUnsigned" ? "simp_string_to_unsigned"
+                                                                  : "simp_string_to_float";
+            const auto resultType = target.value == "toInt"       ? "i32"
+                                    : target.value == "toUnsigned" ? "i64"
+                                                                    : "double";
+            const auto resultSimpleType = target.value == "toInt"       ? "int"
+                                         : target.value == "toUnsigned" ? "unsigned"
+                                                                         : "float";
+            instructions_ += "  " + result + " = call " + resultType + " @" + function +
+                             "(ptr " + data + ", i64 " + length + ", ptr " + file + ", i64 " +
+                             std::to_string(target.location.file.size()) + ", i64 " +
+                             std::to_string(target.location.line) + ", i64 " +
+                             std::to_string(target.location.column) + ")\n";
+            return {resultSimpleType, result};
+        }
         if (isMapType(receiver.type)) {
             if ((target.value != "contains" && target.value != "remove") ||
                 expression.arguments.size() != 1) {
@@ -911,7 +957,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              rootObject + ")\n";
             return {"void", ""};
         }
-        const auto* method = findMethod(*owner, target.value);
+        const auto* method = findMethod(*owner, target.value, expression.resolvedSignature);
         if (method == nullptr) {
             throw DiagnosticError(target.location,
                                   "class '" + owner->name + "' has no method '" + target.value + "'");
@@ -934,7 +980,9 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         instructions_ += "  " + table + " = load ptr, ptr " + tableAddress + "\n";
         const auto entry = newTemporary();
         instructions_ += "  " + entry + " = getelementptr inbounds %SimpleMethodMeta, ptr " +
-        table + ", i64 " + std::to_string(methodSlot(*owner, target.value)) +
+        table + ", i64 " +
+                         std::to_string(methodSlot(*owner, target.value,
+                                                   expression.resolvedSignature)) +
                          "\n";
         const auto functionAddress = newTemporary();
         instructions_ += "  " + functionAddress +

@@ -125,13 +125,14 @@ The language is intended to have full object-oriented programming support. Broad
   simply a consumption boundary like any other: the operand's zero payload
   is what gets converted, so `float(nullInt)` yields `0.0`, not an
   exception.
-- String-to-number conversion is confirmed to be a method on the `String`
-  class (see "Proposal: a class-based `String`..." under "Strings" below),
-  not general cast syntax or an implicit conversion — for example
-  `s.toInt()`/`s.toFloat()`/`s.toUnsigned()`-style checked methods that
-  throw on failure, following the same "explicit conversion routine" model
-  already used for classes. Exact method names/signatures are still to be
-  finalized alongside the rest of the pending `String` proposal.
+- String-to-number conversion is implemented (see "String-to-number
+  conversion (implemented)" under "Strings" below) as built-in
+  `s.toInt()`/`s.toFloat()`/`s.toUnsigned()` methods on the native
+  `string` type — checked, throw-on-failure conversions, following the
+  same "explicit conversion routine" model already used for classes, but
+  implemented as the same kind of built-in dot-operation as
+  `array.length`/`buffer.resize()` rather than as part of the still-open
+  full `String`-class redesign.
 - The compiler should reject conversions that are provably invalid and use runtime type-compatibility checks when compatibility cannot be determined statically.
 - Class member initializers are restricted to compile-time constants.
 
@@ -147,6 +148,9 @@ The exact syntax and complete rules for nullability and conversion remain part o
   prototype implements only the explicitly listed inheritance slice below.
 - Only classes inherit.
 - Function/method overrides are supported, including virtual methods.
+- Method overloading is supported: methods in a class may share a name when
+  their parameter types differ. Symbols are mangled by parameter type (see
+  "Name mangling (implemented)" below), and resolution is exact-match.
 - A constructor is named exactly after its class, for example `Window(...)`.
   Constructors are not named `create`.
 - Destructors are named `destroy`.
@@ -157,6 +161,95 @@ The exact syntax and complete rules for nullability and conversion remain part o
 The top-level `start` block is therefore the intentional exception to the
 class-member rule, not a general facility for top-level methods or data. Other
 methods remain class members.
+
+### Name mangling (implemented)
+
+The prototype's symbol-naming scheme is concrete and deliberate. Because
+Simple supports method overloading, the mangling is *type-encoded*: a
+method's symbol carries its parameter types, in the same spirit as C++
+mangling but in a much simpler, readable form.
+
+- **Ordinary methods:** `@simp.<FullyQualifiedClass>.<method>$<paramCodes>`.
+  The class part includes every enclosing namespace, dot-separated, so
+  same-named classes in sibling namespaces do not collide — for example
+  `@simp.Branch.Left.Item.value` and `@simp.Branch.Right.Item.value` (see
+  `tests/functional/positive/positive_namespace_collisions.simp`). A method
+  that takes no parameters has no `$` suffix at all.
+- **Parameter type codes** are one character per scalar or built-in type:
+  `i` int, `u` unsigned, `f` float, `b` bool, `s` string, `y` any,
+  `a` array/list, `m` map/dict, `B` buffer, `h` handle. A class-typed
+  parameter is encoded `C<length><name>`, length-prefixed so a dotted
+  namespace path stays unambiguous when codes are concatenated. Examples:
+  `@simp.Formatter.describe$i`, `@simp.Formatter.describe$ii`,
+  `@simp.Formatter.describe$s`, `@simp.Picker.take$C5AlphaC4Beta`.
+- **`$` is the separator** precisely because it cannot appear in a Simple
+  identifier or namespace path, so a mangled symbol can never collide with
+  an unmangled one, and the suffix can always be found by scanning for the
+  single `$`.
+- **Return types are not encoded**, because Simple never overloads on
+  return type alone: two methods whose parameter lists match are a
+  duplicate regardless of return type.
+- **Constructors and destructors are not mangled** (`@simp.Counter.Counter`,
+  `@simp.<Class>.destroy`) because they are not overloadable. A constructor
+  takes an extra leading `i1 %simp.initialize.virtual.bases` parameter
+  after `this` so a derived constructor can suppress repeated virtual-base
+  initialization.
+- **Virtual-dispatch thunks** get a distinct prefix and encode the
+  subobject view and the vtable slot index:
+  `@simp.thunk.<FullyQualifiedClass>.<subobjectTag>.<slotIndex>` — for
+  example `@simp.thunk.Formatter.root.1`. Each overload occupies its own
+  slot, so the slot index alone distinguishes them.
+- **Runtime support functions** use the same reserved `simp.` prefix
+  (`@simp.require_nonnull`) or a C-identifier form for the C-ABI runtime
+  (`@simp_gc_alloc`, `@simp_string_to_int`, ...). The `simp.`/`simp_`
+  prefixes are reserved to the implementation.
+- **Native/external bindings bypass mangling entirely.** A `from "symbol"`
+  binding (see the external-module interface section) emits a call to the
+  raw, unmangled `@symbol`, which is exactly what makes the plain C ABI
+  usable without a name-decoding tool. Each overload may bind to its own
+  distinct external symbol, and two different Simple classes may
+  legitimately bind to the same external symbol.
+- **Class metadata keeps the plain, unmangled method name**, so runtime
+  lookups by name (for example the threading runtime locating `run`) are
+  unaffected by mangling.
+
+Demangling is deliberately trivial: strip the `@simp.` prefix, split off
+everything after the single `$`, and decode the one-character codes. A
+symbol stays readable as-is in a debugger, `nm`, or a linker error.
+
+#### Overrides and overloads
+
+Both are supported, and both are enforced by the prototype:
+
+- **Overloads are supported.** Methods in one class may share a name as
+  long as their parameter *types* differ; each gets its own mangled
+  symbol and its own virtual-dispatch slot. Two methods with the same name
+  and identical parameter types are a compile-time error ("duplicate
+  method 'f' in class 'A'") even if their return types differ.
+- **Overload resolution is exact-match.** Simple has no implicit
+  conversions, so an argument selects the overload whose parameter type it
+  matches exactly; there is no promotion, narrowing, or best-viable
+  ranking. A call matching no overload is an error ("no overload of 'f'
+  ... matches these argument types"). The one non-exact case is `null`,
+  which is assignable to any class type — so a bare `null` argument that
+  could select more than one class-typed overload is rejected as ambiguous
+  rather than resolved by a tie-break rule. Use a typed local (or a
+  differently named method) to disambiguate.
+- **Overload sets are inherited.** A derived class may override one member
+  of an inherited overload set while inheriting its siblings, and may add
+  new overloads of the same name. All of them dispatch correctly through a
+  base-typed reference (see
+  `tests/functional/positive/positive_method_overloads.simp`).
+- **Overrides must preserve the exact signature.** An inherited method is
+  overridden only by a method with the same name *and* the same parameter
+  types; in that case the return type must match too, or it is a
+  compile-time error ("override of 'f' must preserve the inherited method
+  signature"). A same-name method with a *different* parameter list is not
+  an override at all — it is a new overload, which is allowed. Because an
+  override reuses the inherited vtable slot, exact matching is what keeps
+  per-view thunks type-correct.
+- **Operator overloading remains unsupported** — that is a separate,
+  deliberate exclusion and is unaffected by method overloading.
 
 ### Selected object-layout and GC direction
 
@@ -364,7 +457,9 @@ non-virtual bases also have no explicit constructors.
   checked for object construction and `super.Base(...)`. Destructor access is
   checked on explicit destruction. The prototype does not
   yet enforce C++'s protected receiver-expression restriction and has no friend
-  declarations, overloads, or per-member inline access labels.
+  declarations or per-member inline access labels. Overloads are supported
+  but are not access-differentiated: an overload set shares one access
+  rule per declaration.
 - An explicit base-constructor call uses `super.Base(args)`, naming the
   specified base class.
 - Base and member accessibility are checked by the prototype within the
@@ -457,6 +552,32 @@ statements.
 - Built-in object-to-string conversions are desired.
 
 UTF-8 is the choice for now. Advanced Unicode semantics are deferred. `string.length` itself remains unimplemented, but its semantics are confirmed: it is a byte count (`uint8_t` count of the backing storage), not a Unicode code-point count — consistent with `buffer`'s confirmed byte-oriented `length`/indexing/slicing. Arrays and maps expose a read-only `length` property in the current prototype.
+
+### String-to-number conversion (implemented)
+
+`string` supports three built-in, checked conversion methods, implemented
+as the same kind of built-in dot-operation as `array.length` and
+`buffer.resize()` (not real class-method dispatch, and not part of the
+still-open full `String`-class redesign):
+
+- `s.toInt()` -> `int`: optional leading `+`/`-`, digit-only body, no
+  whitespace tolerance, the entire string must be consumed. Raises a
+  catchable exception on any non-digit content or on overflowing the
+  32-bit `int` range.
+- `s.toUnsigned()` -> `unsigned`: optional leading `+` only (a leading `-`
+  raises rather than being silently accepted or wrapped), otherwise the
+  same digit-only, whole-string-consumed rule. Raises on overflowing the
+  64-bit `unsigned` range.
+- `s.toFloat()` -> `float`: parsed with `strtod`, also requiring the whole
+  string to be consumed (so trailing garbage raises rather than being
+  ignored); scientific notation (e.g. `"1.5e2"`) is accepted. Raises on a
+  malformed float or one that is too long (over 127 bytes) to convert.
+
+A `null` receiver raises the same "null reference" exception any other
+null-receiver method call would. See
+`tests/functional/positive/positive_string_conversion.simp` for a
+worked example covering all three methods, valid and invalid inputs, and
+exception-catching via `try`/`except`.
 
 ### `buffer` and `handle` types (confirmed design, not yet implemented)
 
@@ -1149,7 +1270,7 @@ An external module package has at least:
 1. An external library.
 2. A Simple class/interface implementation for calling that library.
 
-Packages are versioned at the package level. The project needs a consistent, documented workflow for creating modules and for building and linking their external dependencies. Name mangling is deliberate. SWIG may be considered where it is useful, but no particular binding generator is selected.
+Packages are versioned at the package level. The project needs a consistent, documented workflow for creating modules and for building and linking their external dependencies. Name mangling is deliberate (see "Name mangling (implemented)" below). SWIG may be considered where it is useful, but no particular binding generator is selected.
 
 Modules should feel callable like native Simple code. The current priority inventory is:
 
@@ -1369,10 +1490,10 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   object is eventually reclaimed. The sole exception is memory allocated by
   inline C or external/native libraries, which the GC cannot see or control
   and remains that native code's own responsibility.
-- String-to-number conversion is a `String` class method (for example
-  `s.toInt()`), not general cast syntax or an implicit conversion; exact
-  method names/signatures remain to be finalized with the rest of the
-  pending `String` proposal.
+- String-to-number conversion is implemented as built-in `string` methods
+  (`s.toInt()`, `s.toUnsigned()`, `s.toFloat()`), not general cast syntax
+  or an implicit conversion (see "String-to-number conversion
+  (implemented)" under "Strings" below for exact semantics).
 - `String` element access (`s[i]`, both reads and writes) is always
   `unsigned` — unlike `buffer`, which additionally accepts `int` writes.
   This is a deliberate difference, not an inconsistency to reconcile.
@@ -1407,12 +1528,13 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 ### Open or explicitly deferred
 
 - The complete grammar and how it is reconciled with the examples and priorities.
-- Exact conversion syntax. Scalar casts and the scalar-null representation
-  are not currently implemented (see the priority list below).
 - Advanced Unicode semantics beyond current UTF-8 support.
-- Production GC integration with active threads, including registration and
-  safe-point coordination, remains open. The current prototype runtime is
-  single-threaded and cannot safely be used by concurrent threads.
+- GC/thread integration is implemented via a cooperative global-lock (GIL)
+  model (see "Threads" above): correct and race-free, but compute-bound
+  Simple code does not get true multi-core parallelism — only genuine
+  parallelism while a thread is blocked in `join`/`wait`. Lifting that
+  limitation would require safepoint-polling codegen at loop back-edges,
+  which remains open/undesigned.
 - The CLI/environment configuration for include search directories; package
   layout, prebuilt module binary formats, external binary-library resolution,
   and package-version constraints.
@@ -1425,9 +1547,10 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   type (see "Proposal: a class-based `String`..." under "Strings" above):
   `String`'s element-type typing, mutation alias-vs-copy semantics (now in
   tension with `buffer`'s confirmed copy-on-assign behavior), and the
-  `string`/`String` unification question. (Byte-based indexing/length and
-  the no-`==`/`!=` decision are now confirmed, resolving two of the
-  proposal's original open questions.)
+  `string`/`String` unification question. (Byte-based indexing/length, the
+  no-`==`/`!=` decision, and string-to-number conversion are now
+  confirmed/implemented, resolving three of the proposal's original open
+  questions — see "String-to-number conversion (implemented)" above.)
 
 ### Suggested priority for the remaining open language/syntax decisions
 
@@ -1449,9 +1572,9 @@ next things to resolve, roughly in priority order:
    See the "Implemented, with a documented scope boundary for scalar
    locals" bullet above for the exact scope.
 3. The remaining `String`-as-class questions: mutation alias-vs-copy
-   semantics, the `string`/`String` unification question, and the exact
-   string-to-number method names/signatures (confirmed to be `String`
-   methods, e.g. `s.toInt()`, not general casts — naming/signature detail
-   remains). (Element-access typing is now confirmed: always `unsigned`.)
+   semantics and the `string`/`String` unification question. (Element-
+   access typing is confirmed to always be `unsigned`, and string-to-number
+   conversion is now implemented as built-in `string` methods — see
+   "String-to-number conversion (implemented)" above.)
 
 Until these questions are resolved through examples and a runnable prototype, this document should be read as a design record and project guide rather than as a final language specification. A comprehensive, implementation-tracking language specification (covering everything actually built, not just agreed direction) is a planned future deliverable, separate from this design-record document.

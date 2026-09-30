@@ -36,6 +36,34 @@ const MethodDeclaration* CodeGenerator::findMethod(const ClassDeclaration& owner
     return visit(visit, owner);
 }
 
+const MethodDeclaration* CodeGenerator::findMethod(const ClassDeclaration& owner,
+                                                    const std::string& name,
+                                                    const std::string& signature) const {
+    if (signature.empty()) return findMethod(owner, name);
+    std::unordered_set<std::string> seenVirtual;
+    const auto visit = [&name, &signature, &seenVirtual, this](
+                           const auto& self, const ClassDeclaration& current)
+        -> const MethodDeclaration* {
+        for (const auto& method : current.methods) {
+            if (method.name != name || method.constructor || method.destructor) continue;
+            if (methodSignatureKey(method) == signature) return &method;
+        }
+        const MethodDeclaration* result = nullptr;
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto& baseName = current.baseClassNames[index];
+            const auto base = classes_.find(baseName);
+            if (base == classes_.end()) continue;
+            if (current.baseVirtual[index] && !seenVirtual.emplace(baseName).second) continue;
+            if (const auto* candidate = self(self, *base->second)) {
+                if (result != nullptr) return nullptr;
+                result = candidate;
+            }
+        }
+        return result;
+    };
+    return visit(visit, owner);
+}
+
 std::vector<const MethodDeclaration*> CodeGenerator::methodSlots(
     const ClassDeclaration& owner) const {
     std::vector<const MethodDeclaration*> slots;
@@ -49,7 +77,8 @@ std::vector<const MethodDeclaration*> CodeGenerator::methodSlots(
             if (method.constructor || method.destructor) continue;
             const auto inherited = std::find_if(
                 slots.begin(), slots.end(), [&method](const MethodDeclaration* candidate) {
-                    return candidate->name == method.name;
+                    return candidate->name == method.name &&
+                           sameParameterTypes(*candidate, method);
                 });
             if (inherited == slots.end()) {
                 slots.push_back(&method);
@@ -67,6 +96,20 @@ std::size_t CodeGenerator::methodSlot(const ClassDeclaration& owner,
     const auto slots = methodSlots(owner);
     for (std::size_t index = 0; index < slots.size(); ++index) {
         if (slots[index]->name == name) return index;
+    }
+    throw std::logic_error("resolved method has no dispatch slot");
+}
+
+std::size_t CodeGenerator::methodSlot(const ClassDeclaration& owner,
+                                      const std::string& name,
+                                      const std::string& signature) const {
+    if (signature.empty()) return methodSlot(owner, name);
+    const auto slots = methodSlots(owner);
+    for (std::size_t index = 0; index < slots.size(); ++index) {
+        if (slots[index]->name == name &&
+            methodSignatureKey(*slots[index]) == signature) {
+            return index;
+        }
     }
     throw std::logic_error("resolved method has no dispatch slot");
 }

@@ -24,6 +24,10 @@ struct Expression {
     SourceLocation location;
     std::string value;
     bool formattedString = false;
+    // For a Call expression the semantic analyzer records the selected
+    // overload's mangled parameter suffix here, so code generation reuses the
+    // same resolution instead of repeating it.
+    std::string resolvedSignature;
     std::unique_ptr<Expression> left;
     std::unique_ptr<Expression> right;
     std::vector<std::unique_ptr<Expression>> arguments;

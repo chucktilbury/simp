@@ -58,6 +58,8 @@ private:
                             const std::string& name) const;
     const MethodDeclaration* findMethod(const ClassDeclaration& declaration,
                                         const std::string& name) const;
+    std::vector<const MethodDeclaration*> findOverloads(const ClassDeclaration& declaration,
+                                                        const std::string& name) const;
     std::size_t countMethods(const ClassDeclaration& declaration,
                              const std::string& name) const;
     std::vector<std::string> virtualBaseNames(const ClassDeclaration& declaration) const;

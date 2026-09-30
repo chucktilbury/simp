@@ -107,6 +107,19 @@ const char *simp_string_cstr(const SimpString *text);
 void simp_inline_cstr_begin(void);
 void simp_inline_cstr_end(void);
 
+/* String-to-number conversion, backing the 'string' built-in dot-operations
+ * s.toInt(), s.toUnsigned(), s.toFloat() (see "Strings" in
+ * SIMPLE-LANGUAGE-NOTES.md). Each parses the *entire* byte range as one
+ * value (no leading/trailing whitespace, no partial parses) and raises a
+ * catchable, source-located exception on any parse failure or out-of-range
+ * value; unsigned conversion additionally rejects a leading '-'. */
+int32_t simp_string_to_int(const char *data, uint64_t length, const char *file,
+                           uint64_t file_length, uint64_t line, uint64_t column);
+uint64_t simp_string_to_unsigned(const char *data, uint64_t length, const char *file,
+                                 uint64_t file_length, uint64_t line, uint64_t column);
+double simp_string_to_float(const char *data, uint64_t length, const char *file,
+                            uint64_t file_length, uint64_t line, uint64_t column);
+
 /* Demonstration C shims for out-of-line native-bound methods now live in
  * their own translation unit; see RuntimeDemoShims.h. */
 

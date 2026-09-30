@@ -310,5 +310,17 @@
     "friendly_name": "functional Thread/Semaphore runtime bindings compile and run",
     "expected_diagnostic": "",
     "enabled": true
+  },
+  {
+    "name": "positive_string_conversion.simp",
+    "friendly_name": "functional string-to-number conversion methods compile and run",
+    "expected_diagnostic": "",
+    "enabled": true
+  },
+  {
+    "name": "positive_method_overloads.simp",
+    "friendly_name": "functional method overloads resolve and dispatch by parameter type",
+    "expected_diagnostic": "",
+    "enabled": true
   }
 ]

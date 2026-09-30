@@ -8,6 +8,7 @@
  */
 #include "simp/RuntimeGc.h"
 
+#include <errno.h>
 #include <pthread.h>
 #include <setjmp.h>
 #include <stdalign.h>
@@ -56,6 +57,84 @@ const char *simp_string_cstr(const SimpString *text) {
     buffer->next = inline_cstring_buffers;
     inline_cstring_buffers = buffer;
     return buffer->bytes;
+}
+
+static void raise_conversion_error(const char *message, const char *file,
+                                   uint64_t file_length, uint64_t line,
+                                   uint64_t column) {
+    simp_exception_raise(message, (uint64_t)strlen(message), file, file_length, line,
+                         column);
+}
+
+int32_t simp_string_to_int(const char *data, uint64_t length, const char *file,
+                           uint64_t file_length, uint64_t line, uint64_t column) {
+    static const char invalid[] = "string does not contain a valid integer";
+    static const char range[] = "string integer value is out of range";
+    uint64_t index = 0;
+    int negative = 0;
+    if (length == 0) raise_conversion_error(invalid, file, file_length, line, column);
+    if (data[0] == '+' || data[0] == '-') {
+        negative = data[0] == '-';
+        index = 1;
+    }
+    if (index >= length) raise_conversion_error(invalid, file, file_length, line, column);
+    int64_t magnitude = 0;
+    const int64_t limit = negative ? 2147483648LL : 2147483647LL;
+    for (; index < length; ++index) {
+        const char digit = data[index];
+        if (digit < '0' || digit > '9') {
+            raise_conversion_error(invalid, file, file_length, line, column);
+        }
+        magnitude = magnitude * 10 + (digit - '0');
+        if (magnitude > limit) {
+            raise_conversion_error(range, file, file_length, line, column);
+        }
+    }
+    return (int32_t)(negative ? -magnitude : magnitude);
+}
+
+uint64_t simp_string_to_unsigned(const char *data, uint64_t length, const char *file,
+                                 uint64_t file_length, uint64_t line, uint64_t column) {
+    static const char invalid[] = "string does not contain a valid unsigned integer";
+    static const char range[] = "string unsigned integer value is out of range";
+    uint64_t index = 0;
+    if (length == 0) raise_conversion_error(invalid, file, file_length, line, column);
+    if (data[0] == '+') index = 1;
+    if (data[0] == '-') raise_conversion_error(invalid, file, file_length, line, column);
+    if (index >= length) raise_conversion_error(invalid, file, file_length, line, column);
+    uint64_t value = 0;
+    for (; index < length; ++index) {
+        const char digit = data[index];
+        if (digit < '0' || digit > '9') {
+            raise_conversion_error(invalid, file, file_length, line, column);
+        }
+        const uint64_t addend = (uint64_t)(digit - '0');
+        if (value > (UINT64_MAX - addend) / 10) {
+            raise_conversion_error(range, file, file_length, line, column);
+        }
+        value = value * 10 + addend;
+    }
+    return value;
+}
+
+double simp_string_to_float(const char *data, uint64_t length, const char *file,
+                            uint64_t file_length, uint64_t line, uint64_t column) {
+    static const char invalid[] = "string does not contain a valid float";
+    static const char too_long[] = "string is too long to convert to a float";
+    char stack_buffer[128];
+    if (length == 0) raise_conversion_error(invalid, file, file_length, line, column);
+    if (length >= sizeof(stack_buffer)) {
+        raise_conversion_error(too_long, file, file_length, line, column);
+    }
+    memcpy(stack_buffer, data, (size_t)length);
+    stack_buffer[length] = '\0';
+    char *end = NULL;
+    errno = 0;
+    const double result = strtod(stack_buffer, &end);
+    if (end != stack_buffer + length || errno == ERANGE) {
+        raise_conversion_error(invalid, file, file_length, line, column);
+    }
+    return result;
 }
 
 typedef struct HeapNode {
