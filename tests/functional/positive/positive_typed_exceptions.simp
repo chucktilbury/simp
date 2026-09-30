@@ -110,7 +110,7 @@ start {
 
   array empty = []
   try {
-    any missing = empty[0]
+    int missing = empty[0]
   } except(Exception) {
     print("bounds caught as Exception")
   }

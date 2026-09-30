@@ -62,10 +62,9 @@ start {
     print(secondNode.value)
     print(firstCopied.value)
 
-    // Reading an element yields the explicit dynamic 'any' representation;
-    // extracting a concrete type is a runtime-checked, type-safe operation.
-    any dynamicValue = items[0]
-    int extracted = dynamicValue
+    // Reading an element directly into a concrete type is a runtime-checked,
+    // type-safe extraction.
+    int extracted = items[0]
     print(extracted)
 
     array mixed = [1, "two", Node(3), null]
@@ -75,13 +74,10 @@ start {
     print(mixed[3])
 
     try {
-        print(items[-1])
+        print(items[-5])
     } except() as error {
         print(error)
     }
-    try {
-        array invalid = items[3:2]
-    } except() as error {
-        print(error)
-    }
+    array invalid = items[3:2]
+    print(invalid.length)
 }

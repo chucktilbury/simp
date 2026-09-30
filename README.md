@@ -152,10 +152,10 @@ input and reports source-located lexer, parser, and semantic errors.
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
   `raise`, `try`, `except`, `finally`, `for`, `in`, `public`, `protected`,
   `private`, `virtual`, `from`, `map`, `dict`, `namespace`, `include`,
-  `import`, `as`, `is`, and `type`.
+  `import`, `as`, `is`, `type`, and `any`.
   `dict` is an alias for the `map` type.
   Every capitalization is reserved.
-- `int`, `string`, class-reference, `array`, `map`/`dict`, and `any` declarations
+- `int`, `string`, class-reference, `array`, and `map`/`dict` declarations
   (with optional initializer), assignment, `print`, `return`, and
   `super.Base(...)` statements end at a
   newline or closing brace. Newlines inside parentheses and square brackets
@@ -202,12 +202,13 @@ input and reports source-located lexer, parser, and semantic errors.
   An uncaught exception prints its source file, line, column, and message to
   standard error, then aborts (nonzero process status). Runtime invariant
   failures and exceptions escaping GC finalizers remain fatal.
-- `print(expr)` prints one `int`, `string`, or `any` value followed by a
-  newline; printing `any` dispatches on its runtime tag (see below).
+- `print(expr)` prints a scalar, string, type, or internal collection value
+  followed by a newline; collection values are rendered by runtime tag (see
+  below).
 - Basic formatting uses a double-quoted literal followed by an expression list:
-  `print("value: {}"(value))`. Each `{}` substitutes exactly one integer
-  expression. Only `{}` placeholders are supported; unmatched braces,
-  non-integer substitutions, and argument-count mismatches are errors.
+  `print("value: {}"(value))`. Each `{}` substitutes exactly one supported
+  scalar, type, or internal dynamic value. Only `{}` placeholders are
+  supported; unmatched braces and argument-count mismatches are errors.
 - Single-quoted strings are raw literals: they have no escapes and cannot be
   used with formatting arguments. Double-quoted strings support `\\`, `\"`,
   `\n`, `\r`, and `\t`; their source bytes must be valid UTF-8.
@@ -220,27 +221,40 @@ input and reports source-located lexer, parser, and semantic errors.
   `[1, "two", Node(3), null]` may freely mix ints, strings, class references,
   arrays, maps, and `null` in one collection; an empty literal `[]` is always
   allowed. Nested arrays and collections are traced by the GC.
-  Reading an element with `values[index]` yields the explicit dynamic `any`
-  value type — it does not statically know whether that slot holds an `int`,
-  a `string`, a class reference, or a map reference. Assigning
+  Reading an element with `values[index]` yields an internal dynamic value —
+  it does not statically know whether that slot holds an `int`, a `string`, a
+  class reference, or a map reference. Dynamic values are not a declared
+  type: they can be tested with `is`/`type`, compared with `null`, printed,
+  stored in collections, or extracted into a concretely typed variable, field,
+  parameter, or return value (with a runtime check). Other operations such as
+  arithmetic and member access require typed extraction. Assigning
   `values[index] = expr` accepts
   any of the supported element types directly. The read-only
   `values.length` property returns an `int`. Indexing is zero-based.
   `values[start:end]` creates a new array containing the half-open range
-  `[start, end)`; it is an independent shallow copy, so changing a copied
-  scalar slot does not change the source (class-reference elements still refer
-  to the same objects). Invalid indices and slice bounds raise catchable
-  runtime exceptions with source locations.
-- Array iteration visits elements in index order and binds each element as
-  `any`; map iteration binds an `any` value alone or a string key and `any`
-  value in insertion order. Both forms snapshot their entries (including
+  `[start, end)`; either bound may be omitted (`values[:end]`,
+  `values[start:]`, or `values[:]`). Slices are independent shallow copies, so
+  changing a copied scalar slot does not change the source (class-reference
+  elements still refer to the same objects). Arrays also support
+  `values[start:end:step]`, including omitted bounds such as `values[::2]`;
+  positive and negative steps follow Python's slice-bound normalization,
+  including clamping out-of-range bounds, and a zero step raises a catchable
+  runtime exception. Array and buffer indexing accept negative indices, where
+  `-1` selects the last element; indices still out of range after normalization
+  raise catchable runtime exceptions with source locations.
+- Array iteration visits elements in index order and binds each element as an
+  internal dynamic value; map iteration binds an internal dynamic value alone
+  or a string key and dynamic value in insertion order. The binding follows
+  the same use restrictions as an indexed collection read. Both forms snapshot
+  their entries (including
   values) at loop start: insertion, removal, or replacement during the loop
   does not change the current iteration. The snapshot is shallow, so referenced
   objects and nested collections remain shared.
 - Maps (`map`, with `dict` as an alias) are mutable heterogeneous dictionaries.
   A literal uses `{ "name": "Ada", "age": 37 }`; keys are string expressions
   and are compared by exact UTF-8 bytes (case-sensitive, without normalization).
-  Reading `values[key]` yields `any`; writing `values[key] = value` inserts
+  Reading `values[key]` yields an internal dynamic value; writing
+  `values[key] = value` inserts
   a new key or replaces the existing value. Replacing a key does not change
   `values.length`, which counts distinct keys and is read-only. A missing key
   raises a source-located, catchable `map key not found` exception. Map
@@ -254,36 +268,32 @@ input and reports source-located lexer, parser, and semantic errors.
   to `string`. `values.remove(key)` returns `1` when an entry was removed and
   `0` when it was absent; removing a key preserves the order of other entries,
   and reinserting it appends it. `values[start:end]` makes an independent
-  shallow map copy from the half-open insertion-order range `[start, end)`.
+  shallow map copy from the half-open insertion-order range `[start, end)`;
+  either bound may be omitted, with omitted bounds defaulting to the start and
+  end of the insertion-ordered entries. Buffers likewise support omitted
+  bounds and return independent copies. Negative bounds on map and buffer
+  slices are normalized relative to collection length and clamped to the valid
+  range. Step slices are restricted to arrays. Map indexing remains
+  string-keyed.
 - Equality and ordering comparisons require matching numeric types
   (`int`, `unsigned`, or `float`); equality also supports matching `bool`
   operands. Any nullable type may be compared with `null`. Strings, objects,
   arrays, maps, and `any` do not support equality with each other.
-- `any` is the explicit dynamic/tagged value type: it can hold an `int`, a
-  `string`, a class reference, `null`, or a map reference; map lookups can also
-  carry array references through it. It can be declared directly
-  (`any value = ...`) or produced implicitly by indexing into an array or map.
-  Use `value is TypeName` to test an `any` value's runtime type without
-  extracting it; null matches no type. `type(value)` instead returns its
-  exact dynamic type name.
-  Array expressions still cannot be assigned directly to `any`. `any` has no
-  members of its own — assign it to a concretely typed variable, field, or
-  parameter to extract its value. Extraction is runtime-checked: it
-  raises a catchable exception if the dynamic value's tag does not match the
-  requested type, or (for class targets) if its exact runtime class does not
-  match the requested class. Map and array tags are distinct and checked on
-  extraction. There is no covariant/polymorphic downcast
-  support — only an exact class match (or a `null` reference) is accepted.
-  Printing an `any` dispatches on its runtime tag: an `int` or `string`
-  payload prints its value; an object reference prints a fixed `<object>`
-  placeholder (or `null`), including map and array references, since
-  user-defined `toString()` dispatch is not implemented.
-- The array/map/`any` subset is deliberately bounded: direct array-to-`any`
-  conversion is unsupported (an array can still be carried through a map value
-  or a collection element). Append/resize operations, omitted slice bounds,
-  slice steps, and value-to-value equality for non-scalars are unsupported.
-  Class-reference and collection values reachable through arrays, maps, and
-  `any` are traced by the GC.
+- Collection reads and loop bindings use an internal tagged dynamic value;
+  the reserved keyword `any` is not permitted as a declared type (locals,
+  fields, parameters, returns, or native signatures). The representation can
+  carry scalars, strings, class references, arrays, maps, buffers, handles, and
+  `null`. It may only be printed, tested with `is` or `type`, compared with
+  `null`, extracted into a concretely typed variable/field/parameter/return
+  value, or inserted into another collection. Extraction is runtime-checked
+  and raises a catchable exception on a tag mismatch; class extraction
+  currently requires an exact class match (or a null reference). `is` on a
+  class target matches subclasses, while `type(value)` reports the exact
+  dynamic type. Dynamic values have no member access and cannot be used in
+  arithmetic or other operators. Printing dispatches on the runtime tag;
+  object references print a fixed `<object>` placeholder (or `null`), since
+  user-defined `toString()` dispatch is not implemented. Class-reference and
+  collection values reachable through arrays and maps are traced by the GC.
 - `;`, `#`, and `//` line comments, `/* ... */` block comments, and basic
   double-quoted escapes (`\\`, `\"`, `\n`, `\r`,
   `\t`) are accepted. Single-quoted strings have no escape processing.
@@ -293,7 +303,7 @@ input and reports source-located lexer, parser, and semantic errors.
   requires integer conditions. Definite initialization across `if` branches
   and loops is conservative.
 - A small class subset is supported: top-level `class` declarations with
-  `int`, `string`, `array`, `map`, `any`, or class-reference fields; one class-named constructor;
+  `int`, `string`, `array`, `map`, or class-reference fields; one class-named constructor;
   typed methods; `Class(args)` construction/allocation; nullable class-reference
   variables; field access/assignment; method calls; and direct `return`
   statements at the end of methods. Inheritance uses `class Child : Base` or
@@ -413,13 +423,13 @@ the declarations and initialization state seen by semantic analysis.
 ## Executable backend subset
 
 The backend emits textual LLVM IR using opaque pointers, then the configured
-Clang executable compiles and links it. It supports integer and string
-declarations/assignments, heterogeneous `array` and `map` collections (with `any` as
-the explicit dynamic element/value type), integer
+Clang executable compiles and links it. It supports scalar and string
+declarations/assignments, heterogeneous `array` and `map` collections (with
+internal tagged values for dynamic elements and values), integer
 expressions and comparisons, integer
 `if`/`else` and `while`, `raise`/typed `try`/`except`/`finally`,
-single-value integer, string, or `any` printing, and the
-limited `{}` integer formatting form described above. It also supports object
+single-value scalar, string, type, or internal dynamic-value printing, and the
+`{}` formatting form described above. It also supports object
 layout/allocation/constructor/method/field operations for classes
 and single- and multiple-inheritance layouts, including transitive shared
 virtual bases. Base-path field access distinguishes repeated non-virtual

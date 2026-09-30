@@ -949,12 +949,46 @@ std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> exp
             auto access = std::make_unique<Expression>();
             access->location = previous().location;
             access->left = std::move(expression);
-            access->arguments.push_back(parseExpression());
+            const auto omittedValue = [&access](const std::string& value) {
+                auto omitted = std::make_unique<Expression>();
+                omitted->kind = ExpressionKind::Integer;
+                omitted->value = value;
+                omitted->location = access->location;
+                return omitted;
+            };
             if (match(TokenType::Colon)) {
                 access->kind = ExpressionKind::Slice;
-                access->arguments.push_back(parseExpression());
+                access->sliceHasStart = false;
+                access->arguments.push_back(omittedValue("0"));
+                access->sliceHasEnd = !check(TokenType::Colon) &&
+                                      !check(TokenType::RightBracket);
+                access->arguments.push_back(access->sliceHasEnd
+                                                ? parseExpression()
+                                                : omittedValue("0"));
+                access->sliceHasStep = match(TokenType::Colon);
+                access->arguments.push_back(access->sliceHasStep &&
+                                                    !check(TokenType::RightBracket)
+                                                ? parseExpression()
+                                                : omittedValue("1"));
             } else {
-                access->kind = ExpressionKind::Index;
+                auto start = parseExpression();
+                if (match(TokenType::Colon)) {
+                    access->kind = ExpressionKind::Slice;
+                    access->arguments.push_back(std::move(start));
+                    access->sliceHasEnd = !check(TokenType::Colon) &&
+                                          !check(TokenType::RightBracket);
+                    access->arguments.push_back(access->sliceHasEnd
+                                                    ? parseExpression()
+                                                    : omittedValue("0"));
+                    access->sliceHasStep = match(TokenType::Colon);
+                    access->arguments.push_back(access->sliceHasStep &&
+                                                        !check(TokenType::RightBracket)
+                                                    ? parseExpression()
+                                                    : omittedValue("1"));
+                } else {
+                    access->kind = ExpressionKind::Index;
+                    access->arguments.push_back(std::move(start));
+                }
             }
             consume(TokenType::RightBracket, "']' after index or slice");
             expression = std::move(access);

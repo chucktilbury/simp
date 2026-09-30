@@ -1,0 +1,5 @@
+# Rejects steps on insertion-order map slices.
+start {
+    map values = {"a": 1}
+    map invalid = values[::2]
+}

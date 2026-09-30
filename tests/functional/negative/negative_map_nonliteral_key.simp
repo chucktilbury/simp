@@ -1,6 +1,6 @@
 # Rejects a map lookup key whose static type is any rather than string.
 start {
     map values = {}
-    any key = "present"
-    any value = values[key]
+    array keys = ["present"]
+    map value = values[keys[0]]
 }

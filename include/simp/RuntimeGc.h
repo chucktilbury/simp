@@ -164,6 +164,9 @@ void *simp_array_index(void *array, int32_t index, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_array_slice(void *array, int32_t start, int32_t end, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
+void *simp_array_slice_ex(void *array, int32_t start, int32_t end, int32_t step,
+                          int has_start, int has_end, const char *file,
+                          uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_gc_alloc_map(void);
 void *simp_buffer_new(int32_t length, const char *file, uint64_t file_length,
                       uint64_t line, uint64_t column);
@@ -171,6 +174,9 @@ void *simp_buffer_copy(void *buffer, const char *file, uint64_t file_length,
                        uint64_t line, uint64_t column);
 void *simp_buffer_slice(void *buffer, int32_t start, int32_t end, const char *file,
                         uint64_t file_length, uint64_t line, uint64_t column);
+void *simp_buffer_slice_ex(void *buffer, int32_t start, int32_t end,
+                           int has_start, int has_end, const char *file,
+                           uint64_t file_length, uint64_t line, uint64_t column);
 void simp_buffer_resize(void *buffer, int32_t length, const char *file,
                         uint64_t file_length, uint64_t line, uint64_t column);
 void simp_buffer_clear(void *buffer, const char *file, uint64_t file_length,
@@ -193,6 +199,9 @@ int32_t simp_map_remove(void *map, const char *key, uint64_t key_length,
                         uint64_t column);
 void *simp_map_slice(void *map, int32_t start, int32_t end, const char *file,
                      uint64_t file_length, uint64_t line, uint64_t column);
+void *simp_map_slice_ex(void *map, int32_t start, int32_t end,
+                        int has_start, int has_end, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column);
 void simp_map_set(void *map, const char *key, uint64_t key_length,
                   const SimpArrayValue *value,
                   const char *file, uint64_t file_length, uint64_t line, uint64_t column);

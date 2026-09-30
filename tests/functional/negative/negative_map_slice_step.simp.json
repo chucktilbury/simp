@@ -1,0 +1,5 @@
+{
+  "friendly_name": "reject map slice step",
+  "expected_diagnostic": "slice steps are only supported for arrays",
+  "enabled": true
+}

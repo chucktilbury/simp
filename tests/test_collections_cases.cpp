@@ -29,11 +29,10 @@ const TestGroupRegistration registration{4, {
                          "  print(alias.length)\n"
                          "}");
          }},
-        {"array element reads yield 'any' and can be extracted by type", [] {
+        {"array element values can be extracted directly into concrete types", [] {
              expectValid("start {\n"
                          "  array bag = [1, \"two\"]\n"
-                         "  any first = bag[0]\n"
-                         "  int extracted = first\n"
+                         "  int extracted = bag[0]\n"
                          "  string second = bag[1]\n"
                          "  print(extracted)\n"
                          "  print(second)\n"
@@ -66,10 +65,15 @@ const TestGroupRegistration registration{4, {
                          "  array bag = [1, inner, [4, 5]]\n}");
          }},
         {"'any' has no members until extracted", [] {
-             expectDiagnostic("start {\n  array bag = [1]\n  any first = bag[0]\n"
-                              "  print(first.length)\n}",
-                              "'any' has no members; assign it to a typed variable first to "
-                              "extract its value");
+             expectDiagnostic("start {\n  array bag = [[1]]\n"
+                              "  print(bag[0].length)\n}",
+                              "'any' values cannot be used for member access");
+         }},
+        {"internal dynamic values cannot receive method calls", [] {
+              expectDiagnostic("class Widget {\n  int value\n  int get() { return value }\n}\n"
+                               "start {\n  array bag = [Widget()]\n"
+                               "  int value = bag[0].get()\n}",
+                               "'any' values cannot be used for method calls");
          }},
         {"array and 'any' equality is rejected", [] {
              expectDiagnostic("start {\n  array bag = [1]\n  array other = [1]\n"
@@ -80,14 +84,14 @@ const TestGroupRegistration registration{4, {
              expectValid("start {\n"
                          "  dict values = {\"answer\": 42, 'label': \"ok\"}\n"
                          "  map alias = values\n"
-                         "  any result = alias[\"answer\"]\n"
+                         "  int result = alias[\"answer\"]\n"
                          "  alias[\"answer\"] = \"changed\"\n"
                          "  print(alias.length)\n"
                          "}");
          }},
         {"map indexing accepts string expressions", [] {
              expectValid("start {\n map values = {}\n string key = \"x\"\n"
-                         " any value = values[key]\n}");
+                         " string value = values[key]\n}");
          }},
         {"map literal keys must be string literals", [] {
              expectDiagnostic("start { map values = {1: \"value\"} }",
@@ -103,9 +107,39 @@ const TestGroupRegistration registration{4, {
                               "equality requires matching int, bool, float, or unsigned operands");
          }},
         {"'any' equality is rejected", [] {
-             expectDiagnostic("start {\n any value = 1\n"
-                              " int same = value == value\n}",
+             expectDiagnostic("start {\n array values = [1]\n"
+                              " bool same = values[0] == values[0]\n}",
                               "equality requires matching int, bool, float, or unsigned operands");
+         }},
+        {"internal dynamic values may be compared with null", [] {
+             expectValid("start {\n array values = [null]\n"
+                         " bool missing = values[0] == null\n}");
+         }},
+        {"internal dynamic values support the approved typed contexts", [] {
+             expectValid("class Reader {\n"
+                         "  int value\n"
+                         "  void set(int input) { value = input }\n"
+                         "  int get() { return value }\n"
+                         "  int read(array values) { return values[0] }\n"
+                         "}\n"
+                         "start {\n"
+                         "  array values = [42]\n"
+                         "  int extracted = values[0]\n"
+                         "  Reader reader = Reader()\n"
+                         "  reader.value = values[0]\n"
+                         "  reader.set(values[0])\n"
+                         "  int returned = reader.read(values)\n"
+                         "  array nested = [values[0]]\n"
+                         "  nested.append(values[0])\n"
+                         "  nested[0] = values[0]\n"
+                         "  map mapped = {\"value\": values[0]}\n"
+                         "  mapped[\"value\"] = values[0]\n"
+                         "  print(values[0])\n"
+                         "  print(\"value {}\"(values[0]))\n"
+                         "  bool isInteger = values[0] is int\n"
+                         "  type dynamicType = type(values[0])\n"
+                         "  bool isNull = values[0] == null\n"
+                         "}");
          }},
         {"map slicing accepts integer insertion-order bounds", [] {
              expectValid("start {\n map values = {\"a\": 1, \"b\": 2}\n"
@@ -155,8 +189,8 @@ const TestGroupRegistration registration{4, {
                                "array iteration accepts one value variable");
          }},
          {"map keys must be statically typed strings", [] {
-              expectDiagnostic("start {\n map values = {}\n any key = \"x\"\n"
-                               " any value = values[key]\n}",
+               expectDiagnostic("start {\n map values = {}\n array keys = [\"x\"]\n"
+                                " map value = values[keys[0]]\n}",
                                "map keys must have type string");
          }}
 }};

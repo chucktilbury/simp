@@ -1,4 +1,4 @@
-# Rejects an external method signature that uses any as a parameter type.
+# Rejects declared any types in native method parameters.
 class Native {
     int use(any value)
 }

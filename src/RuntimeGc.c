@@ -1286,23 +1286,53 @@ void *simp_buffer_copy(void *object, const char *file, uint64_t file_length,
     return copy;
 }
 
-void *simp_buffer_slice(void *object, int32_t start, int32_t end, const char *file,
-                        uint64_t file_length, uint64_t line, uint64_t column) {
-    SimpBuffer *source = checked_buffer(object, file, file_length, line, column);
-    if (start < 0 || end < start || (uint64_t)end > source->length) {
-        static const char message[] = "buffer slice bounds out of bounds";
-        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+static int64_t normalize_collection_index(int32_t index, uint64_t length) {
+    int64_t normalized = index;
+    if (normalized < 0) normalized += (int64_t)length;
+    return normalized;
+}
+
+static int64_t normalize_slice_bound(int32_t bound, uint64_t length, int32_t step,
+                                    int is_start, int has_bound) {
+    int64_t normalized;
+    if (!has_bound) {
+        if (is_start) return step > 0 ? 0 : (int64_t)length - 1;
+        return step > 0 ? (int64_t)length : -1;
     }
-    const uint64_t length = (uint64_t)(end - start);
+    normalized = bound;
+    if (normalized < 0) normalized += (int64_t)length;
+    if (step > 0) {
+        if (normalized < 0) return 0;
+        if ((uint64_t)normalized > length) return (int64_t)length;
+    } else {
+        if (normalized < -1) return -1;
+        if (normalized >= (int64_t)length) return (int64_t)length - 1;
+    }
+    return normalized;
+}
+
+void *simp_buffer_slice_ex(void *object, int32_t start, int32_t end,
+                           int has_start, int has_end, const char *file,
+                           uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpBuffer *source = checked_buffer(object, file, file_length, line, column);
+    const int64_t first = normalize_slice_bound(start, source->length, 1, 1, has_start);
+    const int64_t last = normalize_slice_bound(end, source->length, 1, 0, has_end);
+    const uint64_t length = last > first ? (uint64_t)(last - first) : 0;
     SimpBuffer *copy = (SimpBuffer *)simp_gc_alloc(&buffer_metadata);
     if (length != 0) {
         copy->data = (uint8_t *)malloc((size_t)length);
         if (copy->data == NULL) abort();
-        memcpy(copy->data, source->data + start, (size_t)length);
+        memcpy(copy->data, source->data + first, (size_t)length);
         copy->length = length;
         copy->capacity = length;
     }
     return copy;
+}
+
+void *simp_buffer_slice(void *object, int32_t start, int32_t end, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column) {
+    return simp_buffer_slice_ex(object, start, end, 1, 1, file,
+                                file_length, line, column);
 }
 
 void simp_buffer_resize(void *object, int32_t length, const char *file,
@@ -1340,21 +1370,23 @@ void simp_buffer_append(void *object, uint64_t value, const char *file,
 uint64_t simp_buffer_get(void *object, int32_t index, const char *file,
                          uint64_t file_length, uint64_t line, uint64_t column) {
     SimpBuffer *buffer = checked_buffer(object, file, file_length, line, column);
-    if (index < 0 || (uint64_t)index >= buffer->length) {
+    const int64_t normalized = normalize_collection_index(index, buffer->length);
+    if (normalized < 0 || (uint64_t)normalized >= buffer->length) {
         static const char message[] = "buffer index out of bounds";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
-    return buffer->data[index];
+    return buffer->data[normalized];
 }
 
 void simp_buffer_set(void *object, int32_t index, uint64_t value, const char *file,
                      uint64_t file_length, uint64_t line, uint64_t column) {
     SimpBuffer *buffer = checked_buffer(object, file, file_length, line, column);
-    if (index < 0 || (uint64_t)index >= buffer->length) {
+    const int64_t normalized = normalize_collection_index(index, buffer->length);
+    if (normalized < 0 || (uint64_t)normalized >= buffer->length) {
         static const char message[] = "buffer index out of bounds";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
-    buffer->data[index] = (uint8_t)value;
+    buffer->data[normalized] = (uint8_t)value;
 }
 
 static int map_key_matches(const SimpMapEntry *entry, const char *key,
@@ -1508,15 +1540,14 @@ int32_t simp_map_remove(void *object, const char *key, uint64_t key_length,
     return 1;
 }
 
-void *simp_map_slice(void *object, int32_t start, int32_t end, const char *file,
-                     uint64_t file_length, uint64_t line, uint64_t column) {
+void *simp_map_slice_ex(void *object, int32_t start, int32_t end,
+                        int has_start, int has_end, const char *file,
+                        uint64_t file_length, uint64_t line, uint64_t column) {
     SimpMap *source = checked_map(object, file, file_length, line, column);
-    if (start < 0 || end < start || (uint64_t)end > source->length) {
-        static const char message[] = "map slice bounds out of bounds";
-        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
-    }
+    const int64_t first = normalize_slice_bound(start, source->length, 1, 1, has_start);
+    const int64_t last = normalize_slice_bound(end, source->length, 1, 0, has_end);
     SimpMap *copy = (SimpMap *)simp_gc_alloc_map();
-    for (int32_t index = start; index < end; ++index) {
+    for (int64_t index = first; index < last; ++index) {
         const SimpMapEntry *entry = &source->entries[index];
         simp_map_set(copy, entry->key, entry->key_length, &entry->value,
                      file, file_length, line, column);
@@ -1524,30 +1555,49 @@ void *simp_map_slice(void *object, int32_t start, int32_t end, const char *file,
     return copy;
 }
 
+void *simp_map_slice(void *object, int32_t start, int32_t end, const char *file,
+                     uint64_t file_length, uint64_t line, uint64_t column) {
+    return simp_map_slice_ex(object, start, end, 1, 1, file,
+                             file_length, line, column);
+}
+
 void *simp_array_index(void *object, int32_t index, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column) {
     SimpArray *array = checked_array(object, file, file_length, line, column);
-    if (index < 0 || (uint64_t)index >= array->length) {
+    const int64_t normalized = normalize_collection_index(index, array->length);
+    if (normalized < 0 || (uint64_t)normalized >= array->length) {
         static const char message[] = "array index out of bounds";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
-    return &array->values[index];
+    return &array->values[normalized];
+}
+
+void *simp_array_slice_ex(void *object, int32_t start, int32_t end, int32_t step,
+                          int has_start, int has_end, const char *file,
+                          uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpArray *source = checked_array(object, file, file_length, line, column);
+    if (step == 0) {
+        static const char message[] = "array slice step cannot be zero";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    const int64_t first = normalize_slice_bound(start, source->length, step, 1, has_start);
+    const int64_t last = normalize_slice_bound(end, source->length, step, 0, has_end);
+    uint64_t length = 0;
+    for (int64_t index = first; step > 0 ? index < last : index > last; index += step) {
+        ++length;
+    }
+    SimpArray *copy = (SimpArray *)simp_gc_alloc_array(length);
+    uint64_t destination = 0;
+    for (int64_t index = first; step > 0 ? index < last : index > last; index += step) {
+        copy->values[destination++] = source->values[index];
+    }
+    return copy;
 }
 
 void *simp_array_slice(void *object, int32_t start, int32_t end, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column) {
-    SimpArray *source = checked_array(object, file, file_length, line, column);
-    if (start < 0 || end < start || (uint64_t)end > source->length) {
-        static const char message[] = "array slice bounds out of bounds";
-        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
-    }
-    const uint64_t length = (uint64_t)(end - start);
-    SimpArray *copy = (SimpArray *)simp_gc_alloc_array(length);
-    if (length != 0) {
-        memcpy(copy->values, source->values + start,
-               (size_t)length * sizeof(SimpArrayValue));
-    }
-    return copy;
+    return simp_array_slice_ex(object, start, end, 1, 1, 1, file,
+                               file_length, line, column);
 }
 
 size_t simp_gc_heap_count(void) {

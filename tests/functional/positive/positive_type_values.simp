@@ -65,29 +65,20 @@ start {
     print(type(base) != Base)
     print(type(qualified) == ns.Thing)
 
-    any dynamic = integer
-    print(type(dynamic) == int)
-    dynamic = boolean
-    print(type(dynamic) == bool)
-    dynamic = real
-    print(type(dynamic) == float)
-    dynamic = count
-    print(type(dynamic) == unsigned)
-    dynamic = text
-    print(type(dynamic) == string)
-    dynamic = sequence
-    print(type(dynamic) == array)
-    dynamic = dictionary
-    print(type(dynamic) == map)
-    dynamic = bytes
-    print(type(dynamic) == buffer)
-    dynamic = handleValue
-    print(type(dynamic) == handle)
-    dynamic = base
-    print(type(dynamic) == Derived)
-    dynamic = null
-    print(type(dynamic))
-    print(type(dynamic) == null)
+    array dynamicValues = [integer, boolean, real, count, text, sequence,
+                           dictionary, bytes, handleValue, base, null]
+    print(type(dynamicValues[0]) == int)
+    print(type(dynamicValues[1]) == bool)
+    print(type(dynamicValues[2]) == float)
+    print(type(dynamicValues[3]) == unsigned)
+    print(type(dynamicValues[4]) == string)
+    print(type(dynamicValues[5]) == array)
+    print(type(dynamicValues[6]) == map)
+    print(type(dynamicValues[7]) == buffer)
+    print(type(dynamicValues[8]) == handle)
+    print(type(dynamicValues[9]) == Derived)
+    print(type(dynamicValues[10]))
+    print(dynamicValues[10] == null)
     print(type(null) == null)
 
     type stored = type(base)
@@ -99,7 +90,7 @@ start {
     print(holder.value)
     print(holder.value == type(qualified))
 
-    dynamic = type(derived)
-    print(dynamic is type)
-    print(type(dynamic))
+    type dynamicType = type(derived)
+    print(dynamicType is type)
+    print(type(dynamicType))
 }

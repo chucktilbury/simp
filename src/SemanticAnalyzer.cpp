@@ -642,9 +642,16 @@ void SemanticAnalyzer::analyze(Program& program) {
 
 void SemanticAnalyzer::validateType(const std::string& type, const SourceLocation& location,
                                    bool allowVoid) const {
+    if (type == "any") {
+        throw DiagnosticError(
+            location,
+            "'any' cannot be used as a declared type; collection values may only be tested "
+            "with 'is'/'type', printed, compared with null, stored in a collection, or extracted "
+            "into a concrete type");
+    }
     if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
         type == "string" || type == "array" || type == "map" ||
-        type == "buffer" || type == "handle" || type == "any" || type == "type" ||
+        type == "buffer" || type == "handle" || type == "type" ||
         (allowVoid && type == "void")) {
         return;
     }
@@ -656,14 +663,6 @@ void SemanticAnalyzer::validateType(const std::string& type, const SourceLocatio
 void SemanticAnalyzer::validateExternalMethodType(const std::string& type,
                                                   const SourceLocation& location,
                                                   bool allowVoid) const {
-    if (type == "any") {
-        // The dynamic 'any' representation is a four-word tagged struct. Passing
-        // it by value across a real C ABI boundary requires target-specific
-        // struct classification (register vs. hidden-pointer passing) that the
-        // backend does not implement yet; see SIMPLE-LANGUAGE-NOTES.md.
-        throw DiagnosticError(location,
-                              "'any' is not supported in external method signatures");
-    }
     validateType(type, location, allowVoid);
 }
 

@@ -1,5 +1,5 @@
 # Raises a runtime error when an integer-valued any is extracted as a map.
 start {
-    any value = 7
-    map invalid = value
+    array values = [7]
+    map invalid = values[0]
 }

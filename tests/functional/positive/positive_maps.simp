@@ -44,8 +44,7 @@ start {
     array holder = [table]
     map fieldMap = catalog.read()
     map recovered = holder[0]
-    any dynamic = recovered
-    map recoveredAgain = dynamic
+    map recoveredAgain = recovered
     Node scratch = Node(0)
     int count = 0
     while (count < 8) {
@@ -63,7 +62,7 @@ start {
     print(retained.read())
 
     try {
-        any absent = table["absent"]
+        map absent = table["absent"]
     } except() as error {
         print(error)
     }

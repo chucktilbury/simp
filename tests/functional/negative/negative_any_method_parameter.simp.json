@@ -1,0 +1,5 @@
+{
+  "friendly_name": "reject any method parameter declaration",
+  "expected_diagnostic": "'any' cannot be used as a declared type",
+  "enabled": true
+}

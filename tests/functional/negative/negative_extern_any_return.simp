@@ -1,4 +1,4 @@
-# Rejects an external method signature that uses any as its return type.
+# Rejects declared any types in native method return values.
 class Native {
     any dynamicValue(int value)
 }

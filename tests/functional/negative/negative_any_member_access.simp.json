@@ -1,0 +1,5 @@
+{
+  "friendly_name": "reject member access on internal dynamic values",
+  "expected_diagnostic": "'any' values cannot be used for member access",
+  "enabled": true
+}

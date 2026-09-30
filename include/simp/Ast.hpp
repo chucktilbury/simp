@@ -26,6 +26,9 @@ struct Expression {
     SourceLocation typeLocation;
     std::string value;
     bool formattedString = false;
+    bool sliceHasStart = true;
+    bool sliceHasEnd = true;
+    bool sliceHasStep = false;
     // For a Call expression the semantic analyzer records the selected
     // overload's mangled parameter suffix here, so code generation reuses the
     // same resolution instead of repeating it.

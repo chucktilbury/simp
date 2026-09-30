@@ -1,5 +1,0 @@
-set(CASE_NAME simp_reports_uncaught_map_slice_bounds)
-set(CASE_FIXTURE negative_map_slice_bounds_uncaught.simp)
-set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_reports_uncaught_map_slice_bounds.stdout")
-set(CASE_EXPECT_RUNTIME_FAILURE [==[ON]==])
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[uncaught runtime exception at .*negative_map_slice_bounds_uncaught.simp:4:[0-9]+: map slice bounds out of bounds]==])

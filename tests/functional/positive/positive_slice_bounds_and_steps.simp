@@ -1,0 +1,128 @@
+# Covers omitted slice bounds for arrays, maps, and buffers plus array steps.
+start {
+    array values = [0, 1, 2, 3, 4, 5]
+    print(values[-1])
+    int previous = values[-2]
+    values[-2] = previous + 10
+    print(values[-2])
+    values[-6] = 7
+    print(values[0])
+    try {
+        int invalidIndex = values[-values.length - 1]
+        print("unreachable")
+    } except(Exception) as error {
+        print(error.message)
+    }
+    try {
+        int boundaryIndex = values[-6]
+        print(boundaryIndex)
+    } except(Exception) {
+        print("negative length should be valid")
+    }
+
+    array prefix = values[:3]
+    array suffix = values[3:]
+    array entire = values[:]
+    entire[0] = 99
+    print(prefix[0])
+    print(prefix[2])
+    print(suffix[0])
+    print(suffix[2])
+    print(entire[0])
+    print(values[0])
+
+    array reverse = values[::-1]
+    array everyOther = values[::2]
+    array odd = values[1::2]
+    array middle = values[1:5:2]
+    array bounded = values[:5:2]
+    array fullStep = values[::]
+    print(reverse[0])
+    print(reverse[5])
+    print(everyOther[1])
+    print(odd[2])
+    print(middle[1])
+    print(bounded[2])
+    fullStep[1] = 88
+    print(values[1])
+
+    array descending = values[4:1:-2]
+    array fromFirst = values[0::-1]
+    array fromBoundary = values[6::-2]
+    array negativeRange = values[-2:]
+    array negativeEnd = values[:-1]
+    array clamped = values[-100:100]
+    array mixedNegativeStep = values[-1:-4:-1]
+    print(descending[0])
+    print(descending[1])
+    print(fromFirst[0])
+    print(fromBoundary[0])
+    print(fromBoundary[2])
+    print(negativeRange[0])
+    print(negativeRange[1])
+    print(negativeEnd[4])
+    print(clamped.length)
+    print(mixedNegativeStep[0])
+    print(mixedNegativeStep[2])
+
+    int zero = 0
+    try {
+        array invalid = values[1:5:zero]
+        print("unreachable")
+    } except(Exception) as error {
+        print(error.message)
+    }
+
+    map entries = {"a": 10, "b": 20, "c": 30, "d": 40}
+    map firstEntries = entries[:2]
+    map lastEntries = entries[1:]
+    map allEntries = entries[:]
+    map negativeEntries = entries[-2:]
+    map negativeRangeEntries = entries[-3:-1]
+    map clampedEntries = entries[-100:100]
+    firstEntries["a"] = 99
+    print(firstEntries.length)
+    print(firstEntries["b"])
+    print(lastEntries["b"])
+    print(lastEntries["d"])
+    print(allEntries["a"])
+    print(entries["a"])
+    print(negativeEntries["c"])
+    print(negativeEntries["d"])
+    print(negativeRangeEntries["b"])
+    print(negativeRangeEntries["c"])
+    print(clampedEntries.length)
+
+    buffer bytes = buffer(4)
+    bytes[0] = 10
+    bytes[1] = 20
+    bytes[2] = 30
+    bytes[3] = 40
+    print(bytes[-1])
+    bytes[-2] = 35
+    print(bytes[-2])
+    bytes[-4] = 11
+    print(bytes[0])
+    try {
+        unsigned invalidIndex = bytes[-bytes.length - 1]
+        print("unreachable")
+    } except(Exception) as error {
+        print(error.message)
+    }
+    buffer firstBytes = bytes[:2]
+    buffer lastBytes = bytes[1:]
+    buffer allBytes = bytes[:]
+    buffer negativeBytes = bytes[-3:-1]
+    buffer clampedBytes = bytes[-100:100]
+    firstBytes[0] = 99
+    allBytes[1] = 88
+    print(firstBytes[1])
+    print(lastBytes[0])
+    print(lastBytes[2])
+    print(allBytes[0])
+    print(bytes[0])
+    print(bytes[1])
+    print(negativeBytes[0])
+    print(negativeBytes[1])
+    print(clampedBytes.length)
+}

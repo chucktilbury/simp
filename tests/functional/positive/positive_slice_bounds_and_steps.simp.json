@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional omitted bounds and stepped slices",
+  "expected_diagnostic": "",
+  "enabled": true
+}

@@ -1,0 +1,5 @@
+{
+  "friendly_name": "reject arithmetic on internal dynamic values",
+  "expected_diagnostic": "operator '+' requires matching int, float, or unsigned operands",
+  "enabled": true
+}

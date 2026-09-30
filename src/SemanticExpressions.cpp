@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 namespace simp {
 namespace {
@@ -35,6 +36,54 @@ bool isOpaqueHandleType(const std::string& type) {
 
 bool isDynamicValueType(const std::string& type) {
     return type == "any";
+}
+
+bool constantInteger(const Expression& expression, std::int64_t& value) {
+    if (expression.kind == ExpressionKind::Integer) {
+        const auto parsed = std::from_chars(expression.value.data(),
+                                             expression.value.data() + expression.value.size(),
+                                             value);
+        return parsed.ec == std::errc{} &&
+               parsed.ptr == expression.value.data() + expression.value.size();
+    }
+    if (expression.kind == ExpressionKind::Unary && expression.left != nullptr) {
+        if (!constantInteger(*expression.left, value)) return false;
+        if (expression.value == "-") {
+            if (value == std::numeric_limits<std::int64_t>::min()) return false;
+            value = -value;
+        }
+        return expression.value == "-" || expression.value == "+";
+    }
+    if (expression.kind != ExpressionKind::Binary || expression.left == nullptr ||
+        expression.right == nullptr) {
+        return false;
+    }
+    std::int64_t left = 0;
+    std::int64_t right = 0;
+    if (!constantInteger(*expression.left, left) ||
+        !constantInteger(*expression.right, right)) {
+        return false;
+    }
+    if (expression.value == "+") {
+        return !__builtin_add_overflow(left, right, &value);
+    }
+    if (expression.value == "-") {
+        return !__builtin_sub_overflow(left, right, &value);
+    }
+    if (expression.value == "*") {
+        return !__builtin_mul_overflow(left, right, &value);
+    }
+    if (expression.value == "/" && right != 0 &&
+        !(left == std::numeric_limits<std::int64_t>::min() && right == -1)) {
+        value = left / right;
+        return true;
+    }
+    if (expression.value == "%" && right != 0 &&
+        !(left == std::numeric_limits<std::int64_t>::min() && right == -1)) {
+        value = left % right;
+        return true;
+    }
+    return false;
 }
 
 bool expressionNamePath(const Expression& expression, std::string& name) {
@@ -257,8 +306,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             }
             if (isDynamicValueType(receiverType)) {
                 throw DiagnosticError(expression.location,
-                                      "'any' has no members; assign it to a typed variable "
-                                      "first to extract its value");
+                                      "'any' values cannot be used for member access; assign the "
+                                      "value to a typed variable first");
             }
             owner = findClass(receiverType, expression.location);
         }
@@ -332,19 +381,45 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
     case ExpressionKind::Index:
     case ExpressionKind::Slice: {
         const auto collectionType = analyzeExpression(*expression.left);
+        if (expression.kind == ExpressionKind::Slice && expression.sliceHasStep &&
+            !isArrayType(collectionType)) {
+            throw DiagnosticError(expression.location,
+                                  "slice steps are only supported for arrays");
+        }
         if (isArrayType(collectionType)) {
-            for (auto& bound : expression.arguments) {
-                if (analyzeExpression(*bound) != "int") {
-                    throw DiagnosticError(bound->location,
+            if (expression.kind == ExpressionKind::Index) {
+                if (analyzeExpression(*expression.arguments.front()) != "int") {
+                    throw DiagnosticError(expression.arguments.front()->location,
+                                          "array index and slice bounds must be int");
+                }
+                return "any";
+            }
+            for (const auto index : {0U, 1U}) {
+                const bool present = index == 0 ? expression.sliceHasStart
+                                                : expression.sliceHasEnd;
+                if (present && analyzeExpression(*expression.arguments[index]) != "int") {
+                    throw DiagnosticError(expression.arguments[index]->location,
                                           "array index and slice bounds must be int");
                 }
             }
-            return expression.kind == ExpressionKind::Slice ? "array" : "any";
+            if (expression.sliceHasStep) {
+                auto& step = *expression.arguments[2];
+                if (analyzeExpression(step) != "int") {
+                    throw DiagnosticError(step.location, "array slice step must be int");
+                }
+                std::int64_t constantStep = 0;
+                if (constantInteger(step, constantStep) && constantStep == 0) {
+                    throw DiagnosticError(step.location, "array slice step cannot be zero");
+                }
+            }
+            return "array";
         }
         if (isMapType(collectionType) && expression.kind == ExpressionKind::Slice) {
-            for (auto& bound : expression.arguments) {
-                if (analyzeExpression(*bound) != "int") {
-                    throw DiagnosticError(bound->location,
+            for (const auto index : {0U, 1U}) {
+                const bool present = index == 0 ? expression.sliceHasStart
+                                                : expression.sliceHasEnd;
+                if (present && analyzeExpression(*expression.arguments[index]) != "int") {
+                    throw DiagnosticError(expression.arguments[index]->location,
                                           "map index and slice bounds must be int");
                 }
             }
@@ -359,13 +434,22 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             return "any";
         }
         if (isBufferType(collectionType)) {
-            for (auto& bound : expression.arguments) {
-                if (analyzeExpression(*bound) != "int") {
-                    throw DiagnosticError(bound->location,
+            if (expression.kind == ExpressionKind::Index) {
+                if (analyzeExpression(*expression.arguments.front()) != "int") {
+                    throw DiagnosticError(expression.arguments.front()->location,
+                                          "buffer index and slice bounds must be int");
+                }
+                return "unsigned";
+            }
+            for (const auto index : {0U, 1U}) {
+                const bool present = index == 0 ? expression.sliceHasStart
+                                                : expression.sliceHasEnd;
+                if (present && analyzeExpression(*expression.arguments[index]) != "int") {
+                    throw DiagnosticError(expression.arguments[index]->location,
                                           "buffer index and slice bounds must be int");
                 }
             }
-            return expression.kind == ExpressionKind::Slice ? "buffer" : "unsigned";
+            return "buffer";
         }
         throw DiagnosticError(expression.location,
                               expression.kind == ExpressionKind::Slice
@@ -491,7 +575,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             if (isArrayType(receiverType)) {
                 if (target.value != "resize" && target.value != "append") {
                     throw DiagnosticError(target.location,
-                                          "arrays support only 'resize(int)' and 'append(any)'");
+                                          "arrays support only 'resize(int)' and 'append(value)'");
                 }
                 if (expression.arguments.size() != 1) {
                     throw DiagnosticError(expression.location,
@@ -506,8 +590,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                     throw DiagnosticError(expression.arguments.front()->location,
                                           target.value == "resize"
                                               ? "array resize length must be int"
-                                              : "array append value must be a scalar, string, "
-                                                "reference, null, or any");
+                                              : "array append value must be a supported collection "
+                                                "element");
                 }
                 return "void";
             }
@@ -580,6 +664,11 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             if (isOpaqueHandleType(receiverType)) {
                 throw DiagnosticError(target.location,
                                       "handle has no built-in operations");
+            }
+            if (isDynamicValueType(receiverType)) {
+                throw DiagnosticError(target.location,
+                                      "'any' values cannot be used for method calls; assign the "
+                                      "value to a typed variable first");
             }
             owner = findClass(receiverType, target.location);
         }
@@ -793,7 +882,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             // buffer/handle/string; it is the same null-check every
             // null-capable type supports.
             const auto isNullComparable = [this](const std::string& type) {
-                return type == "buffer" || type == "handle" || type == "string" ||
+                return type == "any" || type == "buffer" || type == "handle" || type == "string" ||
                        type == "array" || type == "map" || type == "int" ||
                        type == "bool" || type == "float" || type == "unsigned" ||
                        classes_.find(type) != classes_.end();
@@ -917,6 +1006,11 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
         const bool qualified = resolveBaseQualifier(*expression.left, root, owner, path);
         if (!qualified) {
             const auto receiverType = analyzeExpression(*expression.left);
+            if (receiverType == "any") {
+                throw DiagnosticError(expression.location,
+                                      "'any' values cannot be used for member access; assign the "
+                                      "value to a typed variable first");
+            }
             if (isArrayType(receiverType) && expression.value == "length") {
                 throw DiagnosticError(expression.location, "array length is read-only");
             }

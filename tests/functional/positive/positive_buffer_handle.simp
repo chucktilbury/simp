@@ -66,12 +66,11 @@ start {
         print(message)
     }
 
-    any dynamicBuffer = piece
-    buffer extractedBuffer = dynamicBuffer
-    print(extractedBuffer[1])
     array buffers = [piece]
     buffer arrayBuffer = buffers[0]
     print(arrayBuffer[0])
+    buffer extractedBuffer = buffers[0]
+    print(extractedBuffer[1])
     map bufferMap = {"bytes": piece}
     buffer mapBuffer = bufferMap["bytes"]
     print(mapBuffer[1])
@@ -102,8 +101,8 @@ start {
     handle fieldHandle = native.recall()
     print(fieldHandle != null)
 
-    any dynamicHandle = inlineHandle
-    handle extractedHandle = dynamicHandle
+    array inlineHandles = [inlineHandle]
+    handle extractedHandle = inlineHandles[0]
     print(extractedHandle != null)
     array handles = [nativeHandle]
     handle arrayHandle = handles[0]

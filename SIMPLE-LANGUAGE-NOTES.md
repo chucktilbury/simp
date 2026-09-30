@@ -22,7 +22,10 @@ The language is intended to have full object-oriented programming support. Broad
 - Types are explicit; Simple does not infer variable types.
 - A variable's type is fixed after declaration. The language is strongly typed.
 - The required scalar types are `bool`, `int`, `unsigned`, and `float`, alongside
-  `string`, `array`, `map`, and `any`. `bool` is distinct from `int`; it is
+  `string`, `array`, and `map`. Collection reads use an internal tagged
+  dynamic representation that is not available as a declared type; `any`
+  remains a reserved keyword to produce a clear diagnostic. `bool` is distinct
+  from `int`; it is
   stored as an LLVM `i1`. `int` is signed 32-bit, `unsigned` is unsigned
   64-bit, and `float` denotes an IEEE 754 double-precision value and is stored
   as an LLVM `double`.
@@ -204,7 +207,8 @@ mangling but in a much simpler, readable form.
   `tests/functional/positive/positive_namespace_collisions.simp`). A method
   that takes no parameters has no `$` suffix at all.
 - **Parameter type codes** are one character per scalar or built-in type:
-  `i` int, `u` unsigned, `f` float, `b` bool, `s` string, `y` any,
+  `i` int, `u` unsigned, `f` float, `b` bool, `s` string, `y` internal dynamic
+  value (not usable in a declared parameter),
   `a` array/list, `m` map/dict, `B` buffer, `h` handle. A class-typed
   parameter is encoded `C<length><name>`, length-prefixed so a dotted
   namespace path stays unambiguous when codes are concatenated. Examples:
@@ -661,15 +665,21 @@ subclassing, only a small fixed set of compiler-built-in operations.
   `float`, `string`) assigned to a buffer element is a **compile-time
   (syntax) error**. A well-typed `int` or `unsigned` write is never
   rejected at either compile time or runtime: the element is a byte, so an
-  assigned `int`/`unsigned` value is bounds-checked and **truncated
+  assigned `int`/`unsigned` value is **truncated
   bitwise** to the low 8 bits, matching ordinary C `uint8_t` narrowing
   (`(uint8_t)value`), not a range-checked, throwing conversion. **Confirmed:**
   reading `b[i]` yields `unsigned` — semantically, a `buffer` is "an array
   of bytes," and every element, once inside the buffer, is an unsigned
   byte value (`0..255`) regardless of whether it was written from an `int`
-  or an `unsigned` expression.
+  or an `unsigned` expression. Negative indices count from the end (`-1` is
+  the last byte); an index still out of range after normalization raises a
+  catchable, source-located exception.
 - `b[start:end]` slices a half-open byte range into a new, independent
-  `buffer` — a copy, matching `array`/`map` slice-copy semantics.
+  `buffer` — a copy, matching `array`/`map` slice-copy semantics. Either bound
+  may be omitted: `b[:end]` starts at zero, `b[start:]` ends at the buffer
+  length, and `b[:]` copies the entire buffer. Buffer slices do not accept a
+  step. Negative explicit bounds are offset from the buffer length and
+  out-of-range bounds are clamped to the valid slice range.
 - **Assigning a `buffer` copies it**, producing an exact, independent
   duplicate. This is different from `array`/`map`, whose assignment aliases
   shared mutable storage; `buffer` assignment is a value type in this
@@ -910,33 +920,51 @@ using the keyword `array` (`list` is an alias for the same type). An array
 literal, for example
 `[1, true, 3.14, 42u, "two", Node(3), {"name": "Ada"}, null]`, may freely mix
 scalar values, strings, class references, maps, and `null` in the same collection; empty literals `[]`
-are always allowed. Reading an element with `values[index]` yields the explicit
-dynamic `any` value type rather than a statically-known concrete type; assigning
+are always allowed. Reading an element with `values[index]` yields an internal
+dynamic value rather than a statically-known concrete type; assigning
 `values[index] = expr` accepts any supported element type directly.
-The `is` type-test operator checks an `any` value's runtime tag without
-extracting it, and returns false for null.
+Collection reads and implicit collection-loop bindings use this internal
+representation; the reserved keyword `any` cannot be declared as a local,
+field, parameter, return type, or native-interface type. Dynamic values may
+only be extracted into a concrete type, inserted into another collection,
+printed, tested with `is`/`type`, or compared with `null`. Arithmetic, member
+access, method calls, and other operators require a concrete type.
+The `is` type-test operator checks an internal dynamic value's runtime tag
+without extracting it, and returns false for null.
 `type(value)` returns the exact type name (including a dynamic class name) and
 prints as that name; the null type is named `null`.
 `values.length` is a read-only `int`, and `values[start:end]` copies the
-half-open range `[start, end)` into independent storage. Copying is shallow
-for class references and nested collections. `values.resize(newLength)` grows
+half-open range `[start, end)` into independent storage. Either bound may be
+omitted: an omitted start is zero and an omitted end is the array length, so
+`values[:]` is a full shallow copy. `values[start:end:step]` selects entries
+with the given nonzero integer step; either bound may also be omitted, and
+`values[::]` is equivalent to a full copy. Negative steps traverse backward:
+when omitted, the start defaults to the last index and the end defaults to
+before index zero. Explicit negative bounds are offset from the collection
+length, and all explicit bounds are clamped using Python's slice normalization
+rules: `[0, length]` for positive steps and `[-1, length - 1]` for negative
+steps. An omitted negative-step end is the sentinel before index zero; explicit
+`-1` means the last element. A runtime zero step raises a catchable,
+source-located exception, while a statically constant zero step is a
+compile-time error. Array indexing also accepts negative indices (`-1` is the
+last element); an index still outside the collection after adding its length
+raises a catchable, source-located exception. Copying is shallow for class
+references and nested collections. `values.resize(newLength)` grows
 or shrinks in place, and `values.append(value)` adds one heterogeneous element;
-both return `void`. New slots hold `null` (a null class-reference tagged `any`
-value); removed slots release their references for collection. Length must be
+both return `void`; append accepts supported element values, including an
+internal dynamic value from a collection read. New slots hold `null` (a null
+class-reference tagged value); removed slots release their references for collection. Length must be
 a nonnegative `int` and cannot grow beyond the signed 32-bit range; invalid
 sizes raise source-located exceptions. Array assignment aliases the same
 mutable storage, including changes to its length, while slices remain shallow
 copies. The GC-managed array header remains stable as its separately allocated
-element buffer grows. Negative/out-of-range indices and invalid slice
-bounds raise catchable, source-located exceptions. `any` is the explicit
-dynamic/tagged value type: it can be declared directly, holds an `int`, `bool`,
-`float`, `unsigned`, `string`, class reference, array reference, map reference,
-or `null`, has no members of its own,
-and must be assigned to a concretely typed variable/field/parameter to extract
-its value (a runtime-checked operation that raises on a tag or exact-class mismatch;
-there is no covariant/polymorphic downcast support). Nested arrays and
-collections are supported as elements and are traced by the GC. Collection
-values can be stored in `any` and extracted with a runtime tag check.
+element buffer grows. Out-of-range indices raise catchable, source-located
+exceptions; slice bounds normalize and clamp as described above. The internal
+dynamic representation holds an `int`, `bool`, `float`, `unsigned`, `string`,
+class reference, array reference, map reference, buffer, handle, or `null`.
+Typed extraction is runtime-checked and raises on a tag or exact-class mismatch;
+there is no covariant/polymorphic downcast support. Nested arrays and
+collections are supported as elements and are traced by the GC.
 Equality and ordering comparisons are supported for matching scalar types
 (`int`, `unsigned`, and `float` ordering; equality also supports `bool`);
 strings, objects, arrays, maps, and `any` do not support comparisons. Arrays and maps can be
@@ -948,16 +976,16 @@ Maps are implemented as the corresponding keyed collection using `map` (with
 `dict` as an alias), brace literals such as `{"name": "Ada", "age": 37}`, and
 string-expression indexing such as `person[key]`. Keys compare by exact
 UTF-8 byte sequence; they are case-sensitive and are not Unicode-normalized.
-Map indexing returns `any`; assignment inserts or replaces, and a duplicate
+Map indexing returns an internal dynamic value; assignment inserts or replaces, and a duplicate
 literal key replaces its earlier value without increasing the map's distinct
 key count. The read-only `length` member reports that count. `contains(key)`
 returns integer `1` or `0` without raising for a missing key. Missing-key index
 access raises a source-located runtime exception that can be caught with
 `try`/`except`. Map assignment aliases its mutable storage.
 
-Map values accept scalar values, strings, class references, null, `any`, arrays,
-and maps. Arrays and maps may recursively contain either collection type. Array
-and map references in tagged values use distinct tags, so typed extraction
+Map values accept scalar values, strings, class references, null, arrays, and
+maps. Arrays and maps may recursively contain either collection type. Array
+and map references in internal tagged values use distinct tags, so typed extraction
 checks the requested collection kind. The precise collector traces
 class-reference and nested collection references in both collection kinds,
 including values reached through `any`. Map lookup and membership use a
@@ -969,14 +997,17 @@ key bytes avoid retaining pointers into transient string expressions.
 `0` if it was absent. Deletion preserves the relative order of remaining
 entries; reinserting a deleted key places it at the end. `map[start:end]`
 copies the half-open range of entries in insertion order into an independent,
-shallow map. Its keys and values are copied, but referenced objects and nested
-collections are shared. Invalid map slice bounds raise a catchable,
-source-located exception.
+shallow map. Either bound may be omitted, defaulting to the first entry or the
+map length, respectively. Its keys and values are copied, but referenced
+objects and nested collections are shared. Negative explicit bounds are
+offset from the map length and out-of-range bounds are clamped. Map indexing
+continues to use string keys. Step slices are supported only for arrays.
 
-Array iteration uses `for (value in array)` and binds each element as `any` in
-increasing index order. Map iteration accepts `for (value in map)` for
-value-only binding or `for (key, value in map)` for both a `string` key and an
-`any` value. Both forms iterate over a shallow snapshot of entries and values
+Array iteration uses `for (value in array)` and binds each element as an
+internal dynamic value in increasing index order. Map iteration accepts
+`for (value in map)` for value-only binding or `for (key, value in map)` for
+both a `string` key and an internal dynamic value. These bindings follow the
+same restrictions as collection reads. Both forms iterate over a shallow snapshot of entries and values
 taken when the loop starts. Mutations to the original collection during the
 loop—including inserting, deleting, or replacing entries/elements—do not
 change which values the current loop observes; referenced objects remain

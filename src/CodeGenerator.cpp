@@ -806,16 +806,32 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
     }
     case ExpressionKind::Slice: {
         const auto collection = emitExpression(*expression.left);
-        const auto start = emitIntegerExpression(*expression.arguments[0]);
-        const auto end = emitIntegerExpression(*expression.arguments[1]);
+        const auto start = expression.sliceHasStart
+                               ? emitIntegerExpression(*expression.arguments[0])
+                               : Value{"int", "0"};
+        const auto end = expression.sliceHasEnd
+                             ? emitIntegerExpression(*expression.arguments[1])
+                             : Value{"int", "0"};
+        const auto step = expression.sliceHasStep
+                              ? emitIntegerExpression(*expression.arguments[2])
+                              : Value{"int", "1"};
         const auto file = internString(expression.location.file);
         const auto result = newTemporary();
         const auto function = isBufferType(collection.type)
-                                  ? "simp_buffer_slice"
-                                  : isMapType(collection.type) ? "simp_map_slice"
-                                                               : "simp_array_slice";
+                                  ? "simp_buffer_slice_ex"
+                                  : isMapType(collection.type) ? "simp_map_slice_ex"
+                                                               : "simp_array_slice_ex";
         instructions_ += "  " + result + " = call ptr @" + function + "(ptr " + collection.operand +
-                         ", i32 " + start.operand + ", i32 " + end.operand + ", ptr " + file +
+                         ", i32 " + start.operand + ", i32 " + end.operand;
+        if (isBufferType(collection.type) || isMapType(collection.type)) {
+            instructions_ += ", i32 " + std::string(expression.sliceHasStart ? "1" : "0") +
+                             ", i32 " + (expression.sliceHasEnd ? "1" : "0");
+        } else {
+            instructions_ += ", i32 " + step.operand + ", i32 " +
+                             std::string(expression.sliceHasStart ? "1" : "0") + ", i32 " +
+                             (expression.sliceHasEnd ? "1" : "0");
+        }
+        instructions_ += ", ptr " + file +
                          ", i64 " + std::to_string(expression.location.file.size()) +
                          ", i64 " + std::to_string(expression.location.line) + ", i64 " +
                          std::to_string(expression.location.column) + ")\n";
@@ -1369,6 +1385,16 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                 }
                 if (operand.type == "string") {
                     return emitStringNullComparison(operand, operation == "==");
+                }
+                if (isDynamicValueType(operand.type)) {
+                    const auto tag = newTemporary();
+                    const auto comparison = newTemporary();
+                    instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " +
+                                     operand.operand + ", 0\n"
+                                     "  " + comparison + " = icmp " +
+                                     (operation == "==" ? "eq" : "ne") + " i64 " + tag +
+                                     ", 3\n";
+                    return {"bool", comparison};
                 }
             }
             if (left.type == "float") {

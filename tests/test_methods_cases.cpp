@@ -45,14 +45,14 @@ const TestGroupRegistration registration{3, {
                  "class Native {\n  int use(any value)\n}\n"
                  "int Native.use(any value) from \"symbol\"\n"
                  "start {\n  print(1)\n}",
-                 "'any' is not supported in external method signatures");
+                 "'any' cannot be used as a declared type");
          }},
         {"external method rejects 'any' returns", [] {
              expectDiagnostic(
                  "class Native {\n  any dynamicValue(int value)\n}\n"
                  "any Native.dynamicValue(int value) from \"symbol\"\n"
                  "start {\n  print(1)\n}",
-                 "'any' is not supported in external method signatures");
+                 "'any' cannot be used as a declared type");
          }},
         {"external method requires a non-empty C symbol", [] {
              expectDiagnostic(

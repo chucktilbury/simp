@@ -1,0 +1,5 @@
+# Rejects a non-integer array slice step.
+start {
+    array values = [1, 2, 3]
+    array invalid = values[::"two"]
+}

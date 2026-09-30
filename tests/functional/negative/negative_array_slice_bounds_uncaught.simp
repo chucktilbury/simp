@@ -1,5 +1,0 @@
-# Raises an uncaught runtime error for an array slice with a negative lower bound.
-start {
-    array values = [1, 2]
-    array copy = values[-1:1]
-}
