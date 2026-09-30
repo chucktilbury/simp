@@ -1,0 +1,28 @@
+If:                        
+  PathMatch: [.*\.h, .*\.c]
+  PathExclude: src/gc/.* 
+
+CompileFlags:
+  Add: [-I./include]
+
+Diagnostics:
+  UnusedIncludes: None
+
+InlayHints:
+  BlockEnd: false
+  Designators: true
+  Enabled: true
+  ParameterNames: false
+  DeducedTypes: true
+  TypeNameLimit: 24
+
+Completion:
+  AllScopes: Yes
+  ArgumentLists: Delimiters
+  HeaderInsertion: Never
+  CodePatterns: None
+  MacroFilter: ExactPrefix
+
+Documentation:
+  CommentFormat: Doxygen
+  
