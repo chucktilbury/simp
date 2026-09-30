@@ -81,7 +81,7 @@ int buildExecutable(const std::vector<std::string>& irPaths,
                     ? ""
                     : " -I " + shellQuote(SIMP_RUNTIME_INCLUDE_DIRECTORY) +
                           " -x c " + shellQuote(inlineShimPath)) +
-               " -o " + shellQuote(outputPath);
+               " -pthread -o " + shellQuote(outputPath);
     const int status = std::system(command.c_str());
     if (status == -1) {
         std::cerr << "simp: could not start clang\n";

@@ -32,8 +32,10 @@ if(NOT DEFINED SIMP_LIBRARY_OUTPUT_DIRECTORY)
     set(SIMP_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib")
 endif()
 
-add_library(simp_runtime STATIC RuntimeGc.c RuntimeDemoShims.c)
-target_link_libraries(simp_runtime PUBLIC simp_headers)
+find_package(Threads REQUIRED)
+
+add_library(simp_runtime STATIC RuntimeGc.c RuntimeDemoShims.c RuntimeThreads.c)
+target_link_libraries(simp_runtime PUBLIC simp_headers Threads::Threads)
 set_target_properties(simp_runtime PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${SIMP_LIBRARY_OUTPUT_DIRECTORY}"
     LIBRARY_OUTPUT_DIRECTORY "${SIMP_LIBRARY_OUTPUT_DIRECTORY}"

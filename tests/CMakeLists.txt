@@ -232,6 +232,7 @@ set(FUNCTIONAL_RUN_TESTS
     "simp_compile_and_run_include_cycle|positive_include_cycle.simp|9\n|-"
     "simp_compile_and_run_include_relative_path|positive_include_relative_path.simp|33\n|-"
     "simp_compile_and_run_return_parentheses|positive_return_parentheses.simp|10\n1\n|-"
+    "simp_compile_and_run_threads|positive_threads.simp|42\n8\n800\n|gc"
 )
 foreach(test_row IN LISTS FUNCTIONAL_RUN_TESTS)
     string(REPLACE "|" ";" test_fields "${test_row}")

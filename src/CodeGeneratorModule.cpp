@@ -605,9 +605,12 @@ void CodeGenerator::emitMain(const Program& program) {
     blockTerminated_ = false;
     emitStatements(program.statements);
     const auto body = instructions_;
-    instructions_ = "define i32 @main() {\nentry:\n" + entryAllocas_ +
+    instructions_ = "define i32 @main() {\nentry:\n"
+                    "  call void @simp_runtime_thread_enter()\n" +
+                    entryAllocas_ +
                     rootFrameInitialization() + functionPrologue_ + rootFramePush() + body +
                     "  call void @simp_gc_pop_or_abort(ptr %simp.root.frame)\n"
+                    "  call void @simp_runtime_thread_exit()\n"
                     "  ret i32 0\n}\n";
 }
 
@@ -698,6 +701,8 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare void @simp_gc_end_construction(ptr)\n"
            << "declare void @simp_gc_begin_destroy(ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_end_destroy(ptr)\n"
+           << "declare void @simp_runtime_thread_enter()\n"
+           << "declare void @simp_runtime_thread_exit()\n"
            << "declare ptr @simp_gc_root(ptr)\n"
            << "declare i64 @simp_exception_frame_size()\n"
            << "declare void @simp_exception_frame_init(ptr)\n"

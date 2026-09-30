@@ -304,5 +304,11 @@
     "friendly_name": "functional native method missing symbol fails at link time",
     "expected_diagnostic": "",
     "enabled": true
+  },
+  {
+    "name": "positive_threads.simp",
+    "friendly_name": "functional Thread/Semaphore runtime bindings compile and run",
+    "expected_diagnostic": "",
+    "enabled": true
   }
 ]

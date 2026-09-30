@@ -47,6 +47,7 @@ static int fail(const char *message) {
 }
 
 int main(void) {
+    simp_runtime_thread_enter();
     SimpRootFrame outer = {0};
     SimpRootFrame inner = {0};
     TestNode *head = NULL;
@@ -253,6 +254,7 @@ int main(void) {
         return fail("opaque handle payload was traced as a GC reference");
     }
     simp_gc_pop_or_abort(&tagged_frame);
+    simp_runtime_thread_exit();
     puts("PASS precise roots, reclamation, finalization, destruction, and frame lifecycle");
     return 0;
 }

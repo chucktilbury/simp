@@ -1012,14 +1012,56 @@ separate from the caller-controlled timing of explicit cleanup.
 
 - The threading model is pthread-style, with threads in the same process.
 - It is not a fork/process/shared-memory model.
-- Threading is exposed as a module with facilities such as semaphores.
-- The user is responsible for the lifetime of callback/function-pointer values supplied to the threading API.
-- The runtime and GC must register/cooperate with active threads and discover their roots.
-
-The current prototype exercises stop-the-world collection only in its
-single-threaded runtime. A production stop-the-world strategy for pthread-style
-threads still requires registration and safe-point coordination; the complete
-GC/thread integration remains open.
+- Threading is a library construct: `Thread` and `Semaphore` are ordinary
+  Simple classes with methods bound to a small C runtime via the existing
+  `from "<symbol>"` out-of-line native-method mechanism — no new syntax,
+  keywords, or compiler-injected classes were added.
+- **Concurrency model: a single global interpreter-style lock (GIL).** Only
+  one Simple thread ever executes Simple code (or touches the managed
+  heap) at a time; a thread gives up the lock only while genuinely blocked
+  inside a native primitive (`Thread.join`, `Semaphore.wait`). This is the
+  same design CPython and Ruby MRI use, chosen deliberately over
+  stop-the-world signal-based suspension: true per-thread suspension would
+  require safepoint-polling instructions inserted at every generated loop
+  back-edge, which is out of scope. The GIL sidesteps that entirely — when
+  any thread collects, every other registered thread is provably not
+  running Simple code (it is blocked trying to reacquire the same lock),
+  so its stack-resident roots are frozen and safe to scan.
+- **Consequence:** compute-bound Simple code does not get real parallel
+  speedup across threads (like CPython/MRI). Real, simultaneous execution
+  on multiple cores only happens while one thread is blocked in `join` or
+  `wait` and another is running. This is an explicit, accepted tradeoff
+  for a correct, bounded implementation; lifting it later would require
+  the safepoint work described above.
+- **The `Thread` convention:** a subclass declares a zero-parameter
+  `void run()` method with an ordinary body. `Thread.launch()` (native:
+  `simp_thread_start`) finds "run" by name in the *receiver's own,
+  most-derived* class metadata (the same per-object method table codegen
+  already builds for virtual dispatch — no codegen changes were needed)
+  and runs it on a new OS thread, returning an opaque `handle`.
+  `Thread.join(handle)` (native: `simp_thread_join`) blocks until that
+  thread finishes and frees the handle; joining a handle twice, or never
+  declaring `run()`, aborts the process (the same class of error as any
+  other native-ABI misuse in this runtime — there is no compile-time check
+  binding "run" to any interface). ("`launch`", not "`start`", because
+  `start` is the reserved keyword for the program's entry block.)
+- **`Semaphore`** is a plain counting semaphore, exposed as a stateless
+  dispatcher over explicit opaque handles (mirroring the existing
+  `buffer`/`handle` opaque-resource style, and avoiding any dependency on
+  a hand-mirrored native struct layout): `create(initialCount)` returns a
+  handle; `wait(handle)`, `signal(handle)`, and `release(handle)` operate
+  on it. (Named `release`, not `destroy`: `destroy` is the compiler's
+  reserved destructor-method name and cannot be `from`-bound.) Constructors
+  cannot be `from`-bound out-of-line, which is why `create` is an ordinary
+  method rather than part of construction.
+- The user is responsible for the lifetime of every `handle` the threading
+  API returns (join every launched thread exactly once; release every
+  semaphore once no thread still needs it) — identical to the existing
+  `handle` ownership model used elsewhere (e.g. `buffer`).
+- See `include/simp/RuntimeThreads.h` / `src/RuntimeThreads.c` for the
+  runtime implementation and `tests/functional/positive/positive_threads.simp`
+  for a worked example (thread spawn/join, and a mutex-protected shared
+  counter incremented concurrently from two threads).
 
 ## Inline C and LLVM/backend direction
 

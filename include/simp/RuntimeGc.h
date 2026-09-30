@@ -110,6 +110,19 @@ void simp_inline_cstr_end(void);
 /* Demonstration C shims for out-of-line native-bound methods now live in
  * their own translation unit; see RuntimeDemoShims.h. */
 
+/* Threading support (see RuntimeThreads.h and "Threads" in
+ * SIMPLE-LANGUAGE-NOTES.md). A thread must call simp_runtime_thread_enter()
+ * exactly once before running any Simple-generated code (this happens
+ * automatically for the initial/main thread and for each simp_thread_start
+ * worker), and simp_runtime_thread_exit() exactly once when it is done,
+ * with no root frames still pushed. simp_runtime_gil_release()/_acquire()
+ * bracket a blocking native primitive (join, semaphore wait) so other
+ * threads can make progress while this thread is blocked. */
+void simp_runtime_thread_enter(void);
+void simp_runtime_thread_exit(void);
+void simp_runtime_gil_release(void);
+void simp_runtime_gil_acquire(void);
+
 /* Push/pop are LIFO; return 1 on success and 0 for an invalid operation. */
 int simp_gc_push(SimpRootFrame *frame, void *const *slots, uint64_t count);
 int simp_gc_pop(SimpRootFrame *frame);
