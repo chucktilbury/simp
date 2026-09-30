@@ -1,0 +1,6 @@
+set(CASE_NAME simp_reports_uncaught_exception_stack_trace)
+set(CASE_FIXTURE negative_uncaught_exception_stack_trace.simp)
+set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_reports_uncaught_exception_stack_trace.stdout")
+set(CASE_EXPECT_RUNTIME_FAILURE [==[ON]==])
+set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[simp: uncaught runtime exception at .*negative_uncaught_exception_stack_trace.simp:[0-9]+:[0-9]+: trace sentinel]==])
+set(CASE_EXPECT_RUNTIME_FRAMES [==[at Worker.inner|at Worker.outer|at start]==])

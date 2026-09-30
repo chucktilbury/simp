@@ -502,6 +502,7 @@ std::string CodeGenerator::rootFramePush() const {
 }
 
 void CodeGenerator::emitRootFramePop() {
+    instructions_ += "  call void @simp_trace_pop(ptr %simp.trace.frame)\n";
     instructions_ += "  call void @simp_gc_pop_or_abort(ptr %simp.root.frame)\n";
 }
 

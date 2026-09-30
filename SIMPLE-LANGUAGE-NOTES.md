@@ -569,7 +569,12 @@ are not supported. Null dereferences, destroyed-object use or repeated
 destruction, integer division/remainder by zero, and other runtime checks
 raise built-in `Exception` instances, so `except(Exception)` catches them.
 An uncaught exception reports its source file, line, column, and message to
-standard error before aborting. A stack trace is not implemented.
+standard error before aborting, followed by source-level stack frames from
+the innermost active method or constructor outward through callers to `start`.
+Each frame names the Simple method or constructor and its declaration location
+when available; the diagnostic header retains the precise throw or runtime
+failure location. Runtime/C implementation frames are omitted. Caught
+exceptions do not print a trace, and a rethrow preserves the original trace.
 
 ### Exception construction and rethrowing
 
@@ -577,7 +582,8 @@ The forms above are implemented. `raise()` is statically scoped to an
 enclosing handler in the current method; it is not dynamically inherited by a
 method called from a handler. Runtime-originated failures use the built-in
 `Exception` class and participate in both catch-all and typed base-class
-matching.
+matching. The language currently has no free-standing functions, so traces
+contain class methods, constructors, and the top-level `start` block.
 
 ## Syntax and examples
 
@@ -1207,15 +1213,21 @@ Raising restores the saved precise-GC root-frame head and unwinds explicit
 destructor state before jumping to the nearest handler. Typed matching uses
 the dynamic class and its recorded base classes. `finally` paths are emitted
 for normal and exceptional control flow, including exceptions raised in an
-`except` body. This is a single-threaded host-ABI mechanism, not LLVM
-landing-pad or cross-platform exception support. Stack traces, exceptions
-escaping GC finalizers, and recovery from collector invariant failures remain
-unsupported. Catch-all message bindings retain a copy until process exit.
+`except` body. Active Simple frames are tracked with stack-allocated records;
+when an exception is raised, the runtime snapshots those records before
+`longjmp` can invalidate them. This avoids per-call heap allocation, with
+trace-copy allocation only on the exceptional path. This is a single-threaded
+host-ABI mechanism, not LLVM landing-pad or cross-platform exception support.
+Exceptions escaping GC finalizers and recovery from collector invariant
+failures remain unsupported. Catch-all message bindings retain a copy until
+process exit.
 Uncaught language exceptions and runtime-generated failures report their
 source file, line, and column along with the message, then abort with a
-nonzero process status. An exception escaping a constructor marks the
-partially initialized allocation destroyed so GC reclaims it without
-invoking its destructor.
+nonzero process status. They then print Simple source frames in innermost-
+to-outermost order, ending at `start`; C runtime frames are excluded. Caught
+exceptions remain silent, while rethrows retain the original trace. An
+exception escaping a constructor marks the partially initialized allocation
+destroyed so GC reclaims it without invoking its destructor.
 
 The prototype's collector retains an object resurrected during finalization
 after re-tracing roots, but it remains destroyed and unusable. Object

@@ -55,6 +55,7 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     typeDefinitions_ += "%SimpleMapEntry = type { ptr, i64, i64, %SimpleArrayValue }\n";
     typeDefinitions_ += "%SimpleBuffer = type { ptr, i64, i64, ptr }\n";
     typeDefinitions_ += "%SimpRootFrame = type { ptr, i64, ptr, ptr }\n";
+    typeDefinitions_ += "%SimpTraceFrame = type { ptr, ptr, i64, ptr, i64, i64, i64 }\n";
     typeDefinitions_ +=
         "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr, i64, ptr, i64, ptr }\n";
     typeDefinitions_ += "%SimpleMethodMeta = type { ptr, i64, ptr }\n";
@@ -242,9 +243,23 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
     }
     const auto thisPointer = "%v" + std::to_string(nextVariable_++);
     entryAllocas_ += "  " + thisPointer + " = alloca ptr\n";
+    entryAllocas_ += "  %simp.trace.frame = alloca %SimpTraceFrame\n";
     rootSlots_.push_back(thisPointer);
     rootTagSlots_.emplace_back();
     functionPrologue_ += "  store ptr %this, ptr " + thisPointer + "\n";
+    const auto frameName = method.constructor
+                               ? owner.name + ".constructor"
+                               : owner.name + "." + method.name;
+    const auto frameNameGlobal = internString(frameName);
+    const auto frameFileGlobal = method.location.file.empty()
+                                     ? std::string("null")
+                                     : internString(method.location.file);
+    functionPrologue_ +=
+        "  call void @simp_trace_push(ptr %simp.trace.frame, ptr " + frameNameGlobal +
+        ", i64 " + std::to_string(frameName.size()) + ", ptr " + frameFileGlobal +
+        ", i64 " + std::to_string(method.location.file.size()) + ", i64 " +
+        std::to_string(method.location.line) + ", i64 " +
+        std::to_string(method.location.column) + ")\n";
     for (const auto& parameter : method.parameters) {
         const auto argument = "%arg." + parameter.name;
         signature += ", " + llvmType(parameter.type) + " " + argument;
@@ -638,12 +653,24 @@ void CodeGenerator::emitMain(const Program& program) {
     nextExceptionFrame_ = 0;
     nextLabel_ = 0;
     blockTerminated_ = false;
+    entryAllocas_ += "  %simp.trace.frame = alloca %SimpTraceFrame\n";
+    const auto startNameGlobal = internString("start");
+    const auto startFileGlobal = program.location.file.empty()
+                                     ? std::string("null")
+                                     : internString(program.location.file);
+    functionPrologue_ +=
+        "  call void @simp_trace_push(ptr %simp.trace.frame, ptr " + startNameGlobal +
+        ", i64 5, ptr " + startFileGlobal + ", i64 " +
+        std::to_string(program.location.file.size()) + ", i64 " +
+        std::to_string(program.location.line) + ", i64 " +
+        std::to_string(program.location.column) + ")\n";
     emitStatements(program.statements);
     const auto body = instructions_;
     instructions_ = "define i32 @main() {\nentry:\n"
                     "  call void @simp_runtime_thread_enter()\n" +
                     entryAllocas_ +
                     rootFrameInitialization() + functionPrologue_ + rootFramePush() + body +
+                    "  call void @simp_trace_pop(ptr %simp.trace.frame)\n"
                     "  call void @simp_gc_pop_or_abort(ptr %simp.root.frame)\n"
                     "  call void @simp_runtime_thread_exit()\n"
                     "  ret i32 0\n}\n";
@@ -753,6 +780,8 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare void @simp_exception_push(ptr)\n"
            << "declare void @simp_exception_pop(ptr)\n"
            << "declare void @simp_exception_clear(ptr)\n"
+           << "declare void @simp_trace_push(ptr, ptr, i64, ptr, i64, i64, i64)\n"
+           << "declare void @simp_trace_pop(ptr)\n"
            << "declare ptr @simp_exception_copy_message(ptr)\n"
            << "declare i64 @simp_exception_message_length(ptr)\n"
            << "declare ptr @simp_exception_frame_object(ptr)\n"

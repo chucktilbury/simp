@@ -239,6 +239,10 @@ void *simp_exception_frame_buffer(void *frame);
 void simp_exception_push(void *frame);
 void simp_exception_pop(void *frame);
 void simp_exception_clear(void *frame);
+void simp_trace_push(void *frame, const char *name, uint64_t name_length,
+                     const char *file, uint64_t file_length,
+                     uint64_t line, uint64_t column);
+void simp_trace_pop(void *frame);
 const char *simp_exception_copy_message(void *frame);
 uint64_t simp_exception_message_length(void *frame);
 void *simp_exception_frame_object(void *frame);

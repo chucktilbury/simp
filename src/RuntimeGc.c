@@ -152,6 +152,30 @@ typedef struct HeapNode {
     int constructing;
 } HeapNode;
 
+typedef struct SimpTraceFrame {
+    struct SimpTraceFrame *previous;
+    const char *name;
+    uint64_t name_length;
+    const char *file;
+    uint64_t file_length;
+    uint64_t line;
+    uint64_t column;
+} SimpTraceFrame;
+
+typedef struct SimpTraceEntry {
+    const char *name;
+    uint64_t name_length;
+    const char *file;
+    uint64_t file_length;
+    uint64_t line;
+    uint64_t column;
+} SimpTraceEntry;
+
+typedef struct SimpTraceSnapshot {
+    size_t count;
+    SimpTraceEntry entries[];
+} SimpTraceSnapshot;
+
 typedef struct SimpExceptionFrame {
     jmp_buf buffer;
     struct SimpExceptionFrame *previous;
@@ -167,6 +191,8 @@ typedef struct SimpExceptionFrame {
     void *exception_object;
     void *exception_base;
     int has_exception;
+    SimpTraceFrame *saved_trace;
+    SimpTraceSnapshot *trace;
 } SimpExceptionFrame;
 
 typedef struct SimpRuntimeException {
@@ -196,11 +222,55 @@ static _Thread_local SimpRootFrame *root_frame = NULL;
 static _Thread_local HeapNode *destroy_stack = NULL;
 static _Thread_local HeapNode *construction_stack = NULL;
 static _Thread_local SimpExceptionFrame *active_exception = NULL;
+static _Thread_local SimpTraceFrame *active_trace = NULL;
 static size_t object_count = 0;
 static _Thread_local int collecting = 0;
 static _Thread_local int running_destructor = 0;
 static RetainedExceptionMessage *retained_exception_messages = NULL;
 static int retained_message_cleanup_registered = 0;
+
+static void free_trace_snapshot(SimpTraceSnapshot *trace) {
+    free(trace);
+}
+
+static SimpTraceSnapshot *capture_trace(void) {
+    size_t count = 0;
+    for (SimpTraceFrame *frame = active_trace; frame != NULL; frame = frame->previous) {
+        if (count == SIZE_MAX) abort();
+        ++count;
+    }
+    if (count == 0) return NULL;
+    if (count > (SIZE_MAX - sizeof(SimpTraceSnapshot)) / sizeof(SimpTraceEntry)) abort();
+    SimpTraceSnapshot *trace = (SimpTraceSnapshot *)malloc(
+        sizeof(SimpTraceSnapshot) + count * sizeof(SimpTraceEntry));
+    if (trace == NULL) abort();
+    trace->count = count;
+    size_t index = 0;
+    for (SimpTraceFrame *frame = active_trace; frame != NULL; frame = frame->previous) {
+        trace->entries[index++] = (SimpTraceEntry){
+            frame->name, frame->name_length, frame->file, frame->file_length,
+            frame->line, frame->column
+        };
+    }
+    return trace;
+}
+
+static void print_trace(const SimpTraceSnapshot *trace) {
+    if (trace == NULL) return;
+    for (size_t index = 0; index < trace->count; ++index) {
+        const SimpTraceEntry *entry = &trace->entries[index];
+        fputs("  at ", stderr);
+        if (entry->name_length != 0) fwrite(entry->name, 1, (size_t)entry->name_length, stderr);
+        if (entry->file != NULL) {
+            fputs(" (", stderr);
+            if (entry->file_length != 0) fwrite(entry->file, 1, (size_t)entry->file_length, stderr);
+            fprintf(stderr, ":%llu:%llu", (unsigned long long)entry->line,
+                    (unsigned long long)entry->column);
+            fputc(')', stderr);
+        }
+        fputc('\n', stderr);
+    }
+}
 
 /* ---- Threading support: a single global "interpreter lock" ----
  *
@@ -298,7 +368,8 @@ static void release_retained_exception_messages(void) {
 
 static void uncaught_exception(const char *message, size_t length,
                                const char *file, size_t file_length,
-                               uint64_t line, uint64_t column) {
+                               uint64_t line, uint64_t column,
+                               SimpTraceSnapshot *trace) {
     fputs("simp: uncaught runtime exception", stderr);
     if (file != NULL) {
         fputs(" at ", stderr);
@@ -309,6 +380,9 @@ static void uncaught_exception(const char *message, size_t length,
     fputs(": ", stderr);
     if (length != 0) fwrite(message, 1, length, stderr);
     fputc('\n', stderr);
+    if (trace == NULL) trace = capture_trace();
+    print_trace(trace);
+    free_trace_snapshot(trace);
     fflush(stdout);
     fflush(stderr);
     abort();
@@ -334,7 +408,8 @@ static void raise_exception(const char *message, uint64_t length,
                             const char *file, uint64_t file_length,
                             uint64_t line, uint64_t column,
                             void *exception_object, void *exception_base,
-                            char *owned_message, char *owned_file) {
+                            char *owned_message, char *owned_file,
+                            SimpTraceSnapshot *trace) {
     if ((message == NULL && length != 0) || length > (uint64_t)SIZE_MAX ||
         (file == NULL && file_length != 0) || file_length > (uint64_t)SIZE_MAX) abort();
     if (collecting || running_destructor) {
@@ -343,11 +418,12 @@ static void raise_exception(const char *message, uint64_t length,
         static const char finalizer_message[] =
             "exceptions cannot escape a GC finalizer";
         uncaught_exception(finalizer_message, sizeof(finalizer_message) - 1,
-                           NULL, 0, 0, 0);
+                           NULL, 0, 0, 0, trace);
     }
+    if (trace == NULL) trace = capture_trace();
     if (active_exception == NULL) {
         uncaught_exception(message == NULL ? "" : message, (size_t)length,
-                           file, (size_t)file_length, line, column);
+                           file, (size_t)file_length, line, column, trace);
     }
     SimpExceptionFrame *frame = active_exception;
     char *copy = length == 0 ? NULL : (char *)malloc((size_t)length);
@@ -360,7 +436,7 @@ static void raise_exception(const char *message, uint64_t length,
         static const char allocation_message[] =
             "out of memory while raising runtime exception";
         uncaught_exception(allocation_message, sizeof(allocation_message) - 1,
-                           NULL, 0, 0, 0);
+                           NULL, 0, 0, 0, trace);
     }
     if (length != 0) memcpy(copy, message, (size_t)length);
     if (file_length != 0) memcpy(file_copy, file, (size_t)file_length);
@@ -377,9 +453,12 @@ static void raise_exception(const char *message, uint64_t length,
     frame->exception_object = exception_object;
     frame->exception_base = exception_base;
     frame->has_exception = 1;
+    free_trace_snapshot(frame->trace);
+    frame->trace = trace;
     active_exception = frame->previous;
     frame->previous = NULL;
     root_frame = frame->saved_roots;
+    active_trace = frame->saved_trace;
     while (destroy_stack != frame->saved_destroys) {
         if (destroy_stack == NULL) abort();
         destroy_stack->destroying = 0;
@@ -416,6 +495,7 @@ void simp_exception_push(void *storage) {
     if (frame == NULL || active_exception == frame) abort();
     frame->previous = active_exception;
     frame->saved_roots = root_frame;
+    frame->saved_trace = active_trace;
     frame->saved_destroys = destroy_stack;
     frame->saved_constructions = construction_stack;
     free(frame->message);
@@ -429,6 +509,8 @@ void simp_exception_push(void *storage) {
     frame->exception_object = NULL;
     frame->exception_base = NULL;
     frame->has_exception = 0;
+    free_trace_snapshot(frame->trace);
+    frame->trace = NULL;
     active_exception = frame;
 }
 
@@ -438,6 +520,8 @@ void simp_exception_pop(void *storage) {
     active_exception = frame->previous;
     frame->previous = NULL;
     if (frame->has_exception) abort();
+    free_trace_snapshot(frame->trace);
+    frame->trace = NULL;
     free(frame->message);
     frame->message = NULL;
     free(frame->file);
@@ -463,6 +547,34 @@ void simp_exception_clear(void *storage) {
     frame->exception_object = NULL;
     frame->exception_base = NULL;
     frame->has_exception = 0;
+    free_trace_snapshot(frame->trace);
+    frame->trace = NULL;
+}
+
+void simp_trace_push(void *storage, const char *name, uint64_t name_length,
+                     const char *file, uint64_t file_length,
+                     uint64_t line, uint64_t column) {
+    SimpTraceFrame *frame = (SimpTraceFrame *)storage;
+    if (frame == NULL || frame == active_trace ||
+        (name == NULL && name_length != 0) ||
+        (file == NULL && file_length != 0) ||
+        name_length > (uint64_t)SIZE_MAX || file_length > (uint64_t)SIZE_MAX ||
+        (name == NULL && name_length == 0)) abort();
+    frame->previous = active_trace;
+    frame->name = name;
+    frame->name_length = name_length;
+    frame->file = file;
+    frame->file_length = file_length;
+    frame->line = line;
+    frame->column = column;
+    active_trace = frame;
+}
+
+void simp_trace_pop(void *storage) {
+    SimpTraceFrame *frame = (SimpTraceFrame *)storage;
+    if (frame == NULL || active_trace != frame) abort();
+    active_trace = frame->previous;
+    frame->previous = NULL;
 }
 
 const char *simp_exception_copy_message(void *storage) {
@@ -620,11 +732,11 @@ void simp_exception_raise(const char *message, uint64_t length, const char *file
                           uint64_t file_length, uint64_t line, uint64_t column) {
     if (collecting || running_destructor) {
         raise_exception(message, length, file, file_length, line, column,
-                        NULL, NULL, NULL, NULL);
+                        NULL, NULL, NULL, NULL, NULL);
     }
     void *object = make_runtime_exception(message, length);
     raise_exception(message, length, file, file_length, line, column,
-                    object, object, NULL, NULL);
+                    object, object, NULL, NULL, NULL);
 }
 
 void simp_exception_raise_object(void *object, void *exception_base,
@@ -633,7 +745,7 @@ void simp_exception_raise_object(void *object, void *exception_base,
                                  uint64_t line, uint64_t column) {
     if (object == NULL || exception_base == NULL) abort();
     raise_exception(message, length, file, file_length, line, column,
-                    object, exception_base, NULL, NULL);
+                    object, exception_base, NULL, NULL, NULL);
 }
 
 void simp_exception_rethrow(void *storage) {
@@ -647,6 +759,7 @@ void simp_exception_rethrow(void *storage) {
     const uint64_t column = frame->column;
     void *exception_object = frame->exception_object;
     void *exception_base = frame->exception_base;
+    SimpTraceSnapshot *trace = frame->trace;
     if (exception_object == NULL || exception_base == NULL) abort();
     frame->message = NULL;
     frame->message_length = 0;
@@ -657,8 +770,9 @@ void simp_exception_rethrow(void *storage) {
     frame->exception_object = NULL;
     frame->exception_base = NULL;
     frame->has_exception = 0;
+    frame->trace = NULL;
     raise_exception(message, length, file, file_length, line, column,
-                    exception_object, exception_base, message, file);
+                    exception_object, exception_base, message, file, trace);
 }
 
 static int valid_reference_offset(const SimpClassMeta *metadata, uint64_t offset) {

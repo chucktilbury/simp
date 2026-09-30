@@ -200,8 +200,11 @@ input and reports source-located lexer, parser, and semantic errors.
 - Null dereferences, use of explicitly destroyed objects, repeated destruction,
   and integer division/remainder by zero raise catchable `Exception` instances.
   An uncaught exception prints its source file, line, column, and message to
-  standard error, then aborts (nonzero process status). Runtime invariant
-  failures and exceptions escaping GC finalizers remain fatal.
+  standard error, followed by Simple source frames from the innermost method
+  or constructor out through callers to `start`; C runtime frames are omitted.
+  Caught exceptions do not print traces, and rethrows preserve the original
+  trace. Runtime invariant failures and exceptions escaping GC finalizers
+  remain fatal.
 - `print(expr)` prints a scalar, string, type, or internal collection value
   followed by a newline; collection values are rendered by runtime tag (see
   below).
