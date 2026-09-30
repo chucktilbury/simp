@@ -117,9 +117,16 @@ void CodeGenerator::emitStatement(const Statement& statement) {
     switch (statement.kind) {
     case StatementKind::Declaration: {
         const auto pointer = "%v" + std::to_string(nextVariable_++);
+        std::string flagPointer;
+        const bool nullableScalar = isNullableScalarType(statement.declaredType);
+        if (nullableScalar) {
+            flagPointer = "%v" + std::to_string(nextVariable_++) + ".isnull";
+        }
         scopes_.back().emplace(statement.name,
-                               Binding{statement.declaredType, pointer, {}, false});
+                               Binding{statement.declaredType, pointer, {}, false, false,
+                                      flagPointer});
         entryAllocas_ += "  " + pointer + " = alloca " + llvmType(statement.declaredType) + "\n";
+        if (nullableScalar) entryAllocas_ += "  " + flagPointer + " = alloca i1\n";
         registerRootSlot(pointer, statement.declaredType);
         if (!statement.expressions.empty()) {
             auto value = emitExpression(*statement.expressions.front(), statement.declaredType);
@@ -129,9 +136,15 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                                         statement.expressions.front()->location);
             instructions_ += "  store " + llvmType(statement.declaredType) + " " +
                              converted.operand + ", ptr " + pointer + "\n";
+            if (nullableScalar) {
+                instructions_ += "  store i1 " +
+                                 (converted.nullFlag.empty() ? "0" : converted.nullFlag) +
+                                 ", ptr " + flagPointer + "\n";
+            }
         } else {
             instructions_ += "  store " + llvmType(statement.declaredType) +
                              " zeroinitializer, ptr " + pointer + "\n";
+            if (nullableScalar) instructions_ += "  store i1 0, ptr " + flagPointer + "\n";
         }
         return;
     }
@@ -229,6 +242,11 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                                     statement.expressions.front()->location);
         instructions_ += "  store " + llvmType(binding.type) + " " + converted.operand +
                          ", ptr " + address + "\n";
+        if (!binding.nullFlagAddress.empty()) {
+            instructions_ += "  store i1 " +
+                             (converted.nullFlag.empty() ? "0" : converted.nullFlag) +
+                             ", ptr " + binding.nullFlagAddress + "\n";
+        }
         return;
     }
     case StatementKind::Print:

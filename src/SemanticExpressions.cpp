@@ -81,12 +81,24 @@ bool SemanticAnalyzer::resolveBaseQualifier(Expression& receiver,
 
 std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                                 const std::string& expectedType) {
-    (void)expectedType;
     switch (expression.kind) {
     case ExpressionKind::Integer: {
-        std::int32_t value = 0;
         const auto* begin = expression.value.data();
         const auto* end = begin + expression.value.size();
+        // A plain, unsuffixed integer literal is also a valid unsigned
+        // literal when the surrounding context expects `unsigned` (the `u`
+        // suffix remains required everywhere else, including plain `int`
+        // contexts and `any`).
+        if (expectedType == "unsigned") {
+            std::uint64_t unsignedValue = 0;
+            const auto parsedUnsigned = std::from_chars(begin, end, unsignedValue);
+            if (parsedUnsigned.ec != std::errc{} || parsedUnsigned.ptr != end) {
+                throw DiagnosticError(expression.location,
+                                      "integer literal is outside the unsigned 64-bit range");
+            }
+            return "unsigned";
+        }
+        std::int32_t value = 0;
         const auto parsed = std::from_chars(begin, end, value);
         if (parsed.ec != std::errc{} || parsed.ptr != end) {
             throw DiagnosticError(expression.location,
@@ -587,10 +599,20 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             return "bool";
         }
         if (operation == "==" || operation == "!=") {
-            if ((isBufferType(left) && right == "null") ||
-                (left == "null" && isBufferType(right)) ||
-                (isOpaqueHandleType(left) && right == "null") ||
-                (left == "null" && isOpaqueHandleType(right))) {
+            // Universal-null model (confirmed): every nullable type (all
+            // reference types, plus scalars now that they may hold null as
+            // locals) may be compared against the null literal with `==`/
+            // `!=`. This is not a general operator-expression exception for
+            // buffer/handle/string; it is the same null-check every
+            // null-capable type supports.
+            const auto isNullComparable = [this](const std::string& type) {
+                return type == "buffer" || type == "handle" || type == "string" ||
+                       type == "array" || type == "map" || type == "int" ||
+                       type == "bool" || type == "float" || type == "unsigned" ||
+                       classes_.find(type) != classes_.end();
+            };
+            if ((isNullComparable(left) && right == "null") ||
+                (left == "null" && isNullComparable(right))) {
                 return "bool";
             }
             if (left != right ||

@@ -72,6 +72,18 @@
     "enabled": true
   },
   {
+    "name": "positive_unsigned_literal_optional_suffix.simp",
+    "friendly_name": "functional optional u suffix in unsigned contexts",
+    "expected_diagnostic": "",
+    "enabled": true
+  },
+  {
+    "name": "positive_universal_null.simp",
+    "friendly_name": "functional universal null model for scalars and strings",
+    "expected_diagnostic": "",
+    "enabled": true
+  },
+  {
     "name": "negative_int_condition.simp",
     "friendly_name": "functional integer condition rejected",
     "expected_diagnostic": "if condition must have type bool",

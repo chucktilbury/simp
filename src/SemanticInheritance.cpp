@@ -318,7 +318,15 @@ bool SemanticAnalyzer::isAssignable(const std::string& target,
                classes_.find(target) != classes_.end();
     }
     if (source == "null") {
-        return target == "buffer" || target == "handle" ||
+        // Universal-null model (confirmed): null is assignable to every type,
+        // including scalars. Scalar null-holding is supported for local
+        // variables only (see the "Nullability model (confirmed)" note in
+        // SIMPLE-LANGUAGE-NOTES.md); other scalar contexts (fields, array/map
+        // elements, function arguments/returns) are unaffected by this and
+        // continue to use the plain unboxed representation.
+        return target == "buffer" || target == "handle" || target == "string" ||
+               target == "array" || target == "map" || target == "int" ||
+               target == "unsigned" || target == "float" || target == "bool" ||
                classes_.find(target) != classes_.end();
     }
     const auto found = classes_.find(source);

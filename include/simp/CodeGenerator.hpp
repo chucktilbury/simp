@@ -30,10 +30,22 @@ private:
         std::vector<std::size_t> fieldPath;
         bool field = false;
         bool readOnly = false;
+        // Non-empty only for a local scalar (int/unsigned/float/bool)
+        // variable: the address of a companion i1 alloca tracking whether the
+        // variable currently holds null (see the "Nullability model
+        // (confirmed)" note in SIMPLE-LANGUAGE-NOTES.md). Empty for every
+        // other binding (fields, parameters, non-scalar locals), meaning
+        // "not tracked" / statically non-null.
+        std::string nullFlagAddress;
     };
     struct Value {
         std::string type;
         std::string operand;
+        // Non-empty only for a scalar Value that may be null at runtime: the
+        // name of an i1 SSA register that is true when the value is null.
+        // Empty means "statically known non-null" (the common case), which
+        // keeps generated IR for non-null code paths unchanged.
+        std::string nullFlag;
     };
     struct LoopTarget {
         std::string breakLabel;
@@ -101,6 +113,9 @@ private:
                                    const std::vector<std::string>& path) const;
     Value convertObjectValue(Value value, const std::string& expectedType,
                              const SourceLocation& location);
+    bool isNullableScalarType(const std::string& type) const;
+    Value emitScalarNullComparison(const Value& operand, bool equals);
+    Value emitStringNullComparison(const Value& operand, bool equals);
     std::string externMethodDeclaration(const ClassDeclaration& owner,
                                         const MethodDeclaration& method) const;
     std::string externReturnLlvmType(const std::string& type) const;

@@ -70,6 +70,23 @@ void CodeGenerator::emitPrint(const Statement& statement) {
 }
 
 void CodeGenerator::emitPrintValue(const Value& value, const SourceLocation& location) {
+    if (!value.nullFlag.empty()) {
+        // Scalar locals track nullness via a companion i1 flag (see the
+        // "Nullability model (confirmed)" note in SIMPLE-LANGUAGE-NOTES.md);
+        // a null value always prints as the literal text "(null)".
+        const auto nullLabel = freshLabel("print.scalar.null");
+        const auto valueLabel = freshLabel("print.scalar.value");
+        const auto endLabel = freshLabel("print.scalar.end");
+        instructions_ += "  br i1 " + value.nullFlag + ", label %" + nullLabel + ", label %" +
+                         valueLabel + "\n" + nullLabel + ":\n";
+        emitStringBytes("(null)");
+        instructions_ += "  br label %" + endLabel + "\n" + valueLabel + ":\n";
+        Value nonNull = value;
+        nonNull.nullFlag.clear();
+        emitPrintValue(nonNull, location);
+        instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
+        return;
+    }
     if (value.type == "int") {
         instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i32 " +
                          value.operand + ")\n";
@@ -97,10 +114,20 @@ void CodeGenerator::emitPrintValue(const Value& value, const SourceLocation& loc
                          ", 0\n";
         instructions_ += "  " + length + " = extractvalue %SimpleString " + value.operand +
                          ", 1\n";
+        const auto isNull = newTemporary();
+        const auto nullLabel = freshLabel("print.string.null");
+        const auto dataLabel = freshLabel("print.string.data");
+        const auto endLabel = freshLabel("print.string.end");
+        instructions_ += "  " + isNull + " = icmp eq ptr " + data + ", null\n"
+                         "  br i1 " + isNull + ", label %" + nullLabel + ", label %" +
+                         dataLabel + "\n" + nullLabel + ":\n";
+        emitStringBytes("(null)");
+        instructions_ += "  br label %" + endLabel + "\n" + dataLabel + ":\n";
         const auto stream = newTemporary();
         instructions_ += "  " + stream + " = load ptr, ptr @stdout\n";
         instructions_ += "  call i64 @fwrite(ptr " + data + ", i64 1, i64 " + length +
                          ", ptr " + stream + ")\n";
+        instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
     } else if (value.type == "any") {
         emitPrintDynamicValue(value, location);
     } else {
@@ -188,7 +215,7 @@ void CodeGenerator::emitPrintDynamicValue(const Value& value,
                      "  br i1 " + isNull + ", label %" + nullLabel + ", label %" +
                      instanceLabel + "\n";
     instructions_ += nullLabel + ":\n";
-    emitStringBytes("null");
+    emitStringBytes("(null)");
     instructions_ += "  br label %" + endLabel + "\n";
     // Printing an 'any' object reference does not (yet) dispatch to a
     // user-defined toString(); it prints a fixed placeholder so output stays

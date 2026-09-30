@@ -47,6 +47,10 @@ bool CodeGenerator::isBufferType(const std::string& type) const {
     return type == "buffer";
 }
 
+bool CodeGenerator::isNullableScalarType(const std::string& type) const {
+    return type == "int" || type == "unsigned" || type == "float" || type == "bool";
+}
+
 bool CodeGenerator::isDynamicValueType(const std::string& type) const {
     return type == "any";
 }
@@ -185,6 +189,31 @@ void CodeGenerator::emitNullCheck(const std::string& pointer,
                      file + ", i64 " + std::to_string(location.file.size()) +
                      ", i64 " + std::to_string(location.line) + ", i64 " +
                      std::to_string(location.column) + ")\n";
+}
+
+CodeGenerator::Value CodeGenerator::emitScalarNullComparison(const Value& operand, bool equals) {
+    // operand.nullFlag empty means the value is statically known non-null
+    // (the common case for locals never assigned null, and for parameters/
+    // fields/collection elements, which do not track null for scalars): the
+    // comparison result is then a compile-time-known constant.
+    if (operand.nullFlag.empty()) {
+        return {"bool", equals ? "0" : "1"};
+    }
+    if (equals) return {"bool", operand.nullFlag};
+    const auto negated = newTemporary();
+    instructions_ += "  " + negated + " = xor i1 " + operand.nullFlag + ", true\n";
+    return {"bool", negated};
+}
+
+CodeGenerator::Value CodeGenerator::emitStringNullComparison(const Value& operand, bool equals) {
+    // A null string is a %SimpleString whose data pointer is null (see
+    // convertObjectValue); comparing against null checks that pointer.
+    const auto data = newTemporary();
+    instructions_ += "  " + data + " = extractvalue %SimpleString " + operand.operand + ", 0\n";
+    const auto result = newTemporary();
+    instructions_ += "  " + result + " = icmp " + (equals ? "eq" : "ne") + " ptr " + data +
+                     ", null\n";
+    return {"bool", result};
 }
 
 CodeGenerator::Value CodeGenerator::emitIntegerExpression(const Expression& expression) {
@@ -439,6 +468,9 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                                    const std::string& expectedType) {
     switch (expression.kind) {
     case ExpressionKind::Integer:
+        if (expectedType == "unsigned") {
+            return {"unsigned", expression.value};
+        }
         return {"int", expression.value};
     case ExpressionKind::Unsigned:
         return {"unsigned", expression.value.substr(0, expression.value.size() - 1)};
@@ -497,7 +529,13 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto result = newTemporary();
         instructions_ += "  " + result + " = load " + llvmType(binding.type) + ", ptr " +
                          pointer + "\n";
-        return rootObjectValue({binding.type, result}, expression.location);
+        auto value = rootObjectValue({binding.type, result}, expression.location);
+        if (!binding.nullFlagAddress.empty()) {
+            const auto flag = newTemporary();
+            instructions_ += "  " + flag + " = load i1, ptr " + binding.nullFlagAddress + "\n";
+            value.nullFlag = flag;
+        }
+        return value;
     }
     case ExpressionKind::Member: {
         const Expression* root = nullptr;
@@ -511,6 +549,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                 throw DiagnosticError(expression.location,
                                       "arrays support only the read-only 'length' member");
             }
+            emitNullCheck(receiver.operand, expression.location);
             const auto lengthAddress = newTemporary();
             const auto length = newTemporary();
             const auto result = newTemporary();
@@ -526,6 +565,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                 throw DiagnosticError(expression.location,
                                       "maps support only the read-only 'length' member");
             }
+            emitNullCheck(receiver.operand, expression.location);
             const auto lengthAddress = newTemporary();
             const auto length = newTemporary();
             const auto result = newTemporary();
@@ -1000,6 +1040,17 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         }
         if (operation == "==" || operation == "!=" || operation == "<" ||
             operation == "<=" || operation == ">" || operation == ">=") {
+            if ((operation == "==" || operation == "!=") &&
+                (expression.left->kind == ExpressionKind::Null) !=
+                    (expression.right->kind == ExpressionKind::Null)) {
+                const auto& operand = expression.left->kind == ExpressionKind::Null ? right : left;
+                if (isNullableScalarType(operand.type)) {
+                    return emitScalarNullComparison(operand, operation == "==");
+                }
+                if (operand.type == "string") {
+                    return emitStringNullComparison(operand, operation == "==");
+                }
+            }
             if (left.type == "float") {
                 std::string predicate;
                 if (operation == "==") predicate = "oeq";

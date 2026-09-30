@@ -36,10 +36,15 @@ The language is intended to have full object-oriented programming support. Broad
   it (`5.`), and an optional decimal exponent on any of those forms (`1e10`,
   `1.5e-3`, `.5e2`, `5.e2`). Hexadecimal float literals and `inf`/`nan`
   spellings, which `strtod()` also accepts at runtime, are not part of the
-  literal grammar. Unsigned literals require an integer digit sequence
-  followed by `u` (`42u`; uppercase `U` is accepted too). A bare digit
-  sequence with no point or exponent (`0`, `42`) remains a signed `int`
-  literal.
+  literal grammar. The `u`/`U` suffix (`42u`) remains the required spelling
+  of an unsigned literal in a plain `int`-inferred context; it is optional
+  wherever the surrounding context already expects `unsigned` (declaration
+  initializers, assignments, constructor/method call arguments, and return
+  values with an `unsigned` declared/parameter/return type) — a bare digit
+  sequence there (`unsigned x = 5`) is parsed as an unsigned literal
+  directly, not as an `int` requiring conversion. A bare digit sequence with
+  no point or exponent in any other context (`0`, `42`) remains a signed
+  `int` literal.
 - Arithmetic and ordering comparisons require operands of the same numeric
   type. Equality requires matching operands of the same supported scalar type
   (`int`, `unsigned`, `float`, or `bool`). Comparisons produce `bool`; numeric
@@ -54,12 +59,67 @@ The language is intended to have full object-oriented programming support. Broad
   as unsigned decimal values. Formatted print placeholders accept these scalar
   types too.
 - Using a local before it has been initialized is a warning.
-- `null` means “no value.” An assignment such as `int x = null` is valid.
-- Reading a variable that is definitely null is a compile-time error.
-- When control-flow analysis leaves nullness uncertain, the compiler emits a warning.
+- **Nullability model (confirmed): null is a universal value, treated like
+  any other value of any type, with no flow-sensitive null analysis at all.**
+  `null` may be assigned to a variable of *any* type, including the scalar
+  types (`int x = null`, `bool`, `unsigned`, `float`, not just reference
+  types). Reading, reassigning, passing, returning, and printing a
+  null-holding variable are all ordinary, unrestricted operations — there is
+  no "definitely/possibly null" compile-time error or warning, and no
+  control-flow tracking of nullness. `x == null` / `x != null` remain valid
+  comparisons for every type. Printing a null-holding value of any type
+  prints the literal text `(null)`. The only place null causes a runtime
+  exception is an attempt to use the *payload* a null value would otherwise
+  hold — member access, a method call, or indexing (`x.field`, `x.method()`,
+  `arr[i]`, `map[k]`) on a null reference/array/map/buffer/handle raises an
+  exception, exactly as an operation on "no value" would with no assigned
+  value at all. This supersedes the two bullets previously here (a
+  compile-time "definitely null" error and a possibly-null warning); neither
+  was implemented, and both are now explicitly rejected in favor of the
+  simpler, C-pointer-like model.
+- **Implemented, with a documented scope boundary for scalar locals.**
+  `null` is now accepted at declaration/assignment for every type,
+  including the scalars (`int`, `unsigned`, `float`, `bool`) and `string`,
+  in addition to the reference types (`class`, `array`, `map`, `buffer`,
+  `handle`, `any`) that already supported it. `x == null` / `x != null`
+  work for every type. Printing a null value of any type — scalar, string,
+  or `any` — prints `(null)`, matching the confirmed model.
+  - **Scalar representation:** a *local* scalar variable that can hold
+    `null` carries a companion hidden `i1` flag alongside its raw payload.
+    Declaring, reassigning, reading, printing, and `==`/`!=` null-comparing
+    a local scalar all correctly track and observe this flag with no
+    surprises.
+  - **Scope boundary (intentional, not a bug):** the null flag is a
+    per-local-variable construct only. It does **not** propagate through
+    function-call arguments, `return` values, class field storage, or
+    array/map element storage — a null scalar handed to any of those
+    silently decays to that type's zero value (`0`, `0.0`, `false`) rather
+    than being tracked further. For example, passing a null `int` local as
+    a constructor argument stores `0` in the resulting field; there is no
+    exception and no further null tracking past that boundary. Giving
+    scalars a fully general, boundary-crossing null representation would
+    require a much larger ABI change (boxing/tagging scalars everywhere,
+    akin to the `any` representation) and was deliberately out of scope for
+    this pass.
+  - **String representation:** unlike scalars, `string` needed no new
+    tagging — a null string is simply the zero-valued `SimpleString`
+    (null data pointer, zero length), which prints as `(null)` and compares
+    equal to `null`.
+  - **Bug fixed alongside this work:** `array`/`map` `.length` access
+    previously performed a raw, unchecked dereference of the receiver with
+    no null guard; now that `array a = null` / `map m = null` are legal, a
+    null-check was added before `.length` so it raises the same runtime
+    exception as any other member access on a null reference, instead of
+    crashing.
 - A class-to-`int` cast that is incompatible by type is a syntax error.
 - An explicit class conversion routine may be called when a conversion is intentionally provided.
-- String-to-number conversion may be supported as a checked conversion that throws on failure.
+- String-to-number conversion is confirmed to be a method on the `String`
+  class (see "Proposal: a class-based `String`..." under "Strings" below),
+  not general cast syntax or an implicit conversion — for example
+  `s.toInt()`/`s.toFloat()`/`s.toUnsigned()`-style checked methods that
+  throw on failure, following the same "explicit conversion routine" model
+  already used for classes. Exact method names/signatures are still to be
+  finalized alongside the rest of the pending `String` proposal.
 - The compiler should reject conversions that are provably invalid and use runtime type-compatibility checks when compatibility cannot be determined statically.
 - Class member initializers are restricted to compile-time constants.
 
@@ -384,7 +444,7 @@ statements.
 - APIs that require NUL-terminated input require an explicit compatible conversion.
 - Built-in object-to-string conversions are desired.
 
-UTF-8 is the choice for now. Advanced Unicode semantics are deferred. String length remains unimplemented; whether it means bytes or Unicode code points remains open. Arrays and maps expose a read-only `length` property in the current prototype.
+UTF-8 is the choice for now. Advanced Unicode semantics are deferred. `string.length` itself remains unimplemented, but its semantics are confirmed: it is a byte count (`uint8_t` count of the backing storage), not a Unicode code-point count — consistent with `buffer`'s confirmed byte-oriented `length`/indexing/slicing. Arrays and maps expose a read-only `length` property in the current prototype.
 
 ### `buffer` and `handle` types (confirmed design, not yet implemented)
 
@@ -506,18 +566,15 @@ begin, following the precedent set by `array`/`map`/class references:
   expression exception, it is the same null-check every reference type
   (`array`, `map`, class, `string`) already supports today.
 
-#### Interaction with the pending `String`-as-class proposal
+#### Equality and comparison for strings (confirmed)
 
-The instruction that `string` cannot appear in an operator expression
-matches `string`'s **current** behavior (no comparisons are implemented for
-strings today). It also directly conflicts with one part of the
-still-pending, not-yet-decided `String`-class proposal below, which adds
-`==`/`!=` support for `String`. That part of the proposal is not resolved by
-this message and needs an explicit decision: either `String` gains `==`/`!=`
-as proposed (making it an exception to the buffer/handle/string
-no-operators rule), or `String` equality is instead exposed as a built-in
-comparison method (for example `s.equals(other)`) rather than `==`, keeping
-every reference-like built-in type consistently out of operator expressions.
+`string`/`String` will **not** get `==`, `!=`, or ordering comparisons.
+This resolves the conflict previously flagged below: the no-operators rule
+for `buffer`/`handle`/`string` applies consistently, with no exception for
+`String`. Any string-content comparison needed by user code is a named
+method (for example `s.equals(other)`), not an operator — matching the
+project's general preference for avoiding syntax sugar where an explicit
+method call is just as clear.
 
 ### Proposal: a class-based `String` on top of `buffer` (pending review, not yet implemented)
 
@@ -549,7 +606,9 @@ storage is the now-confirmed `buffer` type above.
   - `s.length` — read-only `int`, UTF-8 byte count (property, not a method
     call, matching `array`/`map`).
   - `s[i]` — reads byte `i` as `unsigned` (`0..255`); this is a byte index,
-    **not** a Unicode code-point index, mirroring `buffer`.
+    **not** a Unicode code-point index, mirroring `buffer`. Unlike
+    `buffer`, `String` element access is always `unsigned` — there is no
+    `int`-accepting write form.
   - `s[start:end]` — slices a half-open byte range into a new `String`
     (copy), matching `array`/`map`/`buffer` slicing.
   - `s.append(other: String)` — mutates `s` in place, no return value.
@@ -571,11 +630,15 @@ storage is the now-confirmed `buffer` type above.
     existing "advanced Unicode semantics deferred" note).
   - `s.toUpper()` / `s.toLower()` — ASCII-only for the first milestone,
     same deferral as above.
-- `==`/`!=` become supported for `String`, defined as exact UTF-8 byte
-  equality — case-sensitive, no Unicode normalization, matching the existing
-  map-key comparison rule. Ordering comparisons (`<`, `>`, and so on) remain
-  unsupported for `String`, matching today's behavior. This is new: today
-  strings support no comparisons at all.
+  - `s.equals(other: String)` — returns `bool`, exact UTF-8 byte equality
+    (case-sensitive, no Unicode normalization, matching the existing
+    map-key comparison rule). This is the supported way to compare string
+    content; see "Equality and comparison for strings (confirmed)" above.
+- `==`, `!=`, and ordering comparisons (`<`, `>`, and so on) remain
+  unsupported for `String`, matching `string`'s current behavior and the
+  confirmed `buffer`/`handle`/`string` no-operators rule (see "Equality and
+  comparison for strings (confirmed)" above). `s.equals(other)` is the
+  supported content-equality operation instead.
 - Mutating methods use alias/reference semantics, matching how `array` and
   `map` assignment already aliases shared mutable storage: two variables
   referring to the same `String` observe each other's in-place mutations.
@@ -599,21 +662,24 @@ storage is the now-confirmed `buffer` type above.
 - Unicode code-point iteration/indexing, `regex`-style pattern matching, and
   locale-aware case conversion/collation remain deferred, matching the
   document's existing Unicode deferrals.
-- Numeric parsing/formatting helpers (turning a `String` into `int`/`float`
-  and back) are not specified here; they overlap with the already-open
-  "string-to-number conversion" item above and should be designed together
-  with explicit scalar casts.
+- Exact numeric parsing/formatting method names and signatures (turning a
+  `String` into `int`/`float`/`unsigned` and back) are not finalized here.
+  It is now confirmed that these are `String` methods (see
+  "Types, initialization, null, and conversion" above), not general cast
+  syntax; the remaining work is naming/signature detail, to be designed
+  together with explicit scalar casts.
 
 #### Open questions needing a decision before implementation
 
-1. Byte-based `String` indexing and `.length` (simplest, matches this
-   proposal, and matches the confirmed byte-oriented `buffer`) versus
-   Unicode-code-point-aware indexing (more correct, substantially more
-   implementation work). Recommendation: byte-based for the first
-   milestone, revisit later.
-2. Whether `String`'s element access reuses `buffer`'s `int`-or-`unsigned`
-   element typing (confirmed above) or is `unsigned`-only. Recommendation:
-   match `buffer` exactly for consistency.
+1. ~~Byte-based vs. Unicode-code-point-aware `String` indexing/`.length`.~~
+   **Confirmed**: byte-based, matching the confirmed byte-oriented `buffer`
+   and `string.length` semantics above.
+2. ~~Whether `String`'s element access reuses `buffer`'s `int`-or-`unsigned`
+   element typing or is `unsigned`-only.~~ **Confirmed**: `unsigned`-only —
+   `String` elements (both reads and any writes) are always `unsigned`,
+   unlike `buffer`, which additionally accepts `int` writes (bounds-checked,
+   bitwise-truncated). This is a deliberate difference from `buffer`, not
+   an oversight.
 3. Mutating-in-place (alias semantics, matching `array`/`map`) versus
    copy-on-write/value semantics for `String` mutation methods. Note this
    is now a real inconsistency to resolve either way: `buffer` assignment
@@ -629,12 +695,10 @@ storage is the now-confirmed `buffer` type above.
    status. Recommendation: unify under one type to avoid two ways to spell
    "a string," but this touches every existing native-bound method
    signature that currently mentions `string`.
-5. Whether `String` should keep the proposed `==`/`!=` support at all, given
-   the newly confirmed rule that `buffer`, `handle`, and `string` cannot
-   appear in operator expressions (see "Interaction with the pending
-   `String`-as-class proposal" above) — this is the most consequential open
-   conflict introduced by this update and should be resolved before any of
-   the `String` proposal is implemented.
+5. ~~Whether `String` should keep `==`/`!=`.~~ **Confirmed**: no — `String`
+   gets no equality or ordering operators at all; see "Equality and
+   comparison for strings (confirmed)" above. `s.equals(other)` is the
+   supported content-equality method instead.
 
 ### Collections and copying
 
@@ -911,6 +975,27 @@ surviving root. This matches the prototype's current behavior; no code
 change was needed to confirm it. GC timing and memory reclamation are
 separate from the caller-controlled timing of explicit cleanup.
 
+**GC timing and memory reclamation policy (confirmed):**
+
+- Collection timing/cadence is explicitly **not guaranteed** by the
+  language. The prototype's current every-allocation cadence is an
+  implementation detail, not a promise; a future implementation may collect
+  less often (allocation-threshold-based, generational, incremental,
+  concurrent, or otherwise) without that being an observable language
+  change. Code must not depend on when, or how often, collection runs.
+- Memory recovery **must not leak**: every GC-managed object that becomes
+  unreachable must eventually be reclaimed by the collector. This is a
+  language guarantee, independent of the unguaranteed timing above —
+  "eventually" describes ordering (reachability implies eventual
+  reclamation), not a bound on when.
+- The one explicit exception to that no-leak guarantee: the GC has no
+  visibility into, and no control over, memory allocated directly by inline
+  C (`inline { ... }` blocks) or by external/native libraries reached
+  through `from "<symbol>"` bindings. Such memory is outside the managed
+  heap entirely; its lifetime is the native code's own responsibility, the
+  same as in any C program. The no-leak guarantee applies only to
+  GC-managed allocations (objects, arrays, maps, buffers, and strings).
+
 ### Threads
 
 - The threading model is pthread-style, with threads in the same process.
@@ -1153,6 +1238,13 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 
 ### Confirmed or currently agreed direction
 
+- **Nullability model:** `null` is a universal value assignable to any
+  type, including scalars, with no flow-sensitive null analysis; reading,
+  printing, and comparing null-holding values is unrestricted (prints as
+  `(null)`), and only member access/method calls/indexing on a null
+  reference raises a runtime exception. Giving scalars an actual
+  null-capable representation and fixing the `any` null-print text to
+  `(null)` are the remaining implementation follow-ups, deferred for now.
 - The language is named Simple and targets a C/C++/Python synthesis.
 - Explicit, fixed, strongly typed variables are required.
 - Compile-time diagnostics are preferred, with specified warnings and runtime checks where needed.
@@ -1204,6 +1296,32 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - Variadic methods are not supported: every method has a fixed parameter
   count and fixed parameter types, whether Simple-implemented or
   native-bound.
+- `string`/`String` length is measured in bytes, not Unicode code points,
+  matching `buffer`'s confirmed byte-oriented `length`/indexing/slicing
+  (`string.length` itself is not yet implemented, but its semantics are
+  fixed).
+- The `u`/`U` unsigned-literal suffix stays required in a plain
+  `int`-inferred context, but is optional wherever the context already
+  expects `unsigned` (declaration initializers, assignments, call
+  arguments, returns): a bare digit sequence there is itself an unsigned
+  literal, not an `int` needing conversion. This is implemented.
+- `string`/`String` will not have equality (`==`/`!=`) or ordering
+  comparison operators at all; content comparison is a named method
+  (`s.equals(other)`), keeping `buffer`, `handle`, and `string` all
+  consistently excluded from operator expressions with no exceptions.
+- GC collection timing/cadence is explicitly not guaranteed (the prototype's
+  every-allocation cadence is an implementation detail, not a language
+  promise), but memory recovery must not leak: every unreachable GC-managed
+  object is eventually reclaimed. The sole exception is memory allocated by
+  inline C or external/native libraries, which the GC cannot see or control
+  and remains that native code's own responsibility.
+- String-to-number conversion is a `String` class method (for example
+  `s.toInt()`), not general cast syntax or an implicit conversion; exact
+  method names/signatures remain to be finalized with the rest of the
+  pending `String` proposal.
+- `String` element access (`s[i]`, both reads and writes) is always
+  `unsigned` — unlike `buffer`, which additionally accepts `int` writes.
+  This is a deliberate difference, not an inconsistency to reconcile.
 - `buffer` and `handle` are confirmed new built-in reference types (see
   "`buffer` and `handle` types" under "Strings" above): both are
   primitive-like (not classes, no user methods, no subclassing). `buffer`
@@ -1217,29 +1335,30 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   LLVM/backend direction"); this is the confirmed way native code assigns a
   `handle` value directly into Simple code, alongside a native-bound method
   returning one.
+- Inline C is implemented, not just proposed: both `inline { ... }` and
+  `inline (<type> <name>, ...) { ... }` (plus the `<type> <name> inline
+  { ... }` declare-and-capture sugar) compile to a generated C shim per the
+  "Inline C and LLVM/backend direction" section, built and linked through
+  the existing C toolchain step. Captured managed references (`string`,
+  `array`, `map`, `handle`, class types) are passed as rooted addresses;
+  the wrapper roots the implicit receiver and managed parameters for the
+  duration of the call, matching native-bound methods.
+- `simp_string_cstr`'s storage/cleanup contract is implemented and final:
+  each call copies the string into a NUL-terminated buffer owned by a
+  thread-local per-shim arena; the generated shim opens that arena
+  (`simp_inline_cstr_begin`) before the raw C body and releases it
+  (`simp_inline_cstr_end`) after, so conversions are valid only until the
+  enclosing inline block returns.
 
 ### Open or explicitly deferred
 
 - The complete grammar and how it is reconciled with the examples and priorities.
-- Exact nullability-flow analysis and explicit conversion syntax. Scalar casts
-  are not currently implemented; the chosen numeric literal forms and
-  mandatory `u` suffix may be revisited as the grammar is finalized.
-- Whether string length is measured in bytes or Unicode code points.
+- Exact conversion syntax. Scalar casts and the scalar-null representation
+  are not currently implemented (see the priority list below).
 - Advanced Unicode semantics beyond current UTF-8 support.
-- GC timing and memory reclamation policy; neither is determined by explicitly
-  invoking a destructor. The prototype currently collects before each object
-  allocation; that cadence is not a final language/runtime policy.
 - Production GC integration with active threads, including registration and
   safe-point coordination, remains open. The current prototype runtime is
   single-threaded and cannot safely be used by concurrent threads.
-- The inline-C shim and capture ABI described above are recommended but not
-  implemented; validation of the generated-C build/link integration remains
-  deferred.
-- The runtime-safe rules and APIs for mutating captured strings and managed
-  reference slots, and whether inline C may call GC-capable runtime code;
-  these determine how managed captures are rooted and how such calls behave.
-- The `simp_string_cstr` storage/cleanup implementation, which must honor its
-  finalized inline-block lifetime contract.
 - The CLI/environment configuration for include search directories; package
   layout, prebuilt module binary formats, external binary-library resolution,
   and package-version constraints.
@@ -1250,11 +1369,35 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - Package-manager, IDE, and LLDB/GDB integration details.
 - The class-based `String` redesign built on the now-confirmed `buffer`
   type (see "Proposal: a class-based `String`..." under "Strings" above):
-  byte-vs-codepoint indexing, `String`'s element-type typing, mutation
-  alias-vs-copy semantics (now in tension with `buffer`'s confirmed
-  copy-on-assign behavior), the `string`/`String` unification question,
-  and — the most consequential open conflict — whether `String` should get
-  `==`/`!=` at all, since `buffer`, `handle`, and `string` are now
-  confirmed to never appear in operator expressions.
+  `String`'s element-type typing, mutation alias-vs-copy semantics (now in
+  tension with `buffer`'s confirmed copy-on-assign behavior), and the
+  `string`/`String` unification question. (Byte-based indexing/length and
+  the no-`==`/`!=` decision are now confirmed, resolving two of the
+  proposal's original open questions.)
+
+### Suggested priority for the remaining open language/syntax decisions
+
+Of the items above, these are pure language/syntax design gaps (as opposed
+to tooling, packaging, or infrastructure work) and are suggested as the
+next things to resolve, roughly in priority order:
+
+1. Explicit scalar cast syntax (`int`/`float`/`unsigned`/`bool` conversions)
+   — no cast syntax exists yet at all. **Deliberately deferred** (not an
+   oversight): existing code can already only use values already of the
+   required type, so this does not block current work; resolving it well
+   needs the same design-iteration effort as `buffer`/`handle` did, and is
+   left for a future session with more time/budget.
+2. **Resolved and implemented:** `null` is a universal value (see
+   "Nullability model (confirmed)" above) — assignable to any type
+   including scalars, with no flow-sensitive null analysis. Scalars,
+   `string`, `array`, and `map` now all support `null`, with printing,
+   `==`/`!=`, and (for scalar locals) a documented decay-at-boundary rule.
+   See the "Implemented, with a documented scope boundary for scalar
+   locals" bullet above for the exact scope.
+3. The remaining `String`-as-class questions: mutation alias-vs-copy
+   semantics, the `string`/`String` unification question, and the exact
+   string-to-number method names/signatures (confirmed to be `String`
+   methods, e.g. `s.toInt()`, not general casts — naming/signature detail
+   remains). (Element-access typing is now confirmed: always `unsigned`.)
 
 Until these questions are resolved through examples and a runnable prototype, this document should be read as a design record and project guide rather than as a final language specification. A comprehensive, implementation-tracking language specification (covering everything actually built, not just agreed direction) is a planned future deliverable, separate from this design-record document.

@@ -336,6 +336,16 @@ CodeGenerator::Value CodeGenerator::convertObjectValue(
         if (expectedType == "any") {
             return buildDynamicValue({"null", "null"}, location);
         }
+        if (expectedType == "string") {
+            // A null string is represented as an all-zero %SimpleString (null
+            // data pointer, zero length); see the "Nullability model
+            // (confirmed)" note in SIMPLE-LANGUAGE-NOTES.md.
+            return {"string", "zeroinitializer"};
+        }
+        if (isNullableScalarType(expectedType)) {
+            const auto zero = expectedType == "float" ? "0.0" : "0";
+            return {expectedType, zero, "1"};
+        }
         value.type = expectedType;
         return value;
     }
