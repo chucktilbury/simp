@@ -568,7 +568,13 @@ Statement Parser::parseRaise() {
     Statement statement;
     statement.kind = StatementKind::Raise;
     statement.location = keyword.location;
-    statement.expressions.push_back(parseExpression());
+    consume(TokenType::LeftParen, "'(' after raise");
+    if (match(TokenType::RightParen)) {
+        statement.rethrowsException = true;
+    } else {
+        statement.expressions.push_back(parseExpression());
+        consume(TokenType::RightParen, "')' after raised expression");
+    }
     consumeStatementTerminator();
     return statement;
 }
@@ -581,14 +587,21 @@ Statement Parser::parseTry() {
     skipNewlines();
     statement.body = parseBlock();
     skipNewlines();
-    if (match(TokenType::Except)) {
-        statement.hasAlternate = true;
-        if (match(TokenType::Identifier)) {
-            statement.name = previous().text;
-            statement.hasExceptionBinding = true;
+    while (match(TokenType::Except)) {
+        ExceptionHandler handler;
+        handler.location = previous().location;
+        consume(TokenType::LeftParen, "'(' after except");
+        if (!check(TokenType::RightParen)) {
+            handler.exceptionType = parseQualifiedIdentifier("exception class name");
+        }
+        consume(TokenType::RightParen, "')' after exception class name");
+        if (match(TokenType::As)) {
+            handler.name = consume(TokenType::Identifier, "exception binding name").text;
+            handler.hasBinding = true;
         }
         skipNewlines();
-        statement.alternate = parseBlock();
+        handler.body = parseBlock();
+        statement.exceptionHandlers.push_back(std::move(handler));
         skipNewlines();
     }
     if (match(TokenType::Finally)) {
@@ -597,7 +610,7 @@ Statement Parser::parseTry() {
         statement.cleanup = parseBlock();
         skipNewlines();
     }
-    if (!statement.hasAlternate && !statement.hasCleanup) {
+    if (statement.exceptionHandlers.empty() && !statement.hasCleanup) {
         error(current(), "'try' requires an 'except' or 'finally' block");
     }
     return statement;

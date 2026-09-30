@@ -44,7 +44,7 @@ start {
     print(missing == null)
     try {
         print(missing.value)
-    } except {
+    } except() {
         print("caught")
     }
 

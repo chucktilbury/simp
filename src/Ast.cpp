@@ -8,6 +8,41 @@
 #include <ostream>
 
 namespace simp {
+
+ClassDeclaration makeBuiltinExceptionClass() {
+    ClassDeclaration declaration;
+    declaration.name = "Exception";
+    declaration.builtin = true;
+    declaration.location = {"<builtin>", 1, 1};
+    declaration.fields.push_back(
+        {"string", "message", declaration.location, AccessLevel::Public});
+    declaration.fields.push_back(
+        {"bool", "runtime_owns_message", declaration.location, AccessLevel::Private});
+
+    MethodDeclaration constructor;
+    constructor.name = "Exception";
+    constructor.returnType = "void";
+    constructor.location = declaration.location;
+    constructor.constructor = true;
+    constructor.parameters.push_back({"string", "text", declaration.location});
+
+    Statement assignment;
+    assignment.kind = StatementKind::Assignment;
+    assignment.location = declaration.location;
+    assignment.target = std::make_unique<Expression>();
+    assignment.target->kind = ExpressionKind::Identifier;
+    assignment.target->location = declaration.location;
+    assignment.target->value = "message";
+    auto value = std::make_unique<Expression>();
+    value->kind = ExpressionKind::Identifier;
+    value->location = declaration.location;
+    value->value = "text";
+    assignment.expressions.push_back(std::move(value));
+    constructor.body.push_back(std::move(assignment));
+    declaration.methods.push_back(std::move(constructor));
+    return declaration;
+}
+
 namespace {
 
 void indent(std::ostream& output, int depth) {
@@ -104,9 +139,20 @@ void dumpStatement(const Statement& statement, std::ostream& output, int depth) 
     if (!statement.body.empty()) {
         dumpStatements(statement.body, output, depth + 1);
     }
-    if (statement.hasAlternate) {
+    if (statement.kind == StatementKind::Try) {
+        for (const auto& handler : statement.exceptionHandlers) {
+            indent(output, depth + 1);
+            output << "Except";
+            if (!handler.exceptionType.empty()) {
+                output << " [" << handler.exceptionType << "]";
+            }
+            if (handler.hasBinding) output << " as [" << handler.name << "]";
+            output << '\n';
+            dumpStatements(handler.body, output, depth + 2);
+        }
+    } else if (statement.hasAlternate) {
         indent(output, depth + 1);
-        output << (statement.kind == StatementKind::Try ? "Except\n" : "Else\n");
+        output << "Else\n";
         dumpStatements(statement.alternate, output, depth + 2);
     }
     if (statement.hasCleanup) {
@@ -155,6 +201,7 @@ void dumpAst(const Program& program, std::ostream& output) {
         output << "]\n";
     }
     for (const auto& declaration : program.classes) {
+        if (declaration.builtin) continue;
         indent(output, 1);
         output << "Class [" << declaration.name;
         if (!declaration.baseClassNames.empty()) {

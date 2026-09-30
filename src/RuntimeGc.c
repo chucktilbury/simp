@@ -164,8 +164,17 @@ typedef struct SimpExceptionFrame {
     char *file;
     uint64_t line;
     uint64_t column;
+    void *exception_object;
+    void *exception_base;
     int has_exception;
 } SimpExceptionFrame;
+
+typedef struct SimpRuntimeException {
+    const SimpClassMeta *metadata;
+    void *owner;
+    SimpString message;
+    uint8_t runtime_owns_message;
+} SimpRuntimeException;
 
 typedef struct RetainedExceptionMessage {
     struct RetainedExceptionMessage *next;
@@ -252,16 +261,31 @@ void simp_runtime_gil_acquire(void) {
 }
 
 static const SimpClassMeta array_metadata = {
-    "array", 5, 0, NULL, 0, sizeof(SimpArray), 0, NULL, NULL, 0, NULL
+    "array", 5, 0, NULL, 0, sizeof(SimpArray), 0, NULL, NULL, 0, NULL, 0, NULL
 };
 static const SimpClassMeta map_metadata = {
-    "map", 3, 0, NULL, 0, sizeof(SimpMap), 0, NULL, NULL, 0, NULL
+    "map", 3, 0, NULL, 0, sizeof(SimpMap), 0, NULL, NULL, 0, NULL, 0, NULL
 };
 static const SimpClassMeta buffer_metadata = {
-    "buffer", 6, 0, NULL, 0, sizeof(SimpBuffer), 0, NULL, NULL, 0, NULL
+    "buffer", 6, 0, NULL, 0, sizeof(SimpBuffer), 0, NULL, NULL, 0, NULL, 0, NULL
 };
 
 static HeapNode *find_object(const void *object);
+
+static void finalize_runtime_exception(void *object) {
+    SimpRuntimeException *exception = (SimpRuntimeException *)object;
+    if (exception->runtime_owns_message) {
+        free((void *)exception->message.data);
+        exception->message.data = NULL;
+        exception->message.length = 0;
+        exception->runtime_owns_message = 0;
+    }
+}
+
+const SimpClassMeta simp_exception_class_meta = {
+    "Exception", 9, 2, NULL, 0, sizeof(SimpRuntimeException), 0, NULL,
+    finalize_runtime_exception, 0, NULL, 0, NULL
+};
 
 static void release_retained_exception_messages(void) {
     while (retained_exception_messages != NULL) {
@@ -309,6 +333,7 @@ void simp_gc_end_construction(void *object) {
 static void raise_exception(const char *message, uint64_t length,
                             const char *file, uint64_t file_length,
                             uint64_t line, uint64_t column,
+                            void *exception_object, void *exception_base,
                             char *owned_message, char *owned_file) {
     if ((message == NULL && length != 0) || length > (uint64_t)SIZE_MAX ||
         (file == NULL && file_length != 0) || file_length > (uint64_t)SIZE_MAX) abort();
@@ -349,6 +374,8 @@ static void raise_exception(const char *message, uint64_t length,
     frame->file_length = (size_t)file_length;
     frame->line = line;
     frame->column = column;
+    frame->exception_object = exception_object;
+    frame->exception_base = exception_base;
     frame->has_exception = 1;
     active_exception = frame->previous;
     frame->previous = NULL;
@@ -399,6 +426,8 @@ void simp_exception_push(void *storage) {
     frame->file_length = 0;
     frame->line = 0;
     frame->column = 0;
+    frame->exception_object = NULL;
+    frame->exception_base = NULL;
     frame->has_exception = 0;
     active_exception = frame;
 }
@@ -416,6 +445,8 @@ void simp_exception_pop(void *storage) {
     frame->file_length = 0;
     frame->line = 0;
     frame->column = 0;
+    frame->exception_object = NULL;
+    frame->exception_base = NULL;
 }
 
 void simp_exception_clear(void *storage) {
@@ -429,25 +460,30 @@ void simp_exception_clear(void *storage) {
     frame->line = 0;
     frame->column = 0;
     frame->message_length = 0;
+    frame->exception_object = NULL;
+    frame->exception_base = NULL;
     frame->has_exception = 0;
 }
 
-const char *simp_exception_take_message(void *storage) {
+const char *simp_exception_copy_message(void *storage) {
     SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
     if (frame == NULL || !frame->has_exception) abort();
     if (frame->message == NULL) return "";
     RetainedExceptionMessage *retained =
         (RetainedExceptionMessage *)malloc(sizeof(*retained));
     if (retained == NULL) abort();
-    retained->bytes = frame->message;
+    retained->bytes = (char *)malloc(frame->message_length);
+    if (retained->bytes == NULL) {
+        free(retained);
+        abort();
+    }
+    memcpy(retained->bytes, frame->message, frame->message_length);
     retained->next = retained_exception_messages;
     retained_exception_messages = retained;
     if (!retained_message_cleanup_registered) {
         if (atexit(release_retained_exception_messages) != 0) abort();
         retained_message_cleanup_registered = 1;
     }
-    frame->message = NULL;
-    frame->message_length = 0;
     return retained->bytes;
 }
 
@@ -457,9 +493,71 @@ uint64_t simp_exception_message_length(void *storage) {
     return (uint64_t)frame->message_length;
 }
 
+void *simp_exception_frame_object(void *storage) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL || !frame->has_exception) abort();
+    return frame->exception_object;
+}
+
+void *simp_exception_frame_base(void *storage) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL || !frame->has_exception) abort();
+    return frame->exception_base;
+}
+
+int32_t simp_exception_matches(void *storage, const SimpClassMeta *expected) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL || !frame->has_exception || frame->exception_object == NULL ||
+        expected == NULL) abort();
+    const SimpClassMeta *actual = NULL;
+    memcpy(&actual, frame->exception_object, sizeof(actual));
+    if (actual == NULL) abort();
+    if (actual->name_length == expected->name_length &&
+        memcmp(actual->name, expected->name, (size_t)actual->name_length) == 0) {
+        return 1;
+    }
+    for (uint64_t index = 0; index < actual->base_class_count; ++index) {
+        const SimpClassName *base = &actual->base_classes[index];
+        if (base->name_length == expected->name_length &&
+            memcmp(base->name, expected->name, (size_t)base->name_length) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void *make_runtime_exception(const char *message, uint64_t length) {
+    if ((message == NULL && length != 0) || length > (uint64_t)SIZE_MAX) abort();
+    void *object = simp_gc_alloc(&simp_exception_class_meta);
+    SimpRuntimeException *exception = (SimpRuntimeException *)object;
+    exception->owner = object;
+    char *copy = length == 0 ? NULL : (char *)malloc((size_t)length);
+    if (length != 0 && copy == NULL) abort();
+    if (length != 0) memcpy(copy, message, (size_t)length);
+    exception->message.data = copy;
+    exception->message.length = length;
+    exception->runtime_owns_message = 1;
+    return object;
+}
+
 void simp_exception_raise(const char *message, uint64_t length, const char *file,
                           uint64_t file_length, uint64_t line, uint64_t column) {
-    raise_exception(message, length, file, file_length, line, column, NULL, NULL);
+    if (collecting || running_destructor) {
+        raise_exception(message, length, file, file_length, line, column,
+                        NULL, NULL, NULL, NULL);
+    }
+    void *object = make_runtime_exception(message, length);
+    raise_exception(message, length, file, file_length, line, column,
+                    object, object, NULL, NULL);
+}
+
+void simp_exception_raise_object(void *object, void *exception_base,
+                                 const char *message, uint64_t length,
+                                 const char *file, uint64_t file_length,
+                                 uint64_t line, uint64_t column) {
+    if (object == NULL || exception_base == NULL) abort();
+    raise_exception(message, length, file, file_length, line, column,
+                    object, exception_base, NULL, NULL);
 }
 
 void simp_exception_rethrow(void *storage) {
@@ -471,15 +569,20 @@ void simp_exception_rethrow(void *storage) {
     const uint64_t file_length = (uint64_t)frame->file_length;
     const uint64_t line = frame->line;
     const uint64_t column = frame->column;
+    void *exception_object = frame->exception_object;
+    void *exception_base = frame->exception_base;
+    if (exception_object == NULL || exception_base == NULL) abort();
     frame->message = NULL;
     frame->message_length = 0;
     frame->file = NULL;
     frame->file_length = 0;
     frame->line = 0;
     frame->column = 0;
+    frame->exception_object = NULL;
+    frame->exception_base = NULL;
     frame->has_exception = 0;
     raise_exception(message, length, file, file_length, line, column,
-                    message, file);
+                    exception_object, exception_base, message, file);
 }
 
 static int valid_reference_offset(const SimpClassMeta *metadata, uint64_t offset) {

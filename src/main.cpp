@@ -5,6 +5,7 @@
  */
 #include "simp/Ast.hpp"
 #include "simp/CodeGenerator.hpp"
+#include "simp/CommandLine.hpp"
 #include "simp/Diagnostic.hpp"
 #include "simp/ModuleRegistry.hpp"
 #include "simp/Parser.hpp"
@@ -15,8 +16,10 @@
 #include <charconv>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 #include <system_error>
 #include <unordered_set>
@@ -26,10 +29,105 @@
 
 namespace {
 
-void printUsage(std::ostream& output) {
-    output << "Usage: simp [--verbose] [--trace-parser] [--dump-ast] [--dump-symbols] "
-              "[--check-only] [--max-include-depth N] [--emit-llvm FILE] [-o FILE] "
-              "<source.simp>\n";
+void addSwitch(simp::CommandLine& commandLine, char shortName,
+               const std::string& longName, const std::string& name,
+               const std::string& description,
+               simp::CommandLineAction action = simp::CommandLineAction::None) {
+    simp::CommandLineOption option;
+    option.shortName = shortName;
+    option.longName = longName;
+    option.name = name;
+    option.description = description;
+    option.action = action;
+    commandLine.addOption(std::move(option));
+}
+
+simp::CommandLine makeCommandLine() {
+    simp::CommandLine commandLine("simp", "Simple compiler", SIMP_VERSION);
+    addSwitch(commandLine, 'h', "help", "help", "Print this helpful information",
+              simp::CommandLineAction::Help);
+    addSwitch(commandLine, 'V', "version", "version", "Show the program version",
+              simp::CommandLineAction::Version);
+    addSwitch(commandLine, 'v', "verbose", "verbose", "Display debugging information");
+    addSwitch(commandLine, '\0', "trace-parser", "trace-parser",
+              "Trace parser activity");
+    addSwitch(commandLine, '\0', "dump-ast", "dump-ast", "Print the parsed AST");
+    addSwitch(commandLine, '\0', "dump-symbols", "dump-symbols",
+              "Print the semantic symbol table");
+    addSwitch(commandLine, '\0', "check-only", "check-only",
+              "Run parsing and semantic checks without code generation");
+
+    simp::CommandLineOption paths;
+    paths.shortName = 'p';
+    paths.longName = "path";
+    paths.name = "path";
+    paths.description = "Add directories to the include search path";
+    paths.valueType = simp::CommandLineValueType::String;
+    paths.list = true;
+    commandLine.addOption(std::move(paths));
+
+    simp::CommandLineOption traces;
+    traces.shortName = 't';
+    traces.longName = "trace";
+    traces.name = "trace";
+    traces.description = "Trace parser, scanner, AST, or symbols";
+    traces.valueType = simp::CommandLineValueType::String;
+    traces.list = true;
+    commandLine.addOption(std::move(traces));
+
+    simp::CommandLineOption verbosity;
+    verbosity.longName = "verbosity";
+    verbosity.name = "verbosity";
+    verbosity.description = "Set diagnostic verbosity level";
+    verbosity.valueType = simp::CommandLineValueType::Number;
+    verbosity.defaultValue = "0";
+    commandLine.addOption(std::move(verbosity));
+
+    simp::CommandLineOption includeDepth;
+    includeDepth.longName = "max-include-depth";
+    includeDepth.name = "max-include-depth";
+    includeDepth.description = "Set the maximum nested textual include depth";
+    includeDepth.valueType = simp::CommandLineValueType::Number;
+    includeDepth.defaultValue = "16";
+    commandLine.addOption(std::move(includeDepth));
+
+    simp::CommandLineOption output;
+    output.shortName = 'o';
+    output.longName = "output";
+    output.name = "output";
+    output.description = "Write the executable to FILE";
+    output.valueType = simp::CommandLineValueType::String;
+    commandLine.addOption(std::move(output));
+
+    simp::CommandLineOption ir;
+    ir.longName = "emit-llvm";
+    ir.name = "emit-llvm";
+    ir.description = "Save generated LLVM IR to FILE";
+    ir.valueType = simp::CommandLineValueType::String;
+    commandLine.addOption(std::move(ir));
+
+    commandLine.addPositional(
+        {"source", "Source file to compile", true, false});
+    return commandLine;
+}
+
+std::size_t parseNonNegativeInteger(const std::string& value,
+                                    const std::string& optionName) {
+    std::size_t resultValue = 0;
+    const auto result =
+        std::from_chars(value.data(), value.data() + value.size(), resultValue);
+    if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
+        throw std::invalid_argument(optionName + " requires a non-negative integer");
+    }
+    return resultValue;
+}
+
+void traceTokens(const std::vector<simp::Token>& tokens, std::ostream& output) {
+    for (const auto& token : tokens) {
+        output << "[scanner] " << simp::tokenTypeName(token.type) << ' '
+               << std::quoted(token.text) << " at " << token.location.file << ':'
+               << token.location.line << ':' << token.location.column << '\n';
+    }
 }
 
 std::string shellQuote(const std::string& value) {
@@ -99,71 +197,69 @@ int buildExecutable(const std::vector<std::string>& irPaths,
 } // namespace
 
 int main(int argc, char** argv) {
-    bool verbose = false;
-    bool traceParser = false;
-    bool dump = false;
-    bool dumpSymbols = false;
-    bool checkOnly = false;
-    std::string requestedOutput;
-    std::string irOutput;
-    std::string inputPath;
-    std::size_t maximumIncludeDepth = 16;
-
-    for (int index = 1; index < argc; ++index) {
-        const std::string argument = argv[index];
-        if (argument == "--help" || argument == "-h") {
-            printUsage(std::cout);
-            return 0;
-        }
-        if (argument == "--verbose" || argument == "-v") {
-            verbose = true;
-        } else if (argument == "--trace-parser") {
-            traceParser = true;
-        } else if (argument == "--dump-ast") {
-            dump = true;
-        } else if (argument == "--dump-symbols") {
-            dumpSymbols = true;
-        } else if (argument == "--check-only") {
-            checkOnly = true;
-        } else if (argument == "--max-include-depth") {
-            if (index + 1 >= argc) {
-                std::cerr << "simp: --max-include-depth requires a non-negative integer\n";
-                return 2;
-            }
-            const std::string value = argv[++index];
-            std::size_t parsed = 0;
-            const auto result = std::from_chars(value.data(), value.data() + value.size(), parsed);
-            if (result.ec != std::errc{} || result.ptr != value.data() + value.size()) {
-                std::cerr << "simp: --max-include-depth requires a non-negative integer\n";
-                return 2;
-            }
-            maximumIncludeDepth = parsed;
-        } else if (argument == "-o" || argument == "--emit-llvm") {
-            if (index + 1 >= argc) {
-                std::cerr << "simp: " << argument << " requires a file path\n";
-                return 2;
-            }
-            if (argument == "-o") {
-                requestedOutput = argv[++index];
-            } else {
-                irOutput = argv[++index];
-            }
-        } else if (!argument.empty() && argument.front() == '-') {
-            std::cerr << "simp: unknown option: " << argument << '\n';
-            printUsage(std::cerr);
-            return 2;
-        } else if (inputPath.empty()) {
-            inputPath = argument;
-        } else {
-            std::cerr << "simp: only one input file is supported in this prototype\n";
-            return 2;
-        }
-    }
-
-    if (inputPath.empty()) {
-        printUsage(std::cerr);
+    auto commandLine = makeCommandLine();
+    std::vector<std::string> arguments;
+    arguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0);
+    for (int index = 1; index < argc; ++index) arguments.emplace_back(argv[index]);
+    try {
+        commandLine.parse(arguments);
+    } catch (const std::invalid_argument& error) {
+        std::cerr << "simp: " << error.what() << '\n' << commandLine.helpText();
         return 2;
     }
+    if (commandLine.action() == simp::CommandLineAction::Help) {
+        std::cout << commandLine.helpText();
+        return 0;
+    }
+    if (commandLine.action() == simp::CommandLineAction::Version) {
+        std::cout << commandLine.versionText();
+        return 0;
+    }
+
+    const bool traceParser = commandLine.switchValue("trace-parser") ||
+                            commandLine.contains("trace", "parser");
+    const bool traceScanner = commandLine.contains("trace", "scanner");
+    const bool traceAst = commandLine.contains("trace", "AST") ||
+                          commandLine.contains("trace", "ast");
+    const bool traceSymbols = commandLine.contains("trace", "symbols");
+    const bool dump = commandLine.switchValue("dump-ast") || traceAst;
+    const bool dumpSymbols = commandLine.switchValue("dump-symbols") || traceSymbols;
+    const bool checkOnly = commandLine.switchValue("check-only");
+    std::size_t verbosity = 0;
+    try {
+        verbosity = parseNonNegativeInteger(
+            *commandLine.value("verbosity"), "--verbosity");
+    } catch (const std::invalid_argument& error) {
+        std::cerr << "simp: " << error.what() << '\n' << commandLine.helpText();
+        return 2;
+    }
+    const bool verbose = commandLine.switchValue("verbose") || verbosity > 0;
+    std::size_t maximumIncludeDepth = 0;
+    try {
+        maximumIncludeDepth = parseNonNegativeInteger(
+            *commandLine.value("max-include-depth"), "--max-include-depth");
+    } catch (const std::invalid_argument& error) {
+        std::cerr << "simp: " << error.what() << '\n' << commandLine.helpText();
+        return 2;
+    }
+    const auto& positionalValues = commandLine.positionalValues();
+    const std::string inputPath = positionalValues.front();
+    const auto requestedOutput = commandLine.value("output").value_or("");
+    const auto irOutput = commandLine.value("emit-llvm").value_or("");
+    std::vector<std::filesystem::path> includeSearchPaths;
+    includeSearchPaths.reserve(commandLine.values("path").size());
+    for (const auto& path : commandLine.values("path")) {
+        includeSearchPaths.emplace_back(path);
+    }
+    for (const auto& target : commandLine.values("trace")) {
+        if (target != "parser" && target != "scanner" && target != "AST" &&
+            target != "ast" && target != "symbols") {
+            std::cerr << "simp: unsupported trace target: " << target << '\n'
+                      << commandLine.helpText();
+            return 2;
+        }
+    }
+
     std::ifstream input(inputPath);
     if (!input) {
         std::cerr << "simp: cannot open input file: " << inputPath << '\n';
@@ -183,7 +279,9 @@ int main(int argc, char** argv) {
         }
         includedFiles.insert(canonicalInput.string());
         auto tokens = simp::tokenizeWithIncludes(
-            source, inputPath, includedFiles, 0, true, maximumIncludeDepth);
+            source, inputPath, includedFiles, 0, true, maximumIncludeDepth, {},
+            includeSearchPaths);
+        if (traceScanner) traceTokens(tokens, std::cerr);
         tokens.push_back({simp::TokenType::End, "", {inputPath, 1, 1}});
         if (verbose) {
             std::cerr << "[verbose] lexed " << (tokens.size() - 1) << " tokens\n";

@@ -427,10 +427,13 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
     // exactly. This prototype does not support extracting a proper subclass
     // instance into a base-class-typed variable from 'any'.
     const auto pointer = newTemporary();
+    const auto expectedMetadata = expectedType == "Exception"
+                                     ? "@simp_exception_class_meta"
+                                     : "@.simp.class.meta." + expectedType;
     instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " + value.operand +
                      ", 2\n"
                      "  call void @simp_value_require_class(i64 " + tag + ", ptr " + pointer +
-                     ", ptr @.simp.class.meta." + expectedType + ", ptr " + file + ", i64 " +
+                     ", ptr " + expectedMetadata + ", ptr " + file + ", i64 " +
                      fileLength + ", i64 " + line + ", i64 " + column + ")\n";
     return rootObjectValue({expectedType, pointer}, location);
 }
@@ -709,8 +712,9 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         }
         const auto* owner = found->second;
         const auto object = newTemporary();
-        instructions_ += "  " + object + " = call ptr @simp_gc_alloc(ptr @.simp.class.meta." +
-                         owner->name + ")\n";
+        const auto metadata = owner->builtin ? "@simp_exception_class_meta"
+                                             : "@.simp.class.meta." + owner->name;
+        instructions_ += "  " + object + " = call ptr @simp_gc_alloc(ptr " + metadata + ")\n";
         rootObjectValue({owner->name, object}, expression.location);
         emitNullCheck(object, expression.location);
         const auto rootLink = newTemporary();

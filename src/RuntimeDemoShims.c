@@ -56,6 +56,11 @@ void *simp_method_demo_identity(void *receiver, void *object) {
     return object;
 }
 
+int32_t simp_method_demo_exception_identity(void *receiver, void *left, void *right) {
+    if (receiver == NULL) abort();
+    return left == right;
+}
+
 void *simp_method_demo_handle_create(void *receiver) {
     require_demo_native_receiver(receiver);
     return &demo_handle_resource;

@@ -309,6 +309,7 @@ std::vector<std::string> SemanticAnalyzer::virtualBaseNames(
 bool SemanticAnalyzer::isSubclassOf(const std::string& type, const std::string& base) const {
     const auto found = classes_.find(type);
     if (found == classes_.end()) return false;
+    if (type == base) return true;
     std::vector<const ClassDeclaration*> pending{found->second};
     std::unordered_set<std::string> visited;
     while (!pending.empty()) {

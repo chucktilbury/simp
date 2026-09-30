@@ -10,13 +10,13 @@ class Box {
 class Worker {
   int fail() {
     Box local = Box()
-    raise "from method"
+    raise(Exception("from method"))
     return 0
   }
 }
 class ThrowingBox {
   void destroy() {
-    raise "from destructor"
+    raise(Exception("from destructor"))
   }
   int read() {
     return 9
@@ -24,7 +24,7 @@ class ThrowingBox {
 }
 class Partial {
   Partial() {
-    raise "constructor failed"
+    raise(Exception("constructor failed"))
   }
   void destroy() {
     print("invalid partial finalizer")
@@ -37,8 +37,8 @@ class Builder {
 }
 start {
   try {
-    raise "requested"
-  } except {
+    raise(Exception("requested"))
+  } except() {
     print("caught raise")
   } finally {
     print("finally after exception")
@@ -53,14 +53,14 @@ start {
   Worker worker = Worker()
   try {
     worker.fail()
-  } except {
+  } except() {
     print("caught method raise")
   }
 
   Builder builder = Builder()
   try {
     builder.build()
-  } except {
+  } except() {
     print("caught constructor raise")
   }
   Box afterFailure = Box()
@@ -68,24 +68,24 @@ start {
   ThrowingBox doomed = ThrowingBox()
   try {
     doomed.destroy()
-  } except {
+  } except() {
     print("caught destructor raise")
   }
   try {
     print(doomed.read())
-  } except {
+  } except() {
     print("caught destroyed after destructor raise")
   }
 
   try {
     try {
-      raise "original"
-    } except {
-      raise "from handler"
+      raise(Exception("original"))
+    } except() {
+      raise(Exception("from handler"))
     } finally {
       print("finally after handler error")
     }
-  } except {
+  } except() {
     print("caught handler raise")
   }
 
@@ -93,9 +93,9 @@ start {
     try {
       print(2)
     } finally {
-      raise "from finally"
+      raise(Exception("from finally"))
     }
-  } except {
+  } except() {
     print("caught finally raise")
   }
 
@@ -103,35 +103,35 @@ start {
   box.destroy()
   try {
     box.destroy()
-  } except {
+  } except() {
     print("caught repeated destruction")
   }
   try {
     print(box.read())
-  } except {
+  } except() {
     print("caught destroyed object")
   }
 
   Box missing = null
   try {
     print(missing.read())
-  } except {
+  } except() {
     print("caught null reference")
   }
 
   try {
     print(42 / 0)
-  } except {
+  } except() {
     print("caught division by zero")
   }
 
   try {
     if (true) {
-      raise "first branch"
+      raise(Exception("first branch"))
     } else {
-      raise "second branch"
+      raise(Exception("second branch"))
     }
-  } except {
+  } except() {
     print("caught conditional raise")
   }
 }

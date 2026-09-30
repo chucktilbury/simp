@@ -521,20 +521,46 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         return;
     }
     case StatementKind::Raise: {
-        const auto value = emitExpression(*statement.expressions.front(), "string");
+        if (statement.rethrowsException) {
+            instructions_ += "  call void @simp_exception_rethrow(ptr " +
+                             activeExceptionHandlers_.back() + ")\n"
+                             "  unreachable\n";
+            blockTerminated_ = true;
+            return;
+        }
+        const auto value = emitExpression(*statement.expressions.front());
+        const auto* owner = classes_.at(value.type);
+        std::vector<std::size_t> messagePath;
+        const auto* messageField = findField(*owner, "message", messagePath);
+        if (messageField == nullptr) {
+            throw DiagnosticError(statement.location,
+                                  "exception class has no inherited message field");
+        }
+        const auto messageAddress = emitFieldAddress(value.operand, *owner, messagePath);
+        const auto message = newTemporary();
+        instructions_ += "  " + message + " = load %SimpleString, ptr " + messageAddress +
+                         "\n";
         const auto data = newTemporary();
         const auto length = newTemporary();
+        instructions_ += "  " + data + " = extractvalue %SimpleString " + message + ", 0\n"
+                         "  " + length + " = extractvalue %SimpleString " + message + ", 1\n";
+        const auto exceptionSubobjects = subobjects(*owner);
+        const auto base = std::find_if(
+            exceptionSubobjects.begin(), exceptionSubobjects.end(),
+            [](const auto& subobject) { return subobject.second->name == "Exception"; });
+        if (base == exceptionSubobjects.end()) {
+            throw DiagnosticError(statement.location,
+                                  "raised class is not in the Exception hierarchy");
+        }
+        const auto exceptionView = emitSubobjectAddress(value.operand, *owner, base->first);
         const auto file = internString(statement.location.file);
-        instructions_ += "  " + data + " = extractvalue %SimpleString " + value.operand +
-                         ", 0\n"
-                         "  " + length + " = extractvalue %SimpleString " + value.operand +
-                         ", 1\n"
-                         "  call void @simp_exception_raise(ptr " + data + ", i64 " + length +
-                         ", ptr " + file + ", i64 " +
-                         std::to_string(statement.location.file.size()) + ", i64 " +
-                         std::to_string(statement.location.line) + ", i64 " +
-                         std::to_string(statement.location.column) + ")\n"
-                         "  unreachable\n";
+        instructions_ +=
+            "  call void @simp_exception_raise_object(ptr " + value.operand + ", ptr " +
+            exceptionView + ", ptr " + data + ", i64 " + length + ", ptr " + file +
+            ", i64 " + std::to_string(statement.location.file.size()) + ", i64 " +
+            std::to_string(statement.location.line) + ", i64 " +
+            std::to_string(statement.location.column) + ")\n"
+            "  unreachable\n";
         blockTerminated_ = true;
         return;
     }

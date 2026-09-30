@@ -44,12 +44,22 @@ struct InlineCapture {
     SourceLocation location;
 };
 
+struct Statement;
+
+struct ExceptionHandler {
+    SourceLocation location;
+    std::string exceptionType;
+    std::string name;
+    bool hasBinding = false;
+    std::vector<Statement> body;
+};
+
 struct Statement {
     StatementKind kind = StatementKind::Block;
     SourceLocation location;
     std::string name;
     std::string keyName;
-    bool hasExceptionBinding = false;
+    bool rethrowsException = false;
     std::string declaredType;
     std::string inlineSource;
     std::vector<InlineCapture> inlineCaptures;
@@ -61,6 +71,7 @@ struct Statement {
     std::vector<Statement> cleanup;
     bool hasAlternate = false;
     bool hasCleanup = false;
+    std::vector<ExceptionHandler> exceptionHandlers;
 };
 
 struct Parameter {
@@ -96,6 +107,7 @@ struct ClassDeclaration {
     std::string name;
     std::string moduleName;
     bool importedModule = false;
+    bool builtin = false;
     std::vector<std::string> namespacePath;
     std::string baseClassName;
     SourceLocation location;
@@ -141,5 +153,6 @@ struct Program {
 };
 
 void dumpAst(const Program& program, std::ostream& output);
+ClassDeclaration makeBuiltinExceptionClass();
 
 } // namespace simp

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    project(simp_compiler LANGUAGES C CXX)
+    project(simp_compiler VERSION 0.0.1 LANGUAGES C CXX)
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
@@ -43,6 +43,7 @@ set_target_properties(simp_runtime PROPERTIES
 
 add_library(simp_frontend
     Ast.cpp
+    CommandLine.cpp
     CodeGenerator.cpp
     CodeGeneratorDispatch.cpp
     CodeGeneratorExceptions.cpp
@@ -70,6 +71,7 @@ set_target_properties(simp_frontend PROPERTIES
 add_executable(simp main.cpp)
 target_link_libraries(simp PRIVATE simp_frontend)
 target_compile_definitions(simp PRIVATE
+    SIMP_VERSION="${PROJECT_VERSION}"
     SIMP_CLANG_EXECUTABLE="${SIMP_CLANG_EXECUTABLE}"
     SIMP_GC_RUNTIME_LIBRARY="$<TARGET_FILE:simp_runtime>"
     SIMP_RUNTIME_INCLUDE_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}/../include"

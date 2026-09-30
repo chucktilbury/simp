@@ -42,7 +42,7 @@ start {
     print(values[0])
     try {
         values.resize(-1)
-    } except error {
+    } except() as error {
         print(error)
     }
     array refs = []

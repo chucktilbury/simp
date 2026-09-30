@@ -45,6 +45,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 add_test(NAME simp_unit_and_functional COMMAND simp_tests)
+add_executable(simp_command_line_tests command_line_tests.cpp)
+target_link_libraries(simp_command_line_tests PRIVATE simp_frontend)
+set_target_properties(simp_command_line_tests PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
+)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(simp_command_line_tests PRIVATE -Wall -Wextra -Wpedantic)
+endif()
+add_test(NAME simp_command_line_parser COMMAND simp_command_line_tests)
+
 add_executable(simp_gc_runtime_tests test_gc_runtime.c)
 target_link_libraries(simp_gc_runtime_tests PRIVATE simp_runtime)
 set_target_properties(simp_gc_runtime_tests PROPERTIES
@@ -163,6 +173,18 @@ add_test(NAME simp_default_output_uses_working_directory
 add_test(NAME simp_cli_accepts_program
     COMMAND $<TARGET_FILE:simp> "${CMAKE_CURRENT_SOURCE_DIR}/functional/positive/positive_control_flow.simp" --check-only --dump-ast
 )
+add_test(NAME simp_cli_include_search_path
+    COMMAND $<TARGET_FILE:simp> -p
+        "${CMAKE_CURRENT_SOURCE_DIR}/functional/cli/includes"
+        "${CMAKE_CURRENT_SOURCE_DIR}/functional/cli/include_search.simp"
+        --check-only
+)
+add_test(NAME simp_cli_help COMMAND $<TARGET_FILE:simp> --help)
+add_test(NAME simp_cli_version COMMAND $<TARGET_FILE:simp> -V)
+add_test(NAME simp_cli_rejects_multiple_inputs
+    COMMAND $<TARGET_FILE:simp> first.simp second.simp
+)
+set_tests_properties(simp_cli_rejects_multiple_inputs PROPERTIES WILL_FAIL TRUE)
 add_test(NAME simp_cli_rejects_conditional_else
     COMMAND $<TARGET_FILE:simp> "${CMAKE_CURRENT_SOURCE_DIR}/functional/negative/negative_conditional_else.simp"
 )
@@ -232,6 +254,7 @@ set(FUNCTIONAL_RUN_TESTS
     "simp_compile_and_run_inherited_destructors|positive_inherited_destructors.simp|11\n10\n31\n30\n3\n2\n1\n6\n5\n4\nbase after derived error\nderived destructor failure\ncaught repeated destruction\ndiamond\nroot subobject\nroot subobject\n51\n50\n|-"
     "simp_compile_and_run_runtime_exceptions|positive_runtime_exceptions.simp|caught raise\nfinally after exception\n1\nfinally after success\ncaught method raise\ncaught constructor raise\ncaught destructor raise\ncaught destroyed after destructor raise\nfinally after handler error\ncaught handler raise\n2\ncaught finally raise\ncaught repeated destruction\ncaught destroyed object\ncaught null reference\ncaught division by zero\ncaught conditional raise\n|-"
     "simp_compile_and_run_exception_bindings|positive_exception_binding.simp|raised detail\nfinally after bound exception\nretained detail\ndivision by zero\nnull reference\nreplacement detail\n|-"
+    "simp_compile_and_run_typed_exceptions|positive_typed_exceptions.simp|qualified clause matched\nordered clause matched\nfinally after matched clause\nlater typed clause matched\ncatch-all matched\nrethrow preserved\nrethrow preserved\n1\ndivision by zero\nnull caught as Exception\nbounds caught as Exception\n|-"
     "simp_compile_and_run_qualified_secondary_base_dispatch|positive_qualified_secondary_base_dispatch.simp|2\n|-"
     "simp_compile_and_run_virtual_base_inheritance|positive_virtual_base_inheritance.simp|Root+\nLeft+\nRight+\nDiamond+\n41\n123\n50\n77\n77\nDiamond-\nRight-\nLeft-\nRoot-\nvirtual initialization failed\n|-"
     "simp_compile_and_run_parameterized_virtual_base|positive_parameterized_virtual_base.simp|Root:42\nLeft+\nRight+\nDiamond+\n42\n42\n|-"

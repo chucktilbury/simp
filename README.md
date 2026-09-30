@@ -57,13 +57,19 @@ directory. `tests/functional` contains source fixtures, not a separate
 buildable component. The root-integrated build puts both executables and its
 front-end archive in the project-root `bin/` and `lib/`, respectively.
 
-Useful options are `--verbose` (`-v`), `--trace-parser`, `--dump-ast`,
-`--dump-symbols`, and `--check-only` (run parsing and semantic checks without
-code generation). `--max-include-depth N` sets the maximum nested textual
-include depth (default: 16). LLVM IR is compiled to a native executable by the
-installed Clang driver; `--emit-llvm FILE` additionally saves the generated IR.
-Executables default to `./<input-basename>` in the compiler's current working
-directory; `-o FILE` selects another path. For example, running
+Options include `--verbose` (`-v`), `--verbosity N`, `--trace-parser`,
+`--trace parser:scanner:AST:symbols` (trace selected compiler stages),
+`--dump-ast`, `--dump-symbols`, and `--check-only` (run parsing and semantic
+checks without code generation). `--path DIR` (`-p`) adds one or more
+directories, including colon-separated lists, to the textual-include search
+path; includes still prefer the directory of the including source. Use
+`--max-include-depth N` to set the maximum nested textual include depth
+(default: 16). `--help` (`-h`) prints the registered options, and `--version`
+(`-V`) prints the compiler version. LLVM IR is compiled to a native executable
+by the installed Clang driver; `--emit-llvm FILE` additionally saves the
+generated IR. Executables default to `./<input-basename>` in the compiler's
+current working directory; `-o FILE` selects another path. Only one source
+file is accepted. For example, running
 `../bin/simp ../tests/functional/positive/positive_gc_object_graph.simp` from `build/`
 creates `build/positive_gc_object_graph`.
 The emitted IR uses the GC runtime ABI; link it manually with the runtime
@@ -117,15 +123,24 @@ reports source-located lexer, parser, and semantic errors.
   `for (key, value in mapValue) { ... }` execute in the LLVM backend.
   Conditions are integer expressions; zero is false and nonzero is true. An
   `else (condition)` form is explicitly rejected.
-- `raise "message"` throws a runtime exception. `try { ... } except { ... }`
-  catches any exception. `except error { ... }` additionally binds its message
-  as a read-only `string` named `error`, visible only in that handler.
+- `raise(Exception("message"))` throws a constructed exception object. User
+  exception classes derive from `Exception`; `raise(MyError(args))` accepts
+  only a constructor call whose class belongs to that hierarchy. A `try` may
+  have multiple ordered `except` clauses: each `except(MyError)` catches that
+  class and its subclasses, and dispatch continues to the next clause on a
+  mismatch. Qualified filters such as `except(errors.MyError)` are supported.
+  A final `except()` catches any remaining exception. `except() as message`
+  binds a catch-all message as a read-only `string`; `except(MyError) as error`
+  binds the caught object as a read-only `Exception` reference,
+  exposing its inherited `message` field. Catch-all clauses must be last,
+  and a subclass clause following a matching base-class clause is rejected as
+  unreachable.
   `finally { ... }` is optional and runs after normal
   completion or while an exception propagates. `try` must include `except`,
   `finally`, or both. Exceptions raised inside `except` still run its paired
   `finally`; an exception raised inside `finally` propagates outward.
 - Null dereferences, use of explicitly destroyed objects, repeated destruction,
-  and integer division/remainder by zero raise catchable runtime exceptions.
+  and integer division/remainder by zero raise catchable `Exception` instances.
   An uncaught exception prints its source file, line, column, and message to
   standard error, then aborts (nonzero process status). Runtime invariant
   failures and exceptions escaping GC finalizers remain fatal.
@@ -339,7 +354,7 @@ Clang executable compiles and links it. It supports integer and string
 declarations/assignments, heterogeneous `array` and `map` collections (with `any` as
 the explicit dynamic element/value type), integer
 expressions and comparisons, integer
-`if`/`else` and `while`, `raise`/catch-all `try`/`except`/`finally`,
+`if`/`else` and `while`, `raise`/typed `try`/`except`/`finally`,
 single-value integer, string, or `any` printing, and the
 limited `{}` integer formatting form described above. It also supports object
 layout/allocation/constructor/method/field operations for classes

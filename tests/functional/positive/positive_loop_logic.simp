@@ -115,8 +115,8 @@ start {
     }
     while (true) {
         try {
-            raise "break from handler"
-        } except {
+            raise(Exception("break from handler"))
+        } except() {
             break
         } finally {
             cleanupCount = cleanupCount + 1

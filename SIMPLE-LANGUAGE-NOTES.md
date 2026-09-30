@@ -480,29 +480,60 @@ statements on one line are not supported. The lexer recognizes `;`, `#`, and
 block-comment newlines continue to terminate statements. A semicolon never
 acts as a statement terminator.
 
-The prototype also supports a bounded exception syntax:
+Exception handling supports constructed exception objects and typed filters:
 
 ```simple
+class NetworkError : Exception {
+    NetworkError(string message) {
+        super.Exception(message)
+    }
+}
+
 try {
-    mightFail()
-} except message {
-    print(message)
+    raise(NetworkError("connection failed"))
+} except(NetworkError) as error {
+    print(error.message)
 } finally {
     print("always runs")
 }
 ```
 
-`raise "message"` raises a string-valued runtime exception. `except` catches
-all exceptions; `except name` also binds the message to a read-only string
-visible only in the handler. Typed matching is not implemented. A `try` must
-have an `except` block, a `finally` block, or both. `finally` runs after
-successful completion, after a caught exception, and when an exception from
-the protected body or handler propagates. An exception raised inside `finally`
-propagates outward. Returns nested inside these constructs are not supported.
-Null dereferences, destroyed-object use or repeated destruction, and integer
-division/remainder by zero are catchable. An uncaught exception reports its
-source file, line, column, and message to standard error before aborting. A
-stack trace is not implemented.
+`Exception` is a built-in base class with a public `string message` field and
+an `Exception(string message)` constructor. User-defined exception classes
+derive from it and initialize it with `super.Exception(message)`. `raise(expr)`
+requires `expr` to be a constructor call for a concrete `Exception` subclass;
+strings, `null`, existing variables, and unrelated classes are rejected.
+A `try` may have multiple ordered `except(Type)` clauses, including qualified
+class paths such as `except(errors.NetworkError)`. Each catches that type and
+its subclasses; on a mismatch, dispatch checks the next clause.
+An optional final `except()` catches anything not matched earlier. A typed
+clause may use `as name` to bind a read-only `Exception` reference, while
+`except() as name` binds the message as a read-only `string`. Catch-all clauses
+must be last, duplicate catch-alls are rejected, and a subclass filter after
+an earlier matching base-class filter is diagnosed as unreachable.
+An empty `raise()` rethrows the current exception from an enclosing `except`
+handler. It is valid through nested blocks in that handler, but not outside a
+handler, in a separate method, or in a `finally` block that is not lexically
+inside an enclosing handler. Rethrowing preserves the same object, dynamic
+type, message, and original source location.
+
+A `try` must have an `except` block, a `finally` block, or both. `finally`
+runs after successful completion, after a caught exception, and when an
+exception from the protected body or handler propagates. An exception raised
+inside `finally` propagates outward. Returns nested inside these constructs
+are not supported. Null dereferences, destroyed-object use or repeated
+destruction, integer division/remainder by zero, and other runtime checks
+raise built-in `Exception` instances, so `except(Exception)` catches them.
+An uncaught exception reports its source file, line, column, and message to
+standard error before aborting. A stack trace is not implemented.
+
+### Exception construction and rethrowing
+
+The forms above are implemented. `raise()` is statically scoped to an
+enclosing handler in the current method; it is not dynamically inherited by a
+method called from a handler. Runtime-originated failures use the built-in
+`Exception` class and participate in both catch-all and typed base-class
+matching.
 
 ## Syntax and examples
 
@@ -1092,19 +1123,21 @@ second time.
 
 The runtime uses C `setjmp`/`longjmp` directly from generated LLVM code. Each
 generated handler keeps an opaque, dynamically sized runtime frame on its
-function stack. Raising restores the saved precise-GC root-frame head and
-unwinds explicit destructor state before jumping to the nearest handler.
-`finally` paths are emitted for normal and exceptional control flow, including
-exceptions raised in an `except` body. This is a single-threaded host-ABI
-mechanism, not LLVM landing-pad or cross-platform exception support. Typed
-matching, stack traces, exceptions from GC finalizers, and recovery from
-collector invariant failures remain unsupported. Catch handlers may bind the
-raised message to a read-only string; the runtime retains bound message storage
-until process exit so copied strings remain valid. Uncaught language exceptions and
-runtime-generated failures report their source file, line, and column along
-with the message, then abort with a nonzero process status. An exception
-escaping a constructor marks the partially initialized allocation destroyed so GC
-reclaims it without invoking its destructor.
+function stack. Frames retain the managed exception object, message, and
+origin; generated root slots keep caught objects alive while handlers run.
+Raising restores the saved precise-GC root-frame head and unwinds explicit
+destructor state before jumping to the nearest handler. Typed matching uses
+the dynamic class and its recorded base classes. `finally` paths are emitted
+for normal and exceptional control flow, including exceptions raised in an
+`except` body. This is a single-threaded host-ABI mechanism, not LLVM
+landing-pad or cross-platform exception support. Stack traces, exceptions
+escaping GC finalizers, and recovery from collector invariant failures remain
+unsupported. Catch-all message bindings retain a copy until process exit.
+Uncaught language exceptions and runtime-generated failures report their
+source file, line, and column along with the message, then abort with a
+nonzero process status. An exception escaping a constructor marks the
+partially initialized allocation destroyed so GC reclaims it without
+invoking its destructor.
 
 The prototype's collector retains an object resurrected during finalization
 after re-tracing roots, but it remains destroyed and unusable. Object

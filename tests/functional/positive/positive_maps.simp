@@ -64,7 +64,7 @@ start {
 
     try {
         any absent = table["absent"]
-    } except error {
+    } except() as error {
         print(error)
     }
 }

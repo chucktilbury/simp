@@ -96,7 +96,7 @@ class Diamond : Left, Right {
 
 class FailedAncestor {
     FailedAncestor(int initial) {
-        raise "transitive initialization failed"
+        raise(Exception("transitive initialization failed"))
     }
 
     void destroy() {
@@ -146,7 +146,7 @@ start {
 
     try {
         FailedDiamond failed = FailedDiamond()
-    } except message {
+    } except() as message {
         print(message)
     }
 

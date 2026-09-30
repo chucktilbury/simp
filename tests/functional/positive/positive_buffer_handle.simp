@@ -62,7 +62,7 @@ start {
     print(bytes.length)
     try {
         unsigned missing = bytes[0]
-    } except message {
+    } except() as message {
         print(message)
     }
 

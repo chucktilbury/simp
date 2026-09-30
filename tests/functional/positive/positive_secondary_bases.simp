@@ -47,7 +47,7 @@ class Right : Root {
 
     void destroy() {
         print("Right")
-        raise "secondary destructor failure"
+        raise(Exception("secondary destructor failure"))
     }
 }
 
@@ -84,7 +84,7 @@ class Factory {
 
 class FailingSide {
     FailingSide() {
-        raise "secondary constructor failure"
+        raise(Exception("secondary constructor failure"))
     }
 
     void destroy() {
@@ -125,12 +125,12 @@ start {
     print(diamond.sum())
     try {
         rightView.destroy()
-    } except failure {
+    } except() as failure {
         print(failure)
     }
     try {
         Failing failed = Failing()
-    } except constructorFailure {
+    } except() as constructorFailure {
         print(constructorFailure)
     }
 }

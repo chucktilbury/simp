@@ -55,7 +55,7 @@ class Maker {
 class ThrowingBase {
   void destroy() {
     print("base after derived error")
-    raise "base destructor failure"
+    raise(Exception("base destructor failure"))
   }
 }
 
@@ -64,7 +64,7 @@ class ThrowingDerived : ThrowingBase {
     super.ThrowingBase()
   }
   void destroy() {
-    raise "derived destructor failure"
+    raise(Exception("derived destructor failure"))
   }
 }
 
@@ -104,12 +104,12 @@ start {
   ThrowingDerived throwing = ThrowingDerived()
   try {
     throwing.destroy()
-  } except failure {
+  } except() as failure {
     print(failure)
   }
   try {
     throwing.destroy()
-  } except repeated {
+  } except() as repeated {
     print("caught repeated destruction")
   }
 

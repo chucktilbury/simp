@@ -27,42 +27,42 @@ start {
     try {
         string bad = "abc"
         print(bad.toInt())
-    } except e {
+    } except() as e {
         print(e)
     }
 
     try {
         string trailing = "12x"
         print(trailing.toInt())
-    } except e {
+    } except() as e {
         print(e)
     }
 
     try {
         string empty = ""
         print(empty.toInt())
-    } except e {
+    } except() as e {
         print(e)
     }
 
     try {
         string overflow = "99999999999"
         print(overflow.toInt())
-    } except e {
+    } except() as e {
         print(e)
     }
 
     try {
         string negative = "-5"
         print(negative.toUnsigned())
-    } except e {
+    } except() as e {
         print(e)
     }
 
     try {
         string n = null
         print(n.toInt())
-    } except e {
+    } except() as e {
         print("null reference")
     }
 }

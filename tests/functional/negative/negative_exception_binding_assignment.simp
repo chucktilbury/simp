@@ -1,8 +1,8 @@
 # Rejects assignment to the read-only name bound by an except clause.
 start {
   try {
-    raise "read only"
-  } except message {
+    raise(Exception("read only"))
+  } except() as message {
     message = "changed"
   }
 }

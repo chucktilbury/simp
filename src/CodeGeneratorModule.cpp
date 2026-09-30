@@ -35,6 +35,7 @@ std::string methodTableName(const ClassDeclaration& owner,
 
 std::string viewMetadataName(const ClassDeclaration& owner,
                              const std::vector<std::string>& path) {
+    if (owner.builtin && path.empty()) return "@simp_exception_class_meta";
     return path.empty() ? "@.simp.class.meta." + owner.name
                         : "@.simp.view.meta." + owner.name + "." +
                               subobjectTag(path, owner);
@@ -55,8 +56,11 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     typeDefinitions_ += "%SimpleBuffer = type { ptr, i64, i64, ptr }\n";
     typeDefinitions_ += "%SimpRootFrame = type { ptr, i64, ptr, ptr }\n";
     typeDefinitions_ +=
-        "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr, i64, ptr }\n";
+        "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr, i64, ptr, i64, ptr }\n";
     typeDefinitions_ += "%SimpleMethodMeta = type { ptr, i64, ptr }\n";
+    typeDefinitions_ += "%SimpleClassName = type { ptr, i64 }\n";
+    metadataGlobals_ +=
+        "@simp_exception_class_meta = external constant %SimpleClassMeta\n";
     for (const auto& owner : program.classes) {
         typeDefinitions_ += "%Class." + owner.name + " = type { ptr";
         typeDefinitions_ += ", ptr";
@@ -76,6 +80,7 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         typeDefinitions_ += " }\n";
     }
     for (const auto& owner : program.classes) {
+        if (owner.builtin) continue;
         const auto className = internString(owner.name);
         std::vector<std::string> referenceOffsets;
         std::vector<std::string> dynamicReferenceOffsets;
@@ -117,6 +122,33 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         }
         const auto dynamicOffsetPointer =
             dynamicReferenceOffsets.empty() ? "null" : dynamicOffsets;
+        std::vector<std::string> baseClassNames;
+        std::unordered_set<std::string> seenBaseNames;
+        const auto collectBases = [this, &baseClassNames, &seenBaseNames](
+                                      const auto& self,
+                                      const ClassDeclaration& declaration) -> void {
+            for (const auto& baseName : declaration.baseClassNames) {
+                if (seenBaseNames.emplace(baseName).second) {
+                    baseClassNames.push_back(baseName);
+                }
+                const auto base = classes_.find(baseName);
+                if (base != classes_.end()) self(self, *base->second);
+            }
+        };
+        collectBases(collectBases, owner);
+        const auto baseNamesGlobal = "@.simp.base.names." + owner.name;
+        if (!baseClassNames.empty()) {
+            metadataGlobals_ += baseNamesGlobal + " = private constant [" +
+                                std::to_string(baseClassNames.size()) +
+                                " x %SimpleClassName] [";
+            for (std::size_t index = 0; index < baseClassNames.size(); ++index) {
+                if (index != 0) metadataGlobals_ += ", ";
+                const auto baseName = internString(baseClassNames[index]);
+                metadataGlobals_ += "%SimpleClassName { ptr " + baseName + ", i64 " +
+                                    std::to_string(baseClassNames[index].size()) + " }";
+            }
+            metadataGlobals_ += "]\n";
+        }
         const auto containsDestructor = [this](const auto& self,
                                                const ClassDeclaration& declaration) -> bool {
             if (std::any_of(declaration.methods.begin(), declaration.methods.end(),
@@ -161,6 +193,9 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
                                 (hasDestructor ? "@simp.finalize." + owner.name : "null") +
                                 ", i64 " + std::to_string(dynamicReferenceOffsets.size()) +
                                 ", ptr " + dynamicOffsetPointer +
+                                ", i64 " + std::to_string(baseClassNames.size()) +
+                                ", ptr " +
+                                (baseClassNames.empty() ? "null" : baseNamesGlobal) +
                                 " }\n";
         }
     }
@@ -185,6 +220,7 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
     rootTagSlots_.clear();
     loopTargets_.clear();
     activeTryTransfers_.clear();
+    activeExceptionHandlers_.clear();
     instructions_.clear();
     nextTemporary_ = 0;
     nextVariable_ = 0;
@@ -598,6 +634,7 @@ void CodeGenerator::emitMain(const Program& program) {
     rootTagSlots_.clear();
     loopTargets_.clear();
     activeTryTransfers_.clear();
+    activeExceptionHandlers_.clear();
     instructions_.clear();
     nextTemporary_ = 0;
     nextVariable_ = 0;
@@ -717,9 +754,13 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare void @simp_exception_push(ptr)\n"
            << "declare void @simp_exception_pop(ptr)\n"
            << "declare void @simp_exception_clear(ptr)\n"
-           << "declare ptr @simp_exception_take_message(ptr)\n"
+           << "declare ptr @simp_exception_copy_message(ptr)\n"
            << "declare i64 @simp_exception_message_length(ptr)\n"
+           << "declare ptr @simp_exception_frame_object(ptr)\n"
+           << "declare ptr @simp_exception_frame_base(ptr)\n"
+           << "declare i32 @simp_exception_matches(ptr, ptr)\n"
            << "declare void @simp_exception_raise(ptr, i64, ptr, i64, i64, i64) noreturn\n"
+           << "declare void @simp_exception_raise_object(ptr, ptr, ptr, i64, ptr, i64, i64, i64) noreturn\n"
            << "declare void @simp_exception_rethrow(ptr) noreturn\n"
            << "declare i32 @setjmp(ptr) returns_twice\n"
            << "declare void @abort()\n\n"

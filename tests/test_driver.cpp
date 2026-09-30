@@ -11,6 +11,7 @@
 #include "simp/SemanticAnalyzer.hpp"
 #include "simp/Token.hpp"
 
+#include <algorithm>
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -334,8 +335,11 @@ int main() {
          }},
         {"raise, catch-all, and finally syntax", [] {
              const auto program = parse(
+                 "class Failure : Exception {\n"
+                 "  Failure(string text) { super.Exception(text) }\n"
+                 "}\n"
                  "start {\n"
-                 "  try { raise \"failure\" } except { print(\"caught\") } "
+                 "  try { raise(Failure(\"failure\")) } except() { print(\"caught\") } "
                  "finally { print(\"done\") }\n"
                  "}");
              std::ostringstream output;
@@ -348,17 +352,96 @@ int main() {
          }},
         {"except may bind a read-only exception string", [] {
              const auto program = parse(
-                 "start {\n try { raise \"message\" } except error { print(error) }\n}");
-             require(program.statements.front().hasExceptionBinding &&
-                         program.statements.front().name == "error",
+                 "start {\n try { raise(Exception(\"message\")) } "
+                 "except() as error { print(error) }\n}");
+             const auto& handlers = program.statements.front().exceptionHandlers;
+             require(handlers.size() == 1 && handlers.front().hasBinding &&
+                         handlers.front().name == "error",
                      "except binding missing from AST");
+         }},
+        {"try supports ordered typed exception clauses", [] {
+             const auto program = parse(
+                 "class Parent : Exception { Parent(string text) { super.Exception(text) } }\n"
+                 "class Child : Parent { Child(string text) { super.Parent(text) } }\n"
+                 "start {\n"
+                 " try { raise(Child(\"message\")) }\n"
+                 " except(Parent) as parent { print(parent.message) }\n"
+                 " except() { print(\"fallback\") }\n"
+                 " finally { print(\"done\") }\n"
+                 "}");
+             const auto& handlers = program.statements.front().exceptionHandlers;
+             require(handlers.size() == 2 && handlers[0].exceptionType == "Parent" &&
+                         handlers[0].hasBinding && handlers[1].exceptionType.empty(),
+                     "ordered except clauses missing from AST");
+         }},
+        {"catch-all exception clause must be last", [] {
+             expectDiagnostic(
+                 "start {\n try { print(1) }\n"
+                 " except() { print(2) }\n"
+                 " except(Exception) { print(3) }\n}",
+                 "catch-all except clause must be last");
+         }},
+        {"duplicate catch-all exception clauses are rejected", [] {
+             expectDiagnostic(
+                 "start {\n try { print(1) }\n"
+                 " except() { print(2) }\n"
+                 " except() { print(3) }\n}",
+                 "duplicate catch-all except clause");
+         }},
+        {"subclass exception clause after base is unreachable", [] {
+             expectDiagnostic(
+                 "class Parent : Exception { Parent(string text) { super.Exception(text) } }\n"
+                 "class Child : Parent { Child(string text) { super.Parent(text) } }\n"
+                 "start {\n try { print(1) }\n"
+                 " except(Parent) { print(2) }\n"
+                 " except(Child) { print(3) }\n}",
+                 "unreachable after earlier 'Parent' clause");
+         }},
+        {"catch-all after Exception clause is unreachable", [] {
+             expectDiagnostic(
+                 "start {\n try { print(1) }\n"
+                 " except(Exception) { print(2) }\n"
+                 " except() { print(3) }\n}",
+                 "catch-all except clause is unreachable after 'Exception'");
          }},
         {"try requires a handler or finally", [] {
              expectDiagnostic("start { try { print(1) } }",
                               "requires an 'except' or 'finally' block");
          }},
-        {"raise requires string", [] {
-             expectDiagnostic("start { raise 42 }", "raise requires a string expression");
+        {"except requires parenthesized filter", [] {
+             expectDiagnostic("start { try { print(1) } except { print(2) } }",
+                              "'(' after except");
+             expectDiagnostic("start { try { print(1) } except as error { print(error) } }",
+                              "'(' after except");
+             expectDiagnostic("start { try { print(1) } except Exception { print(2) } }",
+                              "'(' after except");
+             expectDiagnostic("start { try { print(1) } except Exception as error { print(error.message) } }",
+                              "'(' after except");
+             expectDiagnostic("start { try { print(1) } except(Exception { print(2) } }",
+                              "')' after exception class name");
+         }},
+        {"except accepts qualified class paths", [] {
+             const auto program = parse(
+                 "namespace errors {\n"
+                 " class Failure : Exception { Failure(string text) { super.Exception(text) } }\n"
+                 "}\n"
+                 "start { try { raise(errors.Failure(\"message\")) } "
+                 "except(errors.Failure) as caught { print(caught.message) } }\n");
+             const auto& handlers = program.statements.front().exceptionHandlers;
+             require(handlers.size() == 1 &&
+                         handlers.front().exceptionType == "errors.Failure" &&
+                         handlers.front().hasBinding,
+                     "qualified exception filter missing from AST");
+         }},
+        {"raise requires a concrete exception constructor", [] {
+             expectDiagnostic("start { raise(\"message\") }",
+                              "raise requires a constructor expression");
+             expectDiagnostic("start { raise(null) }",
+                              "raise requires a constructor expression");
+        }},
+        {"raise without an expression requires an active handler", [] {
+             expectDiagnostic("start { raise() }",
+                              "raise() is only valid inside an except handler");
          }},
         {"newline statement boundaries", [] {
              const auto program = parse(
@@ -728,9 +811,13 @@ int main() {
                   "namespace Alpha { namespace Beta { class First {} } }\n"
                   "namespace Alpha { namespace Beta { class Second {} } }\n"
                   "start {}");
-              require(program.classes.size() == 2 &&
-                          program.classes[0].name == "Alpha.Beta.First" &&
-                          program.classes[1].name == "Alpha.Beta.Second",
+              std::vector<std::string> declaredClasses;
+              for (const auto& declaration : program.classes) {
+                  if (!declaration.builtin) declaredClasses.push_back(declaration.name);
+              }
+              require(declaredClasses.size() == 2 &&
+                          declaredClasses[0] == "Alpha.Beta.First" &&
+                          declaredClasses[1] == "Alpha.Beta.Second",
                       "reopened nested namespace class paths were not merged");
               expectDiagnostic("namespace Alpha.Beta { }\nstart {}",
                                "expected '{' after namespace name");
@@ -755,9 +842,15 @@ int main() {
                   "  }\n"
                   "}\n"
                   "start {}");
-              require(program.classes[1].fields.front().type == "Outer.Common" &&
-                          program.classes[1].methods.front().returnType == "Outer.Common" &&
-                          program.classes[1].methods.front().body.front()
+              const auto consumer =
+                  std::find_if(program.classes.begin(), program.classes.end(),
+                               [](const auto& declaration) {
+                                   return declaration.name == "Outer.Inner.Consumer";
+                               });
+              require(consumer != program.classes.end() &&
+                          consumer->fields.front().type == "Outer.Common" &&
+                          consumer->methods.front().returnType == "Outer.Common" &&
+                          consumer->methods.front().body.front()
                                   .expressions.front()->value == "Outer.Common",
                       "unqualified nested type did not resolve to its enclosing namespace");
          }},

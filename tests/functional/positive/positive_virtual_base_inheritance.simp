@@ -63,7 +63,7 @@ class Diamond : Left, Right {
 
 class FailedRoot {
     FailedRoot() {
-        raise "virtual initialization failed"
+        raise(Exception("virtual initialization failed"))
     }
 
     void destroy() {
@@ -101,7 +101,7 @@ start {
 
     try {
         FailedDiamond failed = FailedDiamond()
-    } except message {
+    } except() as message {
         print(message)
     }
 }

@@ -15,7 +15,8 @@ std::vector<Token> tokenizeWithIncludes(
     const std::string& source, const std::filesystem::path& sourcePath,
     std::unordered_set<std::string>& includedFiles, std::size_t depth, bool root,
     std::size_t maximumIncludeDepth,
-    std::vector<std::filesystem::path> includeChain) {
+    std::vector<std::filesystem::path> includeChain,
+    std::vector<std::filesystem::path> includeSearchPaths) {
     if (includeChain.empty()) includeChain.push_back(sourcePath);
     Lexer lexer(source, sourcePath.string());
     const auto tokens = lexer.tokenize();
@@ -47,13 +48,24 @@ std::vector<Token> tokenizeWithIncludes(
                                       "expected newline after include path");
             }
 
-            std::filesystem::path requested(pathToken.text);
-            if (requested.is_relative()) requested = sourcePath.parent_path() / requested;
-            // Configured include-search directories are deferred; only the includer's
-            // directory is searched for relative paths.
-            std::error_code error;
-            const auto canonicalPath = std::filesystem::canonical(requested, error);
-            if (error) {
+            const std::filesystem::path requested(pathToken.text);
+            std::vector<std::filesystem::path> candidates;
+            if (requested.is_absolute()) {
+                candidates.push_back(requested);
+            } else {
+                candidates.push_back(sourcePath.parent_path() / requested);
+                for (const auto& directory : includeSearchPaths) {
+                    candidates.push_back(directory / requested);
+                }
+            }
+            std::filesystem::path canonicalPath;
+            for (const auto& candidate : candidates) {
+                std::error_code error;
+                canonicalPath = std::filesystem::canonical(candidate, error);
+                if (!error) break;
+                canonicalPath.clear();
+            }
+            if (canonicalPath.empty()) {
                 throw DiagnosticError(pathToken.location,
                                       "cannot resolve included source '" +
                                           pathToken.text + "'");
@@ -87,7 +99,7 @@ std::vector<Token> tokenizeWithIncludes(
                 childChain.push_back(canonicalPath);
                 auto includedTokens = tokenizeWithIncludes(
                     includedSource, canonicalPath, includedFiles, depth + 1, false,
-                    maximumIncludeDepth, std::move(childChain));
+                    maximumIncludeDepth, std::move(childChain), includeSearchPaths);
                 expanded.insert(expanded.end(),
                                 std::make_move_iterator(includedTokens.begin()),
                                 std::make_move_iterator(includedTokens.end()));

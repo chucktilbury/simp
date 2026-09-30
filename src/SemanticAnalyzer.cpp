@@ -24,6 +24,11 @@ bool containsReturn(const Statement& statement) {
     for (const auto& child : statement.alternate) {
         if (containsReturn(child)) return true;
     }
+    for (const auto& handler : statement.exceptionHandlers) {
+        for (const auto& child : handler.body) {
+            if (containsReturn(child)) return true;
+        }
+    }
     for (const auto& child : statement.cleanup) {
         if (containsReturn(child)) return true;
     }
@@ -37,6 +42,11 @@ bool containsSuperCall(const Statement& statement) {
     }
     for (const auto& child : statement.alternate) {
         if (containsSuperCall(child)) return true;
+    }
+    for (const auto& handler : statement.exceptionHandlers) {
+        for (const auto& child : handler.body) {
+            if (containsSuperCall(child)) return true;
+        }
     }
     for (const auto& child : statement.cleanup) {
         if (containsSuperCall(child)) return true;
@@ -72,7 +82,8 @@ bool SemanticAnalyzer::hasNamespaceOrClass(
     const auto visible = [this](const std::string& candidate) {
         const auto classFound = classes_.find(candidate);
         if (classFound != classes_.end()) {
-            return classFound->second->moduleName == currentModule_;
+            return classFound->second->builtin ||
+                   classFound->second->moduleName == currentModule_;
         }
         const auto namespaceFound = namespaceOwners_.find(candidate);
         return namespaceFound != namespaceOwners_.end() &&
@@ -115,7 +126,10 @@ std::string SemanticAnalyzer::resolveClassName(
     const auto visible = [this](const std::string& candidate,
                                 const std::string& owner) {
         const auto classFound = classes_.find(candidate);
-        if (classFound != classes_.end()) return classFound->second->moduleName == owner;
+        if (classFound != classes_.end()) {
+            return classFound->second->builtin ||
+                   classFound->second->moduleName == owner;
+        }
         const auto namespaceFound = namespaceOwners_.find(candidate);
         return namespaceFound != namespaceOwners_.end() &&
                namespaceFound->second == owner;
@@ -197,6 +211,13 @@ void SemanticAnalyzer::normalizeStatements(
             statement.name = resolveClassName(statement.name, namespacePath,
                                                statement.location);
         }
+        for (auto& handler : statement.exceptionHandlers) {
+            if (!handler.exceptionType.empty()) {
+                handler.exceptionType = resolveClassName(
+                    handler.exceptionType, namespacePath, handler.location);
+            }
+            normalizeStatements(handler.body, namespacePath);
+        }
         if (statement.target) normalizeExpression(*statement.target, namespacePath);
         for (auto& expression : statement.expressions) {
             normalizeExpression(*expression, namespacePath);
@@ -208,6 +229,13 @@ void SemanticAnalyzer::normalizeStatements(
 }
 
 void SemanticAnalyzer::analyze(Program& program) {
+    program.classes.erase(
+        std::remove_if(program.classes.begin(), program.classes.end(),
+                       [](const ClassDeclaration& declaration) {
+                           return declaration.builtin;
+                       }),
+        program.classes.end());
+    program.classes.insert(program.classes.begin(), makeBuiltinExceptionClass());
     scopes_.clear();
     symbols_.clear();
     namespaces_.clear();
@@ -219,6 +247,7 @@ void SemanticAnalyzer::analyze(Program& program) {
     currentMethod_ = nullptr;
     currentNamespace_.clear();
     currentModule_.clear();
+    exceptionHandlerDepth_ = 0;
 
     for (const auto& import : program.imports) {
         if (import.exportedName.empty()) {
@@ -651,7 +680,10 @@ void SemanticAnalyzer::restoreInitializationState(const std::vector<bool>& state
 void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                                      MethodDeclaration& method) {
     currentNamespace_ = owner.namespacePath;
+    const auto savedExceptionHandlerDepth = exceptionHandlerDepth_;
+    exceptionHandlerDepth_ = 0;
     if (method.externalBinding) {
+        exceptionHandlerDepth_ = savedExceptionHandlerDepth;
         return;
     }
     std::size_t leadingCalls = 0;
@@ -804,6 +836,7 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
     scopes_.pop_back();
     currentClass_ = nullptr;
     currentMethod_ = nullptr;
+    exceptionHandlerDepth_ = savedExceptionHandlerDepth;
 }
 
 void SemanticAnalyzer::dumpSymbolTable(std::ostream& output) const {

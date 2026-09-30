@@ -18,6 +18,11 @@ typedef struct SimpMethodMeta {
     void *code;
 } SimpMethodMeta;
 
+typedef struct SimpClassName {
+    const char *name;
+    uint64_t name_length;
+} SimpClassName;
+
 typedef struct SimpClassMeta {
     const char *name;
     uint64_t name_length;
@@ -30,6 +35,8 @@ typedef struct SimpClassMeta {
     void (*finalize)(void *object);
     uint64_t dynamic_reference_field_count;
     const uint64_t *dynamic_reference_field_offsets;
+    uint64_t base_class_count;
+    const SimpClassName *base_classes;
 } SimpClassMeta;
 
 typedef enum SimpArrayValueTag {
@@ -222,11 +229,20 @@ void *simp_exception_frame_buffer(void *frame);
 void simp_exception_push(void *frame);
 void simp_exception_pop(void *frame);
 void simp_exception_clear(void *frame);
-const char *simp_exception_take_message(void *frame);
+const char *simp_exception_copy_message(void *frame);
 uint64_t simp_exception_message_length(void *frame);
+void *simp_exception_frame_object(void *frame);
+void *simp_exception_frame_base(void *frame);
+int32_t simp_exception_matches(void *frame, const SimpClassMeta *expected);
 void simp_exception_raise(const char *message, uint64_t length, const char *file,
                           uint64_t file_length, uint64_t line, uint64_t column);
+void simp_exception_raise_object(void *object, void *exception_base,
+                                 const char *message, uint64_t length,
+                                 const char *file, uint64_t file_length,
+                                 uint64_t line, uint64_t column);
 void simp_exception_rethrow(void *frame);
+
+extern const SimpClassMeta simp_exception_class_meta;
 
 #ifdef __cplusplus
 }

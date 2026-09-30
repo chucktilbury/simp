@@ -176,6 +176,7 @@ private:
     std::vector<std::string> rootTagSlots_;
     std::vector<LoopTarget> loopTargets_;
     std::vector<ActiveTryTransfer> activeTryTransfers_;
+    std::vector<std::string> activeExceptionHandlers_;
     std::size_t nextTemporary_ = 0;
     std::size_t nextVariable_ = 0;
     std::size_t nextRoot_ = 0;

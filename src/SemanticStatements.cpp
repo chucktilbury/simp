@@ -290,36 +290,112 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         }
         return;
     case StatementKind::Raise:
-        if (analyzeExpression(*statement.expressions.front()) != "string") {
-            throw DiagnosticError(statement.expressions.front()->location,
-                                  "raise requires a string expression");
+        if (statement.rethrowsException) {
+            if (exceptionHandlerDepth_ == 0) {
+                throw DiagnosticError(statement.location,
+                                      "raise() is only valid inside an except handler");
+            }
+            return;
+        }
+        if (statement.expressions.empty()) {
+            throw DiagnosticError(statement.location,
+                                  "raise requires an exception constructor expression");
+        }
+        {
+            const auto type = analyzeExpression(*statement.expressions.front());
+            if (statement.expressions.front()->kind != ExpressionKind::ConstructorCall ||
+                !isSubclassOf(type, "Exception")) {
+                throw DiagnosticError(
+                    statement.expressions.front()->location,
+                    "raise requires a constructor expression for a class in the Exception hierarchy");
+            }
         }
         return;
     case StatementKind::Try: {
+        bool catchAllSeen = false;
+        std::vector<std::string> handledTypes;
+        const auto catchAllCount = static_cast<std::size_t>(std::count_if(
+            statement.exceptionHandlers.begin(), statement.exceptionHandlers.end(),
+            [](const ExceptionHandler& handler) { return handler.exceptionType.empty(); }));
+        if (catchAllCount > 1) {
+            const auto duplicate = std::find_if(
+                statement.exceptionHandlers.begin() + 1,
+                statement.exceptionHandlers.end(),
+                [](const ExceptionHandler& handler) { return handler.exceptionType.empty(); });
+            throw DiagnosticError(duplicate->location,
+                                  "duplicate catch-all except clause");
+        }
+        for (std::size_t handlerIndex = 0;
+             handlerIndex < statement.exceptionHandlers.size(); ++handlerIndex) {
+            const auto& handler = statement.exceptionHandlers[handlerIndex];
+            if (handler.exceptionType.empty()) {
+                if (catchAllSeen) {
+                    throw DiagnosticError(handler.location,
+                                          "duplicate catch-all except clause");
+                }
+                catchAllSeen = true;
+                if (std::find(handledTypes.begin(), handledTypes.end(), "Exception") !=
+                    handledTypes.end()) {
+                    throw DiagnosticError(handler.location,
+                                          "catch-all except clause is unreachable after 'Exception'");
+                }
+                if (handlerIndex + 1 != statement.exceptionHandlers.size()) {
+                    throw DiagnosticError(handler.location,
+                                          "catch-all except clause must be last");
+                }
+                continue;
+            }
+            if (catchAllSeen) {
+                throw DiagnosticError(handler.location,
+                                      "catch-all except clause must be last");
+            }
+            if (!isSubclassOf(handler.exceptionType, "Exception")) {
+                throw DiagnosticError(handler.location,
+                                      "except type '" + handler.exceptionType +
+                                          "' is not in the Exception hierarchy");
+            }
+            for (const auto& earlierType : handledTypes) {
+                if (isSubclassOf(handler.exceptionType, earlierType)) {
+                    throw DiagnosticError(
+                        handler.location,
+                        "except clause for '" + handler.exceptionType +
+                            "' is unreachable after earlier '" + earlierType +
+                            "' clause");
+                }
+            }
+            handledTypes.push_back(handler.exceptionType);
+        }
+
         const auto before = initializationState();
         scopes_.emplace_back();
         analyzeStatements(statement.body);
         scopes_.pop_back();
         const auto bodyState = initializationState();
         std::vector<bool> mergedState = bodyState;
-        if (statement.hasAlternate) {
+        for (auto& handler : statement.exceptionHandlers) {
             restoreInitializationState(before);
             scopes_.emplace_back();
-            if (statement.hasExceptionBinding) {
-                if (scopes_.back().find(statement.name) != scopes_.back().end()) {
+            if (handler.hasBinding) {
+                if (scopes_.back().find(handler.name) != scopes_.back().end()) {
                     throw DiagnosticError(statement.location,
-                                          "exception binding '" + statement.name +
+                                          "exception binding '" + handler.name +
                                               "' is already declared in this scope");
                 }
                 const auto index = symbols_.size();
-                symbols_.push_back({statement.name, "string", true, statement.location, true});
-                scopes_.back().emplace(statement.name, index);
+                const auto bindingType = handler.exceptionType.empty()
+                                             ? "string"
+                                             : "Exception";
+                symbols_.push_back(
+                    {handler.name, bindingType, true, handler.location, true});
+                scopes_.back().emplace(handler.name, index);
             }
-            analyzeStatements(statement.alternate);
+            ++exceptionHandlerDepth_;
+            analyzeStatements(handler.body);
+            --exceptionHandlerDepth_;
             scopes_.pop_back();
-            const auto exceptState = initializationState();
+            const auto handlerState = initializationState();
             for (std::size_t index = 0; index < mergedState.size(); ++index) {
-                mergedState[index] = bodyState[index] && exceptState[index];
+                mergedState[index] = mergedState[index] && handlerState[index];
             }
         }
         restoreInitializationState(mergedState);

@@ -76,12 +76,12 @@ start {
 
     try {
         print(items[-1])
-    } except error {
+    } except() as error {
         print(error)
     }
     try {
         array invalid = items[3:2]
-    } except error {
+    } except() as error {
         print(error)
     }
 }
