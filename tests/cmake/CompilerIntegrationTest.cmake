@@ -2,9 +2,57 @@ if(NOT DEFINED COMPILER OR NOT DEFINED SOURCE OR NOT DEFINED OUTPUT)
     message(FATAL_ERROR "COMPILER, SOURCE, and OUTPUT are required")
 endif()
 
+set(package_arguments)
+set(package_command "${COMPILER}")
+if(DEFINED PACKAGE_FIXTURE)
+    set(package_search_root "${OUTPUT}.packages")
+    file(MAKE_DIRECTORY "${package_search_root}")
+    file(COPY "${PACKAGE_FIXTURE}/" DESTINATION "${package_search_root}")
+    set(PACKAGE_SEARCH_ROOT "${package_search_root}")
+endif()
+if(DEFINED PACKAGE_SEARCH_ROOT)
+    if(DEFINED PACKAGE_ENVIRONMENT)
+        set(package_command "${CMAKE_COMMAND}" -E env
+            "SIMP_PACKAGE_PATH=${PACKAGE_SEARCH_ROOT}" "${COMPILER}")
+    else()
+        list(APPEND package_arguments --package-path "${PACKAGE_SEARCH_ROOT}")
+    endif()
+endif()
+if(DEFINED PACKAGE_NATIVE_SOURCE)
+    if(NOT DEFINED CLANG OR NOT DEFINED AR OR NOT DEFINED PACKAGE_NATIVE_LIBRARY)
+        message(FATAL_ERROR "Package native builds require CLANG, AR, and a library name")
+    endif()
+    set(native_source "${PACKAGE_SEARCH_ROOT}/${PACKAGE_NATIVE_SOURCE}")
+    get_filename_component(native_source_directory "${native_source}" DIRECTORY)
+    get_filename_component(package_version_directory "${native_source_directory}" DIRECTORY)
+    set(native_library_directory "${package_version_directory}/lib")
+    file(MAKE_DIRECTORY "${native_library_directory}")
+    set(native_object "${OUTPUT}.native.o")
+    execute_process(
+        COMMAND "${CLANG}" -c "${native_source}" -o "${native_object}"
+        RESULT_VARIABLE native_compile_result
+        OUTPUT_VARIABLE native_compile_stdout
+        ERROR_VARIABLE native_compile_stderr
+    )
+    if(NOT native_compile_result EQUAL 0)
+        message(FATAL_ERROR "Could not compile package native shim:\n${native_compile_stderr}")
+    endif()
+    execute_process(
+        COMMAND "${AR}" rcs
+            "${native_library_directory}/lib${PACKAGE_NATIVE_LIBRARY}.a"
+            "${native_object}"
+        RESULT_VARIABLE native_archive_result
+        OUTPUT_VARIABLE native_archive_stdout
+        ERROR_VARIABLE native_archive_stderr
+    )
+    if(NOT native_archive_result EQUAL 0)
+        message(FATAL_ERROR "Could not archive package native shim:\n${native_archive_stderr}")
+    endif()
+endif()
+
 if(DEFINED EXPECTED_DIAGNOSTIC)
     execute_process(
-        COMMAND "${COMPILER}" "${SOURCE}" -o "${OUTPUT}"
+        COMMAND ${package_command} ${package_arguments} "${SOURCE}" -o "${OUTPUT}"
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
         ERROR_VARIABLE stderr
@@ -25,8 +73,43 @@ if(NOT EXISTS "${EXPECTED_OUTPUT_FILE}")
     message(FATAL_ERROR "Missing output expectation: ${EXPECTED_OUTPUT_FILE}")
 endif()
 file(READ "${EXPECTED_OUTPUT_FILE}" EXPECTED_OUTPUT)
+if(DEFINED COMPILE_ONLY)
+    set(package_object "${OUTPUT}.o")
+    execute_process(
+        COMMAND ${package_command} ${package_arguments} -c "${SOURCE}" -o "${package_object}"
+        RESULT_VARIABLE compile_result
+        OUTPUT_VARIABLE compile_stdout
+        ERROR_VARIABLE compile_stderr
+    )
+    if(NOT compile_result EQUAL 0)
+        message(FATAL_ERROR "Package compile-only failed (${compile_result}):\n${compile_stderr}")
+    endif()
+    if(NOT EXISTS "${package_object}.simp-link")
+        message(FATAL_ERROR "Package compile-only did not write its link sidecar")
+    endif()
+    execute_process(
+        COMMAND ${package_command} "${package_object}" -o "${OUTPUT}"
+        RESULT_VARIABLE link_result
+        OUTPUT_VARIABLE link_stdout
+        ERROR_VARIABLE link_stderr
+    )
+    if(NOT link_result EQUAL 0)
+        message(FATAL_ERROR "Package object relink failed (${link_result}):\n${link_stderr}")
+    endif()
+    execute_process(
+        COMMAND "${OUTPUT}"
+        RESULT_VARIABLE run_result
+        OUTPUT_VARIABLE program_output
+        ERROR_VARIABLE run_stderr
+    )
+    if(NOT run_result EQUAL 0 OR NOT program_output STREQUAL EXPECTED_OUTPUT)
+        message(FATAL_ERROR
+            "Package object program result was '${program_output}': ${run_stderr}")
+    endif()
+    return()
+endif()
 execute_process(
-    COMMAND "${COMPILER}" "${SOURCE}" -o "${OUTPUT}" --emit-llvm "${IR_OUTPUT}"
+    COMMAND ${package_command} ${package_arguments} "${SOURCE}" -o "${OUTPUT}" --emit-llvm "${IR_OUTPUT}"
     RESULT_VARIABLE compile_result
     OUTPUT_VARIABLE compile_stdout
     ERROR_VARIABLE compile_stderr

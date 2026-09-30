@@ -8,6 +8,11 @@
 
 namespace simp {
 
+struct ModuleLoadOptions {
+    std::filesystem::path registryPath;
+    std::vector<std::filesystem::path> packageSearchRoots;
+};
+
 struct LoadedModule {
     std::string name;
     std::string version;
@@ -15,7 +20,13 @@ struct LoadedModule {
     std::filesystem::path sourcePath;
 };
 
-std::vector<LoadedModule> loadImportedModules(
-    Program& program, const std::filesystem::path& registryPath);
+struct ModuleLoadResult {
+    std::vector<LoadedModule> modules;
+    std::vector<std::filesystem::path> libraryPaths;
+    std::vector<std::string> libraries;
+};
+
+ModuleLoadResult loadImportedModules(Program& program,
+                                     const ModuleLoadOptions& options);
 
 } // namespace simp

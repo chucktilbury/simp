@@ -2,12 +2,15 @@
 
 #include "simp/Diagnostic.hpp"
 #include "simp/Lexer.hpp"
+#include "simp/PackageRegistry.hpp"
 #include "simp/Parser.hpp"
 #include "simp/SourceLoader.hpp"
 
 #include <algorithm>
 #include <fstream>
 #include <iterator>
+#include <map>
+#include <set>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -55,6 +58,7 @@ std::vector<std::string> split(const std::string& value, char delimiter) {
 Registry readRegistry(const std::filesystem::path& path) {
     std::ifstream input(path);
     if (!input) {
+        if (!std::filesystem::exists(path)) return {};
         throw std::runtime_error("cannot open module registry: " + path.string());
     }
     Registry registry;
@@ -106,22 +110,85 @@ struct ModuleSource {
 
 } // namespace
 
-std::vector<LoadedModule> loadImportedModules(
-    Program& program, const std::filesystem::path& registryPath) {
+ModuleLoadResult loadImportedModules(Program& program,
+                                     const ModuleLoadOptions& options) {
     if (program.imports.empty()) return {};
-    const auto registry = readRegistry(registryPath);
+    std::vector<std::string> rootNames;
+    rootNames.reserve(program.imports.size());
+    for (const auto& import : program.imports) rootNames.push_back(import.moduleName);
+    auto packages = resolvePackages(rootNames, options.packageSearchRoots);
+    auto registry = readRegistry(options.registryPath);
+    const auto addPackageEntries = [&registry](const PackageResolution& resolution) {
+        for (const auto& [name, package] : resolution.packages) {
+            RegistryEntry entry;
+            entry.name = name;
+            entry.sourcePath = package.sourcePath;
+            entry.version = package.version;
+            entry.exportKind = package.exportKind;
+            entry.exportName = package.exportName;
+            for (const auto& dependency : package.dependencies) {
+                entry.dependencyVersions.push_back(dependency.name + "=" +
+                                                   dependency.version);
+            }
+            registry[name] = std::move(entry);
+        }
+    };
+    addPackageEntries(packages);
     std::unordered_map<std::string, ModuleSource> modules;
     std::vector<std::string> order;
 
     const auto load = [&](const auto& self, ImportDeclaration& import,
                           const std::string& importerModule) -> void {
         import.importerModule = importerModule;
+        const auto ownerPackage = packages.packages.find(importerModule);
+        if (ownerPackage != packages.packages.end()) {
+            const bool declaredDependency =
+                std::any_of(ownerPackage->second.dependencies.begin(),
+                            ownerPackage->second.dependencies.end(),
+                            [&import](const PackageDependency& dependency) {
+                                return dependency.name == import.moduleName;
+                            });
+            if (!declaredDependency) {
+                throw DiagnosticError(
+                    import.location, "package '" + importerModule +
+                                         "' imports package '" + import.moduleName +
+                                         "' without declaring it in [dependencies]");
+            }
+        }
+        if (packages.packages.find(import.moduleName) == packages.packages.end()) {
+            const auto additional = resolvePackages({import.moduleName},
+                                                     options.packageSearchRoots);
+            for (const auto& [name, package] : additional.packages) {
+                const auto existing = packages.packages.find(name);
+                if (existing != packages.packages.end() &&
+                    existing->second.version != package.version) {
+                    throw DiagnosticError(
+                        import.location, "conflicting package versions for '" + name +
+                                             "': " + existing->second.version + " and " +
+                                             package.version);
+                }
+                packages.packages.emplace(name, package);
+            }
+            for (const auto& package : additional.linkOrder) {
+                const auto existing = std::find_if(
+                    packages.linkOrder.begin(), packages.linkOrder.end(),
+                    [&package](const ResolvedPackage& item) {
+                        return item.name == package.name;
+                    });
+                if (existing == packages.linkOrder.end()) {
+                    packages.linkOrder.push_back(package);
+                }
+            }
+            addPackageEntries(additional);
+        }
         const auto entry = registry.find(import.moduleName);
         if (entry == registry.end()) {
             throw DiagnosticError(import.location,
                                   "module '" + import.moduleName +
-                                      "' is not registered in '" + registryPath.string() + "'");
+                                      "' is not registered in '" +
+                                      options.registryPath.string() + "'");
         }
+        const auto entryData = entry->second;
         auto found = modules.find(import.moduleName);
         if (found != modules.end()) {
             if (found->second.state == ModuleSource::State::Loading) {
@@ -129,17 +196,17 @@ std::vector<LoadedModule> loadImportedModules(
                                       "cyclic module import involving '" +
                                           import.moduleName + "'");
             }
-            import.exportedName = entry->second.exportName;
-            import.exportsNamespace = entry->second.exportKind == "namespace";
+            import.exportedName = entryData.exportName;
+            import.exportsNamespace = entryData.exportKind == "namespace";
             return;
         }
         {
             std::error_code error;
-            const auto canonical = std::filesystem::canonical(entry->second.sourcePath, error);
+            const auto canonical = std::filesystem::canonical(entryData.sourcePath, error);
             if (error) {
                 throw DiagnosticError(import.location,
                                       "cannot resolve source for module '" + import.moduleName +
-                                          "': " + entry->second.sourcePath.string());
+                                          "': " + entryData.sourcePath.string());
             }
             std::ifstream sourceFile(canonical);
             if (!sourceFile) {
@@ -153,28 +220,28 @@ std::vector<LoadedModule> loadImportedModules(
             auto tokens = tokenizeWithIncludes(source, canonical, included, 0, true);
             tokens.push_back({TokenType::End, "", {canonical.string(), 1, 1}});
             ModuleSource module;
-            module.info = {import.moduleName, entry->second.version,
-                           entry->second.dependencyVersions, canonical};
+            module.info = {import.moduleName, entryData.version,
+                           entryData.dependencyVersions, canonical};
             module.program = Parser(std::move(tokens)).parseModule();
             const bool exportedClass = std::any_of(
                 module.program.classes.begin(), module.program.classes.end(),
-                [&entry](const ClassDeclaration& declaration) {
+                [&entryData](const ClassDeclaration& declaration) {
                     return declaration.namespacePath.empty() &&
-                           declaration.name == entry->second.exportName;
+                           declaration.name == entryData.exportName;
                 });
             const bool exportedNamespace = std::any_of(
                 module.program.namespaces.begin(), module.program.namespaces.end(),
-                [&entry](const NamespaceDeclaration& declaration) {
+                [&entryData](const NamespaceDeclaration& declaration) {
                     return declaration.path.size() == 1 &&
-                           declaration.path.front() == entry->second.exportName;
+                           declaration.path.front() == entryData.exportName;
                 });
-            if ((entry->second.exportKind == "class" && !exportedClass) ||
-                (entry->second.exportKind == "namespace" && !exportedNamespace)) {
+            if ((entryData.exportKind == "class" && !exportedClass) ||
+                (entryData.exportKind == "namespace" && !exportedNamespace)) {
                 throw DiagnosticError(import.location,
                                       "module '" + import.moduleName +
                                           "' does not declare its registered top-level " +
-                                          entry->second.exportKind + " '" +
-                                          entry->second.exportName + "'");
+                                          entryData.exportKind + " '" +
+                                          entryData.exportName + "'");
             }
             for (auto& declaration : module.program.classes) {
                 declaration.moduleName = import.moduleName;
@@ -192,13 +259,14 @@ std::vector<LoadedModule> loadImportedModules(
             modules.at(import.moduleName).state = ModuleSource::State::Loaded;
             order.push_back(import.moduleName);
         }
-        import.exportedName = entry->second.exportName;
-        import.exportsNamespace = entry->second.exportKind == "namespace";
+        import.exportedName = entryData.exportName;
+        import.exportsNamespace = entryData.exportKind == "namespace";
     };
 
     for (auto& import : program.imports) load(load, import, {});
 
-    std::vector<LoadedModule> loaded;
+    ModuleLoadResult result;
+    auto& loaded = result.modules;
     loaded.reserve(order.size());
     for (const auto& name : order) {
         auto& module = modules.at(name);
@@ -216,7 +284,33 @@ std::vector<LoadedModule> loadImportedModules(
             program.outOfLineMethods.push_back(std::move(definition));
         }
     }
-    return loaded;
+    std::set<std::string> seenPaths;
+    std::set<std::string> seenLibraries;
+    std::map<std::string, std::set<std::string>> librarySearchLocations;
+    for (const auto& package : packages.linkOrder) {
+        std::set<std::string> packagePaths;
+        for (const auto& libraryPath : package.libraryPaths) {
+            const auto normalized = std::filesystem::absolute(libraryPath).lexically_normal();
+            packagePaths.insert(normalized.string());
+            if (seenPaths.insert(normalized.string()).second) {
+                result.libraryPaths.push_back(normalized);
+            }
+        }
+        for (const auto& library : package.libraries) {
+            const auto owner = librarySearchLocations.find(library);
+            if (owner != librarySearchLocations.end() &&
+                owner->second != packagePaths) {
+                throw std::runtime_error(
+                    "conflicting package library search paths for native library '" +
+                    library + "'");
+            }
+            librarySearchLocations.emplace(library, packagePaths);
+            if (seenLibraries.insert(library).second) {
+                result.libraries.push_back(library);
+            }
+        }
+    }
+    return result;
 }
 
 } // namespace simp

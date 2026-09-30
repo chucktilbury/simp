@@ -1,0 +1,8 @@
+[package]
+name = "cycle_a"
+version = "1.0.0"
+source = "src/cycle_a.simp"
+export = "class:CycleA"
+
+[dependencies]
+cycle_b = "=1.0.0"

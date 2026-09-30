@@ -54,6 +54,7 @@ add_library(simp_frontend
     Diagnostic.cpp
     Lexer.cpp
     ModuleRegistry.cpp
+    PackageRegistry.cpp
     Parser.cpp
     ParserClass.cpp
     SemanticAnalyzer.cpp
@@ -75,6 +76,7 @@ target_compile_definitions(simp PRIVATE
     SIMP_CLANG_EXECUTABLE="${SIMP_CLANG_EXECUTABLE}"
     SIMP_GC_RUNTIME_LIBRARY="$<TARGET_FILE:simp_runtime>"
     SIMP_RUNTIME_INCLUDE_DIRECTORY="${CMAKE_CURRENT_SOURCE_DIR}/../include"
+    SIMP_PACKAGE_DIRECTORY="${CMAKE_INSTALL_PREFIX}/share/simp/packages"
     SIMP_TARGET_TRIPLE="${SIMP_TARGET_TRIPLE}"
 )
 add_dependencies(simp simp_runtime)

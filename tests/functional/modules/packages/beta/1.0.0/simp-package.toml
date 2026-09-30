@@ -1,0 +1,8 @@
+[package]
+name = "beta"
+version = "1.0.0"
+source = "src/beta.simp"
+export = "class:Beta"
+
+[dependencies]
+shared = "=2.0.0"

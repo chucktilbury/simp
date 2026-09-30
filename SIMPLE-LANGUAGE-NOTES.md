@@ -1084,8 +1084,9 @@ interchangeable.
 #### Compiled module imports
 
 - Grammar: `import <module_name> as <symbol>`. Both names are identifiers;
-  `module_name` is a registered module name, not a filename, source path, or
-  dotted Simple namespace path. `as <symbol>` is required. For example:
+  `module_name` is a package name or legacy registered module name, not a
+  filename, source path, or dotted Simple namespace path. `as <symbol>` is
+  required. For example:
 
   ```simple
   import network as Net
@@ -1103,11 +1104,12 @@ interchangeable.
 - An import is a top-level declaration, interspersed with other top-level
   declarations before `start`; it is not permitted inside a namespace, class,
   or function body. It does not paste or compile source text at the import
-  site. `module_name` is looked up in the external module registry or
-  configuration. Its registry entry designates exactly one importable
-  declaration from the module: either a top-level class or a top-level
-  namespace. The required `<symbol>` is bound in the importing file's scope
-  directly to that class or namespace; it is not a bag of all module exports.
+  site. `module_name` resolves first as a package and then through the legacy
+  module registry. A package or registry entry designates exactly one
+  importable declaration from its Simple source: either a top-level class or
+  a top-level namespace. The required `<symbol>` is bound in the importing
+  file's scope directly to that class or namespace; it is not a bag of all
+  module exports.
   An imported namespace may contain nested namespaces and classes, which are
   accessed by further dotted qualification (for example,
   `Net.Http.Client()`). An imported class is itself the alias and is
@@ -1121,20 +1123,18 @@ interchangeable.
   the selected namespace into the caller's declarations. Imported namespaces
   remain module-owned; namespace blocks in the caller do not reopen or extend
   them.
-- `import` is the only mechanism that consults the external module registry
-  for module location and version/dependency resolution, and is the mechanism
-  for bringing in compiled/versioned external modules. The registry/config
-  entry records where the module and its build artifacts are located, its
-  version, the versions of libraries on which it depends, and which one
-  top-level class or namespace it designates for import. Import syntax does
-  not specify version constraints at the use site.
+- `import` is the mechanism for bringing in compiled/versioned external
+  modules and packages. Package versions and dependency constraints come from
+  package manifests, not from import syntax. A package dependency does not
+  create a caller-visible alias; package source that imports another package
+  must declare that package in its own manifest.
 - A namespace declaration uses one identifier at a time; nested paths are
   written with physically nested blocks. These declarations create a Simple
   namespace path in the current compilation unit and do not consult the
   registry or create an alias. `include "file.simp"` textually adds source to
   that unit, and included namespace blocks participate in its namespace
-  paths. In contrast, `import network as Net` resolves the registered module
-  and binds only its designated class or namespace under `Net`; it does not
+  paths. In contrast, `import network as Net` resolves the package or legacy
+  module and binds only its designated class or namespace under `Net`; it does not
   textually merge source, import a generic export bag, or reopen a local
   namespace.
 - A binding-name collision in the same scope is an error, including a
@@ -1143,27 +1143,102 @@ interchangeable.
 
 #### Module registry and compilation
 
-- The registry is a UTF-8, tab-separated file named `simp-modules.tsv` in the
-  compiler's current working directory. Set `SIMP_MODULE_REGISTRY` to use a
-  different registry path. Relative source paths are resolved relative to the
-  registry file.
+- Legacy registry imports use a UTF-8, tab-separated file named
+  `simp-modules.tsv` in the compiler's current working directory. Set
+  `SIMP_MODULE_REGISTRY` to use a different registry path. Relative source
+  paths are resolved relative to the registry file. A package manifest takes
+  precedence over a legacy registry row with the same import name.
 - Each non-comment row has exactly six tab-separated fields:
   `module-name`, `source-path`, `version`, `dependency-library-versions`,
   `export-kind`, and `export-name`. Lines beginning with `#` and empty lines
   are ignored. The module name and export name are identifiers; export kind
   is `class` or `namespace`. Dependency library versions are a comma-separated
   list of `name=version` pairs, or an empty field when there are none.
-- A registry entry points to a Simple source file. The compiler parses and
-  analyzes that file as a declaration-only module (it cannot contain `start`),
-  emits a separate LLVM IR translation unit for its methods, and links that
-  IR with the importing program's IR. Module imports are resolved recursively.
-  Registry version and dependency-version strings are recorded and validated
-  as manifest metadata; version constraints and external binary-library
-  resolution are not part of this compiler workflow.
-- The implementation performs registry lookup, designated-export validation,
-  alias-scoped qualified-name resolution, module IR generation/linking, and
-  diagnostics for malformed or missing registry entries. Imported declarations
-  remain module-owned and are not visible except through their import aliases.
+- A legacy registry entry points to a Simple source file. The compiler parses
+  and analyzes that file as a declaration-only module (it cannot contain
+  `start`), emits a separate LLVM IR translation unit for its methods, and
+  links that IR with the importing program's IR. Legacy module imports are
+  resolved recursively. The registry's version and dependency-version strings
+  are metadata only; package manifests provide enforced package-level
+  constraints and native linker inputs.
+- The implementation performs registry/package lookup, designated-export
+  validation, alias-scoped qualified-name resolution, module IR
+  generation/linking, and diagnostics for malformed or missing entries.
+  Imported declarations remain module-owned and are not visible except
+  through their import aliases.
+
+#### Package manifests, resolution, and native linking
+
+- A package is one versioned Simple module plus its native-library interface
+  and linker requirements. Its package root is
+  `<search-root>/<package-name>/<version>/`; the manifest is
+  `simp-package.toml`. Package names are Simple identifiers so the existing
+  import grammar remains `import <package-name> as <Alias>`. Each package
+  designates exactly one top-level class or namespace. Use a namespace to
+  group related public classes; multiple independent exports per package
+  would require a future language feature.
+- The supported TOML subset uses `[package]` string keys `name`, `version`,
+  `source`, and `export`; a `[dependencies]` table mapping package identifiers
+  to exact pins; and a `[link]` table with string arrays `libraries` and
+  `library-paths`. For example:
+
+  ```toml
+  [package]
+  name = "sqlite"
+  version = "1.0.0"
+  source = "src/sqlite.simp"
+  export = "namespace:SQLite"
+
+  [dependencies]
+  sys = "=1.0.0"
+
+  [link]
+  libraries = ["simp_sqlite", "sqlite3"]
+  library-paths = ["lib"]
+  ```
+
+  Source and library paths are relative to the package root and may not escape
+  it. `export` is `class:Name` or `namespace:Name`. Dependency requirements
+  must be exact `=VERSION` pins. Array values are single-line arrays of quoted
+  strings. Unknown keys/tables, duplicate keys/tables, invalid versions,
+  missing sources, and missing declared library directories are errors.
+- Package versions use SemVer 2.0.0. A direct import with no source-level
+  version constraint selects the highest installed stable version. Exact
+  dependency pins constrain that package name across the whole compilation;
+  a unique dependency pin selects that version even if an unpinned direct
+  import also names the package. Different exact pins for one package name,
+  unavailable versions, ambiguous same-name/same-version manifests, and
+  dependency cycles are errors. Repeated imports with different aliases and
+  repeated identical package dependencies are tolerated and resolved once.
+  There is no range solver, lockfile, or native-library ABI/version probing.
+- Package search roots are checked in this order: repeated
+  `--package-path DIR` values, left to right; `SIMP_PACKAGE_PATH` entries
+  separated by the host path-list separator; `<current-directory>/.simp/packages`;
+  `$XDG_DATA_HOME/simp/packages` (or `~/.local/share/simp/packages`); and the
+  installed `<prefix>/share/simp/packages` root. For the same exact package
+  version, identical manifest metadata is tolerated; differing manifests are
+  diagnosed as ambiguous. Higher roots win for identical candidates.
+- `[link].libraries` contains library names without a `-l` prefix, and
+  `[link].library-paths` provides package-relative directories. The compiler
+  translates these to `-lNAME` and `-L DIR` arguments for its existing Clang
+  driver, placing package libraries before their dependency libraries and
+  deduplicating repeated names/paths. Explicit user `-L`/`-l` arguments remain
+  supported. The compiler does not execute package build scripts: authors
+  build any C shim/archive/shared library with their ordinary native build
+  system. Package Simple methods bind to its C symbols using the existing
+  `from "c_symbol"` form; the implicit receiver remains the first C argument.
+  The native library must provide symbols compatible with that ABI. No
+  platform-specific link clauses or arbitrary linker flags are supported.
+- `simp -c` writes resolved package link inputs to `<object>.simp-link`.
+  It also writes an empty sidecar for package-free objects. Linking an object
+  later through `simp program.o -o program` reads the adjacent sidecar;
+  ordinary objects without one still use explicit `-L`/`-l` options. Keep the
+  sidecar with the object when moving it.
+- `simp-modules.tsv` remains a compatibility catalog for un-packaged modules
+  and existing tests. Its six-column format and `SIMP_MODULE_REGISTRY`
+  override are unchanged, and its historical version/dependency fields
+  remain unenforced metadata. Package manifests are the package source of
+  truth; the flat registry is not generated or rewritten by package loading.
 
 ## Runtime, destruction, garbage collection, and threads
 
@@ -1394,7 +1469,11 @@ An external module package has at least:
 1. An external library.
 2. A Simple class/interface implementation for calling that library.
 
-Packages are versioned at the package level. The project needs a consistent, documented workflow for creating modules and for building and linking their external dependencies. Name mangling is deliberate (see "Name mangling (implemented)" below). SWIG may be considered where it is useful, but no particular binding generator is selected.
+Packages are versioned at the package level. The manifest format, resolution
+rules, native-link behavior, search locations, and authoring workflow are
+specified in "Package manifests, resolution, and native linking" above.
+Name mangling is deliberate (see "Name mangling (implemented)" below). SWIG
+may be considered where useful, but no particular binding generator is selected.
 
 Modules should feel callable like native Simple code. The current priority inventory is:
 
@@ -1470,15 +1549,17 @@ string Foo.echo(string value) from "c_foo_echo"
   class-reference methods. Its bundled C shims include a real call to libc
   `abs()`. The receiver is why the sample binds a C shim rather than binding
   libc `abs` directly.
-- Compiled module imports are implemented with registry-selected class or
-  namespace exports. Imported methods, including methods backed by C `from`
-  definitions, are called through ordinary instance-method syntax; callers
-  do not name C symbols directly.
+- Compiled module imports resolve package-selected or legacy
+  registry-selected class/namespace exports. Package dependencies and their
+  native link inputs resolve transitively. Imported methods, including
+  methods backed by C `from` definitions, are called through ordinary
+  instance-method syntax; callers do not name C symbols directly.
 - Also not supported: variadic methods (a method always has a fixed
   parameter count and fixed parameter types; there is no `...`-style
   variable-argument syntax anywhere in the language, native-bound or not).
-  Also deferred: library search-path configuration, `any` at the native
-  boundary, and ABI lowering for targets other than x86-64 SysV.
+  `-L`/`-l` configuration and package-native link inputs are implemented;
+  `any` at the native boundary and ABI lowering for targets other than
+  x86-64 SysV remain deferred.
 
 
 
@@ -1490,13 +1571,11 @@ and C++ supports safer compiler data structures. This choice applies to the
 compiler implementation; Simple's runtime and native-module ABI should remain
 C-compatible where appropriate.
 
-The compiler should eventually provide a usable clang/gcc-like CLI with:
+The compiler already supports multiple input files, compile/link operations,
+external `-L`/`-l` libraries, an include search path, and verbosity/tracing
+options. The broader CLI should continue toward:
 
-- Multiple input files.
-- Compile and link operations.
-- External libraries.
-- An include/import search path.
-- A separate library search path.
+- A unified include/import search-path interface.
 - A verbosity system that controls diagnostic and debug output, including
   parser tracing, AST tracing or dumping, and symbol-table dumping.
 
@@ -1653,9 +1732,9 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 
 - The complete grammar and how it is reconciled with the examples and priorities.
 - Advanced Unicode semantics beyond current UTF-8 support.
-- The CLI/environment configuration for include search directories; package
-  layout, prebuilt module binary formats, external binary-library resolution,
-  and package-version constraints.
+- Prebuilt module binary formats, package version ranges and lockfiles,
+  platform-specific native-link clauses, and automated package build/install
+  commands.
 - Whether and where SWIG is used.
 - The full set of future standard/external modules.
 - Library search paths, `any` values across the native boundary, and ABI

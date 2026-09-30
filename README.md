@@ -581,21 +581,79 @@ start {
   semantic analysis. `tests/functional/positive/positive_extern_functions.simp`
   exercises `from` bindings for integer, string argument/return, array, and
   class-reference values; its bundled C shims include a call to libc `abs()`.
-- Compiled module imports are implemented using
-  `import <module_name> as <symbol>`. The registry defaults to
-  `simp-modules.tsv` in the compiler's current working directory; set
-  `SIMP_MODULE_REGISTRY` to select another file. Each tab-separated,
-  six-field row records module name, Simple source path, version, comma-
-  separated `dependency=version` values, export kind (`class` or `namespace`),
-  and the one designated top-level export name. Relative source paths are
-  relative to the registry file. Module source is compiled to a separate LLVM
-  IR unit and linked with the importer; dependencies between Simple modules
-  are resolved recursively. Versions are recorded as metadata, not enforced
-  constraints, and external binary-library resolution remains deferred.
-  Imported declarations are available only through their aliases: a namespace
-  alias can qualify nested types (`Net.Http.Client().get("/")`), while a class
-  alias is constructed directly (`Client(args).method()`). The import grammar
-  and scoping behavior are specified in `SIMPLE-LANGUAGE-NOTES.md`.
+- Compiled imports use `import <package-or-module> as <symbol>`. Packages live
+  at `<search-root>/<name>/<version>/simp-package.toml`; their Simple source,
+  one designated class or namespace export, exact package dependencies, and
+  native linker inputs are described by that manifest. For example:
+
+  ```toml
+  [package]
+  name = "sqlite"
+  version = "1.0.0"
+  source = "src/sqlite.simp"
+  export = "namespace:SQLite"
+
+  [dependencies]
+  sys = "=1.0.0"
+
+  [link]
+  libraries = ["simp_sqlite", "sqlite3"]
+  library-paths = ["lib"]
+  ```
+
+  To author one, put the manifest, `src/sqlite.simp`, and native shim source
+  under `sqlite/1.0.0/`. Declare methods in the Simple class and bind each
+  method out of line with `from "c_symbol"`; the C shim receives the opaque
+  Simple receiver as its first argument. Build the shim/archive separately
+  into `sqlite/1.0.0/lib/` (and install upstream native dependencies using the
+  platform's normal build tools). Put the package under `.simp/packages/` or
+  pass its parent with `--package-path`:
+
+  ```c
+  int simp_sqlite_version(void *receiver) {
+      (void)receiver;
+      return 1;
+  }
+  ```
+
+  ```sh
+  clang -c sqlite/1.0.0/native/sqlite_shim.c -o build/sqlite_shim.o
+  ar rcs sqlite/1.0.0/lib/libsimp_sqlite.a build/sqlite_shim.o
+  ./bin/simp --package-path ./packages app.simp -o bin/app
+  ```
+
+  A consumer writes `import sqlite as DB` and calls the imported class or
+  namespace through `DB`; the package resolver adds its native libraries
+  during linking. This keeps the language-facing API in Simple while leaving
+  native library construction to the package author.
+
+  Package versions use SemVer; direct imports select the highest installed
+  stable version, and dependencies use exact `=VERSION` pins. The resolver
+  detects conflicting pins and dependency cycles. It adds package libraries
+  and search   directories to the existing Clang link step; conflicting package-local
+  search locations for the same native library name are diagnosed. The
+  compiler does not run package build scripts, so package authors build native
+  shims and libraries separately. Package source methods still use the existing
+  `from "c_symbol"` binding and ordinary Simple method calls.
+
+  Search roots, from highest to lowest priority, are repeated
+  `--package-path DIR` values, `SIMP_PACKAGE_PATH`, `./.simp/packages`,
+  `$XDG_DATA_HOME/simp/packages` (or `~/.local/share/simp/packages`), and the
+  installed `<prefix>/share/simp/packages` standard-package root. `-c`
+  writes adjacent `.simp-link` metadata (package linker inputs, or an empty
+  sidecar for package-free objects); `simp program.o -o program` reads it
+  automatically. The installed standard root is reserved for the planned
+  `sys`, JSON, regex, datetime, networking, and SQLite packages.
+
+  The legacy six-column `simp-modules.tsv` catalog and
+  `SIMP_MODULE_REGISTRY` override remain supported for existing modules and
+  tests. Package manifests are preferred when the same import name is present;
+  otherwise imports can still resolve through the legacy registry. The legacy
+  registry's version/dependency fields remain metadata only. Imported
+  declarations remain available only through aliases: a namespace alias can
+  qualify nested types (`Net.Http.Client().get("/")`), while a class alias is
+  constructed directly (`Client(args).method()`). See
+  `SIMPLE-LANGUAGE-NOTES.md` for the complete package format and rules.
 
 
 
@@ -606,9 +664,9 @@ optimization pipeline. Building the compiler requires Clang on `PATH`; the
 current driver launches it through the host POSIX shell. Full language type
 checking and name-resolution rules, OOP beyond the supported single- and
 multiple-inheritance slices (including access to protected
-base members from further-derived classes),
-production GC features, external binary-library configuration, inline C, GTK,
-package manager, IDE, and debugger remain deferred. Collection deletion and
-package resolution remain unimplemented. Namespace, include, and compiled
-source-module import behavior is implemented; other design-note proposals may
-still be unsupported.
+base members from further-derived classes), production GC features, package
+build scripts, version ranges/lockfiles, platform-specific native-link rules,
+inline C, GTK, package manager, IDE, and debugger remain deferred. Collection
+deletion remains unimplemented. Namespace, include, compiled source-module
+imports, package resolution, and package-native linking are implemented; other
+design-note proposals may still be unsupported.

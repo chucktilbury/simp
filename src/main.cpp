@@ -12,6 +12,7 @@
 #include "simp/SemanticAnalyzer.hpp"
 #include "simp/SourceLoader.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <charconv>
 #include <filesystem>
@@ -19,6 +20,7 @@
 #include <iomanip>
 #include <iostream>
 #include <iterator>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -68,6 +70,14 @@ simp::CommandLine makeCommandLine() {
     paths.valueType = simp::CommandLineValueType::String;
     paths.list = true;
     commandLine.addOption(std::move(paths));
+
+    simp::CommandLineOption packagePaths;
+    packagePaths.longName = "package-path";
+    packagePaths.name = "package-path";
+    packagePaths.description = "Add a package search root";
+    packagePaths.valueType = simp::CommandLineValueType::String;
+    packagePaths.list = true;
+    commandLine.addOption(std::move(packagePaths));
 
     simp::CommandLineOption traces;
     traces.shortName = 't';
@@ -225,6 +235,8 @@ void ensureOutputDirectory(const std::string& outputPath) {
 int buildExecutable(const std::vector<std::string>& irPaths,
                     const std::vector<std::string>& objectPaths,
                     const std::string& inlineShimPath,
+                    const std::vector<std::string>& packageLibraryPaths,
+                    const std::vector<std::string>& packageLibraries,
                     const std::vector<std::string>& libraryPaths,
                     const std::vector<std::string>& libraries,
                     const std::string& outputPath) {
@@ -241,13 +253,140 @@ int buildExecutable(const std::vector<std::string>& irPaths,
                                            "-x", "c", inlineShimPath});
     }
     arguments.insert(arguments.end(), {"-x", "none"});
+    for (const auto& libraryPath : packageLibraryPaths) {
+        arguments.insert(arguments.end(), {"-L", libraryPath});
+    }
     for (const auto& libraryPath : libraryPaths) {
         arguments.insert(arguments.end(), {"-L", libraryPath});
     }
+    for (const auto& library : packageLibraries) arguments.push_back("-l" + library);
     for (const auto& library : libraries) arguments.push_back("-l" + library);
     arguments.insert(arguments.end(), {"-pthread", SIMP_GC_RUNTIME_LIBRARY,
                                        "-o", outputPath});
     return runCompiler(arguments, "link the executable");
+}
+
+struct LinkInputs {
+    std::vector<std::string> libraryPaths;
+    std::vector<std::string> libraries;
+};
+
+void appendUnique(std::vector<std::string>& values, const std::string& value) {
+    if (std::find(values.begin(), values.end(), value) == values.end()) {
+        values.push_back(value);
+    }
+}
+
+std::string linkSidecarPath(const std::string& objectPath) {
+    return objectPath + ".simp-link";
+}
+
+void writeLinkSidecar(const std::string& objectPath, const LinkInputs& inputs) {
+    std::ofstream output(linkSidecarPath(objectPath), std::ios::trunc);
+    if (!output) {
+        throw std::runtime_error("cannot write package link metadata: " +
+                                 linkSidecarPath(objectPath));
+    }
+    output << "SIMP-LINK 1\n";
+    for (const auto& path : inputs.libraryPaths) {
+        output << "L " << std::quoted(path) << '\n';
+    }
+    for (const auto& library : inputs.libraries) {
+        output << "l " << std::quoted(library) << '\n';
+    }
+    if (!output) {
+        throw std::runtime_error("failed writing package link metadata: " +
+                                 linkSidecarPath(objectPath));
+    }
+}
+
+LinkInputs readLinkSidecars(const std::vector<std::string>& objectPaths) {
+    LinkInputs inputs;
+    for (const auto& objectPath : objectPaths) {
+        const auto path = linkSidecarPath(objectPath);
+        std::ifstream input(path);
+        if (!input) {
+            if (!std::filesystem::exists(path)) continue;
+            throw std::runtime_error("cannot read package link metadata: " + path);
+        }
+        std::string line;
+        if (!std::getline(input, line) || line != "SIMP-LINK 1") {
+            throw std::runtime_error("invalid package link metadata header: " + path);
+        }
+        std::size_t lineNumber = 1;
+        while (std::getline(input, line)) {
+            ++lineNumber;
+            if (line.empty()) continue;
+            std::istringstream row(line);
+            char kind = '\0';
+            std::string value;
+            std::string trailing;
+            if (!(row >> kind >> std::quoted(value)) || (row >> trailing) ||
+                (kind != 'L' && kind != 'l') || value.empty()) {
+                throw std::runtime_error(path + ":" + std::to_string(lineNumber) +
+                                         ": invalid package link metadata row");
+            }
+            if (kind == 'L') {
+                appendUnique(inputs.libraryPaths, value);
+            } else {
+                if (value.front() == '-') {
+                    throw std::runtime_error(path + ":" +
+                                             std::to_string(lineNumber) +
+                                             ": invalid library name");
+                }
+                appendUnique(inputs.libraries, value);
+            }
+        }
+    }
+    return inputs;
+}
+
+std::vector<std::filesystem::path> splitSearchPathList(const std::string& value) {
+    std::vector<std::filesystem::path> paths;
+#ifdef _WIN32
+    constexpr char separator = ';';
+#else
+    constexpr char separator = ':';
+#endif
+    std::size_t start = 0;
+    while (start <= value.size()) {
+        const auto end = value.find(separator, start);
+        const auto entry = value.substr(
+            start, end == std::string::npos ? std::string::npos : end - start);
+        if (!entry.empty()) paths.emplace_back(entry);
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return paths;
+}
+
+std::vector<std::filesystem::path> packageSearchRoots(
+    const std::vector<std::string>& commandLinePaths) {
+    std::vector<std::filesystem::path> roots;
+    for (const auto& path : commandLinePaths) roots.emplace_back(path);
+    if (const auto* environment = std::getenv("SIMP_PACKAGE_PATH")) {
+        const auto environmentPaths = splitSearchPathList(environment);
+        roots.insert(roots.end(), environmentPaths.begin(), environmentPaths.end());
+    }
+    roots.emplace_back(std::filesystem::current_path() / ".simp" / "packages");
+    const auto* xdgDataHome = std::getenv("XDG_DATA_HOME");
+    const auto* home = std::getenv("HOME");
+    if (xdgDataHome != nullptr && *xdgDataHome != '\0') {
+        roots.emplace_back(std::filesystem::path(xdgDataHome) / "simp" / "packages");
+    } else if (home != nullptr && *home != '\0') {
+        roots.emplace_back(std::filesystem::path(home) / ".local" / "share" /
+                           "simp" / "packages");
+    }
+#ifdef SIMP_PACKAGE_DIRECTORY
+    roots.emplace_back(SIMP_PACKAGE_DIRECTORY);
+#endif
+    std::vector<std::filesystem::path> unique;
+    std::set<std::string> seen;
+    for (const auto& root : roots) {
+        const auto normalized = std::filesystem::absolute(root).lexically_normal();
+        if (seen.insert(normalized.string()).second) unique.push_back(normalized);
+    }
+    return unique;
 }
 
 int buildObject(const std::vector<std::string>& irPaths,
@@ -475,7 +614,11 @@ int main(int argc, char** argv) {
         const auto registryPath = configuredRegistry == nullptr
                                       ? std::filesystem::current_path() / "simp-modules.tsv"
                                       : std::filesystem::path(configuredRegistry);
-        const auto modules = simp::loadImportedModules(program, registryPath);
+        simp::ModuleLoadOptions moduleOptions;
+        moduleOptions.registryPath = registryPath;
+        moduleOptions.packageSearchRoots =
+            packageSearchRoots(commandLine.values("package-path"));
+        const auto moduleLoad = simp::loadImportedModules(program, moduleOptions);
         simp::SemanticAnalyzer semanticAnalyzer;
         semanticAnalyzer.analyze(program);
         if (dump) {
@@ -537,7 +680,7 @@ int main(int argc, char** argv) {
             else ensureOutputDirectory(irOutput);
             writeFile(irPath, ir);
             irPaths.push_back(irPath);
-            for (const auto& module : modules) {
+            for (const auto& module : moduleLoad.modules) {
                 simp::CodeGenerator moduleGenerator(SIMP_TARGET_TRIPLE);
                 const auto moduleIr = moduleGenerator.generate(program, module.name);
                 for (const auto& shim : moduleGenerator.inlineShims()) {
@@ -562,11 +705,29 @@ int main(int argc, char** argv) {
             writeFile(inlineShimPath, source);
             temporaryPaths.push_back(inlineShimPath);
         }
-        const int buildResult =
-            compileOnly
-                ? buildObject(irPaths, inlineShimPath, outputPath, temporaryPaths)
-                : buildExecutable(irPaths, objectPaths, inlineShimPath, libraryPaths,
-                                  libraries, outputPath);
+        LinkInputs packageInputs;
+        for (const auto& path : moduleLoad.libraryPaths) {
+            appendUnique(packageInputs.libraryPaths, path.string());
+        }
+        for (const auto& library : moduleLoad.libraries) {
+            appendUnique(packageInputs.libraries, library);
+        }
+        int buildResult = 0;
+        if (compileOnly) {
+            buildResult = buildObject(irPaths, inlineShimPath, outputPath, temporaryPaths);
+            if (buildResult == 0) writeLinkSidecar(outputPath, packageInputs);
+        } else {
+            const auto sidecarInputs = readLinkSidecars(objectPaths);
+            for (const auto& path : sidecarInputs.libraryPaths) {
+                appendUnique(packageInputs.libraryPaths, path);
+            }
+            for (const auto& library : sidecarInputs.libraries) {
+                appendUnique(packageInputs.libraries, library);
+            }
+            buildResult = buildExecutable(
+                irPaths, objectPaths, inlineShimPath, packageInputs.libraryPaths,
+                packageInputs.libraries, libraryPaths, libraries, outputPath);
+        }
         for (const auto& temporary : temporaryPaths) {
             std::error_code ignored;
             std::filesystem::remove(temporary, ignored);

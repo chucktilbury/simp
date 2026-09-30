@@ -1,0 +1,8 @@
+[package]
+name = "alpha"
+version = "1.0.0"
+source = "src/alpha.simp"
+export = "class:Alpha"
+
+[dependencies]
+shared = "=1.0.0"
