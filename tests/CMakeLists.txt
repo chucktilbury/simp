@@ -380,7 +380,7 @@ endforeach()
 
 
 add_inline_run_test(positive_inline_no_captures "inline { says } hello\n")
-add_inline_run_test(positive_array_resize "3\n3\n5\nnull\n1\nnull\nlast\n2\n1\n12\n7\narray length must not be negative\n55\n")
+add_inline_run_test(positive_array_resize "3\n3\n5\n(null)\n1\n(null)\nlast\n2\n1\n12\n7\narray length must not be negative\n55\n")
 add_inline_diagnostic_test(negative_array_resize_type "array resize length must be int")
 add_inline_diagnostic_test(negative_array_append_arity "array 'append' expects one argument")
 add_inline_run_test(positive_inline_int_capture "12\n")
