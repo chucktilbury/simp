@@ -929,6 +929,15 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 }
                 return "bool";
             }
+            if (classes_.find(left) != classes_.end() &&
+                classes_.find(right) != classes_.end()) {
+                if (!isAssignable(left, right) && !isAssignable(right, left)) {
+                    throw DiagnosticError(
+                        expression.location,
+                        "equality requires compatible class-reference operands");
+                }
+                return "bool";
+            }
             if (left != right ||
                 (left != "int" && left != "bool" && left != "float" &&
                  left != "unsigned")) {

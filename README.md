@@ -277,8 +277,12 @@ input and reports source-located lexer, parser, and semantic errors.
   string-keyed.
 - Equality and ordering comparisons require matching numeric types
   (`int`, `unsigned`, or `float`); equality also supports matching `bool`
-  operands. Any nullable type may be compared with `null`. Strings, objects,
-  arrays, maps, and `any` do not support equality with each other.
+  operands. Compatible class references also support `==` and `!=`, which
+  compare object identity (not field values or dynamic class); an upcast
+  reference compares the same base subobject as its derived reference.
+  Unrelated class references cannot be compared. Any nullable type may be
+  compared with `null`. Strings, arrays, maps, and `any` do not support
+  equality with each other.
 - Collection reads and loop bindings use an internal tagged dynamic value;
   the reserved keyword `any` is not permitted as a declared type (locals,
   fields, parameters, returns, or native signatures). The representation can

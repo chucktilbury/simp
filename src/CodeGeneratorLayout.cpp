@@ -380,7 +380,12 @@ CodeGenerator::Value CodeGenerator::convertObjectValue(
         throw DiagnosticError(location, "backend could not find the required base subobject");
     }
     const auto address = emitSubobjectAddress(value.operand, owner, path);
-    return {expectedType, address};
+    const auto isNull = newTemporary();
+    const auto convertedAddress = newTemporary();
+    instructions_ += "  " + isNull + " = icmp eq ptr " + value.operand + ", null\n"
+                     "  " + convertedAddress + " = select i1 " + isNull + ", ptr null, ptr " +
+                     address + "\n";
+    return {expectedType, convertedAddress};
 }
 
 } // namespace simp

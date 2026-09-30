@@ -1398,6 +1398,50 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                     return {"bool", comparison};
                 }
             }
+            if (classes_.find(left.type) != classes_.end() &&
+                classes_.find(right.type) != classes_.end()) {
+                const auto* leftClass = classes_.at(left.type);
+                const auto* rightClass = classes_.at(right.type);
+                std::string comparisonType = left.type;
+                const auto derivesFrom = [this](const ClassDeclaration& derived,
+                                                 const std::string& baseName) {
+                    std::vector<std::string> pending = derived.baseClassNames;
+                    std::unordered_set<std::string> seen;
+                    while (!pending.empty()) {
+                        const auto current = pending.back();
+                        pending.pop_back();
+                        if (!seen.emplace(current).second) continue;
+                        if (current == baseName) return true;
+                        const auto found = classes_.find(current);
+                        if (found != classes_.end()) {
+                            pending.insert(pending.end(),
+                                           found->second->baseClassNames.begin(),
+                                           found->second->baseClassNames.end());
+                        }
+                    }
+                    return false;
+                };
+                if (left.type == right.type) {
+                    comparisonType = left.type;
+                } else if (derivesFrom(*leftClass, right.type)) {
+                    comparisonType = right.type;
+                } else if (derivesFrom(*rightClass, left.type)) {
+                    comparisonType = left.type;
+                } else {
+                    throw DiagnosticError(
+                        expression.location,
+                        "backend could not resolve compatible class-reference comparison");
+                }
+                const auto comparableLeft =
+                    convertObjectValue(left, comparisonType, expression.left->location);
+                const auto comparableRight =
+                    convertObjectValue(right, comparisonType, expression.right->location);
+                instructions_ += "  " + result + " = icmp " +
+                                 (operation == "==" ? "eq" : "ne") + " ptr " +
+                                 comparableLeft.operand + ", " + comparableRight.operand +
+                                 "\n";
+                return {"bool", result};
+            }
             if (left.type == "float") {
                 std::string predicate;
                 if (operation == "==") predicate = "oeq";

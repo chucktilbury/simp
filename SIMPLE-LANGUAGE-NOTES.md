@@ -50,10 +50,14 @@ The language is intended to have full object-oriented programming support. Broad
   `int` literal.
 - Arithmetic and ordering comparisons require operands of the same numeric
   type. Equality requires matching operands of the same supported scalar type
-  (`int`, `unsigned`, `float`, or `bool`). Comparisons produce `bool`; numeric
-  arithmetic produces the operand type. Integer division and remainder are
-  signed for `int` and unsigned for `unsigned`. Remainder on `float` is not
-  supported.
+  (`int`, `unsigned`, `float`, or `bool`) or compatible class-reference types.
+  Comparing class references with `==`/`!=` tests object identity; a derived
+  reference is converted to its unique accessible base subobject when
+  compared with a base reference. Unrelated or ambiguously convertible class
+  references are rejected. Any class reference may still be compared with
+  `null`. Comparisons produce `bool`; numeric arithmetic produces the operand
+  type. Integer division and remainder are signed for `int` and unsigned for
+  `unsigned`. Remainder on `float` is not supported.
 - The boolean type-test operator `expr is TypeName` recognizes the built-in
   types `int`, `unsigned`, `float`, `bool`, `string`, `array`/`list`,
   `map`/`dict`, `buffer`, and `handle`, plus class names including qualified
@@ -974,8 +978,11 @@ Typed extraction is runtime-checked and raises on a tag or exact-class mismatch;
 there is no covariant/polymorphic downcast support. Nested arrays and
 collections are supported as elements and are traced by the GC.
 Equality and ordering comparisons are supported for matching scalar types
-(`int`, `unsigned`, and `float` ordering; equality also supports `bool`);
-strings, objects, arrays, maps, and `any` do not support comparisons. Arrays and maps can be
+(`int`, `unsigned`, and `float` ordering; equality also supports `bool`).
+Equality/inequality on compatible class-reference types compares object
+identity, including references viewed through a unique base subobject; null
+comparisons are supported. Unrelated class references are rejected. Strings,
+arrays, maps, and `any` do not support comparisons. Arrays and maps can be
 carried through tagged values produced by collection indexing. The runtime
 traces class-reference and nested collection references reached through arrays,
 maps, `any` values, and object fields.
