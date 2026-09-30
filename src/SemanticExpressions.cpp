@@ -568,6 +568,22 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         return method->returnType;
     }
+    case ExpressionKind::Cast: {
+        // Explicit scalar cast (int/unsigned <-> float), same model as C:
+        // widening int/unsigned to float is always exact for values in the
+        // ordinary range, and narrowing float to int/unsigned truncates
+        // toward zero, discarding any fractional part.
+        const auto operand = analyzeExpression(*expression.arguments.front());
+        const auto& target = expression.value;
+        const bool widening = target == "float" && (operand == "int" || operand == "unsigned");
+        const bool narrowing = (target == "int" || target == "unsigned") && operand == "float";
+        if (!widening && !narrowing) {
+            throw DiagnosticError(expression.location,
+                                  "cannot cast " + operand + " to " + target +
+                                      "; only int/unsigned <-> float conversions are supported");
+        }
+        return target;
+    }
     case ExpressionKind::Unary: {
         const auto operand = analyzeExpression(*expression.left);
         if (expression.value == "!") {

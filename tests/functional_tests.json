@@ -84,6 +84,12 @@
     "enabled": true
   },
   {
+    "name": "positive_scalar_casts.simp",
+    "friendly_name": "functional explicit int/unsigned/float scalar casts",
+    "expected_diagnostic": "",
+    "enabled": true
+  },
+  {
     "name": "negative_int_condition.simp",
     "friendly_name": "functional integer condition rejected",
     "expected_diagnostic": "if condition must have type bool",
@@ -99,6 +105,12 @@
     "name": "negative_unsigned_int_mixing.simp",
     "friendly_name": "functional unsigned and int mixing rejected",
     "expected_diagnostic": "requires matching int, float, or unsigned operands",
+    "enabled": true
+  },
+  {
+    "name": "negative_unsupported_scalar_cast.simp",
+    "friendly_name": "functional unsupported scalar cast rejected",
+    "expected_diagnostic": "cannot cast bool to float",
     "enabled": true
   },
   {

@@ -113,6 +113,18 @@ The language is intended to have full object-oriented programming support. Broad
     crashing.
 - A class-to-`int` cast that is incompatible by type is a syntax error.
 - An explicit class conversion routine may be called when a conversion is intentionally provided.
+- **Explicit scalar casts (implemented):** `float(x)` converts an `int` or
+  `unsigned` operand to `float` (always exact widening); `int(x)` and
+  `unsigned(x)` convert a `float` operand to that type, truncating toward
+  zero (same as C: `int(-3.99)` is `-3`). The cast syntax reuses the
+  existing type-name-as-call convention already used for `buffer(len)`.
+  No other scalar cast pairs are supported (for example there is no
+  `int(bool)`, `bool(int)`, or direct `int(unsigned)`/`unsigned(int)`
+  cast) — attempting one is a semantic error naming the offending types.
+  Casting a null-holding local scalar (see the nullability model above) is
+  simply a consumption boundary like any other: the operand's zero payload
+  is what gets converted, so `float(nullInt)` yields `0.0`, not an
+  exception.
 - String-to-number conversion is confirmed to be a method on the `String`
   class (see "Proposal: a class-based `String`..." under "Strings" below),
   not general cast syntax or an implicit conversion — for example
@@ -1381,12 +1393,12 @@ Of the items above, these are pure language/syntax design gaps (as opposed
 to tooling, packaging, or infrastructure work) and are suggested as the
 next things to resolve, roughly in priority order:
 
-1. Explicit scalar cast syntax (`int`/`float`/`unsigned`/`bool` conversions)
-   — no cast syntax exists yet at all. **Deliberately deferred** (not an
-   oversight): existing code can already only use values already of the
-   required type, so this does not block current work; resolving it well
-   needs the same design-iteration effort as `buffer`/`handle` did, and is
-   left for a future session with more time/budget.
+1. **Resolved and implemented:** explicit scalar cast syntax for
+   `int`/`unsigned` <-> `float`, same truncation-toward-zero model as C
+   (see "Explicit scalar casts (implemented)" above). `bool` has no cast
+   to or from any other scalar type, and `int` <-> `unsigned` has no
+   direct cast either — only the four int/unsigned <-> float pairs are
+   supported.
 2. **Resolved and implemented:** `null` is a universal value (see
    "Nullability model (confirmed)" above) — assignable to any type
    including scalars, with no flow-sensitive null analysis. Scalars,

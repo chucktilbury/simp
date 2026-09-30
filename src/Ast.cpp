@@ -35,6 +35,7 @@ const char* expressionName(ExpressionKind kind) {
     case ExpressionKind::MapLiteral: return "MapLiteral";
     case ExpressionKind::Index: return "Index";
     case ExpressionKind::Slice: return "Slice";
+    case ExpressionKind::Cast: return "Cast";
     }
     return "Expression";
 }

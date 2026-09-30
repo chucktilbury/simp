@@ -725,6 +725,21 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         consume(TokenType::RightParen, "')' after buffer length");
         return expression;
     }
+    if (check(TokenType::Int) || check(TokenType::Unsigned) ||
+        check(TokenType::FloatType)) {
+        const auto castTargetType = current().type == TokenType::Int      ? "int"
+                                    : current().type == TokenType::Unsigned ? "unsigned"
+                                                                             : "float";
+        ++current_;
+        consume(TokenType::LeftParen, "'(' after explicit cast type name");
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::Cast;
+        expression->location = token.location;
+        expression->value = castTargetType;
+        expression->arguments.push_back(parseExpression());
+        consume(TokenType::RightParen, "')' after cast operand");
+        return expression;
+    }
     if (match(TokenType::UnsignedInteger)) {
         auto expression = std::make_unique<Expression>();
         expression->kind = ExpressionKind::Unsigned;

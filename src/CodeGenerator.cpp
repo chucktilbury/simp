@@ -951,6 +951,28 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                          function + "(" + arguments + ")\n";
         return rootObjectValue({method->returnType, result}, expression.location);
     }
+    case ExpressionKind::Cast: {
+        const auto operand = emitExpression(*expression.arguments.front());
+        const auto& target = expression.value;
+        const auto result = newTemporary();
+        if (target == "float" && operand.type == "int") {
+            instructions_ += "  " + result + " = sitofp i32 " + operand.operand + " to double\n";
+        } else if (target == "float" && operand.type == "unsigned") {
+            instructions_ += "  " + result + " = uitofp i64 " + operand.operand + " to double\n";
+        } else if (target == "int" && operand.type == "float") {
+            instructions_ += "  " + result + " = fptosi double " + operand.operand + " to i32\n";
+        } else if (target == "unsigned" && operand.type == "float") {
+            instructions_ += "  " + result + " = fptoui double " + operand.operand + " to i64\n";
+        } else {
+            unsupported(expression.location,
+                       "cast '" + operand.type + "' to '" + target + "'");
+        }
+        // A cast is a consumption boundary for a null scalar local (see the
+        // "Nullability model (confirmed)" note): the null-holding operand's
+        // raw zero payload is what gets converted, so the result is simply
+        // the cast of 0 and carries no null flag of its own.
+        return {target, result};
+    }
     case ExpressionKind::Unary: {
         const auto operand = emitExpression(*expression.left);
         if (expression.value == "+") return operand;

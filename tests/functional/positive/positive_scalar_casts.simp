@@ -1,0 +1,19 @@
+# Exercises explicit scalar casts: int/unsigned -> float always widens
+# exactly, and float -> int/unsigned narrows by truncating toward zero,
+# the same model C uses for these conversions. Casts are written using
+# the target type name as a call, e.g. float(x), matching the existing
+# buffer(len) constructor-call convention.
+start {
+    int i = 7
+    unsigned u = 12
+    float f = 3.75
+
+    print(float(i))
+    print(float(u))
+    print(int(f))
+    print(unsigned(f))
+    print(int(-3.99))
+
+    float sum = float(i) + f
+    print(sum)
+}

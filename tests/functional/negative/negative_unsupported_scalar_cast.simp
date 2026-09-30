@@ -1,0 +1,6 @@
+# Rejects a scalar cast outside the supported int/unsigned <-> float
+# conversions: bool has no explicit cast to any other scalar type.
+start {
+    bool flag = true
+    float invalid = float(flag)
+}
