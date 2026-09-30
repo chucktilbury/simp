@@ -37,23 +37,23 @@ void simp_inline_cstr_begin(void) {
     simp_inline_cstr_end();
 }
 
-const char *simp_string_cstr(const SimpString *text) {
-    if (text == NULL || text->length > (uint64_t)(SIZE_MAX - 1) ||
-        (text->length != 0 && text->data == NULL)) {
-        abort();
-    }
+const char *simp_string_cstr(void *const *text) {
+    const char *data;
+    uint64_t length;
+    simp_string_bytes(text == NULL ? NULL : *text, &data, &length);
+    if (length > (uint64_t)(SIZE_MAX - 1)) abort();
     InlineCStringBuffer *buffer =
         (InlineCStringBuffer *)malloc(sizeof(InlineCStringBuffer));
     if (buffer == NULL) abort();
-    buffer->bytes = (char *)malloc((size_t)text->length + 1);
+    buffer->bytes = (char *)malloc((size_t)length + 1);
     if (buffer->bytes == NULL) {
         free(buffer);
         abort();
     }
-    if (text->length != 0) {
-        memcpy(buffer->bytes, text->data, (size_t)text->length);
+    if (length != 0) {
+        memcpy(buffer->bytes, data, (size_t)length);
     }
-    buffer->bytes[text->length] = '\0';
+    buffer->bytes[length] = '\0';
     buffer->next = inline_cstring_buffers;
     inline_cstring_buffers = buffer;
     return buffer->bytes;
@@ -198,7 +198,7 @@ typedef struct SimpExceptionFrame {
 typedef struct SimpRuntimeException {
     const SimpClassMeta *metadata;
     void *owner;
-    SimpString message;
+    void *message;
     uint8_t runtime_owns_message;
 } SimpRuntimeException;
 
@@ -341,21 +341,18 @@ static const SimpClassMeta buffer_metadata = {
 };
 
 static HeapNode *find_object(const void *object);
+static HeapNode *find_containing_object(const void *object);
 
-static void finalize_runtime_exception(void *object) {
-    SimpRuntimeException *exception = (SimpRuntimeException *)object;
-    if (exception->runtime_owns_message) {
-        free((void *)exception->message.data);
-        exception->message.data = NULL;
-        exception->message.length = 0;
-        exception->runtime_owns_message = 0;
-    }
-}
+static const uint64_t exception_reference_offsets[] = {
+    offsetof(SimpRuntimeException, message)
+};
 
 const SimpClassMeta simp_exception_class_meta = {
-    "Exception", 9, 2, NULL, 0, sizeof(SimpRuntimeException), 0, NULL,
-    finalize_runtime_exception, 0, NULL, 0, NULL
+    "Exception", 9, 2, NULL, 0, sizeof(SimpRuntimeException), 1,
+    exception_reference_offsets, NULL, 0, NULL, 0, NULL
 };
+/* Standalone runtime tests do not link a compiled Simple module. */
+extern const SimpClassMeta simp_string_class_meta __attribute__((weak));
 
 static void release_retained_exception_messages(void) {
     while (retained_exception_messages != NULL) {
@@ -719,12 +716,14 @@ static void *make_runtime_exception(const char *message, uint64_t length) {
     void *object = simp_gc_alloc(&simp_exception_class_meta);
     SimpRuntimeException *exception = (SimpRuntimeException *)object;
     exception->owner = object;
-    char *copy = length == 0 ? NULL : (char *)malloc((size_t)length);
-    if (length != 0 && copy == NULL) abort();
-    if (length != 0) memcpy(copy, message, (size_t)length);
-    exception->message.data = copy;
-    exception->message.length = length;
-    exception->runtime_owns_message = 1;
+    if (&simp_string_class_meta != NULL) {
+        SimpRootFrame frame;
+        void *root = object;
+        void *slots[] = { &root };
+        simp_gc_push_or_abort(&frame, slots, 1);
+        exception->message = simp_string_new(&simp_string_class_meta, message, length);
+        simp_gc_pop_or_abort(&frame);
+    }
     return object;
 }
 
@@ -1350,6 +1349,206 @@ static SimpBuffer *checked_buffer(void *object, const char *file, uint64_t file_
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     return (SimpBuffer *)object;
+}
+
+typedef struct SimpStringObject {
+    const SimpClassMeta *metadata;
+    void *owner;
+    SimpBuffer *bytes;
+} SimpStringObject;
+
+static void buffer_reserve(SimpBuffer *buffer, uint64_t capacity);
+static const char native_file[] = "<native String>";
+
+static SimpBuffer *string_buffer(void *object) {
+    if (object == NULL) {
+        static const char message[] = "null String reference";
+        simp_exception_raise(message, sizeof(message) - 1, native_file,
+                             sizeof(native_file) - 1, 0, 0);
+    }
+    HeapNode *node = find_containing_object(object);
+    const SimpClassMeta *metadata = NULL;
+    if (node == NULL || node->is_array || node->is_map || node->is_buffer ||
+        node->allocation_size < sizeof(SimpStringObject) ||
+        (uintptr_t)object - (uintptr_t)node->object >
+            node->allocation_size - sizeof(SimpStringObject)) {
+        static const char message[] = "invalid String reference";
+        simp_exception_raise(message, sizeof(message) - 1, native_file,
+                             sizeof(native_file) - 1, 0, 0);
+    }
+    memcpy(&metadata, object, sizeof(metadata));
+    if (metadata == NULL ||
+        ((metadata->name_length != 6 || memcmp(metadata->name, "String", 6) != 0) &&
+         (object == node->object || &simp_string_class_meta == NULL ||
+          !simp_object_is_instance(object, &simp_string_class_meta)))) {
+        static const char message[] = "invalid String reference";
+        simp_exception_raise(message, sizeof(message) - 1, native_file,
+                             sizeof(native_file) - 1, 0, 0);
+    }
+    return checked_buffer(((SimpStringObject *)object)->bytes,
+                          native_file, sizeof(native_file) - 1, 0, 0);
+}
+
+static int valid_utf8(const char *bytes, uint64_t length) {
+    for (uint64_t i = 0; i < length;) {
+        const unsigned char a = (unsigned char)bytes[i++];
+        if (a <= 0x7f) continue;
+        const int count = a >= 0xc2 && a <= 0xdf ? 1 :
+                          a >= 0xe0 && a <= 0xef ? 2 :
+                          a >= 0xf0 && a <= 0xf4 ? 3 : -1;
+        if (count < 0 || (uint64_t)count > length - i) return 0;
+        for (int j = 0; j < count; ++j) {
+            const unsigned char b = (unsigned char)bytes[i + (uint64_t)j];
+            if (b < 0x80 || b > 0xbf) return 0;
+            if (j == 0 && ((a == 0xe0 && b < 0xa0) ||
+                           (a == 0xed && b > 0x9f) ||
+                           (a == 0xf0 && b < 0x90) ||
+                           (a == 0xf4 && b > 0x8f))) return 0;
+        }
+        i += (uint64_t)count;
+    }
+    return 1;
+}
+
+void simp_string_bytes(void *object, const char **data, uint64_t *length) {
+    if (data == NULL || length == NULL) abort();
+    SimpBuffer *buffer = string_buffer(object);
+    *data = (const char *)buffer->data;
+    *length = buffer->length;
+}
+
+void *simp_string_new(const SimpClassMeta *metadata, const char *bytes, uint64_t length) {
+    if (metadata == NULL || length > INT32_MAX || (bytes == NULL && length != 0)) {
+        static const char message[] = "String length out of bounds";
+        simp_exception_raise(message, sizeof(message) - 1, native_file,
+                             sizeof(native_file) - 1, 0, 0);
+    }
+    if (!valid_utf8(bytes, length)) {
+        static const char message[] = "String bytes are not valid UTF-8";
+        simp_exception_raise(message, sizeof(message) - 1, native_file,
+                             sizeof(native_file) - 1, 0, 0);
+    }
+    SimpStringObject *object = (SimpStringObject *)simp_gc_alloc(metadata);
+    void *root = object;
+    SimpRootFrame frame;
+    void *slots[] = { &root };
+    simp_gc_push_or_abort(&frame, slots, 1);
+    object->owner = object;
+    object->bytes = (SimpBuffer *)simp_buffer_new((int32_t)length, native_file,
+                                                   sizeof(native_file) - 1, 0, 0);
+    if (length != 0) memcpy(object->bytes->data, bytes, (size_t)length);
+    simp_gc_pop_or_abort(&frame);
+    return object;
+}
+
+void *simp_string_format_new(const SimpClassMeta *metadata, const char *bytes, uint64_t length) {
+    return simp_string_new(metadata, bytes, length);
+}
+
+void simp_string_append_bytes(void *object, const char *bytes, uint64_t length) {
+    SimpBuffer *buffer = string_buffer(object);
+    if ((bytes == NULL && length != 0) || length > INT32_MAX - buffer->length ||
+        !valid_utf8(bytes, length)) {
+        static const char message[] = "invalid UTF-8 or String length";
+        simp_exception_raise(message, sizeof(message) - 1, native_file,
+                             sizeof(native_file) - 1, 0, 0);
+    }
+    if (length == 0) return;
+    /* The source can be this buffer's own data: reserve may relocate it. */
+    const uint8_t *source = (const uint8_t *)bytes;
+    const uintptr_t address = (uintptr_t)source;
+    const uintptr_t start = (uintptr_t)buffer->data;
+    const int self = address >= start && address - start < buffer->length;
+    const size_t offset = self ? (size_t)(source - buffer->data) : 0;
+    const uint64_t old_length = buffer->length;
+    buffer_reserve(buffer, old_length + length);
+    if (self) source = buffer->data + offset;
+    memmove(buffer->data + old_length, source, (size_t)length);
+    buffer->length = old_length + length;
+}
+
+void simp_string_append(void *receiver, void *other) {
+    const char *data;
+    uint64_t length;
+    simp_string_bytes(other, &data, &length);
+    simp_string_append_bytes(receiver, data, length);
+}
+
+int32_t simp_string_equals(void *receiver, void *other) {
+    const char *left, *right;
+    uint64_t left_length, right_length;
+    simp_string_bytes(receiver, &left, &left_length);
+    if (other == NULL) return 0;
+    simp_string_bytes(other, &right, &right_length);
+    return left_length == right_length &&
+           (left_length == 0 || memcmp(left, right, (size_t)left_length) == 0);
+}
+
+int32_t simp_string_method_to_int(void *receiver) {
+    const char *data;
+    uint64_t length;
+    simp_string_bytes(receiver, &data, &length);
+    return simp_string_to_int(data, length, native_file, sizeof(native_file) - 1, 0, 0);
+}
+
+uint64_t simp_string_method_to_unsigned(void *receiver) {
+    const char *data;
+    uint64_t length;
+    simp_string_bytes(receiver, &data, &length);
+    return simp_string_to_unsigned(data, length, native_file, sizeof(native_file) - 1, 0, 0);
+}
+
+double simp_string_method_to_float(void *receiver) {
+    const char *data;
+    uint64_t length;
+    simp_string_bytes(receiver, &data, &length);
+    return simp_string_to_float(data, length, native_file, sizeof(native_file) - 1, 0, 0);
+}
+
+void simp_string_format_append(void *object, uint64_t tag, int64_t integer,
+                               void *pointer, uint64_t length, const char *file,
+                               uint64_t file_length, uint64_t line, uint64_t column) {
+    char text[128];
+    int written = 0;
+    if (tag == SIMP_ARRAY_INTEGER) written = snprintf(text, sizeof(text), "%d", (int32_t)integer);
+    else if (tag == SIMP_ARRAY_UNSIGNED) written =
+        snprintf(text, sizeof(text), "%llu", (unsigned long long)(uint64_t)integer);
+    else if (tag == SIMP_ARRAY_FLOAT) {
+        double number;
+        memcpy(&number, &integer, sizeof(number));
+        written = snprintf(text, sizeof(text), "%.15g", number);
+    } else if (tag == SIMP_ARRAY_BOOLEAN) {
+        simp_string_append_bytes(object, integer ? "true" : "false", integer ? 4 : 5);
+        return;
+    } else if (tag == SIMP_ARRAY_TYPE) {
+        simp_string_append_bytes(object, (const char *)pointer, length);
+        return;
+    } else if (tag == SIMP_ARRAY_OBJECT) {
+        if (pointer == NULL) {
+            simp_string_append_bytes(object, "(null)", 6);
+            return;
+        }
+        const SimpClassMeta *metadata = *(const SimpClassMeta **)pointer;
+        if (metadata != NULL && metadata->name_length == 6 &&
+            memcmp(metadata->name, "String", 6) == 0) {
+            const char *data;
+            uint64_t count;
+            simp_string_bytes(pointer, &data, &count);
+            simp_string_append_bytes(object, data, count);
+            return;
+        }
+        simp_string_append_bytes(object, "<object>", 8);
+        return;
+    } else if (tag == SIMP_ARRAY_MAP || tag == SIMP_ARRAY_ARRAY ||
+               tag == SIMP_ARRAY_STRING) {
+        simp_string_append_bytes(object, "<object>", 8);
+        return;
+    } else {
+        static const char message[] = "buffer and handle values are not formattable";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    if (written < 0 || written >= (int)sizeof(text)) abort();
+    simp_string_append_bytes(object, text, (uint64_t)written);
 }
 
 static void buffer_reserve(SimpBuffer *buffer, uint64_t capacity) {

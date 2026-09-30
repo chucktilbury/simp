@@ -64,6 +64,8 @@ add_library(simp_frontend
     SourceLoader.cpp
 )
 target_link_libraries(simp_frontend PUBLIC simp_headers)
+target_compile_definitions(simp_frontend PRIVATE
+    SIMP_PRELUDE_SOURCE="${CMAKE_CURRENT_SOURCE_DIR}/../include/simp/String.simp")
 set_target_properties(simp_frontend PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${SIMP_LIBRARY_OUTPUT_DIRECTORY}"
     LIBRARY_OUTPUT_DIRECTORY "${SIMP_LIBRARY_OUTPUT_DIRECTORY}"

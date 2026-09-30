@@ -7,9 +7,13 @@
 #include "simp/Mangling.hpp"
 
 #include "simp/Diagnostic.hpp"
+#include "simp/Lexer.hpp"
+#include "simp/Parser.hpp"
 
 #include <algorithm>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <ostream>
 #include <unordered_set>
 
@@ -174,9 +178,13 @@ void SemanticAnalyzer::normalizeType(
     std::string& type, const std::vector<std::string>& namespacePath,
     const SourceLocation& location) const {
     if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
-        type == "string" || type == "array" || type == "map" ||
+        type == "array" || type == "map" ||
         type == "buffer" || type == "handle" ||
         type == "any" || type == "type" || type == "void") {
+        return;
+    }
+    if (type == "string") {
+        type = "String";
         return;
     }
     if (type.find('.') == std::string::npos &&
@@ -188,6 +196,11 @@ void SemanticAnalyzer::normalizeType(
 
 void SemanticAnalyzer::normalizeExpression(
     Expression& expression, const std::vector<std::string>& namespacePath) {
+    if ((expression.kind == ExpressionKind::TypeTest ||
+         expression.kind == ExpressionKind::TypeName) &&
+        expression.value == "string") {
+        expression.value = "String";
+    }
     if (expression.kind == ExpressionKind::TypeTest &&
         expression.value != "int" && expression.value != "bool" &&
         expression.value != "float" && expression.value != "unsigned" &&
@@ -261,6 +274,22 @@ void SemanticAnalyzer::analyze(Program& program) {
                        }),
         program.classes.end());
     program.classes.insert(program.classes.begin(), makeBuiltinExceptionClass());
+    {
+        std::ifstream source(SIMP_PRELUDE_SOURCE);
+        if (!source) {
+            throw DiagnosticError({"<prelude>", 1, 1}, "cannot load String prelude");
+        }
+        const std::string text{std::istreambuf_iterator<char>(source),
+                               std::istreambuf_iterator<char>()};
+        Parser parser(Lexer(text, SIMP_PRELUDE_SOURCE).tokenize());
+        auto prelude = parser.parseProgram(false);
+        program.classes.insert(program.classes.begin() + 1,
+                               std::make_move_iterator(prelude.classes.begin()),
+                               std::make_move_iterator(prelude.classes.end()));
+        program.outOfLineMethods.insert(program.outOfLineMethods.begin(),
+            std::make_move_iterator(prelude.outOfLineMethods.begin()),
+            std::make_move_iterator(prelude.outOfLineMethods.end()));
+    }
     scopes_.clear();
     symbols_.clear();
     namespaces_.clear();
@@ -409,7 +438,7 @@ void SemanticAnalyzer::analyze(Program& program) {
         if (type == "bool") return std::string("i1");
         if (type == "float") return std::string("double");
         if (type == "unsigned") return std::string("i64");
-        if (type == "string") return std::string("ptr,i64");
+        if (type == "String") return std::string("ptr");
         if (type == "void") return std::string("void");
         return std::string("ptr");
     };
@@ -832,9 +861,11 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
         }
     }
     if (method.returnType != "void" &&
-        (method.body.empty() || method.body.back().kind != StatementKind::Return)) {
+        (method.body.empty() ||
+         (method.body.back().kind != StatementKind::Return &&
+          method.body.back().kind != StatementKind::Raise))) {
         throw DiagnosticError(method.location,
-                              "non-void prototype methods must end with a direct return statement");
+                              "non-void prototype methods must end with a direct return or raise");
     }
     for (std::size_t index = 0; index < method.body.size(); ++index) {
         const bool directLeadingSuper = method.constructor && index < leadingCalls &&

@@ -41,12 +41,15 @@ void simp_method_demo_ignore(void *receiver, int32_t value) {
     (void)value;
 }
 
-int32_t simp_method_demo_string_length(void *receiver, SimpString text) {
+int32_t simp_method_demo_string_length(void *receiver, void *text) {
     require_demo_native_receiver(receiver);
-    return (int32_t)text.length;
+    const char *data;
+    uint64_t length;
+    simp_string_bytes(text, &data, &length);
+    return (int32_t)length;
 }
 
-SimpString simp_method_demo_string_identity(void *receiver, SimpString text) {
+void *simp_method_demo_string_identity(void *receiver, void *text) {
     require_demo_native_receiver(receiver);
     return text;
 }

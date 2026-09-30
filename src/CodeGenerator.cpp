@@ -47,6 +47,12 @@ bool CodeGenerator::isBufferType(const std::string& type) const {
     return type == "buffer";
 }
 
+// 'string' is the pre-migration spelling of the canonical 'String' class and
+// may still reach the backend from raw (un-analyzed) syntax trees.
+bool CodeGenerator::isStringType(const std::string& type) const {
+    return type == "String" || type == "string";
+}
+
 bool CodeGenerator::isNullableScalarType(const std::string& type) const {
     return type == "int" || type == "unsigned" || type == "float" || type == "bool";
 }
@@ -57,7 +63,7 @@ bool CodeGenerator::isDynamicValueType(const std::string& type) const {
 
 bool CodeGenerator::isManagedReferenceType(const std::string& type) const {
     return isArrayType(type) || isMapType(type) || isBufferType(type) ||
-           classes_.find(type) != classes_.end();
+           isStringType(type) || classes_.find(type) != classes_.end();
 }
 
 [[noreturn]] void CodeGenerator::unsupported(const SourceLocation& location,
@@ -141,7 +147,7 @@ std::string CodeGenerator::llvmType(const std::string& type) const {
     if (type == "bool") return "i1";
     if (type == "float") return "double";
     if (type == "unsigned") return "i64";
-    if (type == "string") return "%SimpleString";
+    if (type == "string") return "ptr";
     if (type == "any") return "%SimpleArrayValue";
     if (type == "type") return "%SimpleString";
     if (type == "void") return "void";
@@ -149,12 +155,8 @@ std::string CodeGenerator::llvmType(const std::string& type) const {
 }
 
 std::string CodeGenerator::externReturnLlvmType(const std::string& type) const {
-    // 'string' is the only extern-eligible type whose Simple-side LLVM
-    // representation (%SimpleString = { ptr, i64 }) is not itself the ABI form:
-    // a two-eightbyte all-INTEGER-class struct is returned by the x86-64 SysV
-    // C ABI as a literal (unnamed) two-scalar aggregate rather than the named
-    // struct type, matching what clang emits for an equivalent C struct return.
-    if (type == "string") return "{ ptr, i64 }";
+    // 'String' is a managed class reference, so it crosses the native boundary
+    // as a single object pointer; no type needs an aggregate ABI form.
     if (type == "bool") return "zeroext i1";
     return llvmType(type);
 }
@@ -166,9 +168,7 @@ std::string CodeGenerator::externMethodDeclaration(const ClassDeclaration& owner
     for (const auto& parameter : method.parameters) {
         parameters += ", ";
         const auto& type = parameter.type;
-        if (type == "string") {
-            parameters += "ptr, i64";
-        } else if (type == "bool") {
+        if (type == "bool") {
             parameters += "i1 zeroext";
         } else {
             parameters += llvmType(type);
@@ -176,6 +176,18 @@ std::string CodeGenerator::externMethodDeclaration(const ClassDeclaration& owner
     }
     return "declare " + externReturnLlvmType(method.returnType) + " @" +
            method.externalSymbol + "(" + parameters + ") ; receiver: " + owner.name + "\n";
+}
+
+std::string CodeGenerator::classMetadataSymbol(const std::string& className) const {
+    // The runtime owns the Exception metadata, and needs a single shared String
+    // metadata object (it builds exception messages through it), so both are
+    // externally named symbols rather than per-module private constants.
+    if (className == "String") return "@simp_string_class_meta";
+    const auto found = classes_.find(className);
+    if (found != classes_.end() && found->second->builtin) {
+        return "@simp_exception_class_meta";
+    }
+    return "@.simp.class.meta." + className;
 }
 
 std::string CodeGenerator::methodSymbol(const std::string& className,
@@ -211,6 +223,119 @@ void CodeGenerator::emitNullCheck(const std::string& pointer,
                      file + ", i64 " + std::to_string(location.file.size()) +
                      ", i64 " + std::to_string(location.line) + ", i64 " +
                      std::to_string(location.column) + ")\n";
+}
+
+CodeGenerator::Value CodeGenerator::emitStringFromBytes(const std::string& data,
+                                                        const std::string& length,
+                                                        const SourceLocation& location) {
+    const auto result = newTemporary();
+    instructions_ += "  " + result + " = call ptr @simp_string_new(ptr " +
+                     classMetadataSymbol("String") + ", ptr " + data + ", i64 " + length +
+                     ")\n";
+    return rootObjectValue({"String", result}, location);
+}
+
+CodeGenerator::Value CodeGenerator::emitStringLiteral(const std::string& bytes,
+                                                      const SourceLocation& location) {
+    std::string data = "null";
+    if (!bytes.empty()) {
+        const auto global = internString(bytes);
+        data = newTemporary();
+        instructions_ += "  " + data + " = getelementptr inbounds [" +
+                         std::to_string(bytes.size()) + " x i8], ptr " + global +
+                         ", i64 0, i64 0\n";
+    }
+    return emitStringFromBytes(data, std::to_string(bytes.size()), location);
+}
+
+CodeGenerator::Value CodeGenerator::emitFormatString(const Expression& expression) {
+    // '{}' placeholders split the format text into literal segments; the
+    // destination String is built first (so it is rooted before any argument
+    // allocates), then literal segments and formatted arguments are appended in
+    // source order, evaluating every argument exactly once.
+    std::vector<std::string> segments;
+    std::string segment;
+    for (std::size_t index = 0; index < expression.value.size(); ++index) {
+        if (expression.value[index] == '{' && index + 1 < expression.value.size() &&
+            expression.value[index + 1] == '}') {
+            segments.push_back(segment);
+            segment.clear();
+            ++index;
+            continue;
+        }
+        segment += expression.value[index];
+    }
+    segments.push_back(segment);
+    if (segments.size() != expression.arguments.size() + 1) {
+        throw DiagnosticError(expression.location,
+                              "backend could not match format placeholders to arguments");
+    }
+    const auto emitSegmentPointer = [this](const std::string& bytes) {
+        if (bytes.empty()) return std::string("null");
+        const auto global = internString(bytes);
+        const auto pointer = newTemporary();
+        instructions_ += "  " + pointer + " = getelementptr inbounds [" +
+                         std::to_string(bytes.size()) + " x i8], ptr " + global +
+                         ", i64 0, i64 0\n";
+        return pointer;
+    };
+    const auto leading = emitSegmentPointer(segments.front());
+    const auto destination = newTemporary();
+    instructions_ += "  " + destination + " = call ptr @simp_string_format_new(ptr " +
+                     classMetadataSymbol("String") + ", ptr " + leading + ", i64 " +
+                     std::to_string(segments.front().size()) + ")\n";
+    const auto result = rootObjectValue({"String", destination}, expression.location);
+    for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
+        const auto& argumentExpression = *expression.arguments[index];
+        const auto argument = emitExpression(argumentExpression);
+        const auto dynamic = buildDynamicValue(argument, argumentExpression.location);
+        const auto tag = newTemporary();
+        const auto integer = newTemporary();
+        const auto pointer = newTemporary();
+        const auto length = newTemporary();
+        instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " + dynamic.operand +
+                         ", 0\n"
+                         "  " + integer + " = extractvalue %SimpleArrayValue " +
+                         dynamic.operand + ", 1\n"
+                         "  " + pointer + " = extractvalue %SimpleArrayValue " +
+                         dynamic.operand + ", 2\n"
+                         "  " + length + " = extractvalue %SimpleArrayValue " +
+                         dynamic.operand + ", 3\n";
+        const auto& location = argumentExpression.location;
+        const auto file = internString(location.file);
+        instructions_ += "  call void @simp_string_format_append(ptr " + destination +
+                         ", i64 " + tag + ", i64 " + integer + ", ptr " + pointer + ", i64 " +
+                         length + ", ptr " + file + ", i64 " +
+                         std::to_string(location.file.size()) + ", i64 " +
+                         std::to_string(location.line) + ", i64 " +
+                         std::to_string(location.column) + ")\n";
+        const auto& trailing = segments[index + 1];
+        if (!trailing.empty()) {
+            const auto trailingPointer = emitSegmentPointer(trailing);
+            instructions_ += "  call void @simp_string_append_bytes(ptr " + destination +
+                             ", ptr " + trailingPointer + ", i64 " +
+                             std::to_string(trailing.size()) + ")\n";
+        }
+    }
+    return result;
+}
+
+void CodeGenerator::emitStringBytesAccess(const Value& value, const SourceLocation& location,
+                                          std::string& data, std::string& length) {
+    // simp_string_bytes borrows the String's managed buffer; the borrowed
+    // pointer stays valid only until the next allocation, so callers must
+    // consume it immediately.
+    const auto dataSlot = "%string.data." + std::to_string(nextVariable_++);
+    const auto lengthSlot = "%string.length." + std::to_string(nextVariable_++);
+    entryAllocas_ += "  " + dataSlot + " = alloca ptr\n"
+                     "  " + lengthSlot + " = alloca i64\n";
+    emitNullCheck(value.operand, location);
+    instructions_ += "  call void @simp_string_bytes(ptr " + value.operand + ", ptr " +
+                     dataSlot + ", ptr " + lengthSlot + ")\n";
+    data = newTemporary();
+    length = newTemporary();
+    instructions_ += "  " + data + " = load ptr, ptr " + dataSlot + "\n"
+                     "  " + length + " = load i64, ptr " + lengthSlot + "\n";
 }
 
 CodeGenerator::Value CodeGenerator::emitScalarNullComparison(const Value& operand, bool equals) {
@@ -269,10 +394,9 @@ void CodeGenerator::emitArrayElementStore(const std::string& valuePointer, Value
 
 void CodeGenerator::emitMapElementStore(const std::string& mapPointer, Value key, Value value,
                                         const SourceLocation& location) {
-    const auto keyData = newTemporary();
-    const auto keyLength = newTemporary();
-    instructions_ += "  " + keyData + " = extractvalue %SimpleString " + key.operand + ", 0\n"
-                     "  " + keyLength + " = extractvalue %SimpleString " + key.operand + ", 1\n";
+    std::string keyData;
+    std::string keyLength;
+    emitStringBytesAccess(key, location, keyData, keyLength);
     const auto dynamic = buildDynamicValue(std::move(value), location);
     const auto valueSlot = newTemporary();
     entryAllocas_ += "  " + valueSlot + " = alloca %SimpleArrayValue\n";
@@ -298,7 +422,6 @@ CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
     }
     const auto tag = newTemporary();
     const auto valueTag = value.type == "int" ? "1" :
-                          value.type == "string" ? "2" :
                           isMapType(value.type) ? "4" :
                           isArrayType(value.type) ? "5" :
                           value.type == "bool" ? "6" :
@@ -331,20 +454,6 @@ CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
                          "  " + withFloat + " = insertvalue %SimpleArrayValue " + stored +
                          ", i64 " + bits + ", 1\n";
         stored = withFloat;
-    } else if (value.type == "string") {
-        const auto data = newTemporary();
-        const auto length = newTemporary();
-        const auto withData = newTemporary();
-        const auto withLength = newTemporary();
-        instructions_ += "  " + data + " = extractvalue %SimpleString " + value.operand +
-                         ", 0\n"
-                         "  " + length + " = extractvalue %SimpleString " + value.operand +
-                         ", 1\n"
-                         "  " + withData + " = insertvalue %SimpleArrayValue " + stored +
-                         ", ptr " + data + ", 2\n"
-                         "  " + withLength + " = insertvalue %SimpleArrayValue " + withData +
-                         ", i64 " + length + ", 3\n";
-        stored = withLength;
     } else if (value.type == "type") {
         const auto data = newTemporary();
         const auto length = newTemporary();
@@ -403,9 +512,8 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
         }
         return {expectedType, result};
     }
-    if (expectedType == "string" || expectedType == "type") {
-        instructions_ += "  call void @simp_value_require_tag(i64 " + tag + ", i64 " +
-                         (expectedType == "string" ? "2" : "11") + ", ptr " +
+    if (expectedType == "type") {
+        instructions_ += "  call void @simp_value_require_tag(i64 " + tag + ", i64 11, ptr " +
                          file + ", i64 " + fileLength + ", i64 " + line + ", i64 " + column +
                          ")\n";
         const auto pointer = newTemporary();
@@ -455,9 +563,7 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
     // exactly. This prototype does not support extracting a proper subclass
     // instance into a base-class-typed variable from 'any'.
     const auto pointer = newTemporary();
-    const auto expectedMetadata = expectedType == "Exception"
-                                     ? "@simp_exception_class_meta"
-                                     : "@.simp.class.meta." + expectedType;
+    const auto expectedMetadata = classMetadataSymbol(expectedType);
     instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " + value.operand +
                      ", 2\n"
                      "  call void @simp_value_require_class(i64 " + tag + ", ptr " + pointer +
@@ -520,20 +626,10 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         return {"float", llvmDoubleConstant(expression.value)};
     case ExpressionKind::Boolean:
         return {"bool", expression.value == "true" ? "1" : "0"};
-    case ExpressionKind::String: {
-        const auto global = internString(expression.value);
-        const auto pointer = newTemporary();
-        instructions_ += "  " + pointer + ".data = getelementptr inbounds [" +
-                         std::to_string(expression.value.size()) + " x i8], ptr " + global +
-                         ", i64 0, i64 0\n";
-        const auto first = newTemporary();
-        const auto result = newTemporary();
-        instructions_ += "  " + first + " = insertvalue %SimpleString poison, ptr " + pointer +
-                         ".data, 0\n";
-        instructions_ += "  " + result + " = insertvalue %SimpleString " + first + ", i64 " +
-                         std::to_string(expression.value.size()) + ", 1\n";
-        return {"string", result};
-    }
+    case ExpressionKind::String:
+        return emitStringLiteral(expression.value, expression.location);
+    case ExpressionKind::FormatString:
+        return emitFormatString(expression);
     case ExpressionKind::Null:
         if (expectedType == "type") {
             const auto global = internString("null");
@@ -578,7 +674,8 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              "  " + nameResult +
                              " = call ptr @simp_value_type_name(i64 " + tag + ", ptr " +
                              pointer + ", ptr " + lengthSlot + ")\n";
-        } else if (classes_.find(operand.type) != classes_.end()) {
+        } else if (classes_.find(operand.type) != classes_.end() ||
+                   isStringType(operand.type)) {
             instructions_ += "  " + nameResult +
                              " = call ptr @simp_object_type_name(ptr " + operand.operand +
                              ", ptr " + lengthSlot + ")\n";
@@ -586,12 +683,6 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             std::string nullCondition;
             if (!operand.nullFlag.empty()) {
                 nullCondition = operand.nullFlag;
-            } else if (operand.type == "string") {
-                const auto data = newTemporary();
-                nullCondition = newTemporary();
-                instructions_ += "  " + data + " = extractvalue %SimpleString " +
-                                 operand.operand + ", 0\n"
-                                 "  " + nullCondition + " = icmp eq ptr " + data + ", null\n";
             } else if (operand.type == "array" || operand.type == "map" ||
                        operand.type == "buffer" || operand.type == "handle") {
                 nullCondition = newTemporary();
@@ -730,6 +821,16 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              "  " + result + " = trunc i64 " + length + " to i32\n";
             return {"int", result};
         }
+        if (!qualified && isStringType(receiver.type) && expression.value == "length") {
+            // 'length' is a compiler intrinsic property: the String class has no
+            // such field, and the byte count comes from the managed buffer.
+            std::string data;
+            std::string length;
+            emitStringBytesAccess(receiver, expression.location, data, length);
+            const auto result = newTemporary();
+            instructions_ += "  " + result + " = trunc i64 " + length + " to i32\n";
+            return {"int", result};
+        }
         if (!qualified && isBufferType(receiver.type)) {
             if (expression.value != "length") {
                 throw DiagnosticError(expression.location,
@@ -797,13 +898,11 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             return {"unsigned", result};
         } else {
             const auto key = emitExpression(*expression.arguments.front());
-            const auto keyData = newTemporary();
-            const auto keyLength = newTemporary();
-            instructions_ += "  " + keyData + " = extractvalue %SimpleString " + key.operand +
-                             ", 0\n"
-                             "  " + keyLength + " = extractvalue %SimpleString " + key.operand +
-                             ", 1\n"
-                             "  " + valuePointer + " = call ptr @simp_map_get(ptr " +
+            std::string keyData;
+            std::string keyLength;
+            emitStringBytesAccess(key, expression.arguments.front()->location, keyData,
+                                  keyLength);
+            instructions_ += "  " + valuePointer + " = call ptr @simp_map_get(ptr " +
                              collection.operand + ", ptr " + keyData + ", i64 " + keyLength +
                              ", ptr " + file + ", i64 " +
                              std::to_string(expression.location.file.size()) + ", i64 " +
@@ -867,8 +966,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         }
         const auto* owner = found->second;
         const auto object = newTemporary();
-        const auto metadata = owner->builtin ? "@simp_exception_class_meta"
-                                             : "@.simp.class.meta." + owner->name;
+        const auto metadata = classMetadataSymbol(owner->name);
         instructions_ += "  " + object + " = call ptr @simp_gc_alloc(ptr " + metadata + ")\n";
         rootObjectValue({owner->name, object}, expression.location);
         emitNullCheck(object, expression.location);
@@ -981,42 +1079,6 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             }
             return {"void", ""};
         }
-        if (receiver.type == "string") {
-            if (target.value != "toInt" && target.value != "toUnsigned" &&
-                target.value != "toFloat") {
-                throw DiagnosticError(target.location,
-                                      "strings support only 'toInt()', 'toUnsigned()', and "
-                                      "'toFloat()'");
-            }
-            if (!expression.arguments.empty()) {
-                throw DiagnosticError(target.location,
-                                      "'" + target.value + "' takes no arguments");
-            }
-            const auto data = newTemporary();
-            const auto length = newTemporary();
-            instructions_ += "  " + data + " = extractvalue %SimpleString " + receiver.operand +
-                             ", 0\n"
-                             "  " + length + " = extractvalue %SimpleString " +
-                             receiver.operand + ", 1\n";
-            emitNullCheck(data, target.location);
-            const auto file = internString(target.location.file);
-            const auto result = newTemporary();
-            const auto function = target.value == "toInt"      ? "simp_string_to_int"
-                                  : target.value == "toUnsigned" ? "simp_string_to_unsigned"
-                                                                  : "simp_string_to_float";
-            const auto resultType = target.value == "toInt"       ? "i32"
-                                    : target.value == "toUnsigned" ? "i64"
-                                                                    : "double";
-            const auto resultSimpleType = target.value == "toInt"       ? "int"
-                                         : target.value == "toUnsigned" ? "unsigned"
-                                                                         : "float";
-            instructions_ += "  " + result + " = call " + resultType + " @" + function +
-                             "(ptr " + data + ", i64 " + length + ", ptr " + file + ", i64 " +
-                             std::to_string(target.location.file.size()) + ", i64 " +
-                             std::to_string(target.location.line) + ", i64 " +
-                             std::to_string(target.location.column) + ")\n";
-            return {resultSimpleType, result};
-        }
         if (isMapType(receiver.type)) {
             if ((target.value != "contains" && target.value != "remove") ||
                 expression.arguments.size() != 1) {
@@ -1024,18 +1086,16 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                       "maps support only 'contains(string)' and 'remove(string)'");
             }
             const auto key = emitExpression(*expression.arguments.front());
-            const auto keyData = newTemporary();
-            const auto keyLength = newTemporary();
+            std::string keyData;
+            std::string keyLength;
+            emitStringBytesAccess(key, expression.arguments.front()->location, keyData,
+                                  keyLength);
             const auto file = internString(target.location.file);
             const auto result = newTemporary();
             const auto function = target.value == "contains"
                                       ? "simp_map_contains"
                                       : "simp_map_remove";
-            instructions_ += "  " + keyData + " = extractvalue %SimpleString " + key.operand +
-                             ", 0\n"
-                             "  " + keyLength + " = extractvalue %SimpleString " + key.operand +
-                             ", 1\n"
-                             "  " + result + " = call i32 @" + function + "(ptr " +
+            instructions_ += "  " + result + " = call i32 @" + function + "(ptr " +
                              receiver.operand + ", ptr " + keyData + ", i64 " + keyLength +
                              ", ptr " + file + ", i64 " +
                              std::to_string(target.location.file.size()) + ", i64 " +
@@ -1199,11 +1259,8 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto& target = expression.value;
         const auto targetClass = classes_.find(target);
         const bool classTarget = targetClass != classes_.end();
-        const auto expectedMetadata = classTarget
-                                          ? (targetClass->second->builtin
-                                                 ? "@simp_exception_class_meta"
-                                                 : "@.simp.class.meta." + target)
-                                          : "null";
+        const auto expectedMetadata =
+            classTarget ? classMetadataSymbol(target) : std::string("null");
         if (operand.type == "null") return {"bool", "0"};
         if (operand.type == "any") {
             const auto tag = newTemporary();
@@ -1211,7 +1268,6 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             const auto matches = newTemporary();
             const auto result = newTemporary();
             const auto expectedTag = target == "int" ? "1" :
-                                     target == "string" ? "2" :
                                      target == "map" ? "4" :
                                      target == "array" ? "5" :
                                      target == "bool" ? "6" :
@@ -1231,7 +1287,10 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             return {"bool", result};
         }
         if (classTarget) {
-            if (classes_.find(operand.type) == classes_.end()) return {"bool", "0"};
+            if (classes_.find(operand.type) == classes_.end() &&
+                !isStringType(operand.type)) {
+                return {"bool", "0"};
+            }
             const auto matches = newTemporary();
             const auto result = newTemporary();
             instructions_ += "  " + matches +
@@ -1243,9 +1302,6 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         if (operand.type != target) return {"bool", "0"};
         if (isNullableScalarType(operand.type)) {
             return emitScalarNullComparison(operand, false);
-        }
-        if (operand.type == "string") {
-            return emitStringNullComparison(operand, false);
         }
         if (operand.type == "type") {
             return emitStringNullComparison(operand, false);
@@ -1384,9 +1440,6 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                 const auto& operand = expression.left->kind == ExpressionKind::Null ? right : left;
                 if (isNullableScalarType(operand.type)) {
                     return emitScalarNullComparison(operand, operation == "==");
-                }
-                if (operand.type == "string") {
-                    return emitStringNullComparison(operand, operation == "==");
                 }
                 if (isDynamicValueType(operand.type)) {
                     const auto tag = newTemporary();

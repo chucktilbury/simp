@@ -63,8 +63,13 @@ void CodeGenerator::emitPrint(const Statement& statement) {
         }
         emitStringBytes(format.value.substr(segmentStart));
     } else {
-        const auto value = emitExpression(*statement.expressions.front());
-        emitPrintValue(value, statement.location);
+        const auto& expression = *statement.expressions.front();
+        if (expression.kind == ExpressionKind::String) {
+            emitStringBytes(expression.value);
+        } else {
+            const auto value = emitExpression(expression);
+            emitPrintValue(value, statement.location);
+        }
     }
     emitStringBytes("\n");
 }
@@ -107,7 +112,25 @@ void CodeGenerator::emitPrintValue(const Value& value, const SourceLocation& loc
         instructions_ += "  br label %" + endLabel + "\n" + falseLabel + ":\n";
         emitStringBytes("false");
         instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
-    } else if (value.type == "string" || value.type == "type") {
+    } else if (isStringType(value.type)) {
+        const auto isNull = newTemporary();
+        const auto nullLabel = freshLabel("print.string.null");
+        const auto dataLabel = freshLabel("print.string.data");
+        const auto endLabel = freshLabel("print.string.end");
+        instructions_ += "  " + isNull + " = icmp eq ptr " + value.operand + ", null\n"
+                         "  br i1 " + isNull + ", label %" + nullLabel + ", label %" +
+                         dataLabel + "\n" + nullLabel + ":\n";
+        emitStringBytes("(null)");
+        instructions_ += "  br label %" + endLabel + "\n" + dataLabel + ":\n";
+        std::string data;
+        std::string length;
+        emitStringBytesAccess(value, location, data, length);
+        const auto stream = newTemporary();
+        instructions_ += "  " + stream + " = load ptr, ptr @stdout\n";
+        instructions_ += "  call i64 @fwrite(ptr " + data + ", i64 1, i64 " + length +
+                         ", ptr " + stream + ")\n";
+        instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
+    } else if (value.type == "type") {
         const auto data = newTemporary();
         const auto length = newTemporary();
         instructions_ += "  " + data + " = extractvalue %SimpleString " + value.operand +
@@ -222,6 +245,19 @@ void CodeGenerator::emitPrintDynamicValue(const Value& value,
     // user-defined toString(); it prints a fixed placeholder so output stays
     // deterministic regardless of the referenced class's runtime identity.
     instructions_ += instanceLabel + ":\n";
+    // A String instance prints its bytes; every other class prints a fixed
+    // placeholder because dynamic printing does not dispatch to user code.
+    const auto instanceMetadata = newTemporary();
+    const auto isString = newTemporary();
+    const auto stringObjectLabel = freshLabel("print.any.string.object");
+    const auto otherObjectLabel = freshLabel("print.any.other.object");
+    instructions_ += "  " + instanceMetadata + " = load ptr, ptr " + objectPointer + "\n"
+                     "  " + isString + " = icmp eq ptr " + instanceMetadata + ", " +
+                     classMetadataSymbol("String") + "\n"
+                     "  br i1 " + isString + ", label %" + stringObjectLabel + ", label %" +
+                     otherObjectLabel + "\n" + stringObjectLabel + ":\n";
+    emitPrintValue({"String", objectPointer}, location);
+    instructions_ += "  br label %" + endLabel + "\n" + otherObjectLabel + ":\n";
     emitStringBytes("<object>");
     instructions_ += "  br label %" + endLabel + "\n";
     instructions_ += endLabel + ":\n";

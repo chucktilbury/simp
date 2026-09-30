@@ -457,28 +457,13 @@ Statement Parser::parsePrint() {
     consume(TokenType::LeftParen, "'(' after print");
     if (!check(TokenType::RightParen)) {
         statement.expressions.push_back(parseExpression());
-        if (check(TokenType::LeftParen)) {
-            const auto& format = *statement.expressions.front();
-            if (format.kind != ExpressionKind::String || !format.formattedString) {
-                error(current(), "format arguments require a double-quoted string literal");
-            }
-            ++current_;
-            if (!check(TokenType::RightParen)) {
-                do {
-                    statement.expressions.push_back(parseExpression());
-                } while (match(TokenType::Comma));
-            }
-            consume(TokenType::RightParen, "')' after format arguments");
-            validateFormatString(format, statement.expressions.size() - 1, keyword);
-        } else {
-            if (match(TokenType::Comma)) {
-                error(previous(), "use double-quoted format-call syntax: print(\"{}\"(value))");
-            }
-            const auto& value = *statement.expressions.front();
-            if (value.kind == ExpressionKind::String && value.formattedString &&
-                value.value.find_first_of("{}") != std::string::npos) {
-                error(keyword, "formatted string requires expression arguments in parentheses");
-            }
+        if (match(TokenType::Comma)) {
+            error(previous(), "use double-quoted format-call syntax: print(\"{}\"(value))");
+        }
+        const auto& value = *statement.expressions.front();
+        if (value.kind == ExpressionKind::String && value.formattedString &&
+            value.value.find_first_of("{}") != std::string::npos) {
+            error(keyword, "formatted string requires expression arguments in parentheses");
         }
     }
     consume(TokenType::RightParen, "')' after print arguments");
@@ -1002,6 +987,25 @@ std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> exp
             access->value = member.text;
             access->left = std::move(expression);
             expression = std::move(access);
+            continue;
+        }
+        if (check(TokenType::LeftParen) &&
+            expression->kind == ExpressionKind::String &&
+            !expression->formattedString) {
+            error(current(), "format arguments require a double-quoted string literal");
+        }
+        if (check(TokenType::LeftParen) &&
+            expression->kind == ExpressionKind::String &&
+            expression->formattedString) {
+            ++current_;
+            expression->kind = ExpressionKind::FormatString;
+            if (!check(TokenType::RightParen)) {
+                do {
+                    expression->arguments.push_back(parseExpression());
+                } while (match(TokenType::Comma));
+            }
+            consume(TokenType::RightParen, "')' after format arguments");
+            validateFormatString(*expression, expression->arguments.size(), tokens_[current_ - 1]);
             continue;
         }
         if (check(TokenType::LeftParen) &&

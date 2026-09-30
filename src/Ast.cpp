@@ -58,6 +58,7 @@ const char* expressionName(ExpressionKind kind) {
     case ExpressionKind::Float: return "Float";
     case ExpressionKind::Boolean: return "Boolean";
     case ExpressionKind::String: return "String";
+    case ExpressionKind::FormatString: return "FormatString";
     case ExpressionKind::Identifier: return "Identifier";
     case ExpressionKind::Unary: return "Unary";
     case ExpressionKind::Binary: return "Binary";

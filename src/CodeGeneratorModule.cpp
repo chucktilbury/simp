@@ -36,6 +36,10 @@ std::string methodTableName(const ClassDeclaration& owner,
 std::string viewMetadataName(const ClassDeclaration& owner,
                              const std::vector<std::string>& path) {
     if (owner.builtin && path.empty()) return "@simp_exception_class_meta";
+    // The runtime creates String instances itself (exception messages), so the
+    // String metadata is a single externally visible object shared by every
+    // module instead of a per-module private constant.
+    if (owner.name == "String" && path.empty()) return "@simp_string_class_meta";
     return path.empty() ? "@.simp.class.meta." + owner.name
                         : "@.simp.view.meta." + owner.name + "." +
                               subobjectTag(path, owner);
@@ -183,7 +187,14 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
                 metadataGlobals_ += "]\n";
             }
             const auto metadata = viewMetadataName(owner, view.first);
-            metadataGlobals_ += metadata + " = private constant %SimpleClassMeta ";
+            // The runtime allocates String instances itself, so the String
+            // metadata is an externally visible symbol. Every module emits an
+            // identical definition and 'linkonce_odr' collapses them into the
+            // single object whose address identifies the class.
+            const bool sharedMetadata = owner.name == "String" && view.first.empty();
+            metadataGlobals_ += metadata +
+                                (sharedMetadata ? " = linkonce_odr constant %SimpleClassMeta "
+                                                : " = private constant %SimpleClassMeta ");
             metadataGlobals_ += "{ ptr " + className + ", i64 " +
                                 std::to_string(owner.name.size()) + ", i64 " +
                                 std::to_string(flattenedFieldCount(owner)) + ", ptr " +
@@ -326,41 +337,14 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
         std::string arguments = "ptr %this";
         for (const auto& parameter : method.parameters) {
             const auto argument = "%arg." + parameter.name;
-            arguments += ", ";
-            if (parameter.type == "string") {
-                const auto data = newTemporary();
-                const auto length = newTemporary();
-                instructions_ += "  " + data + " = extractvalue %SimpleString " + argument +
-                                 ", 0\n"
-                                 "  " + length + " = extractvalue %SimpleString " + argument +
-                                 ", 1\n";
-                arguments += "ptr " + data + ", i64 " + length;
-            } else {
-                arguments += llvmType(parameter.type) +
-                             (parameter.type == "bool" ? " zeroext " : " ") + argument;
-            }
+            arguments += ", " + llvmType(parameter.type) +
+                         (parameter.type == "bool" ? " zeroext " : " ") + argument;
         }
         const auto external = "@" + method.externalSymbol;
         if (method.returnType == "void") {
             instructions_ += "  call void " + external + "(" + arguments + ")\n";
             emitRootFramePop();
             instructions_ += "  ret void\n";
-        } else if (method.returnType == "string") {
-            const auto raw = newTemporary();
-            const auto data = newTemporary();
-            const auto length = newTemporary();
-            const auto first = newTemporary();
-            const auto result = newTemporary();
-            instructions_ += "  " + raw + " = call { ptr, i64 } " + external + "(" +
-                             arguments + ")\n"
-                             "  " + data + " = extractvalue { ptr, i64 } " + raw + ", 0\n"
-                             "  " + length + " = extractvalue { ptr, i64 } " + raw + ", 1\n"
-                             "  " + first + " = insertvalue %SimpleString poison, ptr " + data +
-                             ", 0\n"
-                             "  " + result + " = insertvalue %SimpleString " + first + ", i64 " +
-                             length + ", 1\n";
-            emitRootFramePop();
-            instructions_ += "  ret %SimpleString " + result + "\n";
         } else {
             const auto result = newTemporary();
             const auto returnType = method.returnType == "bool"
@@ -757,6 +741,11 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare ptr @simp_map_slice(ptr, i32, i32, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_map_slice_ex(ptr, i32, i32, i32, i32, ptr, i64, i64, i64)\n"
            << "declare void @simp_map_set(ptr, ptr, i64, ptr, ptr, i64, i64, i64)\n"
+           << "declare ptr @simp_string_new(ptr, ptr, i64)\n"
+           << "declare void @simp_string_bytes(ptr, ptr, ptr)\n"
+           << "declare ptr @simp_string_format_new(ptr, ptr, i64)\n"
+           << "declare void @simp_string_append_bytes(ptr, ptr, i64)\n"
+           << "declare void @simp_string_format_append(ptr, i64, i64, ptr, i64, ptr, i64, i64, i64)\n"
            << "declare i32 @simp_string_to_int(ptr, i64, ptr, i64, i64, i64)\n"
            << "declare i64 @simp_string_to_unsigned(ptr, i64, ptr, i64, i64, i64)\n"
            << "declare double @simp_string_to_float(ptr, i64, ptr, i64, i64, i64)\n"

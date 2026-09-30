@@ -184,7 +184,17 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
     case ExpressionKind::Boolean:
         return "bool";
     case ExpressionKind::String:
-        return "string";
+        return "String";
+    case ExpressionKind::FormatString:
+        for (auto& argument : expression.arguments) {
+            const auto type = analyzeExpression(*argument);
+            if (type == "void" || type == "buffer" || type == "handle" ||
+                type == "array" || type == "map") {
+                throw DiagnosticError(argument->location,
+                                      "formatted string argument is not printable");
+            }
+        }
+        return "String";
     case ExpressionKind::Null:
         return expectedType == "type" ? "type" : "null";
     case ExpressionKind::TypeName: {
@@ -300,6 +310,9 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 throw DiagnosticError(expression.location,
                                       "buffers support only the read-only 'length' member");
             }
+            if (receiverType == "String" && expression.value == "length") {
+                return "int";
+            }
             if (isOpaqueHandleType(receiverType)) {
                 throw DiagnosticError(expression.location,
                                       "handle has no built-in operations");
@@ -357,7 +370,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
     case ExpressionKind::MapLiteral: {
         for (std::size_t index = 0; index < expression.arguments.size(); index += 2) {
             auto& key = *expression.arguments[index];
-            if (analyzeExpression(key) != "string") {
+            if (analyzeExpression(key) != "String") {
                 throw DiagnosticError(key.location,
                                       "map keys must have type string");
             }
@@ -427,7 +440,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         if (isMapType(collectionType) && expression.kind == ExpressionKind::Index) {
             auto& key = *expression.arguments.front();
-            if (analyzeExpression(key) != "string") {
+            if (analyzeExpression(key) != "String") {
                 throw DiagnosticError(key.location,
                                       "map keys must have type string");
             }
@@ -627,7 +640,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 if (target.value == "resize" ? type != "int" :
                     (type != "any" && type != "null" && type != "int" &&
                      type != "bool" && type != "float" && type != "unsigned" &&
-                     type != "string" && !isArrayType(type) && !isMapType(type) &&
+                     type != "String" && !isArrayType(type) && !isMapType(type) &&
                      classes_.find(type) == classes_.end())) {
                     throw DiagnosticError(expression.arguments.front()->location,
                                           target.value == "resize"
@@ -647,7 +660,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                           "map '" + target.value +
                                               "' expects one string key");
                 }
-                if (analyzeExpression(*expression.arguments.front()) != "string") {
+                if (analyzeExpression(*expression.arguments.front()) != "String") {
                     throw DiagnosticError(expression.arguments.front()->location,
                                           "map key must have type string");
                 }
@@ -687,21 +700,6 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                     }
                     return "void";
                 }
-            }
-            if (receiverType == "string") {
-                if (target.value != "toInt" && target.value != "toUnsigned" &&
-                    target.value != "toFloat") {
-                    throw DiagnosticError(target.location,
-                                          "strings support only 'toInt()', 'toUnsigned()', "
-                                          "and 'toFloat()'");
-                }
-                if (!expression.arguments.empty()) {
-                    throw DiagnosticError(expression.location,
-                                          "'" + target.value + "' takes no arguments");
-                }
-                return target.value == "toInt"       ? "int"
-                      : target.value == "toUnsigned" ? "unsigned"
-                                                       : "float";
             }
             if (isOpaqueHandleType(receiverType)) {
                 throw DiagnosticError(target.location,
@@ -1019,7 +1017,7 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
         }
         if (isMapType(collectionType)) {
             auto& key = *expression.arguments.front();
-            if (analyzeExpression(key) != "string") {
+            if (analyzeExpression(key) != "String") {
                 throw DiagnosticError(key.location,
                                       "map keys must have type string");
             }

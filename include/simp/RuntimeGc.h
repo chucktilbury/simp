@@ -99,24 +99,29 @@ typedef struct SimpRootFrame {
     const uint64_t *const *tags;
 } SimpRootFrame;
 
-/* C-ABI mirror of the compiler's %SimpleString value ({ ptr, i64 }). Native
- * method bindings that take or return a Simple 'string' exchange it using
- * exactly this struct layout: a data
- * pointer (NOT guaranteed NUL-terminated; use `length` bytes) followed by a
- * byte length. See SIMPLE-LANGUAGE-NOTES.md, "Out-of-line methods and native
- * bindings", for the method ABI. */
-typedef struct SimpString {
-    const char *data;
-    uint64_t length;
-} SimpString;
-
-/* Inline-C support. The returned copy remains valid until the generated inline
- * shim ends; do not retain it after that block returns. */
-const char *simp_string_cstr(const SimpString *text);
+/* Simple string/String native-bound arguments and results are managed object
+ * pointers, not byte/length aggregates. Call simp_string_bytes to borrow the
+ * current bytes; they are not NUL-terminated, and a resize invalidates them.
+ * Inline captures pass a pointer to the String variable's object-pointer slot.
+ * The C-string helper returns a temporary copy valid until the inline shim
+ * returns; never retain it. */
+const char *simp_string_cstr(void *const *text);
+void simp_string_bytes(void *object, const char **data, uint64_t *length);
+void *simp_string_new(const SimpClassMeta *metadata, const char *bytes, uint64_t length);
+void *simp_string_format_new(const SimpClassMeta *metadata, const char *bytes, uint64_t length);
+void simp_string_append_bytes(void *object, const char *bytes, uint64_t length);
+void simp_string_format_append(void *object, uint64_t tag, int64_t integer,
+                               void *pointer, uint64_t length, const char *file,
+                               uint64_t file_length, uint64_t line, uint64_t column);
+void simp_string_append(void *receiver, void *other);
+int32_t simp_string_equals(void *receiver, void *other);
+int32_t simp_string_method_to_int(void *receiver);
+uint64_t simp_string_method_to_unsigned(void *receiver);
+double simp_string_method_to_float(void *receiver);
 void simp_inline_cstr_begin(void);
 void simp_inline_cstr_end(void);
 
-/* String-to-number conversion, backing the 'string' built-in dot-operations
+/* String-to-number conversion, backing String methods
  * s.toInt(), s.toUnsigned(), s.toFloat() (see "Strings" in
  * SIMPLE-LANGUAGE-NOTES.md). Each parses the *entire* byte range as one
  * value (no leading/trailing whitespace, no partial parses) and raises a

@@ -1,5 +1,5 @@
-# Rejects passing a string to a formatted-print placeholder that requires an integer.
+# Buffers are arbitrary bytes, not valid UTF-8 String values.
 start {
-    string value = "not an integer"
+    buffer value = buffer(1)
     print("value: {}"(value))
 }

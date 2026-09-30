@@ -1,0 +1,66 @@
+# Standard String class. Literal creation is compiler-owned; no public constructor.
+class String {
+    private:
+    buffer _bytes
+
+    protected:
+    String() {
+        _bytes = buffer(0)
+    }
+
+    public:
+    void append(String other)
+    bool equals(String other)
+    int toInt()
+    unsigned toUnsigned()
+    float toFloat()
+
+    unsigned byteAt(int index) {
+        raise(Exception("String.byteAt is not implemented"))
+    }
+    String slice(int first, int last) {
+        raise(Exception("String.slice is not implemented"))
+    }
+    void insert(int index, String other) {
+        raise(Exception("String.insert is not implemented"))
+    }
+    void removeRange(int first, int last) {
+        raise(Exception("String.removeRange is not implemented"))
+    }
+    void clear() {
+        raise(Exception("String.clear is not implemented"))
+    }
+    int find(String needle) {
+        raise(Exception("String.find is not implemented"))
+    }
+    bool contains(String needle) {
+        raise(Exception("String.contains is not implemented"))
+    }
+    bool startsWith(String prefix) {
+        raise(Exception("String.startsWith is not implemented"))
+    }
+    bool endsWith(String suffix) {
+        raise(Exception("String.endsWith is not implemented"))
+    }
+    array split(String separator) {
+        raise(Exception("String.split is not implemented"))
+    }
+    String replace(String target, String replacement) {
+        raise(Exception("String.replace is not implemented"))
+    }
+    String trim() {
+        raise(Exception("String.trim is not implemented"))
+    }
+    String toUpper() {
+        raise(Exception("String.toUpper is not implemented"))
+    }
+    String toLower() {
+        raise(Exception("String.toLower is not implemented"))
+    }
+}
+
+void String.append(String other) from "simp_string_append"
+bool String.equals(String other) from "simp_string_equals"
+int String.toInt() from "simp_string_method_to_int"
+unsigned String.toUnsigned() from "simp_string_method_to_unsigned"
+float String.toFloat() from "simp_string_method_to_float"

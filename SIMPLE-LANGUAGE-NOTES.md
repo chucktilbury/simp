@@ -123,10 +123,8 @@ The language is intended to have full object-oriented programming support. Broad
     require a much larger ABI change (boxing/tagging scalars everywhere,
     akin to the `any` representation) and was deliberately out of scope for
     this pass.
-  - **String representation:** unlike scalars, `string` needed no new
-    tagging — a null string is simply the zero-valued `SimpleString`
-    (null data pointer, zero length), which prints as `(null)` and compares
-    equal to `null`.
+  - **String representation:** `string` aliases the `String` class. A null
+    string is a null object reference, which prints as `(null)`.
   - **Bug fixed alongside this work:** `array`/`map` `.length` access
     previously performed a raw, unchecked dereference of the receiver with
     no null guard; now that `array a = null` / `map m = null` are legal, a
@@ -147,14 +145,8 @@ The language is intended to have full object-oriented programming support. Broad
   simply a consumption boundary like any other: the operand's zero payload
   is what gets converted, so `float(nullInt)` yields `0.0`, not an
   exception.
-- String-to-number conversion is implemented (see "String-to-number
-  conversion (implemented)" under "Strings" below) as built-in
-  `s.toInt()`/`s.toFloat()`/`s.toUnsigned()` methods on the native
-  `string` type — checked, throw-on-failure conversions, following the
-  same "explicit conversion routine" model already used for classes, but
-  implemented as the same kind of built-in dot-operation as
-  `array.length`/`buffer.resize()` rather than as part of the still-open
-  full `String`-class redesign.
+- String-to-number conversion uses ordinary native-bound `String` methods:
+  `toInt()`, `toFloat()`, and `toUnsigned()`.
 - The compiler should reject conversions that are provably invalid and use runtime type-compatibility checks when compatibility cannot be determined statically.
 - Class member initializers are restricted to compile-time constants.
 
@@ -626,20 +618,33 @@ statements.
   "value: {}"(x)
   ```
 
-- Strings are UTF-8 and internally dynamic-length `uint8_t` arrays.
-- They are not NUL-terminated C strings.
-- Operations may mutate existing string storage rather than always copying.
-- APIs that require NUL-terminated input require an explicit compatible conversion.
-- Built-in object-to-string conversions are desired.
-
-UTF-8 is the choice for now. Advanced Unicode semantics are deferred. `string.length` itself remains unimplemented, but its semantics are confirmed: it is a byte count (`uint8_t` count of the backing storage), not a Unicode code-point count — consistent with `buffer`'s confirmed byte-oriented `length`/indexing/slicing. Arrays and maps expose a read-only `length` property in the current prototype.
+- `string` aliases the real, inheritable prelude class `String`
+  (`include/simp/String.simp`). Literals and formatted expressions create
+  fresh objects; assignments and arguments share object identity.
+  `==`/`!=` compare identity, while `.equals(other)` compares exact bytes.
+- A private `buffer _bytes` owns UTF-8 bytes; `length` reads its byte count.
+  `.append(other)` changes that buffer in place, including for aliases.
+  `.toInt()`, `.toUnsigned()`, and `.toFloat()` are checked conversions.
+- The class declares `byteAt`, `slice`, `insert`, `removeRange`, `clear`,
+  `find`, `contains`, `startsWith`, `endsWith`, `split`, `replace`, `trim`,
+  `toUpper`, and `toLower`, but these currently raise catchable
+  "not implemented" exceptions. String indexing/slicing syntax and
+  buffer-to-String conversion remain deferred.
+- Formatting `"{} {}"(left, right)` is an expression usable in declarations,
+  calls, returns, arrays, and maps; arguments are evaluated once in source
+  order. Only literal `{}` placeholders are supported; arity is checked at
+  compile time. Scalars, strings, type values and dynamic values format;
+  other class objects show `<object>`. `print` adds a newline.
+- Literal and formatted fragments are UTF-8 validated; runtime append
+  validates supplied bytes and preserves valid UTF-8. No public byte
+  mutation or buffer-to-String conversion exists in this prototype.
+  The native byte view is borrowed, not NUL-terminated, and invalidated by
+  resize. `simp_string_cstr()` explicitly copies for inline-C callers.
+  Advanced Unicode operations are deferred.
 
 ### String-to-number conversion (implemented)
 
-`string` supports three built-in, checked conversion methods, implemented
-as the same kind of built-in dot-operation as `array.length` and
-`buffer.resize()` (not real class-method dispatch, and not part of the
-still-open full `String`-class redesign):
+`String` exposes three checked native-bound conversion methods:
 
 - `s.toInt()` -> `int`: optional leading `+`/`-`, digit-only body, no
   whitespace tolerance, the entire string must be consumed. Raises a
@@ -660,7 +665,7 @@ null-receiver method call would. See
 worked example covering all three methods, valid and invalid inputs, and
 exception-catching via `try`/`except`.
 
-### `buffer` and `handle` types (confirmed design, not yet implemented)
+### `buffer` and `handle` types (implemented subset)
 
 Two new built-in reference types, `buffer` and `handle`, are confirmed. Both
 are, like `array` and `map`, not classes: no user-defined methods, no
@@ -788,137 +793,11 @@ begin, following the precedent set by `array`/`map`/class references:
 
 #### Equality and comparison for strings (confirmed)
 
-`string`/`String` will **not** get `==`, `!=`, or ordering comparisons.
-This resolves the conflict previously flagged below: the no-operators rule
-for `buffer`/`handle`/`string` applies consistently, with no exception for
-`String`. Any string-content comparison needed by user code is a named
-method (for example `s.equals(other)`), not an operator — matching the
-project's general preference for avoiding syntax sugar where an explicit
-method call is just as clear.
-
-### Proposal: a class-based `String` on top of `buffer` (pending review, not yet implemented)
-
-This proposal resolves a design tension: literal scalar values (`int`, `bool`,
-`float`, `unsigned`) can never have methods called on them (`int x = 0;
-x.add(3)` must be a syntax error), yet a useful string API (`find`, `insert`,
-`clear`, `append`, and similar) is naturally expressed with method-call
-syntax. The resolution is that `string` stops being a native/opaque scalar
-and becomes a genuine, user-inheritable class, `String`, whose backing
-storage is the now-confirmed `buffer` type above.
-
-#### `String`
-
-- `String` becomes a real class, declared in a standard/prelude module,
-  with one private field: `buffer _bytes`. Because it is a genuine class,
-  it can be subclassed like any other class (multiple/virtual inheritance
-  already supported by the language applies to it with no special-casing).
-- The `string` keyword becomes an alias for `String`, exactly the way
-  `array`/`list` and `map`/`dict` are already aliases for one underlying
-  type. Existing code that declares `string` keeps compiling; it now
-  denotes a class type rather than a native scalar.
-- String literals (`"..."`, `'...'`) still produce `String` values; the
-  compiler synthesizes the byte contents directly into a new `String`'s
-  `_bytes` buffer rather than routing through a public constructor, so there
-  is no circularity between the literal syntax and the class's own API.
-- Proposed method surface for the first milestone (all are ordinary class
-  methods — Simple-implemented where practical, `from "<symbol>"`
-  native-bound where they need C library support):
-  - `s.length` — read-only `int`, UTF-8 byte count (property, not a method
-    call, matching `array`/`map`).
-  - `s[i]` — reads byte `i` as `unsigned` (`0..255`); this is a byte index,
-    **not** a Unicode code-point index, mirroring `buffer`. Unlike
-    `buffer`, `String` element access is always `unsigned` — there is no
-    `int`-accepting write form.
-  - `s[start:end]` — slices a half-open byte range into a new `String`
-    (copy), matching `array`/`map`/`buffer` slicing.
-  - `s.append(other: String)` — mutates `s` in place, no return value.
-  - `s.insert(index: int, other: String)` — inserts at a byte index,
-    shifting the remainder; mutates in place.
-  - `s.removeRange(start: int, end: int)` — deletes a half-open byte range,
-    shifting the remainder; mutates in place.
-  - `s.clear()` — truncates to zero length; mutates in place.
-  - `s.find(needle: String)` — returns the byte index of the first
-    occurrence, or `-1` if absent (an `int`, not an exception — matching
-    `map.contains` returning `0`/`1` rather than raising).
-  - `s.contains(needle: String)` — returns `bool`.
-  - `s.startsWith(prefix: String)` / `s.endsWith(suffix: String)` — `bool`.
-  - `s.split(separator: String)` — returns `array` of `String`.
-  - `s.replace(target: String, replacement: String)` — returns a **new**
-    `String`; not mutating, since replacement may change length.
-  - `s.trim()` — returns a new `String` with leading/trailing ASCII
-    whitespace removed (Unicode-aware trimming deferred, matching the
-    existing "advanced Unicode semantics deferred" note).
-  - `s.toUpper()` / `s.toLower()` — ASCII-only for the first milestone,
-    same deferral as above.
-  - `s.equals(other: String)` — returns `bool`, exact UTF-8 byte equality
-    (case-sensitive, no Unicode normalization, matching the existing
-    map-key comparison rule). This is the supported way to compare string
-    content; see "Equality and comparison for strings (confirmed)" above.
-- `==`, `!=`, and ordering comparisons (`<`, `>`, and so on) remain
-  unsupported for `String`, matching `string`'s current behavior and the
-  confirmed `buffer`/`handle`/`string` no-operators rule (see "Equality and
-  comparison for strings (confirmed)" above). `s.equals(other)` is the
-  supported content-equality operation instead.
-- Mutating methods use alias/reference semantics, matching how `array` and
-  `map` assignment already aliases shared mutable storage: two variables
-  referring to the same `String` observe each other's in-place mutations.
-  Assigning a `String` does not copy it; `s[start:end]` and `.replace(...)`
-  are the explicit ways to get an independent copy.
-- Operator overloading remains unsupported, so there is no `+` concatenation
-  operator; `.append(...)` (mutating) is the supported way to grow a
-  `String` in place.
-- Native ABI impact: the existing `SimpString { const char *data; uint64_t
-  length; }` C-ABI marshaling struct (`include/simp/RuntimeGc.h`,
-  `simp_string_cstr`) keeps its role at the native-bound-method boundary
-  unchanged; it is a wire format for crossing into C, not the in-heap
-  representation, so this proposal does not disturb the native-bindings ABI
-  described in "Out-of-line methods and native C bindings."
-
-#### Explicitly out of scope for this proposal
-
-- `handle` (confirmed above, opaque, used for native resource ownership) is
-  a separate, complementary type; it is not used for string or buffer
-  storage, which stay GC-traced.
-- Unicode code-point iteration/indexing, `regex`-style pattern matching, and
-  locale-aware case conversion/collation remain deferred, matching the
-  document's existing Unicode deferrals.
-- Exact numeric parsing/formatting method names and signatures (turning a
-  `String` into `int`/`float`/`unsigned` and back) are not finalized here.
-  It is now confirmed that these are `String` methods (see
-  "Types, initialization, null, and conversion" above), not general cast
-  syntax; the remaining work is naming/signature detail, to be designed
-  together with explicit scalar casts.
-
-#### Open questions needing a decision before implementation
-
-1. ~~Byte-based vs. Unicode-code-point-aware `String` indexing/`.length`.~~
-   **Confirmed**: byte-based, matching the confirmed byte-oriented `buffer`
-   and `string.length` semantics above.
-2. ~~Whether `String`'s element access reuses `buffer`'s `int`-or-`unsigned`
-   element typing or is `unsigned`-only.~~ **Confirmed**: `unsigned`-only —
-   `String` elements (both reads and any writes) are always `unsigned`,
-   unlike `buffer`, which additionally accepts `int` writes (bounds-checked,
-   bitwise-truncated). This is a deliberate difference from `buffer`, not
-   an oversight.
-3. Mutating-in-place (alias semantics, matching `array`/`map`) versus
-   copy-on-write/value semantics for `String` mutation methods. Note this
-   is now a real inconsistency to resolve either way: `buffer` assignment
-   was just confirmed to **copy**, not alias, so a `String` built on
-   `buffer` copying its mutation methods' alias semantics from `array`/`map`
-   (as originally recommended) would make `String` behave differently from
-   its own backing `buffer` field. Recommendation: reconsider — copy-on-assign
-   `String` values (matching `buffer`) may now be more consistent than the
-   original alias-semantics recommendation.
-4. Whether `string` should become a hard alias for `String` (one unified
-   type, as proposed) or whether `String` should be introduced as a
-   separate, additional type while `string` keeps its current native/opaque
-   status. Recommendation: unify under one type to avoid two ways to spell
-   "a string," but this touches every existing native-bound method
-   signature that currently mentions `string`.
-5. ~~Whether `String` should keep `==`/`!=`.~~ **Confirmed**: no — `String`
-   gets no equality or ordering operators at all; see "Equality and
-   comparison for strings (confirmed)" above. `s.equals(other)` is the
-   supported content-equality method instead.
+`String` class references support `==`/`!=` identity comparisons, including
+comparison with `null`; ordering is unsupported. `.equals()` compares bytes.
+The previous proposal and unresolved alias/copy/ABI questions are superseded
+by the implemented prototype described in "Strings" above. `buffer`
+assignment still copies, while `String` assignment aliases its object.
 
 ### Collections and copying
 
@@ -987,8 +866,9 @@ Equality and ordering comparisons are supported for matching scalar types
 (`int`, `unsigned`, and `float` ordering; equality also supports `bool`).
 Equality/inequality on compatible class-reference types compares object
 identity, including references viewed through a unique base subobject; null
-comparisons are supported. Unrelated class references are rejected. Strings,
-arrays, maps, and `any` do not support comparisons. Arrays and maps can be
+comparisons are supported. Unrelated class references are rejected. Strings
+follow class-reference identity equality; arrays, maps, and `any` do not
+support comparisons. Arrays and maps can be
 carried through tagged values produced by collection indexing. The runtime
 traces class-reference and nested collection references reached through arrays,
 maps, `any` values, and object fields.
@@ -997,6 +877,8 @@ Maps are implemented as the corresponding keyed collection using `map` (with
 `dict` as an alias), brace literals such as `{"name": "Ada", "age": 37}`, and
 string-expression indexing such as `person[key]`. Keys compare by exact
 UTF-8 byte sequence; they are case-sensitive and are not Unicode-normalized.
+Insertion copies key bytes so subsequent mutation of the source `String`
+does not change the key.
 Map indexing returns an internal dynamic value; assignment inserts or replaces, and a duplicate
 literal key replaces its earlier value without increasing the map's distinct
 key count. The read-only `length` member reports that count. `contains(key)`
@@ -1407,9 +1289,8 @@ return(h)
   statements, not top-level declarations; they may appear wherever an
   ordinary statement may appear inside a function body. The capture list is
   optional. Capture types are `int`, `bool`, `float`, `unsigned`, `string`,
-  `array`, `map`, `handle`, or a declared class type; `void`, `any`, and
-  `buffer` are not capture types (`buffer` remains GC-tracked, owned Simple
-  storage and is not exchanged with inline C in the first milestone). Every
+  `array`, `map`, `buffer`, `handle`, or a declared class type; `void` and
+  `any` are not capture types. Every
   listed type must exactly match an enclosing Simple local or parameter.
   Captures are by name, cannot be duplicated, and only listed locals are
   available to the C block.
@@ -1426,9 +1307,8 @@ return(h)
 - Captured locals are passed by address so C writes are visible to the Simple
   code after the block. The generated shim parameters are `int *` for `int`,
   `_Bool *` for `bool`, `double *` for `float`, `uint64_t *` for `unsigned`,
-  `SimpString *` for `string` (using the matching struct from
-  `include/simp/RuntimeGc.h`), and `void **` for `array`, `map`, `handle`, and
-  class references. Thus, for example, C reads or updates `n` through `*n`; a
+  `SimpBuffer **` for `buffer`, and `void **` for `string`, `array`, `map`,
+  `handle`, and class references. Thus, for example, C reads or updates `n` through `*n`; a
   reference capture's `void **` addresses the Simple reference slot — for
   `handle`, C assigns whatever opaque pointer value it holds (a `FILE *`, a
   library handle, and so on) directly into that slot.
@@ -1441,10 +1321,11 @@ return(h)
 - Inline C may call C functions such as `printf`. Simple strings are not
   guaranteed to be NUL-terminated, so no implicit conversion is made. In
   inline C, `simp_string_cstr(msg)` is the explicit conversion operation: it
-  accepts the captured `SimpString *`, makes a NUL-terminated C-string copy,
+  accepts the captured String object-pointer slot, makes a NUL-terminated C-string copy,
   and returns a pointer valid only until the current inline block returns.
   The C code must not retain that pointer beyond the block. For example,
-  `printf("%s", simp_string_cstr(msg));` is valid; passing `msg->data`
+  `printf("%s", simp_string_cstr(msg));` is valid; passing borrowed
+  bytes directly
   directly to an API that expects a NUL-terminated string is not. This
   conversion is an inline-C support API, not a general implicit conversion
   or a native-method ABI rule. The runtime keeps each copy in a thread-local
@@ -1455,7 +1336,7 @@ return(h)
   parameters above. Declare and call that helper from generated LLVM using
   the same C-callable mechanism used for native-bound methods, and compile/link the shim
   through the existing C toolchain/link step. This reuses the established
-  `RuntimeGc.h`/`SimpString` conventions and native method ABI groundwork. It is
+  `RuntimeGc.h` and native method ABI groundwork. It is
   preferred over embedding raw C in LLVM IR or requiring C-aware generation
   of the enclosing function; the extra helper call is accepted for this
   initial design. Shim symbols are derived from the inline statement's source
@@ -1524,13 +1405,13 @@ string Foo.echo(string value) from "c_foo_echo"
   mention `from` or any external-specific syntax. The implicit receiver is
   passed to C as the first argument (`void *receiver`), followed by explicit
   parameters. C code may ignore it or use it as an opaque reference.
-- The prototype ABI targets x86-64 SysV. `int` is C `int` (`i32`), `bool` is
-  `_Bool` (`i1`), `float` is `double`, and `unsigned` is `uint64_t` (`i64`); `string`
-  is `SimpString { const char *data; uint64_t length; }` and is scalarized to
-  `(ptr, uint64_t)` for arguments and the corresponding two-scalar aggregate
-  for returns; `array`, `map`, and class references are opaque pointers;
-  `void` is supported for returns. Strings are length-prefixed, never assumed
-  NUL-terminated. `any` is rejected for native-bound signatures because its
+- The prototype ABI uses `int` as C `int` (`i32`), `bool` as
+  `_Bool` (`i1`), `float` as `double`, and `unsigned` as `uint64_t` (`i64`);
+  `String`/`string`, `array`, `map`, and class references are opaque pointers,
+  and `void` is supported for returns. This replaces the old two-word
+  `SimpString` native ABI. Use `simp_string_bytes()` to borrow explicit-length,
+  non-NUL-terminated bytes; do not retain the view across buffer resize.
+  `any` is rejected for native-bound signatures because its
   target-specific aggregate ABI lowering is not implemented. C struct
   layouts are declared in `include/simp/RuntimeGc.h`.
 - The wrapper roots its implicit receiver and all managed-reference
@@ -1675,39 +1556,34 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   count and fixed parameter types, whether Simple-implemented or
   native-bound.
 - `string`/`String` length is measured in bytes, not Unicode code points,
-  matching `buffer`'s confirmed byte-oriented `length`/indexing/slicing
-  (`string.length` itself is not yet implemented, but its semantics are
-  fixed).
+  matching `buffer`'s confirmed byte-oriented `length`/indexing/slicing.
 - The `u`/`U` unsigned-literal suffix stays required in a plain
   `int`-inferred context, but is optional wherever the context already
   expects `unsigned` (declaration initializers, assignments, call
   arguments, returns): a bare digit sequence there is itself an unsigned
   literal, not an `int` needing conversion. This is implemented.
-- `string`/`String` will not have equality (`==`/`!=`) or ordering
-  comparison operators at all; content comparison is a named method
-  (`s.equals(other)`), keeping `buffer`, `handle`, and `string` all
-  consistently excluded from operator expressions with no exceptions.
+- `string`/`String` has identity `==`/`!=`, not ordering operators;
+  `.equals(other)` tests exact UTF-8 content.
 - GC collection timing/cadence is explicitly not guaranteed (the prototype's
   every-allocation cadence is an implementation detail, not a language
   promise), but memory recovery must not leak: every unreachable GC-managed
   object is eventually reclaimed. The sole exception is memory allocated by
   inline C or external/native libraries, which the GC cannot see or control
   and remains that native code's own responsibility.
-- String-to-number conversion is implemented as built-in `string` methods
+- String-to-number conversion is implemented as native-bound `String` methods
   (`s.toInt()`, `s.toUnsigned()`, `s.toFloat()`), not general cast syntax
   or an implicit conversion (see "String-to-number conversion
   (implemented)" under "Strings" below for exact semantics).
-- `String` element access (`s[i]`, both reads and writes) is always
-  `unsigned` — unlike `buffer`, which additionally accepts `int` writes.
-  This is a deliberate difference, not an inconsistency to reconcile.
+- `String` byte indexing/slicing syntax is deferred in this prototype;
+  `byteAt`/`slice` currently raise explicit not-implemented exceptions.
 - `buffer` and `handle` are confirmed new built-in reference types (see
   "`buffer` and `handle` types" under "Strings" above): both are
   primitive-like (not classes, no user methods, no subclassing). `buffer`
   is a resizable, GC-traced byte sequence with `.resize`/`.length`/`.clear`/
   `.append` and array-style slicing; assigning a `buffer` copies it.
   `handle` is fully opaque with no built-in operations at all. Neither
-  `buffer` nor `handle` — nor `string` — may appear as an operand in an
-  operator expression; this is a compile-time (syntax) error.
+- `buffer` nor `handle` may appear as an operand in an operator expression;
+  `string` instead follows class-reference equality rules.
 - `handle` is a valid `inline` C capture type, including the sugared
   `handle x inline { ... }` declare-and-capture form (see "Inline C and
   LLVM/backend direction"); this is the confirmed way native code assigns a
@@ -1740,14 +1616,8 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - Library search paths, `any` values across the native boundary, and ABI
   support beyond x86-64 SysV.
 - Package-manager, IDE, and LLDB/GDB integration details.
-- The class-based `String` redesign built on the now-confirmed `buffer`
-  type (see "Proposal: a class-based `String`..." under "Strings" above):
-  `String`'s element-type typing, mutation alias-vs-copy semantics (now in
-  tension with `buffer`'s confirmed copy-on-assign behavior), and the
-  `string`/`String` unification question. (Byte-based indexing/length, the
-  no-`==`/`!=` decision, and string-to-number conversion are now
-  confirmed/implemented, resolving three of the proposal's original open
-  questions — see "String-to-number conversion (implemented)" above.)
+- Remaining `String` byte indexing/slicing, text methods, and
+  buffer-to-String validation/conversion APIs (see "Strings" above).
 
 ### Suggested priority for the remaining open language/syntax decisions
 
@@ -1768,10 +1638,7 @@ next things to resolve, roughly in priority order:
    `==`/`!=`, and (for scalar locals) a documented decay-at-boundary rule.
    See the "Implemented, with a documented scope boundary for scalar
    locals" bullet above for the exact scope.
-3. The remaining `String`-as-class questions: mutation alias-vs-copy
-   semantics and the `string`/`String` unification question. (Element-
-   access typing is confirmed to always be `unsigned`, and string-to-number
-   conversion is now implemented as built-in `string` methods — see
-   "String-to-number conversion (implemented)" above.)
+3. Complete the stubbed `String` byte and text operations while preserving
+   UTF-8 validity.
 
 Until these questions are resolved through examples and a runnable prototype, this document should be read as a design record and project guide rather than as a final language specification. A comprehensive, implementation-tracking language specification (covering everything actually built, not just agreed direction) is a planned future deliverable, separate from this design-record document.

@@ -65,10 +65,7 @@ void CodeGenerator::emitTry(const Statement& statement) {
             hasCatchAll = true;
             break;
         }
-        const auto* exceptionClass = classes_.at(handler.exceptionType);
-        const auto expectedMetadata = exceptionClass->builtin
-                                          ? "@simp_exception_class_meta"
-                                          : "@.simp.class.meta." + handler.exceptionType;
+        const auto expectedMetadata = classMetadataSymbol(handler.exceptionType);
         const auto matched = newTemporary();
         const auto matches = newTemporary();
         const auto nextLabel = freshLabel("except.next");
@@ -126,31 +123,24 @@ void CodeGenerator::emitTry(const Statement& statement) {
         std::string caughtBindingSlot;
         if (handler.hasBinding) {
             caughtBindingSlot = "%v" + std::to_string(nextVariable_++);
-            entryAllocas_ += "  " + caughtBindingSlot + " = alloca " +
-                             (handler.exceptionType.empty() ? "%SimpleString" : "ptr") +
-                             "\n";
+            entryAllocas_ += "  " + caughtBindingSlot + " = alloca ptr\n";
             if (handler.exceptionType.empty()) {
+                registerRootSlot(caughtBindingSlot, "String");
                 const auto length = newTemporary();
                 const auto message = newTemporary();
-                const auto first = newTemporary();
-                const auto value = newTemporary();
                 instructions_ += "  " + length +
                                  " = call i64 @simp_exception_message_length(ptr " + frame +
                                  ")\n"
                                  "  " + message +
                                  " = call ptr @simp_exception_copy_message(ptr " + frame +
-                                 ")\n"
-                                 "  " + first +
-                                 " = insertvalue %SimpleString poison, ptr " + message +
-                                 ", 0\n"
-                                 "  " + value + " = insertvalue %SimpleString " + first +
-                                 ", i64 " + length + ", 1\n"
-                                 "  store %SimpleString " + value + ", ptr " +
+                                 ")\n";
+                const auto text = emitStringFromBytes(message, length, handler.location);
+                instructions_ += "  store ptr " + text.operand + ", ptr " +
                                  caughtBindingSlot + "\n";
                 scopes_.emplace_back();
                 scopes_.back().emplace(
                     handler.name,
-                    Binding{"string", caughtBindingSlot, {}, false, true});
+                    Binding{"String", caughtBindingSlot, {}, false, true});
             } else {
                 const auto exceptionBase = newTemporary();
                 instructions_ += "  " + exceptionBase +

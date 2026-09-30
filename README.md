@@ -209,16 +209,24 @@ input and reports source-located lexer, parser, and semantic errors.
   followed by a newline; collection values are rendered by runtime tag (see
   below).
 - Basic formatting uses a double-quoted literal followed by an expression list:
-  `print("value: {}"(value))`. Each `{}` substitutes exactly one supported
-  scalar, type, or internal dynamic value. Only `{}` placeholders are
-  supported; unmatched braces and argument-count mismatches are errors.
+  `string result = "value: {}"(value)`. The result is a reusable `String`
+  expression, including in returns, arguments, arrays, maps, and `print`.
+  Each `{}` substitutes one supported scalar, `String`, type, or internal
+  dynamic value; class references without string conversion show `<object>`.
+  Arguments are evaluated once in source order. Unmatched braces and
+  argument-count mismatches are compile-time errors.
 - Single-quoted strings are raw literals: they have no escapes and cannot be
   used with formatting arguments. Double-quoted strings support `\\`, `\"`,
   `\n`, `\r`, and `\t`; their source bytes must be valid UTF-8.
-- String values are represented as a pointer and byte length. They are not
-  NUL-terminated. Direct string printing and formatting write their UTF-8 bytes
-  by explicit length. No concatenation, indexing, string comparisons, or
-  code-point operations are implemented.
+- `string` is an alias for the prelude `String` class, with a private GC-managed
+  `buffer _bytes`. Literals create objects without calling a public constructor.
+  Assignment shares the object; `append(other)` mutates all aliases.
+  `length` counts UTF-8 bytes, `equals(other)` compares bytes, and `==`/`!=`
+  compare object identity. `toInt()`, `toUnsigned()`, and `toFloat()` parse
+  checked numbers. The declared indexing/slicing and remaining text methods
+  are prototype stubs raising catchable "not implemented" errors; direct
+  string index syntax and code-point operations are deferred. Map keys copy
+  the bytes at insertion, so later mutation cannot change a stored key.
 - Arrays (`array`, with `list` accepted as an alias keyword for the exact same
   type) are heterogeneous bags: a single literal such as
   `[1, "two", Node(3), null]` may freely mix ints, strings, class references,
@@ -284,8 +292,8 @@ input and reports source-located lexer, parser, and semantic errors.
   compare object identity (not field values or dynamic class); an upcast
   reference compares the same base subobject as its derived reference.
   Unrelated class references cannot be compared. Any nullable type may be
-  compared with `null`. Strings, arrays, maps, and `any` do not support
-  equality with each other.
+  compared with `null`. Strings follow class-reference identity rules;
+  arrays, maps, and `any` do not support equality with each other.
 - Collection reads and loop bindings use an internal tagged dynamic value;
   the reserved keyword `any` is not permitted as a declared type (locals,
   fields, parameters, returns, or native signatures). The representation can
@@ -453,9 +461,9 @@ unique-subobject upcasts, and virtual dispatch work through primary, secondary,
 and virtual base views.
 Method-table slots are inherited in stable order and an override replaces its
 inherited slot; per-subobject dispatch thunks adjust the receiver before
-invoking the selected implementation. Strings
-store UTF-8 bytes plus an explicit byte count; `fwrite` writes those bytes
-without requiring a terminator. The program entry returns zero.
+invoking the selected implementation. `String` objects own a traced `buffer`
+of UTF-8 bytes; `fwrite` uses the borrowed bytes and length without requiring
+a terminator. The program entry returns zero.
 
 Generated functions register and pop explicit root frames. Descriptors list
 only object-reference stack slots (including parameters, `this`, locals, and
@@ -473,13 +481,14 @@ nested reference tracing and construction-failure behavior, and check
 reverse-order destruction through secondary subobjects.
 
 The parser and semantic analyzer accept more syntax than the backend executes.
-String comparisons and other non-integer formatted values produce precise
-backend/semantic errors. Exception handling uses direct LLVM `setjmp` calls
+String identity comparisons and reusable formatted expressions are supported;
+byte indexing and remaining text APIs are deferred or explicit stubs.
+Exception handling uses direct LLVM `setjmp` calls
 paired with the C runtime's `longjmp`; generated frames snapshot and restore
 the precise GC root chain and explicitly running destructor chain before
-catching. Catch clauses are untyped; an optional read-only string binding
-exposes the message, and uncaught diagnostics include the original raise or
-runtime-check location (there is no stack trace). Returns from inside
+catching. Catch clauses may be typed or untyped; an optional read-only String
+binding exposes the message, and uncaught diagnostics include the original
+raise or runtime-check location and stack trace. Returns from inside
 `try`/`except`/`finally` are rejected. Exceptions
 cannot escape a GC finalizer; finalizer exceptions and collector invariant
 failures remain fatal. This is a single-threaded host-C ABI implementation,
@@ -563,14 +572,16 @@ start {
   compiler emits an ordinary Simple method/dispatch entry as a wrapper around
   the external symbol; the wrapper passes the implicit receiver pointer as
   the **first C ABI argument**, followed by explicit parameters.
-- ABI mapping is currently x86-64 SysV: `int` is C `int` (`i32`); `string`
-  arguments scalarize to `(ptr, uint64_t length)` and string results use the
-  corresponding two-scalar aggregate; `array`, `map`, and class references
-  are single opaque pointers; `void` is C `void`. `any` is rejected for a
-  native-bound method because the backend does not implement its target-
-  specific aggregate ABI lowering. Strings are length-prefixed, not
-  NUL-terminated. The matching C `SimpString` structure and shim prototypes
-  are in `include/simp/RuntimeGc.h`.
+- ABI mapping: `int` is C `int` (`i32`); `String`/`string`, `array`, `map`,
+  and other class references are single opaque pointers; `void` is C `void`.
+  This **breaks the earlier `SimpString {data,length}` native ABI**: C code
+  must use `simp_string_bytes(object, &data, &length)` to borrow non-NUL-
+  terminated bytes and cannot retain that view across a resize. `any` is
+  rejected in native signatures. Inline C may capture a `buffer` as
+  `SimpBuffer **`, and use `simp_buffer_resize`/`simp_buffer_set` on `*slot`;
+  never realloc GC-managed objects or access a private String field from
+  Simple. Invalid UTF-8 bytes passed to String construction/append raise;
+  arbitrary buffer-to-String conversion and direct byte mutation are deferred.
 - Argument expressions reuse normal call evaluation and explicit GC rooting:
   already-evaluated managed arguments remain rooted while later arguments
   execute, and the receiver/parameters are rooted in the generated wrapper.

@@ -1,0 +1,4 @@
+start {
+    string text = "private"
+    buffer leaked = text._bytes
+}

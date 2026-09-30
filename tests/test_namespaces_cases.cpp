@@ -30,7 +30,8 @@ const TestGroupRegistration registration{5, {
                   "start {}");
               std::vector<std::string> declaredClasses;
               for (const auto& declaration : program.classes) {
-                  if (!declaration.builtin) declaredClasses.push_back(declaration.name);
+                  if (!declaration.builtin && declaration.name != "String")
+                      declaredClasses.push_back(declaration.name);
               }
               require(declaredClasses.size() == 2 &&
                           declaredClasses[0] == "Alpha.Beta.First" &&

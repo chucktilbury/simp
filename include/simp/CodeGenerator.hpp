@@ -76,6 +76,13 @@ private:
     void emitMapElementStore(const std::string& mapPointer, Value key, Value value,
                              const SourceLocation& location);
     Value buildDynamicValue(Value value, const SourceLocation& location);
+    Value emitStringLiteral(const std::string& bytes, const SourceLocation& location);
+    Value emitFormatString(const Expression& expression);
+    Value emitStringFromBytes(const std::string& data, const std::string& length,
+                              const SourceLocation& location);
+    void emitStringBytesAccess(const Value& value, const SourceLocation& location,
+                               std::string& data, std::string& length);
+    std::string classMetadataSymbol(const std::string& className) const;
     Value extractTypedValue(Value value, const std::string& expectedType,
                             const SourceLocation& location);
     Value rootObjectValue(Value value, const SourceLocation& location);
@@ -153,6 +160,7 @@ private:
     bool isArrayType(const std::string& type) const;
     bool isMapType(const std::string& type) const;
     bool isBufferType(const std::string& type) const;
+    bool isStringType(const std::string& type) const;
     bool isManagedReferenceType(const std::string& type) const;
     bool isDynamicValueType(const std::string& type) const;
     [[noreturn]] void unsupported(const SourceLocation& location, const std::string& feature) const;

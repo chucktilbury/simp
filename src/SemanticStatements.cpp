@@ -221,7 +221,7 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
             }
         } else if (!types.empty() && types.front() != "int" && types.front() != "bool" &&
                    types.front() != "float" && types.front() != "unsigned" &&
-                   types.front() != "string" && types.front() != "any" &&
+                   types.front() != "String" && types.front() != "any" &&
                    types.front() != "type") {
             throw DiagnosticError(statement.location,
                                   "print supports int, bool, float, unsigned, string, collection "
@@ -301,7 +301,7 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         scopes_.emplace_back();
         if (!statement.keyName.empty()) {
             const auto keyIndex = symbols_.size();
-            symbols_.push_back({statement.keyName, "string", true, statement.location});
+            symbols_.push_back({statement.keyName, "String", true, statement.location});
             scopes_.back().emplace(statement.keyName, keyIndex);
         }
         const auto valueIndex = symbols_.size();
@@ -418,7 +418,7 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
                 }
                 const auto index = symbols_.size();
                 const auto bindingType = handler.exceptionType.empty()
-                                             ? "string"
+                                             ? "String"
                                              : "Exception";
                 symbols_.push_back(
                     {handler.name, bindingType, true, handler.location, true});
@@ -480,13 +480,14 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
             }
             if (capture.type != "int" && capture.type != "bool" &&
                 capture.type != "float" && capture.type != "unsigned" &&
-                capture.type != "string" &&
+                capture.type != "String" &&
                 capture.type != "array" && capture.type != "map" &&
+                capture.type != "buffer" &&
                 capture.type != "handle" &&
                 classes_.find(capture.type) == classes_.end()) {
                 throw DiagnosticError(capture.location,
                                       "inline capture type must be int, bool, float, unsigned, "
-                                      "string, array, map, handle, or a declared class type");
+                                      "string, array, map, buffer, handle, or a declared class type");
             }
         }
         std::unordered_set<std::string> captureNames;

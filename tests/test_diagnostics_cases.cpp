@@ -56,20 +56,20 @@ const TestGroupRegistration registration{2, {
              expectDiagnostic("start { if (\"not a condition\") { } }",
                               "if condition must have type bool");
          }},
-        {"string equality rejected", [] {
-             expectDiagnostic("start {\n string a = \"a\"\n print(a == \"a\")\n}",
-                              "equality requires matching int, bool, float, or unsigned operands");
+        {"string ordering rejected", [] {
+             expectDiagnostic("start {\n string a = \"a\"\n print(a < \"a\")\n}",
+                              "requires matching int, float, or unsigned operands");
          }},
         {"integer condition rejected", [] {
              expectDiagnostic("start { if (1) { } }", "if condition must have type bool");
          }},
         {"semantic type mismatch", [] {
              expectDiagnostic("start {\n int value = \"wrong\"\n}",
-                              "cannot initialize int variable with string");
+                              "cannot initialize int variable with String");
          }},
         {"semantic assignment type mismatch", [] {
              expectDiagnostic("start {\n int value = 1\n value = \"wrong\"\n}",
-                              "cannot assign string to int variable 'value'");
+                              "cannot assign String to int variable 'value'");
          }},
         {"semantic undefined variable", [] {
              expectDiagnostic("start {\n print(missing)\n}", "undefined variable 'missing'");

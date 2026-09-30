@@ -2,7 +2,7 @@ int
 bool
 float
 unsigned
-string
+String
 array
 map
 buffer

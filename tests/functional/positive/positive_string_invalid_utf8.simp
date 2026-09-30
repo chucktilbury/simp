@@ -1,0 +1,12 @@
+start {
+    string value = "valid"
+    try {
+        inline (string value) {
+            const char invalid[] = { (char)0xc0 };
+            simp_string_append_bytes(*value, invalid, 1);
+        }
+    } except() as error {
+        print(error)
+    }
+    print(value)
+}

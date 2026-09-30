@@ -48,8 +48,11 @@ void CodeGenerator::emitInlineC(const Statement& statement) {
             cParameters += "double *" + capture.name;
         } else if (capture.type == "unsigned") {
             cParameters += "uint64_t *" + capture.name;
-        } else if (capture.type == "string") {
-            cParameters += "SimpString *" + capture.name;
+        } else if (isBufferType(capture.type)) {
+            // Buffers are managed references: the shim receives the address of
+            // the variable's slot, so inline C works with the live buffer
+            // directly rather than a copy.
+            cParameters += "SimpBuffer **" + capture.name;
         } else {
             cParameters += "void **" + capture.name;
         }
@@ -423,8 +426,9 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         if (!statement.keyName.empty()) {
             const auto keySlot = "%v" + std::to_string(nextVariable_++);
             scopes_.back().emplace(statement.keyName,
-                                   Binding{"string", keySlot, {}, false});
-            entryAllocas_ += "  " + keySlot + " = alloca %SimpleString\n";
+                                   Binding{"String", keySlot, {}, false});
+            entryAllocas_ += "  " + keySlot + " = alloca ptr\n";
+            registerRootSlot(keySlot, "String");
         }
         const auto valueSlot = "%v" + std::to_string(nextVariable_++);
         scopes_.back().emplace(statement.name, Binding{"any", valueSlot, {}, false});
@@ -470,8 +474,6 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                 const auto keyData = newTemporary();
                 const auto keyLengthAddress = newTemporary();
                 const auto keyLength = newTemporary();
-                const auto keyFirst = newTemporary();
-                const auto keyValue = newTemporary();
                 instructions_ += "  " + keyDataAddress +
                                  " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
                                  ", i32 0, i32 0\n"
@@ -480,12 +482,12 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                                  " = getelementptr inbounds %SimpleMapEntry, ptr " + entry +
                                  ", i32 0, i32 1\n"
                                  "  " + keyLength + " = load i64, ptr " + keyLengthAddress +
-                                 "\n"
-                                 "  " + keyFirst + " = insertvalue %SimpleString poison, ptr " +
-                                 keyData + ", 0\n"
-                                 "  " + keyValue + " = insertvalue %SimpleString " + keyFirst +
-                                 ", i64 " + keyLength + ", 1\n"
-                                 "  store %SimpleString " + keyValue + ", ptr " +
+                                 "\n";
+                // Map keys are stored as raw bytes; each iteration materializes
+                // a fresh String for the loop binding.
+                const auto keyObject =
+                    emitStringFromBytes(keyData, keyLength, statement.location);
+                instructions_ += "  store ptr " + keyObject.operand + ", ptr " +
                                  scopes_.back().at(statement.keyName).pointer + "\n";
             }
             instructions_ += "  " + valueAddress +
@@ -533,12 +535,30 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         }
         const auto messageAddress = emitFieldAddress(value.operand, *owner, messagePath);
         const auto message = newTemporary();
-        instructions_ += "  " + message + " = load %SimpleString, ptr " + messageAddress +
-                         "\n";
+        instructions_ += "  " + message + " = load ptr, ptr " + messageAddress + "\n";
+        // A raised exception may carry a null message; the runtime accepts an
+        // empty byte range, so avoid faulting on the borrow in that case.
+        const auto dataSlot = "%raise.data." + std::to_string(nextVariable_++);
+        const auto lengthSlot = "%raise.length." + std::to_string(nextVariable_++);
+        entryAllocas_ += "  " + dataSlot + " = alloca ptr\n"
+                         "  " + lengthSlot + " = alloca i64\n";
+        const auto messageIsNull = newTemporary();
+        const auto messageNullLabel = freshLabel("raise.message.null");
+        const auto messageBytesLabel = freshLabel("raise.message.bytes");
+        const auto messageEndLabel = freshLabel("raise.message.end");
+        instructions_ += "  store ptr null, ptr " + dataSlot + "\n"
+                         "  store i64 0, ptr " + lengthSlot + "\n"
+                         "  " + messageIsNull + " = icmp eq ptr " + message + ", null\n"
+                         "  br i1 " + messageIsNull + ", label %" + messageNullLabel +
+                         ", label %" + messageBytesLabel + "\n" + messageBytesLabel + ":\n"
+                         "  call void @simp_string_bytes(ptr " + message + ", ptr " +
+                         dataSlot + ", ptr " + lengthSlot + ")\n"
+                         "  br label %" + messageEndLabel + "\n" + messageNullLabel + ":\n"
+                         "  br label %" + messageEndLabel + "\n" + messageEndLabel + ":\n";
         const auto data = newTemporary();
         const auto length = newTemporary();
-        instructions_ += "  " + data + " = extractvalue %SimpleString " + message + ", 0\n"
-                         "  " + length + " = extractvalue %SimpleString " + message + ", 1\n";
+        instructions_ += "  " + data + " = load ptr, ptr " + dataSlot + "\n"
+                         "  " + length + " = load i64, ptr " + lengthSlot + "\n";
         const auto exceptionSubobjects = subobjects(*owner);
         const auto base = std::find_if(
             exceptionSubobjects.begin(), exceptionSubobjects.end(),

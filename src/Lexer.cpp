@@ -286,6 +286,10 @@ Token Lexer::scanIdentifierOrInteger() {
     for (char value : text) {
         normalized.push_back(lowerAscii(value));
     }
+    // The built-in class name is distinct from the lowercase `string` alias.
+    if (text == "String") {
+        return makeToken(TokenType::Identifier, std::move(text), location);
+    }
     static const std::unordered_map<std::string, TokenType> keywords{
         {"start", TokenType::Start}, {"int", TokenType::Int},
         {"bool", TokenType::Bool}, {"float", TokenType::FloatType},
