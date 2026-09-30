@@ -511,13 +511,15 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         rootObjectValue({"array", array}, expression.location);
         for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
             const auto element = emitExpression(*expression.arguments[index]);
-            const auto valueIndex = newTemporary();
+            const auto valuesAddress = newTemporary();
+            const auto values = newTemporary();
             const auto valuePointer = newTemporary();
-            instructions_ += "  " + valueIndex + " = getelementptr inbounds %SimpleArray, ptr " +
-                             array + ", i32 0, i32 2, i64 " + std::to_string(index) + "\n"
+            instructions_ += "  " + valuesAddress + " = getelementptr inbounds %SimpleArray, ptr " +
+                             array + ", i32 0, i32 3\n"
+                             "  " + values + " = load ptr, ptr " + valuesAddress + "\n"
                              "  " + valuePointer +
-                             " = getelementptr inbounds %SimpleArrayValue, ptr " + valueIndex +
-                             ", i32 0\n";
+                             " = getelementptr inbounds %SimpleArrayValue, ptr " + values +
+                             ", i64 " + std::to_string(index) + "\n";
             emitArrayElementStore(valuePointer, element, expression.arguments[index]->location);
         }
         return {"array", array};
@@ -808,6 +810,28 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         std::vector<std::string> basePath;
         const bool qualified = resolveBaseQualifier(*target.left, root, owner, basePath);
         auto receiver = emitExpression(qualified ? *root : *target.left);
+        if (isArrayType(receiver.type)) {
+            const auto argument = emitExpression(*expression.arguments.front());
+            const auto file = internString(target.location.file);
+            const auto position = ", ptr " + file + ", i64 " +
+                                  std::to_string(target.location.file.size()) + ", i64 " +
+                                  std::to_string(target.location.line) + ", i64 " +
+                                  std::to_string(target.location.column) + ")\n";
+            if (target.value == "resize") {
+                instructions_ += "  call void @simp_array_resize(ptr " + receiver.operand +
+                                 ", i32 " + argument.operand + position;
+            } else {
+                const auto dynamic =
+                    buildDynamicValue(argument, expression.arguments.front()->location);
+                const auto slot = newTemporary();
+                entryAllocas_ += "  " + slot + " = alloca %SimpleArrayValue\n";
+                instructions_ += "  store %SimpleArrayValue " + dynamic.operand + ", ptr " +
+                                 slot + "\n"
+                                 "  call void @simp_array_append(ptr " + receiver.operand +
+                                 ", ptr " + slot + position;
+            }
+            return {"void", ""};
+        }
         if (receiver.type == "string") {
             if (target.value != "toInt" && target.value != "toUnsigned" &&
                 target.value != "toFloat") {

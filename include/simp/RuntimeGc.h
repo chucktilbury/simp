@@ -55,7 +55,8 @@ typedef struct SimpArrayValue {
 typedef struct SimpArray {
     const SimpClassMeta *metadata;
     uint64_t length;
-    SimpArrayValue values[];
+    uint64_t capacity;
+    SimpArrayValue *values;
 } SimpArray;
 
 typedef struct SimpMapEntry {
@@ -147,6 +148,10 @@ void simp_gc_pop_or_abort(SimpRootFrame *frame);
 /* Collect before allocating; the returned object's header and fields are zeroed. */
 void *simp_gc_alloc(const SimpClassMeta *metadata);
 void *simp_gc_alloc_array(uint64_t length);
+void simp_array_resize(void *array, int32_t length, const char *file,
+                       uint64_t file_length, uint64_t line, uint64_t column);
+void simp_array_append(void *array, const SimpArrayValue *value, const char *file,
+                       uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_array_index(void *array, int32_t index, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_array_slice(void *array, int32_t start, int32_t end, const char *file,

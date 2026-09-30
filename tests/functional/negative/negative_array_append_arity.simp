@@ -1,0 +1,4 @@
+start {
+    array values = []
+    values.append()
+}

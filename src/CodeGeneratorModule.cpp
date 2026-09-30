@@ -49,7 +49,7 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     }
     typeDefinitions_ += "%SimpleString = type { ptr, i64 }\n";
     typeDefinitions_ += "%SimpleArrayValue = type { i64, i64, ptr, i64 }\n";
-    typeDefinitions_ += "%SimpleArray = type { ptr, i64, [0 x %SimpleArrayValue] }\n";
+    typeDefinitions_ += "%SimpleArray = type { ptr, i64, i64, ptr }\n";
     typeDefinitions_ += "%SimpleMap = type { ptr, i64, i64, ptr, i64, ptr }\n";
     typeDefinitions_ += "%SimpleMapEntry = type { ptr, i64, i64, %SimpleArrayValue }\n";
     typeDefinitions_ += "%SimpleBuffer = type { ptr, i64, i64, ptr }\n";
@@ -675,6 +675,8 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare void @simp_gc_pop_or_abort(ptr)\n"
            << "declare ptr @simp_gc_alloc(ptr)\n"
            << "declare ptr @simp_gc_alloc_array(i64)\n"
+           << "declare void @simp_array_resize(ptr, i32, ptr, i64, i64, i64)\n"
+           << "declare void @simp_array_append(ptr, ptr, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_array_index(ptr, i32, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_array_slice(ptr, i32, i32, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_gc_alloc_map()\n"

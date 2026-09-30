@@ -117,6 +117,17 @@ add_test(NAME simp_reports_uncaught_array_slice_bounds
         "-DEXPECT_RUNTIME_DIAGNOSTIC=uncaught runtime exception at .*negative_array_slice_bounds_uncaught.simp:4:24: array slice bounds out of bounds"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
 )
+add_test(NAME simp_reports_array_resize_negative
+    COMMAND "${CMAKE_COMMAND}"
+        "-DCOMPILER=$<TARGET_FILE:simp>"
+        "-DSOURCE=${CMAKE_CURRENT_SOURCE_DIR}/functional/negative/negative_array_resize_uncaught.simp"
+        "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_resize_uncaught"
+        "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/negative_array_resize_uncaught.ll"
+        "-DEXPECTED_OUTPUT="
+        "-DEXPECT_RUNTIME_FAILURE=ON"
+        "-DEXPECT_RUNTIME_DIAGNOSTIC=array length must not be negative"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake"
+)
 add_test(NAME simp_reports_uncaught_any_extraction_mismatch
     COMMAND "${CMAKE_COMMAND}"
         "-DCOMPILER=$<TARGET_FILE:simp>"
@@ -369,6 +380,9 @@ endforeach()
 
 
 add_inline_run_test(positive_inline_no_captures "inline { says } hello\n")
+add_inline_run_test(positive_array_resize "3\n3\n5\nnull\n1\nnull\nlast\n2\n1\n12\n7\narray length must not be negative\n55\n")
+add_inline_diagnostic_test(negative_array_resize_type "array resize length must be int")
+add_inline_diagnostic_test(negative_array_append_arity "array 'append' expects one argument")
 add_inline_run_test(positive_inline_int_capture "12\n")
 add_inline_run_test(positive_inline_string_capture "hello from C\n")
 add_inline_run_test(positive_inline_multiple_captures "answer: 42\n")

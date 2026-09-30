@@ -254,6 +254,47 @@ int main(void) {
         return fail("opaque handle payload was traced as a GC reference");
     }
     simp_gc_pop_or_abort(&tagged_frame);
+
+    SimpRootFrame array_frame = {0};
+    SimpArray *array = NULL;
+    SimpArray *alias = NULL;
+    void *array_slots[] = {&array, &alias};
+    if (!simp_gc_push(&array_frame, array_slots, 2)) {
+        return fail("could not push array test roots");
+    }
+    array = (SimpArray *)simp_gc_alloc_array(1);
+    alias = array;
+    TestNode *child = (TestNode *)simp_gc_alloc(&node_metadata);
+    child->value = 42;
+    SimpArrayValue reference = {SIMP_ARRAY_OBJECT, 0, child, 0};
+    simp_array_append(array, &reference, "runtime-test.simp", 17, 1, 1);
+    child = NULL;
+    simp_gc_collect();
+    if (simp_gc_heap_count() != 2 || alias->length != 2 ||
+        ((TestNode *)alias->values[1].pointer)->value != 42) {
+        return fail("array append lost alias or traced reference");
+    }
+    simp_array_append(alias, &alias->values[1], "runtime-test.simp", 17, 1, 1);
+    if (array->length != 3 || array->values[2].pointer != array->values[1].pointer) {
+        return fail("array append lost an element sourced from its own storage");
+    }
+    simp_array_resize(array, 1, "runtime-test.simp", 17, 1, 1);
+    simp_gc_collect();
+    if (simp_gc_heap_count() != 1 || alias->values[1].pointer != NULL ||
+        alias->values[2].pointer != NULL) {
+        return fail("array shrink retained removed reference");
+    }
+    simp_array_resize(alias, 4, "runtime-test.simp", 17, 1, 1);
+    if (array->length != 4 || array->values[1].tag != SIMP_ARRAY_OBJECT ||
+        array->values[1].pointer != NULL || array->values[3].pointer != NULL) {
+        return fail("array growth did not initialize new slots to null");
+    }
+    array = NULL;
+    alias = NULL;
+    simp_gc_collect();
+    if (simp_gc_heap_count() != 0 || !simp_gc_pop(&array_frame)) {
+        return fail("array roots were not released cleanly");
+    }
     simp_runtime_thread_exit();
     puts("PASS precise roots, reclamation, finalization, destruction, and frame lifecycle");
     return 0;

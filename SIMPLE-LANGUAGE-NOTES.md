@@ -856,8 +856,15 @@ dynamic `any` value type rather than a statically-known concrete type; assigning
 `values[index] = expr` accepts any supported element type directly.
 `values.length` is a read-only `int`, and `values[start:end]` copies the
 half-open range `[start, end)` into independent storage. Copying is shallow
-for class references and nested collections. Arrays have a fixed length; array assignment aliases
-the same mutable storage. Negative/out-of-range indices and invalid slice
+for class references and nested collections. `values.resize(newLength)` grows
+or shrinks in place, and `values.append(value)` adds one heterogeneous element;
+both return `void`. New slots hold `null` (a null class-reference tagged `any`
+value); removed slots release their references for collection. Length must be
+a nonnegative `int` and cannot grow beyond the signed 32-bit range; invalid
+sizes raise source-located exceptions. Array assignment aliases the same
+mutable storage, including changes to its length, while slices remain shallow
+copies. The GC-managed array header remains stable as its separately allocated
+element buffer grows. Negative/out-of-range indices and invalid slice
 bounds raise catchable, source-located exceptions. `any` is the explicit
 dynamic/tagged value type: it can be declared directly, holds an `int`, `bool`,
 `float`, `unsigned`, `string`, class reference, array reference, map reference,
@@ -866,8 +873,7 @@ and must be assigned to a concretely typed variable/field/parameter to extract
 its value (a runtime-checked operation that raises on a tag or exact-class mismatch;
 there is no covariant/polymorphic downcast support). Nested arrays and
 collections are supported as elements and are traced by the GC. Collection
-values can be stored in `any` and extracted with a runtime tag check; append
-and resize operations are not implemented.
+values can be stored in `any` and extracted with a runtime tag check.
 Equality and ordering comparisons are supported for matching scalar types
 (`int`, `unsigned`, and `float` ordering; equality also supports `bool`);
 strings, objects, arrays, maps, and `any` do not support comparisons. Arrays and maps can be

@@ -828,6 +828,9 @@ void simp_gc_collect(void) {
         HeapNode *node = *link;
         if (!node->marked) {
             *link = node->next;
+            if (node->is_array) {
+                free(((SimpArray *)node->object)->values);
+            }
             if (node->is_map) {
                 SimpMap *map = (SimpMap *)node->object;
                 for (uint64_t index = 0; index < map->length; ++index) {
@@ -898,23 +901,27 @@ void *simp_gc_alloc(const SimpClassMeta *metadata) {
 
 void *simp_gc_alloc_array(uint64_t length) {
     if (collecting || running_destructor || length > INT32_MAX ||
-        length > (SIZE_MAX - sizeof(SimpArray)) / sizeof(SimpArrayValue)) {
+        length > SIZE_MAX / sizeof(SimpArrayValue)) {
         abort();
     }
     simp_gc_collect();
-    const size_t allocation_size =
-        sizeof(SimpArray) + (size_t)length * sizeof(SimpArrayValue);
-    SimpArray *array = (SimpArray *)calloc(1, allocation_size);
+    SimpArray *array = (SimpArray *)calloc(1, sizeof(*array));
     HeapNode *node = (HeapNode *)malloc(sizeof(*node));
-    if (array == NULL || node == NULL) {
+    SimpArrayValue *values = length == 0 ? NULL :
+        (SimpArrayValue *)calloc((size_t)length, sizeof(*values));
+    if (array == NULL || node == NULL || (length != 0 && values == NULL)) {
         free(array);
         free(node);
+        free(values);
         abort();
     }
     array->metadata = &array_metadata;
     array->length = length;
+    array->capacity = length;
+    array->values = values;
+    for (uint64_t index = 0; index < length; ++index) values[index].tag = SIMP_ARRAY_OBJECT;
     node->object = array;
-    node->allocation_size = allocation_size;
+    node->allocation_size = sizeof(*array);
     node->is_array = 1;
     node->is_map = 0;
     node->is_buffer = 0;
@@ -970,6 +977,58 @@ static SimpArray *checked_array(void *object, const char *file, uint64_t file_le
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     return (SimpArray *)object;
+}
+
+void simp_array_resize(void *object, int32_t length, const char *file,
+                       uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpArray *array = checked_array(object, file, file_length, line, column);
+    if (length < 0) {
+        static const char message[] = "array length must not be negative";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    const uint64_t new_length = (uint64_t)length;
+    if (new_length > SIZE_MAX / sizeof(SimpArrayValue)) {
+        static const char message[] = "array length exceeds allocation limit";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    if (new_length > array->capacity) {
+        uint64_t capacity = array->capacity == 0 ? 1 : array->capacity;
+        while (capacity < new_length) {
+            if (capacity > (uint64_t)INT32_MAX / 2) {
+                capacity = new_length;
+                break;
+            }
+            capacity *= 2;
+        }
+        if (capacity > SIZE_MAX / sizeof(SimpArrayValue)) capacity = new_length;
+        SimpArrayValue *values = (SimpArrayValue *)realloc(
+            array->values, (size_t)capacity * sizeof(*values));
+        if (values == NULL) abort();
+        array->values = values;
+        array->capacity = capacity;
+    }
+    if (new_length < array->length) {
+        memset(array->values + new_length, 0,
+               (size_t)(array->length - new_length) * sizeof(*array->values));
+    } else {
+        for (uint64_t index = array->length; index < new_length; ++index) {
+            array->values[index] = (SimpArrayValue){SIMP_ARRAY_OBJECT, 0, NULL, 0};
+        }
+    }
+    array->length = new_length;
+}
+
+void simp_array_append(void *object, const SimpArrayValue *value, const char *file,
+                       uint64_t file_length, uint64_t line, uint64_t column) {
+    SimpArray *array = checked_array(object, file, file_length, line, column);
+    if (array->length == INT32_MAX) {
+        static const char message[] = "array length exceeds int range";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    if (value == NULL) abort();
+    const SimpArrayValue copy = *value;
+    simp_array_resize(array, (int32_t)(array->length + 1), file, file_length, line, column);
+    array->values[array->length - 1] = copy;
 }
 
 static SimpMap *checked_map(void *object, const char *file, uint64_t file_length,

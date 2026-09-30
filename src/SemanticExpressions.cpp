@@ -181,7 +181,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             if (isArrayType(receiverType)) {
                 if (expression.value == "length") return "int";
                 throw DiagnosticError(expression.location,
-                                      "arrays support only the read-only 'length' member");
+                                      "arrays support only the read-only 'length' member and "
+                                      "'resize' and 'append' methods");
             }
             if (isMapType(receiverType)) {
                 if (expression.value == "length") return "int";
@@ -436,6 +437,29 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             resolveBaseQualifier(*target.left, root, owner, basePath);
         if (!qualified) {
             const auto receiverType = analyzeExpression(*target.left);
+            if (isArrayType(receiverType)) {
+                if (target.value != "resize" && target.value != "append") {
+                    throw DiagnosticError(target.location,
+                                          "arrays support only 'resize(int)' and 'append(any)'");
+                }
+                if (expression.arguments.size() != 1) {
+                    throw DiagnosticError(expression.location,
+                                          "array '" + target.value + "' expects one argument");
+                }
+                const auto type = analyzeExpression(*expression.arguments.front());
+                if (target.value == "resize" ? type != "int" :
+                    (type != "any" && type != "null" && type != "int" &&
+                     type != "bool" && type != "float" && type != "unsigned" &&
+                     type != "string" && !isArrayType(type) && !isMapType(type) &&
+                     classes_.find(type) == classes_.end())) {
+                    throw DiagnosticError(expression.arguments.front()->location,
+                                          target.value == "resize"
+                                              ? "array resize length must be int"
+                                              : "array append value must be a scalar, string, "
+                                                "reference, null, or any");
+                }
+                return "void";
+            }
             if (isMapType(receiverType)) {
                 if (target.value != "contains" && target.value != "remove") {
                     throw DiagnosticError(target.location,

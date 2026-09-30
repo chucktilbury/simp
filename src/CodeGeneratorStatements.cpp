@@ -157,6 +157,8 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         std::string mapPointer;
         std::string bufferPointer;
         Value bufferIndex;
+        std::string arrayPointer;
+        std::string arrayIndex;
         Value mapKey;
         if (statement.target->kind == ExpressionKind::Identifier) {
             binding = findVariable(statement.target->value, statement.target->location);
@@ -167,6 +169,8 @@ void CodeGenerator::emitStatement(const Statement& statement) {
             if (isArrayType(collection.type)) {
                 const auto index =
                     emitIntegerExpression(*statement.target->arguments.front());
+                arrayPointer = collection.operand;
+                arrayIndex = index.operand;
                 const auto file = internString(statement.target->location.file);
                 address = newTemporary();
                 instructions_ += "  " + address + " = call ptr @simp_array_index(ptr " +
@@ -212,6 +216,15 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         }
         const auto value = emitExpression(*statement.expressions.front(), binding.type);
         if (arrayElementTarget) {
+            // The RHS may resize the array and relocate its elements.
+            const auto file = internString(statement.target->location.file);
+            address = newTemporary();
+            instructions_ += "  " + address + " = call ptr @simp_array_index(ptr " +
+                             arrayPointer + ", i32 " + arrayIndex + ", ptr " +
+                             file + ", i64 " +
+                             std::to_string(statement.target->location.file.size()) +
+                             ", i64 " + std::to_string(statement.target->location.line) +
+                             ", i64 " + std::to_string(statement.target->location.column) + ")\n";
             emitArrayElementStore(address, value, statement.expressions.front()->location);
             return;
         }
