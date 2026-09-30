@@ -76,6 +76,9 @@ struct Statement {
     std::vector<Statement> cleanup;
     bool hasAlternate = false;
     bool hasCleanup = false;
+    // For a super-constructor call, semantic analysis records the selected
+    // overload so code generation invokes the same constructor.
+    std::string resolvedSignature;
     std::vector<ExceptionHandler> exceptionHandlers;
 };
 

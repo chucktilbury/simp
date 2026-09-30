@@ -292,13 +292,8 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         if (base == classes_.end()) {
             throw DiagnosticError(statement.location, "unknown base class '" + statement.name + "'");
         }
-        const MethodDeclaration* constructor = nullptr;
-        for (const auto& method : base->second->methods) {
-            if (method.constructor) {
-                constructor = &method;
-                break;
-            }
-        }
+        const auto* constructor =
+            findConstructor(*base->second, statement.resolvedSignature);
         if (constructor == nullptr) return;
         const auto baseIndex = static_cast<std::size_t>(
             std::distance(currentClass_->baseClassNames.begin(),
@@ -318,7 +313,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
             arguments += ", " + llvmType(constructor->parameters[index].type) + " " +
                          converted.operand;
         }
-        instructions_ += "  call void " + methodSymbol(statement.name, constructor->name) +
+        instructions_ += "  call void " + methodSymbol(statement.name, *constructor) +
                          "(" + arguments + ")\n";
         return;
     }

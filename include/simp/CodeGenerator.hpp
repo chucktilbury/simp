@@ -128,6 +128,8 @@ private:
     const MethodDeclaration* findMethod(const ClassDeclaration& owner,
                                         const std::string& name,
                                         const std::string& signature) const;
+    const MethodDeclaration* findConstructor(const ClassDeclaration& owner,
+                                             const std::string& signature) const;
     std::vector<const MethodDeclaration*> methodSlots(const ClassDeclaration& owner) const;
     std::size_t methodSlot(const ClassDeclaration& owner, const std::string& name) const;
     std::size_t methodSlot(const ClassDeclaration& owner, const std::string& name,

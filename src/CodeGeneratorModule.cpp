@@ -269,14 +269,6 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
                              initializeLabel + ":\n";
             for (const auto& baseName : virtualBases) {
                 const auto* base = classes_.at(baseName);
-                const MethodDeclaration* constructor = nullptr;
-                for (const auto& candidate : base->methods) {
-                    if (candidate.constructor) {
-                        constructor = &candidate;
-                        break;
-                    }
-                }
-                if (constructor == nullptr) continue;
                 const Statement* initializer = nullptr;
                 for (const auto& candidate : method.body) {
                     if (candidate.kind == StatementKind::SuperConstructorCall &&
@@ -285,6 +277,10 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
                         break;
                     }
                 }
+                const auto* constructor = findConstructor(
+                    *base, initializer == nullptr ? std::string{} :
+                                                    initializer->resolvedSignature);
+                if (constructor == nullptr) continue;
                 const auto basePointer = newTemporary();
                 instructions_ += "  " + basePointer +
                                  " = getelementptr inbounds %Class." + owner.name +
@@ -305,7 +301,7 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
                                      " " + converted.operand;
                     }
                 }
-                instructions_ += "  call void " + methodSymbol(baseName, constructor->name) +
+                instructions_ += "  call void " + methodSymbol(baseName, *constructor) +
                                  "(" + arguments + ")\n";
             }
             instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";

@@ -181,9 +181,12 @@ The exact syntax and complete rules for nullability and conversion remain part o
 - Function/method overrides are supported, including virtual methods.
 - Method overloading is supported: methods in a class may share a name when
   their parameter types differ. Symbols are mangled by parameter type (see
-  "Name mangling (implemented)" below), and resolution is exact-match.
+  "Name mangling (implemented)" below); exact matches are preferred over
+  assignable conversions, and equally ranked candidates are ambiguous.
 - A constructor is named exactly after its class, for example `Window(...)`.
-  Constructors are not named `create`.
+  Constructors may be overloaded by distinct parameter-type signatures; an
+  implicit no-argument constructor remains available only when no constructor
+  is declared.
 - Destructors are named `destroy`.
 - Operator overloading is not supported.
 - Static classes and singletons are not supported.
@@ -221,11 +224,11 @@ mangling but in a much simpler, readable form.
 - **Return types are not encoded**, because Simple never overloads on
   return type alone: two methods whose parameter lists match are a
   duplicate regardless of return type.
-- **Constructors and destructors are not mangled** (`@simp.Counter.Counter`,
-  `@simp.<Class>.destroy`) because they are not overloadable. A constructor
-  takes an extra leading `i1 %simp.initialize.virtual.bases` parameter
-  after `this` so a derived constructor can suppress repeated virtual-base
-  initialization.
+- **Constructors are mangled by parameter type**, just like ordinary methods,
+  so overloads have distinct symbols. Destructors remain unmangled
+  (`@simp.<Class>.destroy`). A constructor takes an extra leading
+  `i1 %simp.initialize.virtual.bases` parameter after `this` so a derived
+  constructor can suppress repeated virtual-base initialization.
 - **Virtual-dispatch thunks** get a distinct prefix and encode the
   subobject view and the vtable slot index:
   `@simp.thunk.<FullyQualifiedClass>.<subobjectTag>.<slotIndex>` — for
@@ -258,15 +261,20 @@ Both are supported, and both are enforced by the prototype:
   symbol and its own virtual-dispatch slot. Two methods with the same name
   and identical parameter types are a compile-time error ("duplicate
   method 'f' in class 'A'") even if their return types differ.
-- **Overload resolution is exact-match.** Simple has no implicit
-  conversions, so an argument selects the overload whose parameter type it
-  matches exactly; there is no promotion, narrowing, or best-viable
-  ranking. A call matching no overload is an error ("no overload of 'f'
-  ... matches these argument types"). The one non-exact case is `null`,
-  which is assignable to any class type — so a bare `null` argument that
-  could select more than one class-typed overload is rejected as ambiguous
-  rather than resolved by a tie-break rule. Use a typed local (or a
-  differently named method) to disambiguate.
+- **Overload resolution ranks viable conversions.** Exact argument-type
+  matches beat assignable class-to-base conversions. A call matching no
+  overload is an error ("no overload of 'f' ... matches these argument
+  types"); candidates that are equally good, or incomparable across
+  parameters, are diagnosed as ambiguous. `null` matches class-reference
+  parameters, so a bare `null` argument that could select multiple class
+  overloads is ambiguous rather than resolved by a tie-break rule. Use a
+  typed local (or a differently named method) to disambiguate.
+- **Constructor overloads use the same selection rule.** Constructors are
+  selected by argument count and parameter types in `Class(args...)`,
+  `super.Base(args...)`, and `super.virtual Base(args...)` calls. An identical
+  constructor signature is a declaration error. In-class constructor
+  declarations may have matching out-of-line definitions; native-bound
+  constructors remain unsupported and are diagnosed.
 - **Overload sets are inherited.** A derived class may override one member
   of an inherited overload set while inheriting its siblings, and may add
   new overloads of the same name. All of them dispatch correctly through a

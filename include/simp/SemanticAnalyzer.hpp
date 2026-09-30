@@ -60,6 +60,12 @@ private:
                                         const std::string& name) const;
     std::vector<const MethodDeclaration*> findOverloads(const ClassDeclaration& declaration,
                                                         const std::string& name) const;
+    const MethodDeclaration* selectOverload(
+        const std::vector<const MethodDeclaration*>& candidates,
+        const std::vector<std::unique_ptr<Expression>>& arguments,
+        const std::vector<std::string>& argumentTypes, bool& ambiguous) const;
+    int conversionRank(const std::string& target, const std::string& source,
+                       const Expression& argument) const;
     std::size_t countMethods(const ClassDeclaration& declaration,
                              const std::string& name) const;
     std::vector<std::string> virtualBaseNames(const ClassDeclaration& declaration) const;
@@ -70,6 +76,10 @@ private:
                              std::vector<std::string>& path);
     bool memberAccessible(const ClassDeclaration& owner, const std::string& name,
                           bool method) const;
+    bool memberAccessible(const ClassDeclaration& owner,
+                          const MethodDeclaration& method) const;
+    bool memberAccessibleThrough(const ClassDeclaration& owner,
+                                 const MethodDeclaration& method) const;
     bool basePathAccessible(const ClassDeclaration& owner,
                             const std::vector<std::string>& path) const;
     bool isAssignable(const std::string& target, const std::string& source) const;

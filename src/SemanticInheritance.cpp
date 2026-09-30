@@ -118,6 +118,41 @@ bool SemanticAnalyzer::memberAccessible(const ClassDeclaration& owner,
     return false;
 }
 
+bool SemanticAnalyzer::memberAccessible(const ClassDeclaration& owner,
+                                        const MethodDeclaration& method) const {
+    if (method.access == AccessLevel::Public) return true;
+    if (currentClass_ == nullptr) return false;
+    if (method.access == AccessLevel::Private) {
+        return currentClass_->name == owner.name;
+    }
+    return currentClass_->name == owner.name ||
+           isSubclassOf(currentClass_->name, owner.name);
+}
+
+bool SemanticAnalyzer::memberAccessibleThrough(const ClassDeclaration& owner,
+                                              const MethodDeclaration& method) const {
+    const auto visit = [this, &owner, &method](
+                           const auto& self, const ClassDeclaration& current,
+                           std::vector<std::string>& path) -> bool {
+        for (const auto& candidate : current.methods) {
+            if (&candidate == &method && memberAccessible(current, method) &&
+                basePathAccessible(owner, path)) {
+                return true;
+            }
+        }
+        for (const auto& baseName : current.baseClassNames) {
+            const auto base = classes_.find(baseName);
+            if (base == classes_.end()) continue;
+            path.push_back(baseName);
+            if (self(self, *base->second, path)) return true;
+            path.pop_back();
+        }
+        return false;
+    };
+    std::vector<std::string> path;
+    return visit(visit, owner, path);
+}
+
 const FieldDeclaration* SemanticAnalyzer::findField(const ClassDeclaration& declaration,
                                                     const std::string& name) const {
     std::unordered_set<std::string> seenVirtual;
@@ -261,6 +296,82 @@ std::vector<const MethodDeclaration*> SemanticAnalyzer::findOverloads(
     };
     visit(visit, declaration);
     return found;
+}
+
+int SemanticAnalyzer::conversionRank(const std::string& target,
+                                    const std::string& source,
+                                    const Expression& argument) const {
+    if (target == source) return 0;
+    if (source == "int" && target == "unsigned" &&
+        argument.kind == ExpressionKind::Integer) {
+        return 1;
+    }
+    if (source == "null" && classes_.find(target) != classes_.end()) return 2;
+    if (!isAssignable(target, source)) return -1;
+
+    if (classes_.find(source) != classes_.end() &&
+        classes_.find(target) != classes_.end()) {
+        std::vector<std::pair<std::string, int>> pending{{source, 0}};
+        std::unordered_set<std::string> visited;
+        while (!pending.empty()) {
+            const auto current = pending.back();
+            pending.pop_back();
+            if (!visited.emplace(current.first).second) continue;
+            if (current.first == target) return 2 + current.second;
+            const auto declaration = classes_.find(current.first);
+            if (declaration == classes_.end()) continue;
+            for (const auto& baseName : declaration->second->baseClassNames) {
+                pending.emplace_back(baseName, current.second + 1);
+            }
+        }
+    }
+    return 20;
+}
+
+const MethodDeclaration* SemanticAnalyzer::selectOverload(
+    const std::vector<const MethodDeclaration*>& candidates,
+    const std::vector<std::unique_ptr<Expression>>& arguments,
+    const std::vector<std::string>& argumentTypes, bool& ambiguous) const {
+    ambiguous = false;
+    std::vector<std::pair<const MethodDeclaration*, std::vector<int>>> viable;
+    for (const auto* candidate : candidates) {
+        if (candidate->parameters.size() != argumentTypes.size()) continue;
+        std::vector<int> ranks;
+        bool matches = true;
+        for (std::size_t index = 0; index < argumentTypes.size(); ++index) {
+            const auto rank = conversionRank(candidate->parameters[index].type,
+                                             argumentTypes[index], *arguments[index]);
+            if (rank < 0) {
+                matches = false;
+                break;
+            }
+            ranks.push_back(rank);
+        }
+        if (matches) viable.emplace_back(candidate, std::move(ranks));
+    }
+    if (viable.empty()) return nullptr;
+
+    std::vector<const MethodDeclaration*> best;
+    for (const auto& candidate : viable) {
+        bool dominated = false;
+        for (const auto& other : viable) {
+            if (candidate.first == other.first) continue;
+            bool noWorse = true;
+            bool strictlyBetter = false;
+            for (std::size_t index = 0; index < candidate.second.size(); ++index) {
+                noWorse = noWorse && other.second[index] <= candidate.second[index];
+                strictlyBetter = strictlyBetter ||
+                                 other.second[index] < candidate.second[index];
+            }
+            if (noWorse && strictlyBetter) {
+                dominated = true;
+                break;
+            }
+        }
+        if (!dominated) best.push_back(candidate.first);
+    }
+    ambiguous = best.size() != 1;
+    return ambiguous ? nullptr : best.front();
 }
 
 std::size_t SemanticAnalyzer::countMethods(const ClassDeclaration& declaration,

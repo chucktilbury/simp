@@ -303,7 +303,8 @@ input and reports source-located lexer, parser, and semantic errors.
   requires integer conditions. Definite initialization across `if` branches
   and loops is conservative.
 - A small class subset is supported: top-level `class` declarations with
-  `int`, `string`, `array`, `map`, or class-reference fields; one class-named constructor;
+  `int`, `string`, `array`, `map`, or class-reference fields; class-named constructors
+  overloaded by parameter types;
   typed methods; `Class(args)` construction/allocation; nullable class-reference
   variables; field access/assignment; method calls; and direct `return`
   statements at the end of methods. Inheritance uses `class Child : Base` or
@@ -316,6 +317,13 @@ input and reports source-located lexer, parser, and semantic errors.
   match, and every bodyless method needs exactly one matching definition.
   `from "<symbol>"` replaces the out-of-line body to bind a C implementation;
   callers still use ordinary `receiver.method(args)` syntax.
+
+  Constructors with distinct parameter signatures may be overloaded. Calls
+  prefer exact argument-type matches over class-to-base conversions; equally
+  good conversions (including `null` for multiple class-reference parameters)
+  are diagnosed as ambiguous. Constructors may also be declared in-class and
+  defined out-of-line with `Class Class.Class(params) { ... }`. Native-bound
+  constructors are not supported.
 
   ```simple
   class Counter {
@@ -412,8 +420,8 @@ input and reports source-located lexer, parser, and semantic errors.
   instances do not contain method copies. Class references may be `null`;
   dereferencing null raises a catchable runtime exception. Newly allocated
   fields are zero-initialized
-  before the constructor runs. Constructor overloading, method overloading,
-  and default field initializer syntax are unsupported.
+  before the constructor runs. Method overloading and default field initializer
+  syntax are unsupported.
 
 The parser is recursive descent and produces an AST that can be dumped with
 `--dump-ast`. Lexer, parser, and CLI diagnostics include file, line, and column.

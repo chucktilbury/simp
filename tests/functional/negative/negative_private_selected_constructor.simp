@@ -1,0 +1,10 @@
+class ProtectedChoice {
+    ProtectedChoice(int value) {}
+
+    private:
+    ProtectedChoice(string value) {}
+}
+
+start {
+    ProtectedChoice value = ProtectedChoice("private")
+}

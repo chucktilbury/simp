@@ -470,41 +470,80 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         expression.value =
             resolveClassName(expression.value, currentNamespace_, expression.location);
         const auto* owner = findClass(expression.value, expression.location);
-        const MethodDeclaration* constructor = nullptr;
+        std::vector<const MethodDeclaration*> constructors;
         for (const auto& method : owner->methods) {
-            if (method.constructor) {
-                constructor = &method;
-                break;
-            }
+            if (method.constructor) constructors.push_back(&method);
         }
-        if (constructor != nullptr &&
-            !memberAccessible(*owner, constructor->name, true)) {
-            throw DiagnosticError(expression.location,
-                                  "constructor for class '" + owner->name +
-                                      "' is not accessible here");
-        }
-        if (constructor == nullptr) {
+        if (constructors.empty()) {
             if (!expression.arguments.empty()) {
                 throw DiagnosticError(expression.location,
-                                      "class '" + owner->name + "' has no constructor");
+                                          "class '" + owner->name + "' has no constructor");
             }
             for (const auto& baseName : virtualBaseNames(*owner)) {
                 const auto* base = findClass(baseName, expression.location);
+                std::vector<const MethodDeclaration*> baseConstructors;
                 for (const auto& method : base->methods) {
-                    if (method.constructor && !method.parameters.empty()) {
-                        throw DiagnosticError(
-                            expression.location,
-                            "class '" + owner->name +
+                    if (method.constructor) baseConstructors.push_back(&method);
+                }
+                std::vector<std::unique_ptr<Expression>> noArguments;
+                std::vector<std::string> noArgumentTypes;
+                bool ambiguous = false;
+                if (!baseConstructors.empty() &&
+                    selectOverload(baseConstructors, noArguments, noArgumentTypes,
+                                       ambiguous) == nullptr) {
+                    throw DiagnosticError(
+                        expression.location,
+                        "class '" + owner->name +
                                 "' needs an explicit constructor to initialize virtual base '" +
                                 baseName + "'");
-                    }
                 }
             }
             return owner->name;
         }
-        if (constructor->parameters.size() != expression.arguments.size()) {
+        std::vector<std::string> argumentTypes;
+        argumentTypes.reserve(expression.arguments.size());
+        for (const auto& argument : expression.arguments) {
+            argumentTypes.push_back(analyzeExpression(*argument));
+        }
+        bool ambiguous = false;
+        const auto* constructor =
+            selectOverload(constructors, expression.arguments, argumentTypes, ambiguous);
+        if (ambiguous) {
             throw DiagnosticError(expression.location,
-                                  "constructor argument count does not match class '" + owner->name + "'");
+                                      "constructor call for class '" + owner->name +
+                                          "' is ambiguous between overloads");
+        }
+        if (constructor == nullptr) {
+            if (constructors.size() == 1) {
+                const auto* only = constructors.front();
+                if (expression.arguments.size() != only->parameters.size()) {
+                    throw DiagnosticError(
+                        expression.location,
+                        "constructor argument count does not match class '" + owner->name + "'");
+                }
+                for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
+                    const auto actual = analyzeExpression(
+                        *expression.arguments[index], only->parameters[index].type);
+                    const auto& expected = only->parameters[index].type;
+                    if (!isAssignable(expected, actual) &&
+                        !(actual == "null" &&
+                          classes_.find(expected) != classes_.end())) {
+                        throw DiagnosticError(
+                            expression.arguments[index]->location,
+                            "constructor argument type does not match parameter '" +
+                                only->parameters[index].name + "'");
+                    }
+                }
+            }
+            throw DiagnosticError(expression.location,
+                                      "no constructor of class '" + owner->name +
+                                          "' matches these argument types");
+        }
+        expression.resolvedSignature = methodSignatureKey(*constructor);
+        if (!memberAccessible(*owner, *constructor)) {
+            throw DiagnosticError(expression.location,
+                                      "constructor for class '" + owner->name +
+                                          "' is not accessible here");
         }
         for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
             const auto argumentType =
@@ -520,14 +559,17 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         const auto virtualBases = virtualBaseNames(*owner);
         for (const auto& baseName : virtualBases) {
             const auto* base = findClass(baseName, expression.location);
-            const MethodDeclaration* baseConstructor = nullptr;
+            std::vector<const MethodDeclaration*> baseConstructors;
             for (const auto& method : base->methods) {
-                if (method.constructor) {
-                    baseConstructor = &method;
-                    break;
-                }
+                if (method.constructor) baseConstructors.push_back(&method);
             }
-            if (baseConstructor == nullptr || baseConstructor->parameters.empty()) continue;
+            std::vector<std::unique_ptr<Expression>> noArguments;
+            std::vector<std::string> noArgumentTypes;
+            bool ambiguous = false;
+            const bool hasDefault = baseConstructors.empty() ||
+                selectOverload(baseConstructors, noArguments, noArgumentTypes,
+                               ambiguous) != nullptr;
+            if (hasDefault) continue;
             const bool initialized = std::any_of(
                 constructor->body.begin(), constructor->body.end(),
                 [&baseName](const Statement& statement) {
@@ -729,43 +771,32 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         const auto* method = findMethod(*owner, target.value);
         const auto overloads = findOverloads(*owner, target.value);
         if (overloads.size() > 1) {
-            // Overloaded: pick the unique candidate whose parameter types the
-            // arguments match. Simple has no implicit conversions, so this is
-            // an exact-match rule, with 'null' additionally allowed to match
-            // any class-typed parameter.
             std::vector<std::string> argumentTypes;
             argumentTypes.reserve(expression.arguments.size());
             for (const auto& argument : expression.arguments) {
                 argumentTypes.push_back(analyzeExpression(*argument));
             }
-            std::vector<const MethodDeclaration*> viable;
-            for (const auto* candidate : overloads) {
-                if (candidate->parameters.size() != argumentTypes.size()) continue;
-                bool matches = true;
-                for (std::size_t index = 0; matches && index < argumentTypes.size(); ++index) {
-                    const auto& parameterType = candidate->parameters[index].type;
-                    matches = parameterType == argumentTypes[index] ||
-                              (argumentTypes[index] == "null" &&
-                               classes_.find(parameterType) != classes_.end());
-                }
-                if (matches) viable.push_back(candidate);
-            }
-            if (viable.empty()) {
+            bool ambiguous = false;
+            method = selectOverload(overloads, expression.arguments, argumentTypes, ambiguous);
+            if (method == nullptr && !ambiguous) {
                 throw DiagnosticError(expression.location,
                                       "no overload of '" + target.value + "' in class '" +
                                           owner->name + "' matches these argument types");
             }
-            if (viable.size() > 1) {
+            if (ambiguous) {
                 throw DiagnosticError(expression.location,
                                       "call to '" + target.value + "' in class '" +
                                           owner->name + "' is ambiguous between overloads");
             }
-            method = viable.front();
             expression.resolvedSignature = methodSignatureKey(*method);
         }
         if (method == nullptr) {
             throw DiagnosticError(target.location,
                                   "class '" + owner->name + "' has no method '" + target.value + "'");
+        }
+        if (!memberAccessibleThrough(*owner, *method)) {
+            throw DiagnosticError(target.location,
+                                  "method '" + target.value + "' is not accessible");
         }
         if (method->parameters.size() != expression.arguments.size()) {
             throw DiagnosticError(expression.location,

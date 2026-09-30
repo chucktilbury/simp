@@ -470,6 +470,10 @@ void SemanticAnalyzer::analyze(Program& program) {
             }
         }
         if (definition.method.externalBinding) {
+            if (definition.method.constructor) {
+                throw DiagnosticError(definition.location,
+                                      "native-bound constructors are not supported");
+            }
             if (definition.method.externalSymbol.empty()) {
                 throw DiagnosticError(definition.location,
                                       "native-bound method must name a non-empty C symbol");
@@ -615,9 +619,14 @@ void SemanticAnalyzer::analyze(Program& program) {
             for (std::size_t other = index + 1; other < declaration.methods.size(); ++other) {
                 if (declaration.methods[index].name == declaration.methods[other].name &&
                     sameParameterTypes(declaration.methods[index], declaration.methods[other])) {
-                    throw DiagnosticError(declaration.methods[other].location,
-                                          "duplicate method '" + declaration.methods[other].name +
-                                              "' in class '" + declaration.name + "'");
+                    const auto& duplicate = declaration.methods[other];
+                    throw DiagnosticError(
+                        duplicate.location,
+                        duplicate.constructor
+                            ? "duplicate constructor signature in class '" +
+                                  declaration.name + "'"
+                            : "duplicate method '" + duplicate.name + "' in class '" +
+                                  declaration.name + "'");
                 }
             }
         }

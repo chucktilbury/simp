@@ -185,12 +185,23 @@ std::string CodeGenerator::methodSymbol(const std::string& className,
 
 std::string CodeGenerator::methodSymbol(const std::string& className,
                                         const MethodDeclaration& method) const {
-    // Constructors and destructors are not overloadable, so they keep their
-    // plain symbol and stay callable through the name-only overload.
-    if (method.constructor || method.destructor) {
+    if (method.destructor) {
         return methodSymbol(className, method.name);
     }
     return methodSymbol(className, method.name) + mangleParameters(method.parameters);
+}
+
+const MethodDeclaration* CodeGenerator::findConstructor(
+    const ClassDeclaration& owner, const std::string& signature) const {
+    for (const auto& method : owner.methods) {
+        if (!method.constructor) continue;
+        if (signature.empty()) {
+            if (method.parameters.empty()) return &method;
+        } else if (methodSignatureKey(method) == signature) {
+            return &method;
+        }
+    }
+    return nullptr;
 }
 
 void CodeGenerator::emitNullCheck(const std::string& pointer,
@@ -894,22 +905,13 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                  view.second->name + ", ptr " + viewAddress + ", i32 0, i32 1\n"
                                  "  store ptr " + object + ", ptr " + ownerLinkAddress + "\n";
         }
-        const MethodDeclaration* constructor = nullptr;
-        for (const auto& method : owner->methods) {
-            if (method.constructor) {
-                constructor = &method;
-                break;
-            }
-        }
-        std::vector<std::pair<const ClassDeclaration*, std::string>> virtualConstructors;
+        const auto* constructor = findConstructor(*owner, expression.resolvedSignature);
+        std::vector<std::pair<const ClassDeclaration*, const MethodDeclaration*>>
+            virtualConstructors;
         for (const auto& baseName : virtualBaseNames(*owner)) {
             const auto* base = classes_.at(baseName);
-            for (const auto& method : base->methods) {
-                if (method.constructor) {
-                    virtualConstructors.emplace_back(base, method.name);
-                    break;
-                }
-            }
+            if (const auto* baseConstructor = findConstructor(*base, ""))
+                virtualConstructors.emplace_back(base, baseConstructor);
         }
         if (constructor != nullptr || !virtualConstructors.empty()) {
             instructions_ += "  call void @simp_gc_begin_construction(ptr " + object + ")\n";
@@ -923,24 +925,23 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                      *owner, virtualConstructor.first->name)) +
                                  "\n  call void " +
                                  methodSymbol(virtualConstructor.first->name,
-                                              virtualConstructor.second) +
+                                              *virtualConstructor.second) +
                                  "(ptr " + virtualAddress + ", i1 false)\n";
             }
         }
-        for (const auto& method : owner->methods) {
-            if (!method.constructor) continue;
+        if (constructor != nullptr) {
             std::string arguments = "ptr " + object + ", i1 true";
             for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
                 const auto value = emitExpression(*expression.arguments[index],
-                                                  method.parameters[index].type);
-                const auto converted = convertObjectValue(value, method.parameters[index].type,
+                                                  constructor->parameters[index].type);
+                const auto converted = convertObjectValue(
+                    value, constructor->parameters[index].type,
                                                            expression.arguments[index]->location);
-                arguments += ", " + llvmType(method.parameters[index].type) + " " +
+                arguments += ", " + llvmType(constructor->parameters[index].type) + " " +
                              converted.operand;
             }
-            instructions_ += "  call void " + methodSymbol(owner->name, method.name) +
+            instructions_ += "  call void " + methodSymbol(owner->name, *constructor) +
                              "(" + arguments + ")\n";
-            break;
         }
         if (constructor != nullptr || !virtualConstructors.empty()) {
             instructions_ += "  call void @simp_gc_end_construction(ptr " + object + ")\n";

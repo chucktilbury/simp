@@ -126,8 +126,19 @@ OutOfLineMethodDefinition Parser::parseOutOfLineMethodDefinition() {
         member = consume(TokenType::Identifier, "method name");
     }
     const auto& methodName = member;
-    if (methodName.text == className || methodName.text == "destroy") {
-        error(methodName, "constructors and destructors cannot be defined out-of-line");
+    const auto classLeaf = className.substr(className.find_last_of('.') == std::string::npos
+                                                ? 0
+                                                : className.find_last_of('.') + 1);
+    const bool constructor = methodName.text == classLeaf;
+    const auto returnTypeLeaf = returnTypeName.substr(
+        returnTypeName.find_last_of('.') == std::string::npos
+            ? 0
+            : returnTypeName.find_last_of('.') + 1);
+    if (constructor && returnTypeLeaf != classLeaf) {
+        error(methodName, "out-of-line constructor declaration must use its class type");
+    }
+    if (methodName.text == "destroy") {
+        error(methodName, "destructors cannot be defined out-of-line");
     }
 
     OutOfLineMethodDefinition definition;
@@ -136,8 +147,9 @@ OutOfLineMethodDefinition Parser::parseOutOfLineMethodDefinition() {
     definition.location = returnType.location;
     auto& method = definition.method;
     method.name = methodName.text;
-    method.returnType = returnTypeName;
+    method.returnType = constructor ? "void" : returnTypeName;
     method.location = returnType.location;
+    method.constructor = constructor;
     method.parameters = parseParameters();
     skipNewlines();
     if (match(TokenType::From)) {
