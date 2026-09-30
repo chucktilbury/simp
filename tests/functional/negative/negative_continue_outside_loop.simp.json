@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional continue outside loop rejected",
+  "expected_diagnostic": "'continue' outside of a loop",
+  "enabled": true
+}

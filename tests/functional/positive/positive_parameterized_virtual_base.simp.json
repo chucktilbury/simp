@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional parameterized virtual-base arguments in a diamond",
+  "expected_diagnostic": "",
+  "enabled": true
+}

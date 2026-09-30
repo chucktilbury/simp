@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional transitive virtual-base initializer order",
+  "expected_diagnostic": "virtual base initializers must follow virtual-base construction order",
+  "enabled": true
+}

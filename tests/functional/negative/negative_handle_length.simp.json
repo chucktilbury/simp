@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional handle built-in member rejected",
+  "expected_diagnostic": "handle has no built-in operations",
+  "enabled": true
+}

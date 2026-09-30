@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional float remainder rejected",
+  "expected_diagnostic": "float remainder is unsupported",
+  "enabled": true
+}

@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional old bare raise syntax rejected",
+  "expected_diagnostic": "'(' after raise",
+  "enabled": true
+}

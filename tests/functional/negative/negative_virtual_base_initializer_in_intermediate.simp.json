@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional intermediate virtual-base initializer rejected",
+  "expected_diagnostic": "virtual base initializers are only allowed in most-derived classes",
+  "enabled": true
+}

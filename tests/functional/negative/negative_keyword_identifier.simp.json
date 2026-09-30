@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional reserved identifier",
+  "expected_diagnostic": "keywords are reserved",
+  "enabled": true
+}

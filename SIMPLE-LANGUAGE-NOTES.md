@@ -144,6 +144,19 @@ The exact syntax and complete rules for nullability and conversion remain part o
   exception: `start` is the only top-level method.
 - A complete program contains exactly one `start` block. A missing `start` block
   or more than one `start` block is a compile-time error.
+- The compiler driver accepts multiple `.simp` source inputs as one compilation
+  unit. Declarations and namespace paths from the files are combined before
+  semantic analysis, so forward references and reopened namespaces work across
+  files; duplicate declarations are errors. Exactly one `start` block must
+  occur across all source inputs. Each source's textual includes are expanded
+  independently. Imports from those sources share the combined unit's alias
+  scope, while imported-module namespaces remain separate compilation units.
+- `simp -c` compiles the combined source inputs into one relocatable object,
+  retaining the program's single `start` entry. Such an object can be passed
+  back to `simp` with other `.o`/`.obj` inputs for a later link. The driver
+  accepts `-L DIR` and `-l NAME` when linking and adds its GC/runtime support
+  archive automatically. These options select external binary libraries; they
+  do not change the source-level `import` registry mechanism.
 - Full OOP, including multiple inheritance, is the language goal; the current
   prototype implements only the explicitly listed inheritance slice below.
 - Only classes inherit.

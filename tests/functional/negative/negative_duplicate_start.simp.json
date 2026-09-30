@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional duplicate start",
+  "expected_diagnostic": "more than one top-level 'start' block",
+  "enabled": true
+}

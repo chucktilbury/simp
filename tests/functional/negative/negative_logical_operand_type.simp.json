@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional logical operands require booleans",
+  "expected_diagnostic": "logical operator '&&' requires bool operands",
+  "enabled": true
+}

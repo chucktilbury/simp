@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional rethrow in finally outside handler rejected",
+  "expected_diagnostic": "raise() is only valid inside an except handler",
+  "enabled": true
+}

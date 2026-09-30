@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional buffer equality rejected",
+  "expected_diagnostic": "equality requires matching int, bool, float, or unsigned operands",
+  "enabled": true
+}

@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional exception binding is read-only",
+  "expected_diagnostic": "exception binding 'message' is read-only",
+  "enabled": true
+}

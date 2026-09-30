@@ -1,0 +1,5 @@
+set(CASE_NAME simp_reports_array_resize_negative)
+set(CASE_FIXTURE negative_array_resize_uncaught.simp)
+set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_reports_array_resize_negative.stdout")
+set(CASE_EXPECT_RUNTIME_FAILURE [==[ON]==])
+set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[array length must not be negative]==])

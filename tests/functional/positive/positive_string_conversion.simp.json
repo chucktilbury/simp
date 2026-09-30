@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional string-to-number conversion methods compile and run",
+  "expected_diagnostic": "",
+  "enabled": true
+}

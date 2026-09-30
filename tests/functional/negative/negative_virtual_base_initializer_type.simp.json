@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional virtual-base initializer type checked",
+  "expected_diagnostic": "virtual base constructor argument type does not match",
+  "enabled": true
+}

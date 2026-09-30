@@ -145,6 +145,7 @@ struct ImportDeclaration {
 
 struct Program {
     SourceLocation location;
+    bool hasStart = false;
     std::vector<ImportDeclaration> imports;
     std::vector<NamespaceDeclaration> namespaces;
     std::vector<ClassDeclaration> classes;

@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional unrelated class raise rejected",
+  "expected_diagnostic": "raise requires a constructor expression",
+  "enabled": true
+}

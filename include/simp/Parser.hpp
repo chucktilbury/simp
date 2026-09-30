@@ -17,7 +17,7 @@ namespace simp {
 class Parser {
 public:
     explicit Parser(std::vector<Token> tokens, std::ostream* traceOutput = nullptr);
-    Program parseProgram();
+    Program parseProgram(bool requireStart = true);
     Program parseModule();
 
 private:

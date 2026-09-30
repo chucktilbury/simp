@@ -1,0 +1,5 @@
+set(CASE_NAME simp_reports_uncaught_runtime_exception)
+set(CASE_FIXTURE negative_uncaught_exception.simp)
+set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_reports_uncaught_runtime_exception.stdout")
+set(CASE_EXPECT_RUNTIME_FAILURE [==[ON]==])
+set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[simp: uncaught runtime exception at .*negative_uncaught_exception.simp:3:3: uncaught sentinel]==])

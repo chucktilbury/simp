@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional do-while condition type checked",
+  "expected_diagnostic": "while condition must have type bool",
+  "enabled": true
+}

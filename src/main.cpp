@@ -26,6 +26,7 @@
 #include <vector>
 
 #include <sys/wait.h>
+#include <unistd.h>
 
 namespace {
 
@@ -56,6 +57,8 @@ simp::CommandLine makeCommandLine() {
               "Print the semantic symbol table");
     addSwitch(commandLine, '\0', "check-only", "check-only",
               "Run parsing and semantic checks without code generation");
+    addSwitch(commandLine, 'c', "compile-only", "compile-only",
+              "Compile source inputs to one relocatable object without linking");
 
     simp::CommandLineOption paths;
     paths.shortName = 'p';
@@ -95,7 +98,7 @@ simp::CommandLine makeCommandLine() {
     output.shortName = 'o';
     output.longName = "output";
     output.name = "output";
-    output.description = "Write the executable to FILE";
+    output.description = "Write the output file to FILE";
     output.valueType = simp::CommandLineValueType::String;
     commandLine.addOption(std::move(output));
 
@@ -106,8 +109,26 @@ simp::CommandLine makeCommandLine() {
     ir.valueType = simp::CommandLineValueType::String;
     commandLine.addOption(std::move(ir));
 
+    simp::CommandLineOption libraryPaths;
+    libraryPaths.shortName = 'L';
+    libraryPaths.longName = "library-path";
+    libraryPaths.name = "library-path";
+    libraryPaths.description = "Add a directory to the linker search path";
+    libraryPaths.valueType = simp::CommandLineValueType::String;
+    libraryPaths.list = true;
+    commandLine.addOption(std::move(libraryPaths));
+
+    simp::CommandLineOption libraries;
+    libraries.shortName = 'l';
+    libraries.longName = "library";
+    libraries.name = "library";
+    libraries.description = "Link with library NAME";
+    libraries.valueType = simp::CommandLineValueType::String;
+    libraries.list = true;
+    commandLine.addOption(std::move(libraries));
+
     commandLine.addPositional(
-        {"source", "Source file to compile", true, false});
+        {"input", "SIMP source or object file to compile or link", true, true});
     return commandLine;
 }
 
@@ -164,34 +185,108 @@ std::string defaultExecutablePath(const std::string& inputPath) {
     return (std::filesystem::path(".") / name).string();
 }
 
-int buildExecutable(const std::vector<std::string>& irPaths,
-                    const std::string& inlineShimPath, const std::string& outputPath) {
-    const auto parent = std::filesystem::path(outputPath).parent_path();
-    if (!parent.empty()) {
-        std::filesystem::create_directories(parent);
-    }
-    std::string command = shellQuote(SIMP_CLANG_EXECUTABLE) + " -Wno-override-module";
-    for (const auto& irPath : irPaths) {
-        command += " -x ir " + shellQuote(irPath);
-    }
-    command += " -x none " + shellQuote(SIMP_GC_RUNTIME_LIBRARY) +
-               (inlineShimPath.empty()
-                    ? ""
-                    : " -I " + shellQuote(SIMP_RUNTIME_INCLUDE_DIRECTORY) +
-                          " -x c " + shellQuote(inlineShimPath)) +
-               " -pthread -o " + shellQuote(outputPath);
+std::string compilerExecutable() {
+    const auto* configuredCompiler = std::getenv("CC");
+    return configuredCompiler != nullptr && configuredCompiler[0] != '\0'
+               ? configuredCompiler
+               : SIMP_CLANG_EXECUTABLE;
+}
+
+int runCompiler(const std::vector<std::string>& arguments,
+                const std::string& operation) {
+    std::string command = shellQuote(compilerExecutable());
+    for (const auto& argument : arguments) command += " " + shellQuote(argument);
     const int status = std::system(command.c_str());
     if (status == -1) {
-        std::cerr << "simp: could not start clang\n";
+        std::cerr << "simp: could not start compiler " << compilerExecutable() << '\n';
         return 1;
     }
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
         const int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 128;
-        std::cerr << "simp: clang failed to compile generated LLVM IR (exit status "
-                  << exitCode << ")\n";
+        std::cerr << "simp: compiler failed to " << operation
+                  << " (exit status " << exitCode << ")\n";
         return 1;
     }
     return 0;
+}
+
+std::string temporaryPath(const std::string& outputPath, const std::string& suffix) {
+    return outputPath + ".simp." + std::to_string(static_cast<long long>(getpid())) +
+           "." + suffix + ".tmp";
+}
+
+void ensureOutputDirectory(const std::string& outputPath) {
+    const auto parent = std::filesystem::path(outputPath).parent_path();
+    if (!parent.empty()) {
+        std::filesystem::create_directories(parent);
+    }
+}
+
+int buildExecutable(const std::vector<std::string>& irPaths,
+                    const std::vector<std::string>& objectPaths,
+                    const std::string& inlineShimPath,
+                    const std::vector<std::string>& libraryPaths,
+                    const std::vector<std::string>& libraries,
+                    const std::string& outputPath) {
+    ensureOutputDirectory(outputPath);
+    std::vector<std::string> arguments{"-Wno-override-module"};
+    for (const auto& irPath : irPaths) {
+        arguments.insert(arguments.end(), {"-x", "ir", irPath});
+    }
+    for (const auto& objectPath : objectPaths) {
+        arguments.insert(arguments.end(), {"-x", "none", objectPath});
+    }
+    if (!inlineShimPath.empty()) {
+        arguments.insert(arguments.end(), {"-I", SIMP_RUNTIME_INCLUDE_DIRECTORY,
+                                           "-x", "c", inlineShimPath});
+    }
+    arguments.insert(arguments.end(), {"-x", "none"});
+    for (const auto& libraryPath : libraryPaths) {
+        arguments.insert(arguments.end(), {"-L", libraryPath});
+    }
+    for (const auto& library : libraries) arguments.push_back("-l" + library);
+    arguments.insert(arguments.end(), {"-pthread", SIMP_GC_RUNTIME_LIBRARY,
+                                       "-o", outputPath});
+    return runCompiler(arguments, "link the executable");
+}
+
+int buildObject(const std::vector<std::string>& irPaths,
+                const std::string& inlineShimPath,
+                const std::string& outputPath,
+                std::vector<std::string>& temporaryPaths) {
+    ensureOutputDirectory(outputPath);
+    std::vector<std::string> objectPaths;
+    for (std::size_t index = 0; index < irPaths.size(); ++index) {
+        const auto objectPath = temporaryPath(outputPath, "ir." + std::to_string(index));
+        temporaryPaths.push_back(objectPath);
+        const std::vector<std::string> arguments{
+            "-Wno-override-module", "-x", "ir", irPaths[index], "-c", "-o", objectPath};
+        if (runCompiler(arguments, "compile LLVM IR to an object") != 0) return 1;
+        objectPaths.push_back(objectPath);
+    }
+    if (!inlineShimPath.empty()) {
+        const auto shimObjectPath = temporaryPath(outputPath, "shim");
+        temporaryPaths.push_back(shimObjectPath);
+        const std::vector<std::string> arguments{
+            "-I", SIMP_RUNTIME_INCLUDE_DIRECTORY, "-x", "c", inlineShimPath,
+            "-c", "-o", shimObjectPath};
+        if (runCompiler(arguments, "compile an inline C shim") != 0) return 1;
+        objectPaths.push_back(shimObjectPath);
+    }
+    std::vector<std::string> arguments{"-r"};
+    arguments.insert(arguments.end(), objectPaths.begin(), objectPaths.end());
+    arguments.insert(arguments.end(), {"-o", outputPath});
+    return runCompiler(arguments, "combine relocatable objects");
+}
+
+bool samePath(const std::string& left, const std::string& right) {
+    std::error_code error;
+    auto leftPath = std::filesystem::weakly_canonical(left, error);
+    if (error) leftPath = std::filesystem::absolute(left).lexically_normal();
+    error.clear();
+    auto rightPath = std::filesystem::weakly_canonical(right, error);
+    if (error) rightPath = std::filesystem::absolute(right).lexically_normal();
+    return leftPath == rightPath;
 }
 
 } // namespace
@@ -225,6 +320,7 @@ int main(int argc, char** argv) {
     const bool dump = commandLine.switchValue("dump-ast") || traceAst;
     const bool dumpSymbols = commandLine.switchValue("dump-symbols") || traceSymbols;
     const bool checkOnly = commandLine.switchValue("check-only");
+    const bool compileOnly = commandLine.switchValue("compile-only");
     std::size_t verbosity = 0;
     try {
         verbosity = parseNonNegativeInteger(
@@ -243,9 +339,65 @@ int main(int argc, char** argv) {
         return 2;
     }
     const auto& positionalValues = commandLine.positionalValues();
-    const std::string inputPath = positionalValues.front();
     const auto requestedOutput = commandLine.value("output").value_or("");
     const auto irOutput = commandLine.value("emit-llvm").value_or("");
+    std::vector<std::string> sourcePaths;
+    std::vector<std::string> objectPaths;
+    for (const auto& path : positionalValues) {
+        const auto extension = std::filesystem::path(path).extension().string();
+        if (extension == ".simp") sourcePaths.push_back(path);
+        else if (extension == ".o" || extension == ".obj") objectPaths.push_back(path);
+        else {
+            std::cerr << "simp: unsupported input file type: " << path
+                      << " (expected .simp, .o, or .obj)\n";
+            return 2;
+        }
+        std::ifstream input(path, std::ios::binary);
+        if (!input) {
+            std::cerr << "simp: cannot open input file: " << path << '\n';
+            return 2;
+        }
+    }
+    const auto& libraryPaths = commandLine.values("library-path");
+    const auto& libraries = commandLine.values("library");
+    if (compileOnly && !objectPaths.empty()) {
+        std::cerr << "simp: -c accepts source inputs only; object files are link inputs\n";
+        return 2;
+    }
+    if (compileOnly && (!libraryPaths.empty() || !libraries.empty())) {
+        std::cerr << "simp: -L and -l cannot be used with -c\n";
+        return 2;
+    }
+    if (checkOnly && sourcePaths.size() != positionalValues.size()) {
+        std::cerr << "simp: --check-only accepts source inputs only\n";
+        return 2;
+    }
+    if (checkOnly && compileOnly) {
+        std::cerr << "simp: --check-only cannot be used with -c\n";
+        return 2;
+    }
+    if (checkOnly && (!requestedOutput.empty() || !irOutput.empty())) {
+        std::cerr << "simp: output options cannot be used with --check-only\n";
+        return 2;
+    }
+    if (checkOnly && (!libraryPaths.empty() || !libraries.empty())) {
+        std::cerr << "simp: -L and -l cannot be used with --check-only\n";
+        return 2;
+    }
+    if (compileOnly && sourcePaths.empty()) {
+        std::cerr << "simp: -c requires at least one .simp source input\n";
+        return 2;
+    }
+    if (sourcePaths.empty() && !irOutput.empty()) {
+        std::cerr << "simp: --emit-llvm requires at least one .simp source input\n";
+        return 2;
+    }
+    for (const auto& library : libraries) {
+        if (library.empty() || library.front() == '-') {
+            std::cerr << "simp: -l requires a library name without the -l prefix\n";
+            return 2;
+        }
+    }
     std::vector<std::filesystem::path> includeSearchPaths;
     includeSearchPaths.reserve(commandLine.values("path").size());
     for (const auto& path : commandLine.values("path")) {
@@ -260,34 +412,65 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::ifstream input(inputPath);
-    if (!input) {
-        std::cerr << "simp: cannot open input file: " << inputPath << '\n';
-        return 2;
-    }
-    const std::string source((std::istreambuf_iterator<char>(input)),
-                             std::istreambuf_iterator<char>());
-
-    std::vector<std::string> temporaryIrPaths;
+    std::vector<std::string> temporaryPaths;
     try {
-        std::unordered_set<std::string> includedFiles;
-        std::error_code pathError;
-        const auto canonicalInput = std::filesystem::canonical(inputPath, pathError);
-        if (pathError) {
-            std::cerr << "simp: cannot resolve input file: " << inputPath << '\n';
-            return 2;
+        simp::Program program;
+        for (const auto& inputPath : sourcePaths) {
+            std::ifstream input(inputPath, std::ios::binary);
+            if (!input) {
+                std::cerr << "simp: cannot open input file: " << inputPath << '\n';
+                return 2;
+            }
+            const std::string source((std::istreambuf_iterator<char>(input)),
+                                     std::istreambuf_iterator<char>());
+            std::unordered_set<std::string> includedFiles;
+            std::error_code pathError;
+            const auto canonicalInput = std::filesystem::canonical(inputPath, pathError);
+            if (pathError) {
+                std::cerr << "simp: cannot resolve input file: " << inputPath << '\n';
+                return 2;
+            }
+            includedFiles.insert(canonicalInput.string());
+            auto tokens = simp::tokenizeWithIncludes(
+                source, inputPath, includedFiles, 0, true, maximumIncludeDepth, {},
+                includeSearchPaths);
+            if (traceScanner) traceTokens(tokens, std::cerr);
+            tokens.push_back({simp::TokenType::End, "", {inputPath, 1, 1}});
+            if (verbose) {
+                std::cerr << "[verbose] lexed " << (tokens.size() - 1)
+                          << " tokens from " << inputPath << '\n';
+            }
+            simp::Parser parser(std::move(tokens), traceParser ? &std::cerr : nullptr);
+            auto unit = parser.parseProgram(false);
+            if (unit.hasStart) {
+                if (program.hasStart) {
+                    throw simp::DiagnosticError(
+                        unit.location,
+                        "input files contain more than one top-level 'start' block");
+                }
+                program.hasStart = true;
+                program.location = unit.location;
+                program.statements = std::move(unit.statements);
+            }
+            program.imports.insert(program.imports.end(),
+                                   std::make_move_iterator(unit.imports.begin()),
+                                   std::make_move_iterator(unit.imports.end()));
+            program.namespaces.insert(program.namespaces.end(),
+                                      std::make_move_iterator(unit.namespaces.begin()),
+                                      std::make_move_iterator(unit.namespaces.end()));
+            program.classes.insert(program.classes.end(),
+                                   std::make_move_iterator(unit.classes.begin()),
+                                   std::make_move_iterator(unit.classes.end()));
+            program.outOfLineMethods.insert(
+                program.outOfLineMethods.end(),
+                std::make_move_iterator(unit.outOfLineMethods.begin()),
+                std::make_move_iterator(unit.outOfLineMethods.end()));
         }
-        includedFiles.insert(canonicalInput.string());
-        auto tokens = simp::tokenizeWithIncludes(
-            source, inputPath, includedFiles, 0, true, maximumIncludeDepth, {},
-            includeSearchPaths);
-        if (traceScanner) traceTokens(tokens, std::cerr);
-        tokens.push_back({simp::TokenType::End, "", {inputPath, 1, 1}});
-        if (verbose) {
-            std::cerr << "[verbose] lexed " << (tokens.size() - 1) << " tokens\n";
+        if (!sourcePaths.empty() && !program.hasStart) {
+            throw simp::DiagnosticError(
+                {sourcePaths.front(), 1, 1},
+                "input files must contain exactly one top-level 'start' block");
         }
-        simp::Parser parser(std::move(tokens), traceParser ? &std::cerr : nullptr);
-        auto program = parser.parseProgram();
         const auto* configuredRegistry = std::getenv("SIMP_MODULE_REGISTRY");
         const auto registryPath = configuredRegistry == nullptr
                                       ? std::filesystem::current_path() / "simp-modules.tsv"
@@ -308,58 +491,92 @@ int main(int argc, char** argv) {
             return 0;
         }
 
-        const auto outputPath = requestedOutput.empty()
-                                    ? defaultExecutablePath(inputPath)
-                                    : requestedOutput;
-        simp::CodeGenerator codeGenerator(SIMP_TARGET_TRIPLE);
-        const auto ir = codeGenerator.generate(program);
-        std::unordered_map<std::string, std::string> inlineShims;
-        for (const auto& shim : codeGenerator.inlineShims()) {
-            inlineShims.emplace(shim.first, shim.second);
+        const auto defaultOutput = compileOnly
+                                       ? (sourcePaths.empty()
+                                              ? std::string("a.o")
+                                              : (std::filesystem::path(".") /
+                                                 (std::filesystem::path(
+                                                      sourcePaths.front())
+                                                      .stem()
+                                                      .string() +
+                                                  ".o"))
+                                                    .string())
+                                       : (sourcePaths.empty()
+                                              ? std::string("a.out")
+                                              : defaultExecutablePath(sourcePaths.front()));
+        const auto outputPath = requestedOutput.empty() ? defaultOutput : requestedOutput;
+        if (!irOutput.empty()) {
+            for (const auto& inputPath : positionalValues) {
+                if (samePath(irOutput, inputPath)) {
+                    throw std::invalid_argument(
+                        "--emit-llvm output must not overwrite an input file");
+                }
+            }
+            if (samePath(irOutput, outputPath)) {
+                throw std::invalid_argument(
+                    "--emit-llvm and -o must name different output files");
+            }
         }
-        std::vector<std::string> moduleIrPaths;
-        for (const auto& module : modules) {
-            simp::CodeGenerator moduleGenerator(SIMP_TARGET_TRIPLE);
-            const auto moduleIr = moduleGenerator.generate(program, module.name);
-            for (const auto& shim : moduleGenerator.inlineShims()) {
+        for (const auto& inputPath : positionalValues) {
+            if (samePath(outputPath, inputPath)) {
+                throw std::invalid_argument("-o must not overwrite an input file");
+            }
+        }
+        simp::CodeGenerator codeGenerator(SIMP_TARGET_TRIPLE);
+        std::unordered_map<std::string, std::string> inlineShims;
+        std::vector<std::string> irPaths;
+        if (!sourcePaths.empty()) {
+            const auto ir = codeGenerator.generate(program);
+            for (const auto& shim : codeGenerator.inlineShims()) {
                 inlineShims.emplace(shim.first, shim.second);
             }
-            const auto moduleIrPath = outputPath + ".simp.module." +
-                                      std::to_string(moduleIrPaths.size()) + ".tmp.ll";
-            writeFile(moduleIrPath, moduleIr);
-            temporaryIrPaths.push_back(moduleIrPath);
-            moduleIrPaths.push_back(moduleIrPath);
+            const auto irPath = irOutput.empty()
+                                    ? temporaryPath(outputPath, "main.ll")
+                                    : irOutput;
+            if (irOutput.empty()) temporaryPaths.push_back(irPath);
+            else ensureOutputDirectory(irOutput);
+            writeFile(irPath, ir);
+            irPaths.push_back(irPath);
+            for (const auto& module : modules) {
+                simp::CodeGenerator moduleGenerator(SIMP_TARGET_TRIPLE);
+                const auto moduleIr = moduleGenerator.generate(program, module.name);
+                for (const auto& shim : moduleGenerator.inlineShims()) {
+                    inlineShims.emplace(shim.first, shim.second);
+                }
+                const auto moduleIrPath =
+                    temporaryPath(outputPath, "module." +
+                                                  std::to_string(irPaths.size()) + ".ll");
+                writeFile(moduleIrPath, moduleIr);
+                temporaryPaths.push_back(moduleIrPath);
+                irPaths.push_back(moduleIrPath);
+            }
         }
-        std::vector<std::string> linkInputs;
-        if (irOutput.empty()) {
-            const auto importerIrPath = outputPath + ".simp.tmp.ll";
-            writeFile(importerIrPath, ir);
-            temporaryIrPaths.push_back(importerIrPath);
-            linkInputs.push_back(importerIrPath);
-        } else {
-            writeFile(irOutput, ir);
-            linkInputs.push_back(irOutput);
-        }
-        linkInputs.insert(linkInputs.end(), moduleIrPaths.begin(), moduleIrPaths.end());
         std::string inlineShimPath;
         if (!inlineShims.empty()) {
-            inlineShimPath = outputPath + ".simp.inline.tmp.c";
+            inlineShimPath = temporaryPath(outputPath, "inline.c");
             std::string source = "#include \"simp/RuntimeGc.h\"\n#include <stdio.h>\n\n";
             for (const auto& shim : inlineShims) {
                 source += shim.second;
                 source += '\n';
             }
             writeFile(inlineShimPath, source);
-            temporaryIrPaths.push_back(inlineShimPath);
+            temporaryPaths.push_back(inlineShimPath);
         }
-        const int buildResult = buildExecutable(linkInputs, inlineShimPath, outputPath);
-        for (const auto& temporary : temporaryIrPaths) {
+        const int buildResult =
+            compileOnly
+                ? buildObject(irPaths, inlineShimPath, outputPath, temporaryPaths)
+                : buildExecutable(irPaths, objectPaths, inlineShimPath, libraryPaths,
+                                  libraries, outputPath);
+        for (const auto& temporary : temporaryPaths) {
             std::error_code ignored;
             std::filesystem::remove(temporary, ignored);
         }
         if (buildResult != 0) return 1;
         if (verbose) {
-            std::cerr << "[verbose] semantic analysis succeeded; LLVM IR compiled by clang\n";
+            std::cerr << "[verbose] semantic analysis succeeded; "
+                      << (compileOnly ? "relocatable object produced"
+                                      : "inputs linked by compiler driver")
+                      << '\n';
         } else if (!dump && !dumpSymbols) {
             std::cout << "simp: built " << outputPath << '\n';
         }
@@ -368,7 +585,7 @@ int main(int argc, char** argv) {
         return 1;
     } catch (const std::exception& error) {
         std::cerr << "simp: " << error.what() << '\n';
-        for (const auto& temporary : temporaryIrPaths) {
+        for (const auto& temporary : temporaryPaths) {
             std::error_code ignored;
             std::filesystem::remove(temporary, ignored);
         }

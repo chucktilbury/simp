@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional duplicate virtual-base initializer rejected",
+  "expected_diagnostic": "virtual base 'Root' is initialized more than once",
+  "enabled": true
+}

@@ -57,6 +57,31 @@ directory. `tests/functional` contains source fixtures, not a separate
 buildable component. The root-integrated build puts both executables and its
 front-end archive in the project-root `bin/` and `lib/`, respectively.
 
+### Adding a test
+
+Compiler integration tests are discovered from individual
+`tests/cases/<test-name>.cmake` files. Add a `positive_*.simp` or
+`negative_*.simp` source in `tests/functional/positive/` or `negative/`,
+then add a case file setting `CASE_NAME` (the CTest name) and `CASE_FIXTURE`
+(the source basename). For a successful compile/run case, set
+`CASE_EXPECTED_OUTPUT_FILE` to a neighboring `.stdout` file containing the
+exact output (including the final newline); for a rejected program, set
+`CASE_EXPECTED_DIAGNOSTIC` to the expected diagnostic regex instead.
+Optional case flags include `CASE_REQUIRE_GC_ROOTS`, `CASE_REQUIRE_VIRTUAL_DISPATCH`,
+`CASE_EXPECT_WARNING`, `CASE_EXPECT_RUNTIME_FAILURE`,
+`CASE_EXPECT_RUNTIME_DIAGNOSTIC`, and `CASE_MODULE_REGISTRY`. See an existing
+case file for the relevant pattern. Reconfigure to discover newly added cases;
+no central test list needs editing.
+
+For parser/semantic functional checks in `simp_tests`, put a
+`<fixture>.simp.json` file next to the `.simp` source with `friendly_name`,
+`expected_diagnostic` (empty for a valid program), and `enabled` boolean
+fields. Focused C++ structural assertions belong in a `tests/test_*_cases.cpp`
+group using `TestGroupRegistration` from `test_cases.hpp`; CMake discovers
+these groups. CLI integration fixtures live under `tests/functional/cli/`,
+and their specialized shared runners accept a `CASE` selector so each
+scenario has an independent CTest result.
+
 Options include `--verbose` (`-v`), `--verbosity N`, `--trace-parser`,
 `--trace parser:scanner:AST:symbols` (trace selected compiler stages),
 `--dump-ast`, `--dump-symbols`, and `--check-only` (run parsing and semantic
@@ -67,11 +92,35 @@ path; includes still prefer the directory of the including source. Use
 (default: 16). `--help` (`-h`) prints the registered options, and `--version`
 (`-V`) prints the compiler version. LLVM IR is compiled to a native executable
 by the installed Clang driver; `--emit-llvm FILE` additionally saves the
-generated IR. Executables default to `./<input-basename>` in the compiler's
-current working directory; `-o FILE` selects another path. Only one source
-file is accepted. For example, running
-`../bin/simp ../tests/functional/positive/positive_gc_object_graph.simp` from `build/`
-creates `build/positive_gc_object_graph`.
+combined program IR. Pass any number of `.simp` sources and `.o`/`.obj` files;
+all Simple sources are analyzed together, so declarations and reopened
+namespaces can be shared across those files. Exactly one source in the set
+must contain `start`. Duplicate declarations (including symbols and namespace
+conflicts) are diagnosed by the compiler. Imports in those sources share the
+compilation-unit alias scope; module namespaces remain separate from local
+namespaces.
+
+Executables default to `./<first-source-basename>` (or `./a.out` for object-only
+links); `-o FILE` selects another path. `-c` compiles the supplied Simple
+sources together to one relocatable object without linking. The resulting
+object includes the single program entry and can be linked later with
+`simp program.o -o program`; object-only linking adds the compiler runtime.
+Without `-o`, compile-only writes `./<first-source-basename>.o`.
+`-L DIR` adds a linker search directory and `-l NAME` links `libNAME` in normal
+Clang driver order. The `CC` environment variable can select a compiler-driver
+executable in place of the Clang path configured at build time; it must name a
+single executable (not a command with extra flags). For example:
+
+```sh
+./bin/simp src/helpers.simp src/main.simp -o bin/program -L lib -lmylibrary
+./bin/simp -c src/helpers.simp src/main.simp -o build/program.o
+./bin/simp build/program.o -o bin/program
+```
+
+For a single-source invocation, the default remains
+`./<input-basename>`. For example, running
+`../bin/simp ../tests/functional/positive/positive_gc_object_graph.simp` from
+`build/` creates `build/positive_gc_object_graph`.
 The emitted IR uses the GC runtime ABI; link it manually with the runtime
 archive, for example:
 
@@ -79,8 +128,8 @@ archive, for example:
 clang -Wno-override-module -x ir build/program.ll -x none \
   lib/libsimp_runtime.a -o bin/program
 ```
-The compiler reads one source file, expands top-level textual includes, and
-reports source-located lexer, parser, and semantic errors.
+The compiler expands top-level textual includes independently for each source
+input and reports source-located lexer, parser, and semantic errors.
 
 ## Implemented subset
 

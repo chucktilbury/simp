@@ -104,8 +104,7 @@ void CommandLine::recordPositional(const std::string& value) {
         throw std::invalid_argument("unexpected positional argument: " + value);
     }
     if (positional_->list) {
-        const auto items = splitListValue(value);
-        positionalValues_.insert(positionalValues_.end(), items.begin(), items.end());
+        positionalValues_.push_back(value);
     } else if (positionalValues_.empty()) {
         positionalValues_.push_back(value);
     } else {

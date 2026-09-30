@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional string buffer element write rejected",
+  "expected_diagnostic": "buffer element assignment requires int or unsigned",
+  "enabled": true
+}

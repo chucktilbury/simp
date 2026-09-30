@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional buffer arithmetic rejected",
+  "expected_diagnostic": "operator '+' requires matching int, float, or unsigned operands",
+  "enabled": true
+}

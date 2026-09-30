@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional typed exception matching and rethrow",
+  "expected_diagnostic": "",
+  "enabled": true
+}

@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional bool arithmetic rejected",
+  "expected_diagnostic": "requires matching int, float, or unsigned operands",
+  "enabled": true
+}

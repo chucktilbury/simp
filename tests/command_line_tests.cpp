@@ -66,14 +66,15 @@ simp::CommandLine makeCommandLine() {
     help.name = "help";
     help.action = simp::CommandLineAction::Help;
     commandLine.addOption(help);
-    commandLine.addPositional({"source", "source file", true, false});
+    commandLine.addPositional({"source", "source file", true, true});
     return commandLine;
 }
 
 void testShortGroupsAttachedValuesAndLists() {
     auto commandLine = makeCommandLine();
     commandLine.parse({"-ab", "-p", "one:two", "-pthree", "-o=first",
-                       "--output=last", "--count", "-5", "--", "-input.simp"});
+                       "--output=last", "--count", "-5", "first.simp",
+                       "--", "-input.simp"});
     require(commandLine.switchValue("alpha") && commandLine.switchValue("beta"),
             "short option groups should set each switch");
     require(commandLine.values("path") ==
@@ -85,8 +86,9 @@ void testShortGroupsAttachedValuesAndLists() {
             "overridden default values should be marked as explicitly provided");
     require(commandLine.value("count") == std::optional<std::string>("-5"),
             "separate option values may begin with a dash");
-    require(commandLine.positionalValues() == std::vector<std::string>{"-input.simp"},
-            "double-dash should make following arguments positional");
+    require(commandLine.positionalValues() ==
+                std::vector<std::string>{"first.simp", "-input.simp"},
+            "list positionals should preserve each complete path");
 }
 
 void testDefaultsAndActions() {
@@ -108,9 +110,10 @@ void testInvalidArguments() {
     auto commandLine = makeCommandLine();
     expectFailure([&] { commandLine.parse({"source.simp"}); },
                   "required option");
-    expectFailure([&] {
-        commandLine.parse({"--count", "1", "source.simp", "other.simp"});
-    }, "only one input file");
+    commandLine.parse({"--count", "1", "source.simp", "other.simp"});
+    require(commandLine.positionalValues() ==
+                std::vector<std::string>{"source.simp", "other.simp"},
+            "list positionals should accept multiple input files");
     expectFailure([&] { commandLine.parse({"--unknown", "--count", "1", "x"}); },
                   "unknown option");
     expectFailure([&] { commandLine.parse({"--output"}); }, "requires an argument");

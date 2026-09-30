@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional adjacent statements rejected",
+  "expected_diagnostic": "expected newline after statement",
+  "enabled": true
+}

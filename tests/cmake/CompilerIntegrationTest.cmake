@@ -18,9 +18,13 @@ if(DEFINED EXPECTED_DIAGNOSTIC)
     return()
 endif()
 
-if(NOT DEFINED IR_OUTPUT OR NOT DEFINED EXPECTED_OUTPUT)
-    message(FATAL_ERROR "IR_OUTPUT and EXPECTED_OUTPUT are required for run mode")
+if(NOT DEFINED IR_OUTPUT OR NOT DEFINED EXPECTED_OUTPUT_FILE)
+    message(FATAL_ERROR "IR_OUTPUT and EXPECTED_OUTPUT_FILE are required for run mode")
 endif()
+if(NOT EXISTS "${EXPECTED_OUTPUT_FILE}")
+    message(FATAL_ERROR "Missing output expectation: ${EXPECTED_OUTPUT_FILE}")
+endif()
+file(READ "${EXPECTED_OUTPUT_FILE}" EXPECTED_OUTPUT)
 execute_process(
     COMMAND "${COMPILER}" "${SOURCE}" -o "${OUTPUT}" --emit-llvm "${IR_OUTPUT}"
     RESULT_VARIABLE compile_result

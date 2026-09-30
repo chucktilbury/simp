@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional missing virtual-base initializer rejected",
+  "expected_diagnostic": "most-derived constructor must initialize virtual base 'Root'",
+  "enabled": true
+}

@@ -1,0 +1,3 @@
+set(CASE_NAME simp_compile_and_run_public_inheritance)
+set(CASE_FIXTURE positive_public_inheritance.simp)
+set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_compile_and_run_public_inheritance.stdout")

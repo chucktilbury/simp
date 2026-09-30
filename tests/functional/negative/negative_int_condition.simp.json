@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional integer condition rejected",
+  "expected_diagnostic": "if condition must have type bool",
+  "enabled": true
+}

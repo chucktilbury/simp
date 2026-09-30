@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional native method missing symbol fails at link time",
+  "expected_diagnostic": "",
+  "enabled": true
+}

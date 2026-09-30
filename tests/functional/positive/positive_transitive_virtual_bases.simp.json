@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional transitive virtual-base inheritance",
+  "expected_diagnostic": "",
+  "enabled": true
+}

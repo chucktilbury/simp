@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional bool float and unsigned scalar types",
+  "expected_diagnostic": "",
+  "enabled": true
+}

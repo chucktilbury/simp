@@ -121,7 +121,7 @@ void Parser::trace(const char* action) const {
     }
 }
 
-Program Parser::parseProgram() {
+Program Parser::parseProgram(bool requireStart) {
     Program program;
     skipNewlines();
     while (check(TokenType::Import) || check(TokenType::Include) || check(TokenType::Class) ||
@@ -143,10 +143,12 @@ Program Parser::parseProgram() {
         error(current(), "'inline' is only allowed inside a function or method body");
     }
     if (!check(TokenType::Start)) {
+        if (!requireStart && check(TokenType::End)) return program;
         error(current(), "program must contain exactly one top-level 'start' block");
     }
     const auto start = current();
     program.location = start.location;
+    program.hasStart = true;
     trace("enter start block");
     ++current_;
     program.statements = parseBlock();
