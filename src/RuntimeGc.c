@@ -505,13 +505,9 @@ void *simp_exception_frame_base(void *storage) {
     return frame->exception_base;
 }
 
-int32_t simp_exception_matches(void *storage, const SimpClassMeta *expected) {
-    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
-    if (frame == NULL || !frame->has_exception || frame->exception_object == NULL ||
-        expected == NULL) abort();
-    const SimpClassMeta *actual = NULL;
-    memcpy(&actual, frame->exception_object, sizeof(actual));
-    if (actual == NULL) abort();
+static int32_t class_is_subclass(const SimpClassMeta *actual,
+                                 const SimpClassMeta *expected) {
+    if (actual == NULL || expected == NULL) abort();
     if (actual->name_length == expected->name_length &&
         memcmp(actual->name, expected->name, (size_t)actual->name_length) == 0) {
         return 1;
@@ -524,6 +520,86 @@ int32_t simp_exception_matches(void *storage, const SimpClassMeta *expected) {
         }
     }
     return 0;
+}
+
+int32_t simp_object_is_instance(void *object, const SimpClassMeta *expected) {
+    if (expected == NULL) abort();
+    if (object == NULL) return 0;
+    const SimpClassMeta *actual = NULL;
+    memcpy(&actual, object, sizeof(actual));
+    return class_is_subclass(actual, expected);
+}
+
+int32_t simp_value_is_type(uint64_t actual_tag, void *pointer,
+                           uint64_t expected_tag, const SimpClassMeta *expected_class) {
+    if (expected_tag == SIMP_ARRAY_OBJECT) {
+        if (expected_class == NULL || actual_tag != SIMP_ARRAY_OBJECT || pointer == NULL) {
+            return 0;
+        }
+        return simp_object_is_instance(pointer, expected_class);
+    }
+    if (expected_class != NULL) abort();
+    if (actual_tag != expected_tag) return 0;
+    if ((actual_tag == SIMP_ARRAY_STRING || actual_tag == SIMP_ARRAY_OBJECT ||
+         actual_tag == SIMP_ARRAY_MAP || actual_tag == SIMP_ARRAY_ARRAY ||
+         actual_tag == SIMP_ARRAY_BUFFER || actual_tag == SIMP_ARRAY_HANDLE) &&
+        pointer == NULL) {
+        return 0;
+    }
+    return 1;
+}
+
+int32_t simp_type_names_equal(const char *left, uint64_t left_length,
+                              const char *right, uint64_t right_length) {
+    if (left_length != right_length) return 0;
+    if (left_length == 0) return 1;
+    if (left == NULL || right == NULL || left_length > (uint64_t)SIZE_MAX) abort();
+    return memcmp(left, right, (size_t)left_length) == 0;
+}
+
+const char *simp_object_type_name(void *object, uint64_t *length) {
+    if (length == NULL) abort();
+    if (object == NULL) {
+        *length = 4;
+        return "null";
+    }
+    const SimpClassMeta *actual = NULL;
+    memcpy(&actual, object, sizeof(actual));
+    if (actual == NULL) abort();
+    *length = actual->name_length;
+    return actual->name;
+}
+
+const char *simp_value_type_name(uint64_t tag, void *pointer, uint64_t *length) {
+    if (length == NULL) abort();
+    if ((tag == SIMP_ARRAY_STRING || tag == SIMP_ARRAY_OBJECT ||
+         tag == SIMP_ARRAY_MAP || tag == SIMP_ARRAY_ARRAY ||
+         tag == SIMP_ARRAY_BUFFER || tag == SIMP_ARRAY_HANDLE) &&
+        pointer == NULL) {
+        *length = 4;
+        return "null";
+    }
+    switch (tag) {
+    case SIMP_ARRAY_INTEGER: *length = 3; return "int";
+    case SIMP_ARRAY_STRING: *length = 6; return "string";
+    case SIMP_ARRAY_OBJECT: return simp_object_type_name(pointer, length);
+    case SIMP_ARRAY_MAP: *length = 3; return "map";
+    case SIMP_ARRAY_ARRAY: *length = 5; return "array";
+    case SIMP_ARRAY_BOOLEAN: *length = 4; return "bool";
+    case SIMP_ARRAY_FLOAT: *length = 5; return "float";
+    case SIMP_ARRAY_UNSIGNED: *length = 8; return "unsigned";
+    case SIMP_ARRAY_BUFFER: *length = 6; return "buffer";
+    case SIMP_ARRAY_HANDLE: *length = 6; return "handle";
+    case SIMP_ARRAY_TYPE: *length = 4; return "type";
+    default: abort();
+    }
+}
+
+int32_t simp_exception_matches(void *storage, const SimpClassMeta *expected) {
+    SimpExceptionFrame *frame = (SimpExceptionFrame *)storage;
+    if (frame == NULL || !frame->has_exception || frame->exception_object == NULL ||
+        expected == NULL) abort();
+    return simp_object_is_instance(frame->exception_object, expected);
 }
 
 static void *make_runtime_exception(const char *message, uint64_t length) {

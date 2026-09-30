@@ -1,0 +1,5 @@
+{
+  "friendly_name": "type operator requires parentheses",
+  "expected_diagnostic": "expected '(' after 'type'",
+  "enabled": true
+}

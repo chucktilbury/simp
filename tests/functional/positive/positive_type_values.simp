@@ -1,0 +1,105 @@
+# Exercises exact dynamic type names, type values, storage, and printing.
+class Base {}
+class Derived : Base {}
+class Native {
+    int marker
+    handle saved
+
+    Native(int initial) {
+        marker = initial
+    }
+
+    handle create()
+}
+handle Native.create() from "simp_method_demo_handle_create"
+
+namespace ns {
+    class Thing {}
+}
+
+class TypeHolder {
+    type value
+}
+
+start {
+    int integer = 1
+    bool boolean = true
+    float real = 2.5
+    unsigned count = 5u
+    string text = "text"
+    array sequence = [1]
+    map dictionary = {"key": 1}
+    buffer bytes = buffer(1)
+    Native native = Native(91)
+    handle handleValue = native.create()
+    Derived derived = Derived()
+    Base base = derived
+    ns.Thing qualified = ns.Thing()
+
+    print(type(integer))
+    print(type(boolean))
+    print(type(real))
+    print(type(count))
+    print(type(text))
+    print(type(sequence))
+    print(type(dictionary))
+    print(type(bytes))
+    print(type(handleValue))
+    print(type(derived))
+    print(type(base))
+    print(type(qualified))
+    print(type(type(integer)))
+
+    print(type(integer) == int)
+    print(type(boolean) == bool)
+    print(type(real) == float)
+    print(type(count) == unsigned)
+    print(type(text) == string)
+    print(type(sequence) == list)
+    print(type(dictionary) == dict)
+    print(type(bytes) == buffer)
+    print(type(handleValue) == handle)
+    print(type(derived) == Derived)
+    print(derived is Base)
+    print(type(base) == Derived)
+    print(type(base) != Base)
+    print(type(qualified) == ns.Thing)
+
+    any dynamic = integer
+    print(type(dynamic) == int)
+    dynamic = boolean
+    print(type(dynamic) == bool)
+    dynamic = real
+    print(type(dynamic) == float)
+    dynamic = count
+    print(type(dynamic) == unsigned)
+    dynamic = text
+    print(type(dynamic) == string)
+    dynamic = sequence
+    print(type(dynamic) == array)
+    dynamic = dictionary
+    print(type(dynamic) == map)
+    dynamic = bytes
+    print(type(dynamic) == buffer)
+    dynamic = handleValue
+    print(type(dynamic) == handle)
+    dynamic = base
+    print(type(dynamic) == Derived)
+    dynamic = null
+    print(type(dynamic))
+    print(type(dynamic) == null)
+    print(type(null) == null)
+
+    type stored = type(base)
+    print(stored)
+    print(stored == type(derived))
+    print(stored != Base)
+    TypeHolder holder = TypeHolder()
+    holder.value = ns.Thing
+    print(holder.value)
+    print(holder.value == type(qualified))
+
+    dynamic = type(derived)
+    print(dynamic is type)
+    print(type(dynamic))
+}

@@ -56,6 +56,7 @@ bool Parser::startsOutOfLineDefinition() const {
     case TokenType::BufferType:
     case TokenType::HandleType:
     case TokenType::AnyType:
+    case TokenType::TypeType:
     case TokenType::Void:
         ++afterType;
         break;
@@ -275,7 +276,8 @@ Statement Parser::parseStatement() {
         check(TokenType::FloatType) || check(TokenType::Unsigned) ||
         check(TokenType::StringType) || check(TokenType::ArrayType) ||
         check(TokenType::MapType) || check(TokenType::BufferType) ||
-        check(TokenType::HandleType) || check(TokenType::AnyType) || check(TokenType::Void)) {
+        check(TokenType::HandleType) || check(TokenType::AnyType) ||
+        check(TokenType::TypeType) || check(TokenType::Void)) {
         return parseDeclaration();
     }
     if (check(TokenType::Identifier)) {
@@ -666,20 +668,61 @@ std::unique_ptr<Expression> Parser::parseNot() {
 }
 
 std::unique_ptr<Expression> Parser::parseComparison() {
-    auto expression = parseAddition();
-    while (check(TokenType::EqualEqual) || check(TokenType::BangEqual) ||
-           check(TokenType::Less) || check(TokenType::LessEqual) ||
-           check(TokenType::Greater) || check(TokenType::GreaterEqual)) {
+    auto expression = parseRelational();
+    while (check(TokenType::EqualEqual) || check(TokenType::BangEqual)) {
         const auto operation = tokens_[current_++];
         auto combined = std::make_unique<Expression>();
         combined->kind = ExpressionKind::Binary;
         combined->location = operation.location;
         combined->value = operation.text;
         combined->left = std::move(expression);
-        combined->right = parseAddition();
+        combined->right = parseRelational();
         expression = std::move(combined);
     }
     return expression;
+}
+
+std::unique_ptr<Expression> Parser::parseRelational() {
+    auto expression = parseAddition();
+    while (check(TokenType::Is) || check(TokenType::Less) ||
+           check(TokenType::LessEqual) || check(TokenType::Greater) ||
+           check(TokenType::GreaterEqual)) {
+        const auto operation = tokens_[current_++];
+        auto combined = std::make_unique<Expression>();
+        combined->location = operation.location;
+        combined->left = std::move(expression);
+        if (operation.type == TokenType::Is) {
+            combined->kind = ExpressionKind::TypeTest;
+            combined->typeLocation = current().location;
+            combined->value = parseTypeTestName();
+        } else {
+            combined->kind = ExpressionKind::Binary;
+            combined->value = operation.text;
+            combined->right = parseAddition();
+        }
+        expression = std::move(combined);
+    }
+    return expression;
+}
+
+std::string Parser::parseTypeTestName() {
+    if (check(TokenType::Identifier)) {
+        return parseQualifiedIdentifier("type name after 'is'");
+    }
+    if (match(TokenType::Int)) return "int";
+    if (match(TokenType::Unsigned)) return "unsigned";
+    if (match(TokenType::FloatType)) return "float";
+    if (match(TokenType::Bool)) return "bool";
+    if (match(TokenType::StringType)) return "string";
+    if (match(TokenType::ArrayType)) return "array";
+    if (match(TokenType::MapType)) return "map";
+    if (match(TokenType::BufferType)) return "buffer";
+    if (match(TokenType::HandleType)) return "handle";
+    if (match(TokenType::AnyType)) return "any";
+    if (match(TokenType::TypeType)) return "type";
+    if (match(TokenType::Void)) return "void";
+    error(current(), std::string("expected type name after 'is', found ") +
+                         tokenTypeName(current().type));
 }
 
 std::unique_ptr<Expression> Parser::parseAddition() {
@@ -727,6 +770,59 @@ std::unique_ptr<Expression> Parser::parseUnary() {
 
 std::unique_ptr<Expression> Parser::parsePrimary() {
     const auto token = current();
+    if (match(TokenType::TypeType)) {
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::TypeOf;
+        expression->location = token.location;
+        consume(TokenType::LeftParen, "'(' after 'type'");
+        expression->left = parseExpression();
+        consume(TokenType::RightParen, "')' after type operand");
+        return expression;
+    }
+    if (check(TokenType::Int) && current_ + 1 < tokens_.size() &&
+        tokens_[current_ + 1].type != TokenType::LeftParen) {
+        ++current_;
+        return parseTypeName(token, "int");
+    }
+    if (check(TokenType::Bool)) {
+        ++current_;
+        return parseTypeName(token, "bool");
+    }
+    if (check(TokenType::FloatType) && current_ + 1 < tokens_.size() &&
+        tokens_[current_ + 1].type != TokenType::LeftParen) {
+        ++current_;
+        return parseTypeName(token, "float");
+    }
+    if (check(TokenType::Unsigned) && current_ + 1 < tokens_.size() &&
+        tokens_[current_ + 1].type != TokenType::LeftParen) {
+        ++current_;
+        return parseTypeName(token, "unsigned");
+    }
+    if (check(TokenType::StringType)) {
+        ++current_;
+        return parseTypeName(token, "string");
+    }
+    if (check(TokenType::ArrayType)) {
+        ++current_;
+        return parseTypeName(token, "array");
+    }
+    if (check(TokenType::MapType)) {
+        ++current_;
+        return parseTypeName(token, "map");
+    }
+    if (check(TokenType::BufferType) && current_ + 1 < tokens_.size() &&
+        tokens_[current_ + 1].type != TokenType::LeftParen) {
+        ++current_;
+        return parseTypeName(token, "buffer");
+    }
+    if (check(TokenType::HandleType)) {
+        ++current_;
+        return parseTypeName(token, "handle");
+    }
+    if (check(TokenType::AnyType)) {
+        ++current_;
+        return parseTypeName(token, "any");
+    }
     if (match(TokenType::BufferType)) {
         auto expression = std::make_unique<Expression>();
         expression->kind = ExpressionKind::BufferConstructor;
@@ -836,6 +932,15 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         return expression;
     }
     error(current(), std::string("expected expression, found ") + tokenTypeName(current().type));
+}
+
+std::unique_ptr<Expression> Parser::parseTypeName(const Token& token, std::string name) {
+    auto expression = std::make_unique<Expression>();
+    expression->kind = ExpressionKind::TypeName;
+    expression->location = token.location;
+    expression->typeLocation = token.location;
+    expression->value = std::move(name);
+    return expression;
 }
 
 std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> expression) {

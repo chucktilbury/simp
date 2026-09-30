@@ -1,0 +1,5 @@
+{
+  "friendly_name": "type-test keyword is reserved",
+  "expected_diagnostic": "keywords are reserved",
+  "enabled": true
+}

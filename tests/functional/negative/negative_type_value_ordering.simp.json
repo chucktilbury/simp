@@ -1,0 +1,5 @@
+{
+  "friendly_name": "ordering comparisons reject type values",
+  "expected_diagnostic": "ordering comparisons are not supported for type values",
+  "enabled": true
+}

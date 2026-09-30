@@ -1,0 +1,5 @@
+{
+  "friendly_name": "unknown type value name diagnostic",
+  "expected_diagnostic": "unknown type name 'MissingType'",
+  "enabled": true
+}

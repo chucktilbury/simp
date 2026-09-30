@@ -63,10 +63,13 @@ private:
     std::unique_ptr<Expression> parseAnd();
     std::unique_ptr<Expression> parseNot();
     std::unique_ptr<Expression> parseComparison();
+    std::unique_ptr<Expression> parseRelational();
+    std::string parseTypeTestName();
     std::unique_ptr<Expression> parseAddition();
     std::unique_ptr<Expression> parseMultiplication();
     std::unique_ptr<Expression> parseUnary();
     std::unique_ptr<Expression> parsePrimary();
+    std::unique_ptr<Expression> parseTypeName(const Token& token, std::string name);
     std::unique_ptr<Expression> parsePostfix(std::unique_ptr<Expression> expression);
 
     std::vector<Token> tokens_;

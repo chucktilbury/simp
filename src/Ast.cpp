@@ -71,6 +71,9 @@ const char* expressionName(ExpressionKind kind) {
     case ExpressionKind::Index: return "Index";
     case ExpressionKind::Slice: return "Slice";
     case ExpressionKind::Cast: return "Cast";
+    case ExpressionKind::TypeTest: return "TypeTest";
+    case ExpressionKind::TypeOf: return "TypeOf";
+    case ExpressionKind::TypeName: return "TypeName";
     }
     return "Expression";
 }

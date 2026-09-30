@@ -1,0 +1,5 @@
+{
+  "friendly_name": "missing type-test target diagnostic",
+  "expected_diagnostic": "expected type name after 'is'",
+  "enabled": true
+}

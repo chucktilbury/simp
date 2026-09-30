@@ -16,12 +16,14 @@ namespace simp {
 
 enum class ExpressionKind {
     Integer, Unsigned, Float, Boolean, String, Identifier, Unary, Binary, Member, Call,
-    ConstructorCall, BufferConstructor, Null, ArrayLiteral, MapLiteral, Index, Slice, Cast
+    ConstructorCall, BufferConstructor, Null, ArrayLiteral, MapLiteral, Index, Slice, Cast,
+    TypeTest, TypeOf, TypeName
 };
 
 struct Expression {
     ExpressionKind kind = ExpressionKind::Integer;
     SourceLocation location;
+    SourceLocation typeLocation;
     std::string value;
     bool formattedString = false;
     // For a Call expression the semantic analyzer records the selected

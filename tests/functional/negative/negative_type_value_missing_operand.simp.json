@@ -1,0 +1,5 @@
+{
+  "friendly_name": "type operator requires operand",
+  "expected_diagnostic": "expected expression",
+  "enabled": true
+}

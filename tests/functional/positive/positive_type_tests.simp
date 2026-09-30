@@ -1,0 +1,87 @@
+# Exercises static and dynamic type tests, subclass matching, and bool conditions.
+class Root {}
+class Middle : Root {}
+class Leaf : Middle {}
+class Other {}
+
+namespace shapes {
+    class Named {}
+}
+
+start {
+    int integer = 7
+    print(integer is int)
+    print(integer is float)
+    print(1 + 2 * 3 is int == true)
+
+    Leaf leaf = Leaf()
+    Root baseReference = leaf
+    Root rootOnly = Root()
+    Other unrelated = Other()
+    print(leaf is Leaf)
+    print(leaf is Root)
+    print(baseReference is Leaf)
+    print(rootOnly is Leaf)
+    print(unrelated is Root)
+    print(leaf is Middle)
+
+    shapes.Named named = shapes.Named()
+    print(named is shapes.Named)
+
+    map values = {"integer": 42, "text": "hello", "real": 3.5, "dictionary": {"key": 1}, "sequence": [1, 2], "object": leaf, "nothing": null, "flag": true, "count": 5u}
+    any dynamic = values["integer"]
+    print(dynamic is int)
+    print(dynamic is string)
+    dynamic = values["text"]
+    print(dynamic is string)
+    print(dynamic is float)
+    dynamic = values["real"]
+    print(dynamic is float)
+    dynamic = values["dictionary"]
+    print(dynamic is map)
+    print(dynamic is dict)
+    print(dynamic is array)
+    dynamic = values["sequence"]
+    print(dynamic is array)
+    print(dynamic is list)
+    print(dynamic is map)
+    dynamic = values["object"]
+    print(dynamic is Leaf)
+    print(dynamic is Root)
+    print(dynamic is Other)
+    dynamic = values["flag"]
+    print(dynamic is bool)
+    dynamic = values["count"]
+    print(dynamic is unsigned)
+    dynamic = values["nothing"]
+    print(dynamic is int)
+    print(dynamic is string)
+    print(dynamic is Root)
+
+    Root emptyObject = null
+    string emptyText = null
+    array emptyArray = null
+    print(emptyObject is Root)
+    print(emptyText is string)
+    print(emptyArray is array)
+    int emptyInteger = null
+    print(emptyInteger is int)
+    handle emptyHandle = null
+    print(emptyHandle is handle)
+    buffer storage = buffer(1)
+    any dynamicBuffer = storage
+    print(dynamicBuffer is buffer)
+
+    if (leaf is Root) {
+        print("if type test")
+    }
+    bool condition = leaf is Leaf
+    print(condition)
+    int iterations = 0
+    Root current = Root()
+    while (current is Root and iterations < 1) {
+        iterations = iterations + 1
+        current = null
+    }
+    print(iterations)
+}

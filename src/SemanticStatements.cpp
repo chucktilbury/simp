@@ -179,18 +179,20 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         if (types.size() > 1) {
             for (std::size_t index = 1; index < types.size(); ++index) {
                 if (types[index] != "int" && types[index] != "bool" &&
-                    types[index] != "float" && types[index] != "unsigned") {
+                    types[index] != "float" && types[index] != "unsigned" &&
+                    types[index] != "type") {
                     throw DiagnosticError(statement.expressions[index]->location,
                                           "formatted print arguments must have type int, bool, "
-                                          "float, or unsigned");
+                                          "float, unsigned, or type");
                 }
             }
         } else if (!types.empty() && types.front() != "int" && types.front() != "bool" &&
                    types.front() != "float" && types.front() != "unsigned" &&
-                   types.front() != "string" && types.front() != "any") {
+                   types.front() != "string" && types.front() != "any" &&
+                   types.front() != "type") {
             throw DiagnosticError(statement.location,
-                                  "print supports int, bool, float, unsigned, string, or 'any' "
-                                  "values only");
+                                  "print supports int, bool, float, unsigned, string, 'any', or "
+                                  "'type' values only");
         }
         return;
     }

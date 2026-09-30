@@ -143,6 +143,7 @@ std::string CodeGenerator::llvmType(const std::string& type) const {
     if (type == "unsigned") return "i64";
     if (type == "string") return "%SimpleString";
     if (type == "any") return "%SimpleArrayValue";
+    if (type == "type") return "%SimpleString";
     if (type == "void") return "void";
     return "ptr";
 }
@@ -293,7 +294,8 @@ CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
                           value.type == "float" ? "7" :
                           value.type == "unsigned" ? "8" :
                           isBufferType(value.type) ? "9" :
-                          value.type == "handle" ? "10" : "3";
+                          value.type == "handle" ? "10" :
+                          value.type == "type" ? "11" : "3";
     instructions_ += "  " + tag + " = insertvalue %SimpleArrayValue zeroinitializer, i64 " +
                      valueTag + ", 0\n";
     std::string stored = tag;
@@ -319,6 +321,20 @@ CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
                          ", i64 " + bits + ", 1\n";
         stored = withFloat;
     } else if (value.type == "string") {
+        const auto data = newTemporary();
+        const auto length = newTemporary();
+        const auto withData = newTemporary();
+        const auto withLength = newTemporary();
+        instructions_ += "  " + data + " = extractvalue %SimpleString " + value.operand +
+                         ", 0\n"
+                         "  " + length + " = extractvalue %SimpleString " + value.operand +
+                         ", 1\n"
+                         "  " + withData + " = insertvalue %SimpleArrayValue " + stored +
+                         ", ptr " + data + ", 2\n"
+                         "  " + withLength + " = insertvalue %SimpleArrayValue " + withData +
+                         ", i64 " + length + ", 3\n";
+        stored = withLength;
+    } else if (value.type == "type") {
         const auto data = newTemporary();
         const auto length = newTemporary();
         const auto withData = newTemporary();
@@ -376,8 +392,9 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
         }
         return {expectedType, result};
     }
-    if (expectedType == "string") {
-        instructions_ += "  call void @simp_value_require_tag(i64 " + tag + ", i64 2, ptr " +
+    if (expectedType == "string" || expectedType == "type") {
+        instructions_ += "  call void @simp_value_require_tag(i64 " + tag + ", i64 " +
+                         (expectedType == "string" ? "2" : "11") + ", ptr " +
                          file + ", i64 " + fileLength + ", i64 " + line + ", i64 " + column +
                          ")\n";
         const auto pointer = newTemporary();
@@ -392,7 +409,7 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
                          ", 0\n"
                          "  " + result + " = insertvalue %SimpleString " + first + ", i64 " +
                          length + ", 1\n";
-        return {"string", result};
+        return {expectedType, result};
     }
     if (expectedType == "map" || expectedType == "array") {
         const auto pointer = newTemporary();
@@ -506,7 +523,117 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         return {"string", result};
     }
     case ExpressionKind::Null:
+        if (expectedType == "type") {
+            const auto global = internString("null");
+            const auto pointer = newTemporary();
+            const auto first = newTemporary();
+            const auto result = newTemporary();
+            instructions_ += "  " + pointer + " = getelementptr inbounds [4 x i8], ptr " +
+                             global + ", i64 0, i64 0\n"
+                             "  " + first + " = insertvalue %SimpleString poison, ptr " +
+                             pointer + ", 0\n"
+                             "  " + result + " = insertvalue %SimpleString " + first +
+                             ", i64 4, 1\n";
+            return {"type", result};
+        }
         return {expectedType.empty() ? "null" : expectedType, "null"};
+    case ExpressionKind::TypeName: {
+        const auto global = internString(expression.value);
+        const auto pointer = newTemporary();
+        const auto first = newTemporary();
+        const auto result = newTemporary();
+        instructions_ += "  " + pointer + " = getelementptr inbounds [" +
+                         std::to_string(expression.value.size()) + " x i8], ptr " + global +
+                         ", i64 0, i64 0\n"
+                         "  " + first + " = insertvalue %SimpleString poison, ptr " + pointer +
+                         ", 0\n"
+                         "  " + result + " = insertvalue %SimpleString " + first + ", i64 " +
+                         std::to_string(expression.value.size()) + ", 1\n";
+        return {"type", result};
+    }
+    case ExpressionKind::TypeOf: {
+        const auto operand = emitExpression(*expression.left);
+        const auto nameResult = newTemporary();
+        const auto lengthSlot = "%type.length." + std::to_string(nextVariable_++);
+        entryAllocas_ += "  " + lengthSlot + " = alloca i64\n";
+        if (operand.type == "any") {
+            const auto tag = newTemporary();
+            const auto pointer = newTemporary();
+            instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " +
+                             operand.operand + ", 0\n"
+                             "  " + pointer + " = extractvalue %SimpleArrayValue " +
+                             operand.operand + ", 2\n"
+                             "  " + nameResult +
+                             " = call ptr @simp_value_type_name(i64 " + tag + ", ptr " +
+                             pointer + ", ptr " + lengthSlot + ")\n";
+        } else if (classes_.find(operand.type) != classes_.end()) {
+            instructions_ += "  " + nameResult +
+                             " = call ptr @simp_object_type_name(ptr " + operand.operand +
+                             ", ptr " + lengthSlot + ")\n";
+        } else {
+            std::string nullCondition;
+            if (!operand.nullFlag.empty()) {
+                nullCondition = operand.nullFlag;
+            } else if (operand.type == "string") {
+                const auto data = newTemporary();
+                nullCondition = newTemporary();
+                instructions_ += "  " + data + " = extractvalue %SimpleString " +
+                                 operand.operand + ", 0\n"
+                                 "  " + nullCondition + " = icmp eq ptr " + data + ", null\n";
+            } else if (operand.type == "array" || operand.type == "map" ||
+                       operand.type == "buffer" || operand.type == "handle") {
+                nullCondition = newTemporary();
+                instructions_ += "  " + nullCondition + " = icmp eq ptr " + operand.operand +
+                                 ", null\n";
+            }
+            const auto staticName = operand.type == "null" ? "null" : operand.type;
+            if (nullCondition.empty()) {
+                const auto global = internString(staticName);
+                instructions_ += "  " + nameResult + " = getelementptr inbounds [" +
+                                 std::to_string(staticName.size()) + " x i8], ptr " + global +
+                                 ", i64 0, i64 0\n"
+                                 "  store i64 " + std::to_string(staticName.size()) + ", ptr " +
+                                 lengthSlot + "\n";
+            } else {
+                const auto nullLabel = freshLabel("type.null");
+                const auto valueLabel = freshLabel("type.value");
+                const auto endLabel = freshLabel("type.end");
+                const auto nameSlot = "%type.name." + std::to_string(nextVariable_++);
+                entryAllocas_ += "  " + nameSlot + " = alloca ptr\n";
+                instructions_ += "  br i1 " + nullCondition + ", label %" + nullLabel +
+                                 ", label %" + valueLabel + "\n" + nullLabel + ":\n";
+                const auto nullGlobal = internString("null");
+                const auto nullPointer = newTemporary();
+                instructions_ += "  " + nullPointer +
+                                 " = getelementptr inbounds [4 x i8], ptr " + nullGlobal +
+                                 ", i64 0, i64 0\n"
+                                 "  store ptr " + nullPointer + ", ptr " + nameSlot + "\n"
+                                 "  store i64 4, ptr " + lengthSlot + "\n"
+                                 "  br label %" + endLabel + "\n"
+                                 + valueLabel + ":\n";
+                const auto global = internString(staticName);
+                const auto pointer = newTemporary();
+                instructions_ += "  " + pointer + " = getelementptr inbounds [" +
+                                 std::to_string(staticName.size()) + " x i8], ptr " + global +
+                                 ", i64 0, i64 0\n"
+                                 "  store ptr " + pointer + ", ptr " + nameSlot + "\n"
+                                 "  store i64 " + std::to_string(staticName.size()) + ", ptr " +
+                                 lengthSlot + "\n"
+                                 "  br label %" + endLabel + "\n"
+                                 + endLabel + ":\n"
+                                 "  " + nameResult + " = load ptr, ptr " + nameSlot + "\n";
+            }
+        }
+        const auto length = newTemporary();
+        const auto first = newTemporary();
+        const auto result = newTemporary();
+        instructions_ += "  " + length + " = load i64, ptr " + lengthSlot + "\n"
+                         "  " + first + " = insertvalue %SimpleString poison, ptr " +
+                         nameResult + ", 0\n"
+                         "  " + result + " = insertvalue %SimpleString " + first + ", i64 " +
+                         length + ", 1\n";
+        return {"type", result};
+    }
     case ExpressionKind::ArrayLiteral: {
         const auto array = newTemporary();
         instructions_ += "  " + array + " = call ptr @simp_gc_alloc_array(i64 " +
@@ -1049,6 +1176,66 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         // the cast of 0 and carries no null flag of its own.
         return {target, result};
     }
+    case ExpressionKind::TypeTest: {
+        const auto operand = emitExpression(*expression.left);
+        const auto& target = expression.value;
+        const auto targetClass = classes_.find(target);
+        const bool classTarget = targetClass != classes_.end();
+        const auto expectedMetadata = classTarget
+                                          ? (targetClass->second->builtin
+                                                 ? "@simp_exception_class_meta"
+                                                 : "@.simp.class.meta." + target)
+                                          : "null";
+        if (operand.type == "null") return {"bool", "0"};
+        if (operand.type == "any") {
+            const auto tag = newTemporary();
+            const auto pointer = newTemporary();
+            const auto matches = newTemporary();
+            const auto result = newTemporary();
+            const auto expectedTag = target == "int" ? "1" :
+                                     target == "string" ? "2" :
+                                     target == "map" ? "4" :
+                                     target == "array" ? "5" :
+                                     target == "bool" ? "6" :
+                                     target == "float" ? "7" :
+                                     target == "unsigned" ? "8" :
+                                     target == "buffer" ? "9" :
+                                     target == "handle" ? "10" :
+                                     target == "type" ? "11" : "3";
+            instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " +
+                             operand.operand + ", 0\n"
+                             "  " + pointer + " = extractvalue %SimpleArrayValue " +
+                             operand.operand + ", 2\n"
+                             "  " + matches + " = call i32 @simp_value_is_type(i64 " +
+                             tag + ", ptr " + pointer + ", i64 " + expectedTag + ", ptr " +
+                             expectedMetadata + ")\n"
+                             "  " + result + " = icmp ne i32 " + matches + ", 0\n";
+            return {"bool", result};
+        }
+        if (classTarget) {
+            if (classes_.find(operand.type) == classes_.end()) return {"bool", "0"};
+            const auto matches = newTemporary();
+            const auto result = newTemporary();
+            instructions_ += "  " + matches +
+                             " = call i32 @simp_object_is_instance(ptr " + operand.operand +
+                             ", ptr " + expectedMetadata + ")\n"
+                             "  " + result + " = icmp ne i32 " + matches + ", 0\n";
+            return {"bool", result};
+        }
+        if (operand.type != target) return {"bool", "0"};
+        if (isNullableScalarType(operand.type)) {
+            return emitScalarNullComparison(operand, false);
+        }
+        if (operand.type == "string") {
+            return emitStringNullComparison(operand, false);
+        }
+        if (operand.type == "type") {
+            return emitStringNullComparison(operand, false);
+        }
+        const auto result = newTemporary();
+        instructions_ += "  " + result + " = icmp ne ptr " + operand.operand + ", null\n";
+        return {"bool", result};
+    }
     case ExpressionKind::Unary: {
         const auto operand = emitExpression(*expression.left);
         if (expression.value == "+") return operand;
@@ -1067,7 +1254,12 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         return {expression.value == "!" ? "bool" : operand.type, result};
     }
     case ExpressionKind::Binary: {
-        const auto left = emitExpression(*expression.left);
+        const auto isTypeSyntax = [](const Expression& candidate) {
+            return candidate.kind == ExpressionKind::TypeOf ||
+                   candidate.kind == ExpressionKind::TypeName;
+        };
+        const auto left = emitExpression(*expression.left,
+                                         isTypeSyntax(*expression.right) ? "type" : "");
         const auto& operation = expression.value;
         if (operation == "&&" || operation == "||") {
             const bool conjunction = operation == "&&";
@@ -1084,7 +1276,8 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              resultSlot + "\n"
                              "  br label %" + endLabel + "\n"
                              + rightLabel + ":\n";
-            const auto right = emitExpression(*expression.right);
+            const auto right = emitExpression(*expression.right,
+                                              left.type == "type" ? "type" : "");
             instructions_ += "  store i1 " + right.operand + ", ptr " + resultSlot + "\n"
                              "  br label %" + endLabel + "\n"
                              + endLabel + ":\n";
@@ -1092,7 +1285,8 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             instructions_ += "  " + result + " = load i1, ptr " + resultSlot + "\n";
             return {"bool", result};
         }
-        const auto right = emitExpression(*expression.right);
+        const auto right = emitExpression(*expression.right,
+                                          left.type == "type" ? "type" : "");
         const auto result = newTemporary();
         if (operation == "+" || operation == "-" || operation == "*" ||
             operation == "/" || operation == "%") {
@@ -1138,6 +1332,34 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         }
         if (operation == "==" || operation == "!=" || operation == "<" ||
             operation == "<=" || operation == ">" || operation == ">=") {
+            if (left.type == "type" || right.type == "type") {
+                if (operation != "==" && operation != "!=") {
+                    throw DiagnosticError(expression.location,
+                                          "ordering comparisons are not supported for type values");
+                }
+                const auto leftData = newTemporary();
+                const auto leftLength = newTemporary();
+                const auto rightData = newTemporary();
+                const auto rightLength = newTemporary();
+                const auto equal = newTemporary();
+                const auto result = newTemporary();
+                instructions_ += "  " + leftData + " = extractvalue %SimpleString " +
+                                 left.operand + ", 0\n"
+                                 "  " + leftLength + " = extractvalue %SimpleString " +
+                                 left.operand + ", 1\n"
+                                 "  " + rightData + " = extractvalue %SimpleString " +
+                                 right.operand + ", 0\n"
+                                 "  " + rightLength + " = extractvalue %SimpleString " +
+                                 right.operand + ", 1\n"
+                                 "  " + equal +
+                                 " = call i32 @simp_type_names_equal(ptr " + leftData +
+                                 ", i64 " + leftLength + ", ptr " + rightData + ", i64 " +
+                                 rightLength + ")\n"
+                                 "  " + result + " = icmp " +
+                                 (operation == "==" ? "ne" : "eq") + " i32 " + equal +
+                                 ", 0\n";
+                return {"bool", result};
+            }
             if ((operation == "==" || operation == "!=") &&
                 (expression.left->kind == ExpressionKind::Null) !=
                     (expression.right->kind == ExpressionKind::Null)) {

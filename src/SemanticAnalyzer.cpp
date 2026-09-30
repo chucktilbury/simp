@@ -176,7 +176,7 @@ void SemanticAnalyzer::normalizeType(
     if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
         type == "string" || type == "array" || type == "map" ||
         type == "buffer" || type == "handle" ||
-        type == "any" || type == "void") {
+        type == "any" || type == "type" || type == "void") {
         return;
     }
     if (type.find('.') == std::string::npos &&
@@ -188,7 +188,32 @@ void SemanticAnalyzer::normalizeType(
 
 void SemanticAnalyzer::normalizeExpression(
     Expression& expression, const std::vector<std::string>& namespacePath) {
-    (void)namespacePath;
+    if (expression.kind == ExpressionKind::TypeTest &&
+        expression.value != "int" && expression.value != "bool" &&
+        expression.value != "float" && expression.value != "unsigned" &&
+        expression.value != "string" && expression.value != "array" &&
+        expression.value != "map" && expression.value != "buffer" &&
+        expression.value != "handle" && expression.value != "any" &&
+        expression.value != "type" &&
+        expression.value != "void") {
+        if (expression.value.find('.') == std::string::npos &&
+            !hasNamespaceOrClass(expression.value, namespacePath)) {
+            throw DiagnosticError(expression.typeLocation,
+                                  "unknown type name '" + expression.value + "'");
+        }
+        expression.value = resolveClassName(expression.value, namespacePath,
+                                             expression.typeLocation);
+    }
+    if (expression.kind == ExpressionKind::TypeName &&
+        expression.value != "int" && expression.value != "bool" &&
+        expression.value != "float" && expression.value != "unsigned" &&
+        expression.value != "string" && expression.value != "array" &&
+        expression.value != "map" && expression.value != "buffer" &&
+        expression.value != "handle" && expression.value != "any" &&
+        expression.value != "type") {
+        expression.value = resolveClassName(expression.value, namespacePath,
+                                             expression.typeLocation);
+    }
     if (expression.left) normalizeExpression(*expression.left, namespacePath);
     if (expression.right) normalizeExpression(*expression.right, namespacePath);
     for (auto& argument : expression.arguments) {
@@ -619,7 +644,7 @@ void SemanticAnalyzer::validateType(const std::string& type, const SourceLocatio
                                    bool allowVoid) const {
     if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
         type == "string" || type == "array" || type == "map" ||
-        type == "buffer" || type == "handle" || type == "any" ||
+        type == "buffer" || type == "handle" || type == "any" || type == "type" ||
         (allowVoid && type == "void")) {
         return;
     }

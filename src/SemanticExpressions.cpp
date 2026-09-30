@@ -137,7 +137,28 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
     case ExpressionKind::String:
         return "string";
     case ExpressionKind::Null:
-        return "null";
+        return expectedType == "type" ? "type" : "null";
+    case ExpressionKind::TypeName: {
+        const auto& target = expression.value;
+        const bool known = target == "int" || target == "bool" || target == "float" ||
+                           target == "unsigned" || target == "string" ||
+                           target == "array" || target == "map" || target == "buffer" ||
+                           target == "handle" || target == "any" || target == "type" ||
+                           classes_.find(target) != classes_.end();
+        if (!known) {
+            throw DiagnosticError(expression.typeLocation,
+                                  "unknown type name '" + target + "'");
+        }
+        return "type";
+    }
+    case ExpressionKind::TypeOf: {
+        const auto operandType = analyzeExpression(*expression.left);
+        if (operandType == "void") {
+            throw DiagnosticError(expression.location,
+                                  "type() requires a value expression");
+        }
+        return "type";
+    }
     case ExpressionKind::Identifier: {
         const auto index = findSymbolIndex(expression.value);
         if (index != symbols_.size()) {
@@ -168,10 +189,40 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 return field->type;
             }
         }
+        if (expectedType == "type") {
+            if (expression.value.find('.') == std::string::npos &&
+                !hasNamespaceOrClass(expression.value, currentNamespace_)) {
+                throw DiagnosticError(expression.location,
+                                      "unknown type name '" + expression.value + "'");
+            }
+            expression.value = resolveClassName(expression.value, currentNamespace_,
+                                                 expression.location);
+            expression.kind = ExpressionKind::TypeName;
+            return "type";
+        }
         throw DiagnosticError(expression.location,
                               "undefined variable '" + expression.value + "' or field");
     }
     case ExpressionKind::Member: {
+        if (expectedType == "type") {
+            std::string name;
+            const Expression* rootName = &expression;
+            while (rootName->kind == ExpressionKind::Member && rootName->left != nullptr) {
+                rootName = rootName->left.get();
+            }
+            const bool startsWithLocal =
+                rootName->kind == ExpressionKind::Identifier &&
+                (findSymbolIndex(rootName->value) != symbols_.size() ||
+                 (currentClass_ != nullptr &&
+                  findField(*currentClass_, rootName->value) != nullptr));
+            if (!startsWithLocal && expressionNamePath(expression, name)) {
+                expression.value = resolveClassName(name, currentNamespace_,
+                                                     expression.location);
+                expression.kind = ExpressionKind::TypeName;
+                expression.left.reset();
+                return "type";
+            }
+        }
         Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;
         std::vector<std::string> path;
@@ -660,6 +711,36 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         return target;
     }
+    case ExpressionKind::TypeTest: {
+        const auto operand = analyzeExpression(*expression.left);
+        const auto& target = expression.value;
+        if (target == "any" || target == "void") {
+            throw DiagnosticError(expression.typeLocation,
+                                  "type test target '" + target + "' is not supported");
+        }
+        const bool knownTarget = target == "int" || target == "bool" ||
+                                 target == "float" || target == "unsigned" ||
+                                 target == "string" || target == "array" ||
+                                 target == "map" || target == "buffer" ||
+                                 target == "handle" || target == "type" ||
+                                 classes_.find(target) != classes_.end();
+        if (!knownTarget) {
+            throw DiagnosticError(expression.typeLocation,
+                                  "unknown type name '" + target + "'");
+        }
+        const bool knownOperand = operand == "null" || operand == "any" ||
+                                  operand == "int" || operand == "bool" ||
+                                  operand == "float" || operand == "unsigned" ||
+                                  operand == "string" || operand == "array" ||
+                                  operand == "map" || operand == "buffer" ||
+                                  operand == "handle" || operand == "type" ||
+                                  classes_.find(operand) != classes_.end();
+        if (!knownOperand) {
+            throw DiagnosticError(expression.left->location,
+                                  "type test does not support operand type '" + operand + "'");
+        }
+        return "bool";
+    }
     case ExpressionKind::Unary: {
         const auto operand = analyzeExpression(*expression.left);
         if (expression.value == "!") {
@@ -679,8 +760,22 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                   "' does not support operand type " + operand);
     }
     case ExpressionKind::Binary: {
-        const auto left = analyzeExpression(*expression.left);
-        const auto right = analyzeExpression(*expression.right);
+        std::string left;
+        std::string right;
+        const auto isTypeExpression = [](const Expression& candidate) {
+            return candidate.kind == ExpressionKind::TypeOf ||
+                   candidate.kind == ExpressionKind::TypeName;
+        };
+        if (isTypeExpression(*expression.left)) {
+            left = analyzeExpression(*expression.left);
+            right = analyzeExpression(*expression.right, "type");
+        } else if (isTypeExpression(*expression.right)) {
+            right = analyzeExpression(*expression.right);
+            left = analyzeExpression(*expression.left, "type");
+        } else {
+            left = analyzeExpression(*expression.left);
+            right = analyzeExpression(*expression.right, left == "type" ? "type" : "");
+        }
         const auto& operation = expression.value;
         if (operation == "&&" || operation == "||") {
             if (left != "bool" || right != "bool") {
@@ -707,6 +802,13 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 (left == "null" && isNullComparable(right))) {
                 return "bool";
             }
+            if (left == "type" || right == "type") {
+                if (left != "type" || right != "type") {
+                    throw DiagnosticError(expression.location,
+                                          "equality requires two type values");
+                }
+                return "bool";
+            }
             if (left != right ||
                 (left != "int" && left != "bool" && left != "float" &&
                  left != "unsigned")) {
@@ -720,6 +822,10 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             (left == "int" || left == "float" || left == "unsigned");
         if (operation == "<" || operation == "<=" || operation == ">" ||
             operation == ">=") {
+            if (left == "type" || right == "type") {
+                throw DiagnosticError(expression.location,
+                                      "ordering comparisons are not supported for type values");
+            }
             if (!sameArithmeticType) {
                 throw DiagnosticError(expression.location,
                                       "comparison operator '" + operation +

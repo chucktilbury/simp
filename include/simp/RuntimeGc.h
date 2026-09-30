@@ -49,7 +49,8 @@ typedef enum SimpArrayValueTag {
     SIMP_ARRAY_FLOAT = 7,
     SIMP_ARRAY_UNSIGNED = 8,
     SIMP_ARRAY_BUFFER = 9,
-    SIMP_ARRAY_HANDLE = 10
+    SIMP_ARRAY_HANDLE = 10,
+    SIMP_ARRAY_TYPE = 11
 } SimpArrayValueTag;
 
 typedef struct SimpArrayValue {
@@ -234,6 +235,13 @@ uint64_t simp_exception_message_length(void *frame);
 void *simp_exception_frame_object(void *frame);
 void *simp_exception_frame_base(void *frame);
 int32_t simp_exception_matches(void *frame, const SimpClassMeta *expected);
+int32_t simp_object_is_instance(void *object, const SimpClassMeta *expected);
+int32_t simp_value_is_type(uint64_t actual_tag, void *pointer,
+                           uint64_t expected_tag, const SimpClassMeta *expected_class);
+int32_t simp_type_names_equal(const char *left, uint64_t left_length,
+                              const char *right, uint64_t right_length);
+const char *simp_object_type_name(void *object, uint64_t *length);
+const char *simp_value_type_name(uint64_t tag, void *pointer, uint64_t *length);
 void simp_exception_raise(const char *message, uint64_t length, const char *file,
                           uint64_t file_length, uint64_t line, uint64_t column);
 void simp_exception_raise_object(void *object, void *exception_base,

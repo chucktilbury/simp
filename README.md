@@ -152,7 +152,7 @@ input and reports source-located lexer, parser, and semantic errors.
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
   `raise`, `try`, `except`, `finally`, `for`, `in`, `public`, `protected`,
   `private`, `virtual`, `from`, `map`, `dict`, `namespace`, `include`,
-  `import`, and `as`.
+  `import`, `as`, `is`, and `type`.
   `dict` is an alias for the `map` type.
   Every capitalization is reserved.
 - `int`, `string`, class-reference, `array`, `map`/`dict`, and `any` declarations
@@ -163,6 +163,16 @@ input and reports source-located lexer, parser, and semantic errors.
   begin single-line comments, while `/* ... */` is a block comment.
 - Expressions include integer and string literals, identifiers, parentheses,
   unary `+`, `-`, `!`, arithmetic `+ - * / %`, comparisons `== != < <= > >=`,
+  and the boolean type-test operator `expr is TypeName`. Type tests recognize
+  built-in types and class names (including qualified class names); class tests
+  match the runtime class or any subclass, and tests on `any` inspect its
+  runtime tag. `is` has relational-comparison precedence and binds more tightly
+  than `==`/`!=`, `and`, and `or`.
+  `type(expr)` returns a value of type `type` describing the exact runtime
+  type, including the dynamic class behind a base reference or `any` value;
+  null is reported as the type name `null`. Type values compare by exact name
+  with `==`/`!=` (not by inheritance) and print that name; ordering is not
+  supported.
   array and map literals, zero-based indexing, copying array/map slices, and
   map operations `mapValue.contains(stringExpression)` and
   `mapValue.remove(stringExpression)`.
@@ -170,8 +180,7 @@ input and reports source-located lexer, parser, and semantic errors.
   `while (condition) { ... }`, `for (value in arrayValue) { ... }`,
   `for (value in mapValue) { ... }`, and
   `for (key, value in mapValue) { ... }` execute in the LLVM backend.
-  Conditions are integer expressions; zero is false and nonzero is true. An
-  `else (condition)` form is explicitly rejected.
+  Conditions must be `bool`. An `else (condition)` form is explicitly rejected.
 - `raise(Exception("message"))` throws a constructed exception object. User
   exception classes derive from `Exception`; `raise(MyError(args))` accepts
   only a constructor call whose class belongs to that hierarchy. A `try` may
@@ -241,17 +250,22 @@ input and reports source-located lexer, parser, and semantic errors.
   arrays can contain nested arrays. Exact UTF-8 byte hashing provides expected
   constant-time lookup while a separate insertion-order sequence keeps
   iteration deterministic. Keys must have statically known type `string`; an
-  `any` value is not accepted as a key without an implemented type-test or
-  extraction. `values.remove(key)` returns `1` when an entry was removed and
+  `any` value is not accepted as a key without first testing or extracting it
+  to `string`. `values.remove(key)` returns `1` when an entry was removed and
   `0` when it was absent; removing a key preserves the order of other entries,
   and reinserting it appends it. `values[start:end]` makes an independent
   shallow map copy from the half-open insertion-order range `[start, end)`.
-- Equality and ordering comparisons are intentionally limited to `int`.
-  Strings, objects, arrays, maps, and `any` do not support `==` or `!=`.
+- Equality and ordering comparisons require matching numeric types
+  (`int`, `unsigned`, or `float`); equality also supports matching `bool`
+  operands. Any nullable type may be compared with `null`. Strings, objects,
+  arrays, maps, and `any` do not support equality with each other.
 - `any` is the explicit dynamic/tagged value type: it can hold an `int`, a
   `string`, a class reference, `null`, or a map reference; map lookups can also
   carry array references through it. It can be declared directly
   (`any value = ...`) or produced implicitly by indexing into an array or map.
+  Use `value is TypeName` to test an `any` value's runtime type without
+  extracting it; null matches no type. `type(value)` instead returns its
+  exact dynamic type name.
   Array expressions still cannot be assigned directly to `any`. `any` has no
   members of its own — assign it to a concretely typed variable, field, or
   parameter to extract its value. Extraction is runtime-checked: it
@@ -267,7 +281,7 @@ input and reports source-located lexer, parser, and semantic errors.
 - The array/map/`any` subset is deliberately bounded: direct array-to-`any`
   conversion is unsupported (an array can still be carried through a map value
   or a collection element). Append/resize operations, omitted slice bounds,
-  slice steps, and non-integer equality are unsupported.
+  slice steps, and value-to-value equality for non-scalars are unsupported.
   Class-reference and collection values reachable through arrays, maps, and
   `any` are traced by the GC.
 - `;`, `#`, and `//` line comments, `/* ... */` block comments, and basic

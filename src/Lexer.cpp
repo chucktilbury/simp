@@ -93,6 +93,7 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::BufferType: return "'buffer'";
     case TokenType::HandleType: return "'handle'";
     case TokenType::AnyType: return "'any'";
+    case TokenType::TypeType: return "'type'";
     case TokenType::Class: return "'class'";
     case TokenType::Namespace: return "'namespace'";
     case TokenType::Include: return "'include'";
@@ -116,6 +117,7 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Do: return "'do'";
     case TokenType::For: return "'for'";
     case TokenType::In: return "'in'";
+    case TokenType::Is: return "'is'";
     case TokenType::Break: return "'break'";
     case TokenType::Continue: return "'continue'";
     case TokenType::And: return "'and'";
@@ -292,10 +294,11 @@ Token Lexer::scanIdentifierOrInteger() {
         {"array", TokenType::ArrayType}, {"list", TokenType::ArrayType},
         {"map", TokenType::MapType}, {"dict", TokenType::MapType},
         {"buffer", TokenType::BufferType}, {"handle", TokenType::HandleType},
-        {"any", TokenType::AnyType}, {"if", TokenType::If},
+        {"any", TokenType::AnyType}, {"type", TokenType::TypeType},
+        {"if", TokenType::If},
         {"else", TokenType::Else}, {"while", TokenType::While},
         {"do", TokenType::Do}, {"for", TokenType::For},
-        {"in", TokenType::In}, {"break", TokenType::Break},
+        {"in", TokenType::In}, {"is", TokenType::Is}, {"break", TokenType::Break},
         {"continue", TokenType::Continue}, {"and", TokenType::And},
         {"or", TokenType::Or}, {"not", TokenType::Bang},
         {"print", TokenType::Print}, {"raise", TokenType::Raise},

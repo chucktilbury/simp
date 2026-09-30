@@ -51,6 +51,21 @@ The language is intended to have full object-oriented programming support. Broad
   arithmetic produces the operand type. Integer division and remainder are
   signed for `int` and unsigned for `unsigned`. Remainder on `float` is not
   supported.
+- The boolean type-test operator `expr is TypeName` recognizes the built-in
+  types `int`, `unsigned`, `float`, `bool`, `string`, `array`/`list`,
+  `map`/`dict`, `buffer`, and `handle`, plus class names including qualified
+  names. For a class target, the runtime class or any subclass matches. On an
+  `any` operand it tests the dynamic tag; a null value matches no type.
+  Statically known non-class operands can be answered from their type and null
+  state. `is` has relational-comparison precedence, tighter than `==`/`!=`
+  and logical operators.
+- `type(expr)` returns a value of the built-in `type` type. Its name is the
+  operand's exact runtime type: for class references and class values in `any`
+  this is the dynamic class (including its namespace-qualified name), while
+  `null` produces the distinct name `null`. Type values compare by exact
+  identity with `==`/`!=` (there is no inheritance matching); ordering
+  comparisons are rejected. Type variables and fields are assignable, and
+  printing a type value prints its name.
 - There are no implicit conversions between `int`, `unsigned`, `float`, and
   `bool`. No explicit scalar-cast syntax is currently implemented; code must
   use values already of the required type.
@@ -898,6 +913,10 @@ scalar values, strings, class references, maps, and `null` in the same collectio
 are always allowed. Reading an element with `values[index]` yields the explicit
 dynamic `any` value type rather than a statically-known concrete type; assigning
 `values[index] = expr` accepts any supported element type directly.
+The `is` type-test operator checks an `any` value's runtime tag without
+extracting it, and returns false for null.
+`type(value)` returns the exact type name (including a dynamic class name) and
+prints as that name; the null type is named `null`.
 `values.length` is a read-only `int`, and `values[start:end]` copies the
 half-open range `[start, end)` into independent storage. Copying is shallow
 for class references and nested collections. `values.resize(newLength)` grows

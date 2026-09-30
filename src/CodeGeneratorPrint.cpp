@@ -107,7 +107,7 @@ void CodeGenerator::emitPrintValue(const Value& value, const SourceLocation& loc
         instructions_ += "  br label %" + endLabel + "\n" + falseLabel + ":\n";
         emitStringBytes("false");
         instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
-    } else if (value.type == "string") {
+    } else if (value.type == "string" || value.type == "type") {
         const auto data = newTemporary();
         const auto length = newTemporary();
         instructions_ += "  " + data + " = extractvalue %SimpleString " + value.operand +
@@ -150,7 +150,8 @@ void CodeGenerator::emitPrintDynamicValue(const Value& value,
     const auto invalidLabel = freshLabel("print.any.invalid");
     const auto endLabel = freshLabel("print.any.end");
     instructions_ += "  switch i64 " + tag + ", label %" + objectLabel + " [ i64 1, label %" +
-                     intLabel + " i64 2, label %" + stringLabel + " i64 6, label %" + boolLabel +
+                     intLabel + " i64 2, label %" + stringLabel + " i64 11, label %" +
+                     stringLabel + " i64 6, label %" + boolLabel +
                      " i64 7, label %" + floatLabel + " i64 8, label %" + unsignedLabel +
                      " i64 9, label %" + invalidLabel + " i64 10, label %" + invalidLabel +
                      " ]\n";
