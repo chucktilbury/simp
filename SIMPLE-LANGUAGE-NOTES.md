@@ -1144,22 +1144,17 @@ separate from the caller-controlled timing of explicit cleanup.
   `from "<symbol>"` out-of-line native-method mechanism — no new syntax,
   keywords, or compiler-injected classes were added.
 - **Concurrency model: a single global interpreter-style lock (GIL).** Only
-  one Simple thread ever executes Simple code (or touches the managed
-  heap) at a time; a thread gives up the lock only while genuinely blocked
-  inside a native primitive (`Thread.join`, `Semaphore.wait`). This is the
-  same design CPython and Ruby MRI use, chosen deliberately over
-  stop-the-world signal-based suspension: true per-thread suspension would
-  require safepoint-polling instructions inserted at every generated loop
-  back-edge, which is out of scope. The GIL sidesteps that entirely — when
-  any thread collects, every other registered thread is provably not
-  running Simple code (it is blocked trying to reacquire the same lock),
-  so its stack-resident roots are frozen and safe to scan.
-- **Consequence:** compute-bound Simple code does not get real parallel
-  speedup across threads (like CPython/MRI). Real, simultaneous execution
-  on multiple cores only happens while one thread is blocked in `join` or
-  `wait` and another is running. This is an explicit, accepted tradeoff
-  for a correct, bounded implementation; lifting it later would require
-  the safepoint work described above.
+  one Simple thread executes Simple code (or touches the managed heap) at a
+  time. A thread releases the lock while genuinely blocked inside a native
+  primitive (`Thread.join`, `Semaphore.wait`), allowing another Simple
+  thread to run. This permits concurrency during blocked native operations,
+  but Simple code itself never executes in parallel on multiple cores.
+  When any thread collects, every other registered thread is not running
+  Simple code (it is blocked trying to reacquire the same lock), so its
+  stack-resident roots are frozen and safe to scan.
+- **Intentional non-goal:** compute-bound Simple code does not get multi-core
+  parallel speedup across threads. True per-thread parallel execution is not
+  a feature of Simple.
 - **The `Thread` convention:** a subclass declares a zero-parameter
   `void run()` method with an ordinary body. `Thread.launch()` (native:
   `simp_thread_start`) finds "run" by name in the *receiver's own,
@@ -1535,12 +1530,6 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 
 - The complete grammar and how it is reconciled with the examples and priorities.
 - Advanced Unicode semantics beyond current UTF-8 support.
-- GC/thread integration is implemented via a cooperative global-lock (GIL)
-  model (see "Threads" above): correct and race-free, but compute-bound
-  Simple code does not get true multi-core parallelism — only genuine
-  parallelism while a thread is blocked in `join`/`wait`. Lifting that
-  limitation would require safepoint-polling codegen at loop back-edges,
-  which remains open/undesigned.
 - The CLI/environment configuration for include search directories; package
   layout, prebuilt module binary formats, external binary-library resolution,
   and package-version constraints.
