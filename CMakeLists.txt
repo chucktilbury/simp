@@ -36,5 +36,15 @@ add_subdirectory(include)
 add_subdirectory(src)
 add_subdirectory(tests)
 
-install(FILES README.md SIMPLE-LANGUAGE-NOTES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+find_package(Doxygen QUIET)
+if(DOXYGEN_FOUND)
+    add_custom_target(docs
+        COMMAND "${DOXYGEN_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/doc/doxygen.cfg"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/doc"
+        COMMENT "Generating API documentation"
+        VERBATIM
+    )
+endif()
+
+install(FILES README.md doc/SIMPLE-LANGUAGE-NOTES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(FILES doc/simp.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1")

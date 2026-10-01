@@ -1,35 +1,28 @@
-# Simple Standard Library
+# Standard library source layout
 
-This directory is the source tree for standard library packages shipped with
-the Simple compiler.
+This directory contains the source packages shipped with the Simple compiler.
+For the package APIs, see the [standard library reference](../doc/STDLIB.md).
 
-It is named `stdlib/` rather than `modules/` so that compiling a Simple source
-file from the repository root does not implicitly treat the standard library as
-the project module root (`<project-root>/modules`).
+## Layout
 
-## Directory Layout
+Each package is stored as `<package>/<semver>/simp-package.toml` plus its
+Simple source files (and any optional native assets):
 
-The layout inside `stdlib/` mirrors the package module layout:
-
-```
+```text
 stdlib/
-├── README.md
 └── <package-name>/
-    └── <semver-version>/
+    └── <semver>/
         ├── simp-package.toml
-        └── <source-files>.simp
+        └── <sources>.simp
 ```
 
-- Each top-level directory corresponds to a package name (a valid Simple
-  identifier).
-- Each subdirectory corresponds to a SemVer version string (e.g., `0.1.0`,
-  `1.0.0`). The directory name must match the `version` field in its manifest.
-- Each version directory contains a package manifest (`simp-package.toml`) and
-  its Simple source files (and optional native library assets).
+The package directory name is its valid Simple package identifier. The version
+directory is a SemVer version and must match the manifest's `version` value.
 
-## Package Manifest (`simp-package.toml`)
+## Manifest format
 
-Manifests must provide the `[package]` section:
+Every version directory contains `simp-package.toml` with a `[package]`
+section. For example:
 
 ```toml
 [package]
@@ -39,27 +32,26 @@ source = "example.simp"
 export = "namespace:example"    # or class:ClassName
 ```
 
-- `name`: Must be a valid Simple identifier matching the directory name.
-- `version`: A valid SemVer string matching the version directory name.
-- `source`: Relative path to the root Simple source file within the package.
-- `export`: Export specification, either `class:<Name>` or `namespace:<Name>`.
+`name` must match the package directory; `version` must match the version
+directory; `source` is relative to that version directory; and `export` names
+the exported class or namespace.
 
-Optional sections include `[dependencies]` with exact pins (e.g. `pkg = "=0.1.0"`)
-and native library configurations.
+Optional manifest sections include `[dependencies]` with exact version pins
+(for example, `pkg = "=0.1.0"`) and native-library configuration.
 
-## Staging and Installation
+## Staging and installation
 
-CMake stages and installs the contents of `stdlib/` automatically:
+CMake stages and installs package contents automatically:
 
-- **Build staging:** The directory contents are staged into
+- During a build, contents are staged into
   `<prefix>/share/simp/modules/` during the build.
-- **Installation:** The directory contents are installed into
+- During installation, contents go to
   `${CMAKE_INSTALL_DATADIR}/simp/modules/`.
 
-New standard library packages added here are automatically staged and installed
-without requiring changes to CMake configuration files.
+## Adding a package
 
-The shipped interfaces are documented in the repository `README.md` and
-`SIMPLE-LANGUAGE-NOTES.md`. They currently include `system`, `math`,
-`networking`, `time`, `process`, `terminal`, `random`, and
-`synchronization`.
+Create `stdlib/<package>/<semver>/`, add the manifest and source files, and
+declare the package's root source and exported class or namespace in the
+manifest. New package directories are picked up by CMake staging and
+installation without separate CMake edits. Keep the API reference in
+[`doc/STDLIB.md`](../doc/STDLIB.md), rather than duplicating it here.

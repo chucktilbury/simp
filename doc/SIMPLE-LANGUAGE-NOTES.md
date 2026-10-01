@@ -1395,101 +1395,13 @@ may be considered where useful, but no particular binding generator is selected.
 
 ### Bundled standard-library packages
 
-These packages are shipped in `stdlib/<name>/<version>/` and are imported by
-package name. An import alias qualifies the exported namespace; for example,
-`import system as Sys` makes `Sys.Process` available.
+Packages are shipped in `stdlib/<name>/<version>/` and imported by package
+name; an alias qualifies the exported namespace (for example,
+`import system as Sys`). Package-level versioning keeps module implementations
+and their dependencies explicit. The API reference, including native error
+and synchronization behavior, is in [STDLIB.md](STDLIB.md).
 
-- **`system`** exports `System`. `Process` provides `argc()` and `argv()` for
-  the command-line arguments, `arg(index)`, `exit(code)`, `abort()`,
-  `getEnv(name)`, and `setEnv(name, value)`. `File` is a stream handle, created
-  with `System.open(path, mode)` (or its constructor), with `read(size)`,
-  `readAll()`, `readLine()`, `readLines()`, `write(data)`, `writeLine(line)`,
-  `seek(offset, whence)`, `tell()`, `flush()`, `close()`, `isOpen()`, and
-  `eof()`. `FileSystem` provides `exists(path)`, `isFile(path)`, `isDir(path)`,
-  `fileSize(path)`, `remove(path)`, `rename(oldPath, newPath)`,
-  `copy(src, dest)`, `mkdir(path)`, `rmdir(path)`, `listDir(path)`,
-  `getCwd()`, `chDir(path)`, and `absolutePath(path)`. `System` is also a
-  convenience class forwarding `argc`, `argv`, `arg`, `exit`, and `abort`,
-  opening files, exposing `exists`, `getEnv`, and `lastError`. `FileSystem`
-  also supplies lexical path helpers `join`, `normalize`, `basename`, `dirname`,
-  and `extension`, plus `tempFile()` and `tempDir()`. `normalize` is lexical
-  (it does not resolve symlinks); `absolutePath` uses `realpath` and requires
-  the target to exist. Temporary files are created with `mkstemp` and mode
-  `0600`; temporary directories use `mkdtemp`. The temporary file descriptor is
-  closed before its path is returned. Boolean and sentinel-returning filesystem
-  failures retain their existing return conventions and set `System.lastError()`
-  to the calling thread's most recent error from these APIs. A successful
-  filesystem or stream call clears the message.
-- **Standard streams** are exposed by `System.io()` as `StandardIO`: `read(size)`
-  and `readLine()` consume stdin; `write(text)`, `writeBytes(buffer)`,
-  `writeLine(text)`, `writeError(text)`, `writeErrorBytes(buffer)`, and
-  `writeErrorLine(text)` send data to stdout/stderr; `flush()` and
-  `flushError()` flush them independently. These streams are the program's
-  standard file descriptors; compiler diagnostics are emitted by the compiler
-  process, not mixed into a compiled program's stdout.
-- **`math`** exports `Math`. Its `Math` class supplies the constants `pi()`,
-  `e()`, and `tau()`; `abs(x)`, `absInt(x)`, `min(a, b)`, `max(a, b)`,
-  `minInt(a, b)`, `maxInt(a, b)`, and `clamp(x, minVal, maxVal)`; `floor(x)`,
-  `ceil(x)`, `round(x)`, and `trunc(x)`; `sqrt(x)`, `cbrt(x)`, `pow(base, exp)`,
-  `exp(x)`, `log(x)`, `log10(x)`, and `log2(x)`; `sin(x)`, `cos(x)`, `tan(x)`,
-  `asin(x)`, `acos(x)`, `atan(x)`, `atan2(y, x)`, `sinh(x)`, `cosh(x)`, and
-  `tanh(x)`; and `degrees(radians)` and `radians(degrees)`.
-- **`networking`** exports `Networking`. `Socket` provides `connect(host,
-  port)`, `send(data)`, `sendString(data)`, `recv(maxBytes)`,
-  `recvString(maxBytes)`, `close()`, `isConnected()`, and
-  `setTimeout(milliseconds)`. `ServerSocket` provides `bind(port)`,
-  `bindAddress(host, port)`, `listen(backlog)`, `accept()`, `close()`,
-  `isBound()`, and `getPort()`. `Url(urlString)` parses a URL and exposes
-  `scheme()`, `host()`, `port()`, `path()`, `query()`, `fragment()`, and
-  `toString()`.
-- **`time`** exports `Time.Clock`. `epochSeconds()` and `epochMilliseconds()`
-  return wall-clock Unix time (seconds or milliseconds since 1970-01-01 UTC).
-  `monotonicMilliseconds()` returns a non-calendar clock value for elapsed-time
-  measurement; compare two readings rather than interpreting it as a date.
-  `sleepMilliseconds(duration)` sleeps for the requested duration. Calendar
-  conversion and timezone APIs are not included.
-- **`process`** exports `Process.Process`. Construct it with an executable path
-  (or PATH-searchable executable name) and an `array` of string arguments;
-  the executable is supplied as argv[0], so the array contains only subsequent
-  arguments. It launches directly with `posix_spawnp`, never parses or invokes
-  a shell command string, and captures stdout and stderr in separate pipes.
-  Call `wait()` before reading `stdout()` or `stderr()`. `exitCode()` returns
-  the exit status, or a negative signal number for signal termination. Spawn
-  errors and output-capture overflow are reported in `System.lastError()`;
-  captured output is limited to `INT32_MAX` bytes per stream. Each successfully
-  started process owns OS resources and must be explicitly `close()`d; close
-  waits/reaps an un-waited child, then releases its pipes and buffers. Its
-  lifecycle/access methods are `started()`, `wait()`, `exitCode()`, `stdout()`,
-  `stderr()`, and `close()`. The child inherits stdin and the caller's
-  environment.
-- **`terminal`** exports `Terminal.Terminal`: `isInteractive()` checks stdin,
-  `isOutputInteractive()` checks stdout, `columns()` and `rows()` report the
-  stdout terminal size, and `supportsColor()` applies a basic stdout-TTY,
-  `TERM != dumb`, and `NO_COLOR` check. Dimensions are zero when unavailable;
-  no API changes terminal mode.
-- **`random`** exports `Random.SecureRandom` with `bytes(size)` and
-  `fill(buffer)`. It uses the OS cryptographic random source (`getrandom` on
-  Linux, otherwise `/dev/urandom`, with an urandom fallback where applicable),
-  and never falls back to a deterministic PRNG. Invalid size or OS failures
-  produce null/false and set `System.lastError()`.
-- **`synchronization`** exports `Mutex`, `Condition`, and `Semaphore`, using the
-  existing pthread runtime. A `Mutex` is a logical lock (owner thread plus a
-  locked flag) protected by a short-lived native guard; the guard is never held
-  while acquiring the global runtime lock, and contended `lock()` and
-  `Condition.wait()` block with the global lock released, so an owner can
-  always run and unlock. Mutexes are non-recursive: relocking by the owner
-  (EDEADLK), unlocking by a non-owner or while unlocked (EPERM) return false.
-  A condition wait requires ownership of the mutex and atomically releases it
-  (no signal sent after the release can be lost), waits, then reacquires it.
-  `close()` fails with EBUSY while a mutex is locked/contended or a condition
-  has waiters. Always wait in a predicate loop to handle spurious wakeups.
-  These are manually managed native resources: close only after all users have
-  stopped, and close each resource exactly once. Existing `Thread` subclasses
-  and launch/join remain as described in "Threads".
-
-The current bundled API set also includes `system`, `math`, `networking`,
-`time`, `process`, `terminal`, `random`, and `synchronization`. Remaining
-module priorities include:
+Remaining module priorities include:
 
 1. GTK.
 2. SQLite.

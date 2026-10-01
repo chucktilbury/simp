@@ -3,21 +3,22 @@
 # the default version of GCC in the path. The Makefile uses these vars to find
 # things like the compiler and its libraries.
 
-# Set up the project name
-# if [ -z "$_PROJECT_" ]; then
-#     export _PROJECT_=pgen
-# fi
-
-if [ -z "$1" ]; then
-    echo "Build types are debug, release, or profile. Set default to debug."
-    export _BUILD_TYPE=debug
-else
-    export _BUILD_TYPE=$1
-fi
+case "${1:-debug}" in
+    debug) export _BUILD_TYPE=Debug ;;
+    release) export _BUILD_TYPE=Release ;;
+    profile) export _BUILD_TYPE=RelWithDebInfo ;;
+    *)
+        echo "Build type must be debug, release, or profile." >&2
+        exit 2
+        ;;
+esac
 
 if [ -z "$_PROJECT_NAME" ]; then
     if [ -f $PWD/.project_env ]; then
         git submodule update --init --recursive
+        if [ -z "$_PROJECT_" ]; then
+            export _PROJECT_=simp
+        fi
         export _PROJECT_NAME=$_PROJECT_
         export _PROJECT_LOC=`pwd`
         bash --init-file <(echo "source $PWD/.project_env")
@@ -27,4 +28,3 @@ if [ -z "$_PROJECT_NAME" ]; then
 else
     echo "Project is already initialized. If this is an error, then restart the shell."
 fi
-
