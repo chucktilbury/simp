@@ -258,10 +258,12 @@ support for the generated executable, not an IDE integration.
   reserved and may be used as an identifier.
 - `int`, `strg`, class-reference, `list`, and `dict` declarations
   (with optional initializer), assignment, `print`, `return`, and
-  `super.Base(...)` statements end at a
+  base-initializer statements end at a
   newline or closing brace. Newlines inside parentheses and square brackets
   are treated as whitespace. Semicolons do not terminate statements: `;`, `#`, and `//`
   begin single-line comments, while `/* ... */` is a block comment.
+  See the [language reference](doc/LANGUAGE-REFERENCE.md) and
+  [grammar](doc/GRAMMAR.md) for supported constructor syntax.
 - Expressions include integer and string literals, identifiers, parentheses,
   unary `+`, `-`, `!`, arithmetic `+ - * / %`, comparisons `== != < <= > >=`,
   and the boolean type-test operator `expr is TypeName`. Type tests recognize
@@ -479,21 +481,9 @@ support for the generated executable, not an IDE integration.
   transitive diamond can share both an intermediate virtual base and its
   virtual ancestors. Ambiguous inherited fields must be qualified, for example
   `diamond.Left.Root.Ancestor.value`; unqualified ambiguous fields or methods
-  are compile-time errors. `super.Base(args)` initializes a direct non-virtual base;
-  required non-virtual base constructors must be called once, in declared-base
-  order, after any virtual-base initializers and before the constructor body.
-  A most-derived constructor supplies a virtual base's arguments with
-  `super.virtual Base(args)`, for example `super.virtual Root(seed)`. Such
-  initializers must be direct leading statements, precede direct-base calls,
-  and follow depth-first, left-to-right virtual-base construction order, with a
-  virtual base's own virtual ancestors initialized first. Each parameterized
-  virtual base must be initialized exactly once by the complete object's
-  constructor; a missing initializer is an error when that class is constructed.
-  A no-argument virtual base constructor is called automatically when omitted. Duplicate
-  initializers, wrong argument counts or types, and names that are not virtual
-  bases are errors. A constructor in a class that is itself used as a base in
-  the program may not declare `super.virtual`; only most-derived classes may
-  do so. Intermediate constructors cannot forward or override those arguments.
+  are compile-time errors. Base-constructor and virtual-base initializer syntax,
+  ordering, and validation are described in the
+  [language reference](doc/LANGUAGE-REFERENCE.md).
   Implicit upcasts adjust to the unique accessible base
   subobject; ambiguous conversions are errors. Virtual dispatch uses per-view
   metadata and adjusts `this` to the selected implementation's subobject.
@@ -521,7 +511,7 @@ support for the generated executable, not an IDE integration.
   private members are not accessible to further-derived classes. Protected
   members are accessible in their declaring class and derived-class method
   bodies. Constructors are
-  checked at object creation and at `super.Base(...)`; destructor access is
+  checked at object creation and during base-constructor initialization; destructor access is
   checked on explicit invocation. Protected access currently checks the enclosing class
   relationship but not C++'s additional receiver-expression restriction for
   protected members. There are no friends, overloads, or access labels on

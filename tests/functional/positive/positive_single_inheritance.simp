@@ -23,7 +23,7 @@ class Child : Base {
     int extra
 
     Child(Node initial, int amount) {
-        super.Base(initial)
+        super Base(initial)
         extra = amount
     }
 
@@ -40,7 +40,7 @@ class Grandchild : Child {
     int last
 
     Grandchild(Node initial, int amount, int finalAmount) {
-        super.Child(initial, amount)
+        super Child(initial, amount)
         last = finalAmount
     }
 

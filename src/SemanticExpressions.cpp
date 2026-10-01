@@ -613,7 +613,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 throw DiagnosticError(
                     expression.location,
                     "most-derived constructor must initialize virtual base '" + baseName +
-                        "' with super.virtual " + baseName + "(...)");
+                        "' with super virtual " + baseName + "(...)");
             }
         }
         return owner->name;

@@ -4,7 +4,7 @@ class RootTag {
 
 class DerivedTag : RootTag {
     DerivedTag() {
-        super.RootTag()
+        super RootTag()
     }
 }
 
@@ -62,7 +62,7 @@ class Base {
 
 class ChildBase : Base {
     ChildBase(int value) {
-        super.Base(value)
+        super Base(value)
     }
 }
 
@@ -78,7 +78,7 @@ class VirtualRoot {
 
 class VirtualChild : virtual VirtualRoot {
     VirtualChild(strg value) {
-        super.virtual VirtualRoot(value)
+        super virtual VirtualRoot(value)
     }
 }
 

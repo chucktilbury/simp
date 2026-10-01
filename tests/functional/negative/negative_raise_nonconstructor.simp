@@ -1,6 +1,6 @@
 class Box : Exception {
   Box() {
-    super.Exception("box")
+    super Exception("box")
   }
 }
 start {

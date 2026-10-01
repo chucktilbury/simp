@@ -45,7 +45,7 @@ class ProtectedCtorBase {
 class ProtectedCtorChild : public ProtectedCtorBase {
     public:
     ProtectedCtorChild() {
-        super.ProtectedCtorBase()
+        super ProtectedCtorBase()
     }
 }
 

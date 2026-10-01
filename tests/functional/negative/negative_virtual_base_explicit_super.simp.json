@@ -1,5 +1,5 @@
 {
   "friendly_name": "functional explicit virtual-base constructor call rejected",
-  "expected_diagnostic": "virtual base constructors must use super.virtual",
+  "expected_diagnostic": "virtual base constructors must use super virtual",
   "enabled": true
 }

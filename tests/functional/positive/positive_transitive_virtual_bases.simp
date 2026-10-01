@@ -25,7 +25,7 @@ class Ancestor : Common {
     int value
 
     Ancestor(int initial) {
-        super.Common(initial + 1)
+        super Common(initial + 1)
         value = initial
         print("Ancestor+")
     }
@@ -78,10 +78,10 @@ class Right : virtual Root {
 
 class Diamond : Left, Right {
     Diamond(int rootInitial, int ancestorInitial) {
-        super.virtual Ancestor(ancestorInitial)
-        super.virtual Root(rootInitial)
-        super.Left()
-        super.Right()
+        super virtual Ancestor(ancestorInitial)
+        super virtual Root(rootInitial)
+        super Left()
+        super Right()
         print("Diamond+")
     }
 
@@ -111,8 +111,8 @@ class FailedSide : virtual FailedAncestor {
 
 class FailedDiamond : FailedSide {
     FailedDiamond() {
-        super.virtual FailedAncestor(1)
-        super.FailedSide()
+        super virtual FailedAncestor(1)
+        super FailedSide()
     }
 
     void destroy() {

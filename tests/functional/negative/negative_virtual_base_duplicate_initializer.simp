@@ -6,8 +6,8 @@ class Root {
 
 class Leaf : virtual Root {
     Leaf() {
-        super.virtual Root(1)
-        super.virtual Root(2)
+        super virtual Root(1)
+        super virtual Root(2)
     }
 }
 

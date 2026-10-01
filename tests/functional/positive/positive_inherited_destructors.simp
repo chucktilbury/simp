@@ -16,7 +16,7 @@ class Secondary {
 class Single : Primary {
   int ownCode
   Single(int code) {
-    super.Primary()
+    super Primary()
     primaryCode = code
     ownCode = code + 1
   }
@@ -28,7 +28,7 @@ class Single : Primary {
 class Multiple : Primary, Secondary {
   int ownCode
   Multiple(int code) {
-    super.Primary()
+    super Primary()
     primaryCode = code
     secondaryCode = code + 1
     ownCode = code + 2
@@ -40,7 +40,7 @@ class Multiple : Primary, Secondary {
 
 class InheritedOnly : Primary, Secondary {
   InheritedOnly(int code) {
-    super.Primary()
+    super Primary()
     primaryCode = code
     secondaryCode = code + 1
   }
@@ -61,7 +61,7 @@ class ThrowingBase {
 
 class ThrowingDerived : ThrowingBase {
   ThrowingDerived() {
-    super.ThrowingBase()
+    super ThrowingBase()
   }
   void destroy() {
     raise(Exception("derived destructor failure"))
@@ -82,7 +82,7 @@ class Right : Root {
 
 class Diamond : Left, Right {
   Diamond() {
-    super.Left()
+    super Left()
   }
   void destroy() {
     print("diamond")

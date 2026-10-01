@@ -796,7 +796,7 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                                              statement.name);
                 if (found == virtualBases.end()) {
                     throw DiagnosticError(statement.location,
-                                          "super.virtual must name a virtual base of class '" +
+                                          "super virtual must name a virtual base of class '" +
                                               owner.name + "'");
                 }
                 const auto foundIndex = static_cast<std::size_t>(
@@ -821,7 +821,7 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                     owner.baseVirtual[static_cast<std::size_t>(
                         std::distance(owner.baseClassNames.begin(), directBase))]) {
                     throw DiagnosticError(statement.location,
-                                          "virtual base constructors must use super.virtual " +
+                                          "virtual base constructors must use super virtual " +
                                               statement.name + "(...)");
                 }
                 const auto found = std::find_if(
@@ -864,12 +864,12 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                             })) {
                 if (index == 0) {
                     throw DiagnosticError(method.location,
-                                          "derived constructor must begin with super." +
+                                          "derived constructor must begin with super " +
                                               skipped->name + "(...);");
                 }
                 throw DiagnosticError(method.location,
                                       "derived constructor must initialize base '" +
-                                          skipped->name + "' with super." + skipped->name +
+                                          skipped->name + "' with super " + skipped->name +
                                           "(...)");
             }
         }

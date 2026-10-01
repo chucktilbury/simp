@@ -6,7 +6,7 @@ class Root {
 
 class Leaf : virtual Root {
     Leaf() {
-        super.virtual Root("wrong")
+        super virtual Root("wrong")
     }
 }
 

@@ -59,7 +59,7 @@ const TestGroupRegistration registration{1, {
         {"single inheritance and base constructor syntax", [] {
              const auto program = parse(
                  "class Base { Base(int value) {} }\n"
-                 "class Child : Base { Child(int value) { super.Base(value) } }\n"
+                 "class Child : Base { Child(int value) { super Base(value) } }\n"
                  "start { Child child = Child(1) }");
              std::ostringstream output;
              simp::dumpAst(program, output);
@@ -72,7 +72,7 @@ const TestGroupRegistration registration{1, {
              const auto program = parse(
                  "class Root { Root(int value) {} }\n"
                  "class Leaf : virtual Root {\n"
-                 "  Leaf(int value) { super.virtual Root(value) }\n"
+                 "  Leaf(int value) { virtual super Root(value) }\n"
                  "}\n"
                  "start { Leaf leaf = Leaf(1) }");
              std::ostringstream output;
@@ -80,6 +80,44 @@ const TestGroupRegistration registration{1, {
              require(output.str().find("Super virtual constructor [Root]") !=
                          std::string::npos,
                      "virtual base initializer missing from AST");
+         }},
+        {"dotless base initializer modifier orders", [] {
+             const auto program = parse(
+                 "class Root { Root(int value) {} }\n"
+                 "class First : virtual Root {\n"
+                 "  First(int value) { super virtual Root(value) }\n"
+                 "}\n"
+                 "class Second : virtual Root {\n"
+                 "  Second(int value) { virtual super Root(value) }\n"
+                 "}\n"
+                 "start { First first = First(1)\n Second second = Second(2) }");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             const auto tree = output.str();
+             const auto first = tree.find("Super virtual constructor [Root]");
+             require(first != std::string::npos &&
+                         tree.find("Super virtual constructor [Root]", first + 1) !=
+                             std::string::npos,
+                     "both virtual initializer modifier orders should appear in the AST");
+         }},
+        {"dotted base initializer syntax is rejected", [] {
+             expectDiagnostic(
+                 "class Base {}\n"
+                 "class Child : Base { Child() { super.Base() } }\n"
+                 "start {}",
+                 "base class name after super");
+             expectDiagnostic(
+                 "class Root {}\n"
+                 "class Leaf : virtual Root { Leaf() { super.virtual Root() } }\n"
+                 "start {}",
+                 "base class name after super");
+         }},
+        {"malformed virtual base initializer modifier order is rejected", [] {
+             expectDiagnostic(
+                 "class Root {}\n"
+                 "class Leaf : virtual Root { Leaf() { virtual Root() } }\n"
+                 "start {}",
+                 "'super' after virtual");
          }},
         {"virtual base syntax is retained in AST", [] {
              const auto program = parse(
@@ -116,7 +154,7 @@ const TestGroupRegistration registration{1, {
         {"raise, catch-all, and finally syntax", [] {
              const auto program = parse(
                  "class Failure : Exception {\n"
-                 "  Failure(strg text) { super.Exception(text) }\n"
+                 "  Failure(strg text) { super Exception(text) }\n"
                  "}\n"
                  "start {\n"
                  "  try { raise(Failure(\"failure\")) } except() { print(\"caught\") } "
@@ -141,8 +179,8 @@ const TestGroupRegistration registration{1, {
          }},
         {"try supports ordered typed exception clauses", [] {
              const auto program = parse(
-                 "class Parent : Exception { Parent(strg text) { super.Exception(text) } }\n"
-                 "class Child : Parent { Child(strg text) { super.Parent(text) } }\n"
+                 "class Parent : Exception { Parent(strg text) { super Exception(text) } }\n"
+                 "class Child : Parent { Child(strg text) { super Parent(text) } }\n"
                  "start {\n"
                  " try { raise(Child(\"message\")) }\n"
                  " except(Parent) as parent { print(parent.message) }\n"
@@ -170,8 +208,8 @@ const TestGroupRegistration registration{1, {
          }},
         {"subclass exception clause after base is unreachable", [] {
              expectDiagnostic(
-                 "class Parent : Exception { Parent(strg text) { super.Exception(text) } }\n"
-                 "class Child : Parent { Child(strg text) { super.Parent(text) } }\n"
+                 "class Parent : Exception { Parent(strg text) { super Exception(text) } }\n"
+                 "class Child : Parent { Child(strg text) { super Parent(text) } }\n"
                  "start {\n try { print(1) }\n"
                  " except(Parent) { print(2) }\n"
                  " except(Child) { print(3) }\n}",
@@ -203,7 +241,7 @@ const TestGroupRegistration registration{1, {
         {"except accepts qualified class paths", [] {
              const auto program = parse(
                  "namespace errors {\n"
-                 " class Failure : Exception { Failure(strg text) { super.Exception(text) } }\n"
+                 " class Failure : Exception { Failure(strg text) { super Exception(text) } }\n"
                  "}\n"
                  "start { try { raise(errors.Failure(\"message\")) } "
                  "except(errors.Failure) as caught { print(caught.message) } }\n");
@@ -233,7 +271,7 @@ const TestGroupRegistration registration{1, {
                  "}\n"
                  "class Child : Base {\n"
                  "  Child(int initial) {\n"
-                 "    super.Base(initial)\n"
+                 "    super Base(initial)\n"
                  "  }\n"
                  "  int read() {\n"
                  "    return value\n"

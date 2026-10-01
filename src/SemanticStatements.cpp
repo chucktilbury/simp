@@ -123,7 +123,7 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
             if (std::find(virtualBases.begin(), virtualBases.end(), statement.name) ==
                 virtualBases.end()) {
                 throw DiagnosticError(statement.location,
-                                      "super.virtual must name a virtual base of class '" +
+                                      "super virtual must name a virtual base of class '" +
                                           currentClass_->name + "'");
             }
             const auto* base = findClass(statement.name, statement.location);
@@ -154,7 +154,7 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
             std::distance(currentClass_->baseClassNames.begin(), basePosition));
         if (currentClass_->baseVirtual[baseIndex]) {
             throw DiagnosticError(statement.location,
-                                  "virtual base constructors must use super.virtual " +
+                                  "virtual base constructors must use super virtual " +
                                       statement.name + "(...)");
         }
         const auto* base = findClass(statement.name, statement.location);

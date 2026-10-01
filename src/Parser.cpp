@@ -317,7 +317,7 @@ Statement Parser::parseStatement() {
     if (check(TokenType::Return)) {
         return parseReturn();
     }
-    if (check(TokenType::Super)) {
+    if (check(TokenType::Super) || check(TokenType::Virtual)) {
         return parseSuperConstructorCall();
     }
     error(current(), std::string("expected statement, found ") + tokenTypeName(current().type));
@@ -431,13 +431,18 @@ Statement Parser::parseReturn() {
 }
 
 Statement Parser::parseSuperConstructorCall() {
-    const auto keyword = consume(TokenType::Super, "'super'");
+    const auto keyword = current();
     Statement statement;
     statement.kind = StatementKind::SuperConstructorCall;
     statement.location = keyword.location;
-    consume(TokenType::Dot, "'.' after super");
-    statement.virtualBaseInitializer = match(TokenType::Virtual);
-    statement.name = consume(TokenType::Identifier, "base class name after super.").text;
+    if (match(TokenType::Super)) {
+        statement.virtualBaseInitializer = match(TokenType::Virtual);
+    } else {
+        consume(TokenType::Virtual, "'virtual'");
+        statement.virtualBaseInitializer = true;
+        consume(TokenType::Super, "'super' after virtual");
+    }
+    statement.name = consume(TokenType::Identifier, "base class name after super").text;
     consume(TokenType::LeftParen, "'(' after base class name");
     if (!check(TokenType::RightParen)) {
         do {

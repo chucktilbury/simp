@@ -22,9 +22,9 @@ class Right : virtual Root {
 
 class Diamond : Left, Right {
     Diamond(int initial) {
-        super.virtual Root(initial)
-        super.Left()
-        super.Right()
+        virtual super Root(initial)
+        super Left()
+        super Right()
         print("Diamond+")
     }
 }

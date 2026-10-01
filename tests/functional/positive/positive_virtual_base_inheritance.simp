@@ -47,8 +47,8 @@ class Right : virtual Root {
 
 class Diamond : Left, Right {
     Diamond() {
-        super.Left()
-        super.Right()
+        super Left()
+        super Right()
         print("Diamond+")
     }
 
@@ -79,7 +79,7 @@ class FailedSide : virtual FailedRoot {
 
 class FailedDiamond : FailedSide {
     FailedDiamond() {
-        super.FailedSide()
+        super FailedSide()
     }
 
     void destroy() {

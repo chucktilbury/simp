@@ -29,7 +29,7 @@ class Root {
 
 class Left : Root {
     Left(int initial) {
-        super.Root(initial)
+        super Root(initial)
     }
 
     void destroy() {
@@ -41,7 +41,7 @@ class Right : Root {
     Payload payload
 
     Right(int initial) {
-        super.Root(initial)
+        super Root(initial)
         payload = Payload(initial + 20)
     }
 
@@ -53,8 +53,8 @@ class Right : Root {
 
 class Diamond : Left, Right {
     Diamond(int left, int right) {
-        super.Left(left)
-        super.Right(right)
+        super Left(left)
+        super Right(right)
     }
 
     int read() {
@@ -94,8 +94,8 @@ class FailingSide {
 
 class Failing : Root, FailingSide {
     Failing() {
-        super.Root(0)
-        super.FailingSide()
+        super Root(0)
+        super FailingSide()
     }
 
     void destroy() {

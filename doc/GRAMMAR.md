@@ -224,7 +224,7 @@ try-statement       ::= "try", { NEWLINE }, block, { NEWLINE },
                         | "finally", { NEWLINE }, block, { NEWLINE } ) ;
 except-clause       ::= "except", "(", [ QUALIFIED_IDENT ], ")",
                         [ "as", IDENT ], { NEWLINE }, block ;
-super-initializer   ::= "super", ".", [ "virtual" ], IDENT,
+super-initializer   ::= ( "super", [ "virtual" ] | "virtual", "super" ), IDENT,
                         "(", [ expression, { ",", expression } ], ")",
                         terminator ;
 inline-c-statement  ::= "inline", [ capture-list ], INLINE_BODY, terminator ;
@@ -374,9 +374,9 @@ No positive-fixture syntax or parser routine was left unmapped. The
 - `print` has an extra parser check: a directly printed double-quoted literal
   containing `{` or `}` must be used as a format call. The same literal can
   otherwise be stored or used as a normal string.
-- A virtual-base initializer is spelled `super.virtual Base(args)` (the
-  parser expects the `virtual` keyword after the first dot and does not
-  consume another dot before the base name).
+- A base initializer is spelled `super Base(args)`. A virtual-base initializer
+  accepts either `super virtual Base(args)` or `virtual super Base(args)`;
+  dotted forms are not part of the grammar.
 - The parser allows some forms that later fail semantic analysis: for example
   `return` in `start`, `break` outside a loop, invalid lvalues, inaccessible
   members, unknown types, bad argument/return conversions, an invalid

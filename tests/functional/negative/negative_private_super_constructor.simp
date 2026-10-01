@@ -7,7 +7,7 @@ class Base {
 
 class Child : public Base {
     Child() {
-        super.Base()
+        super Base()
     }
 }
 

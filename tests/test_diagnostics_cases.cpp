@@ -91,7 +91,7 @@ const TestGroupRegistration registration{2, {
              expectDiagnostic(
                  "class Root { Root(int value) {} }\n"
                  "class Leaf : virtual Root {\n"
-                 "  void method() { super.virtual Root(1) }\n"
+                 "  void method() { super virtual Root(1) }\n"
                  "}\n"
                  "start {}",
                  "super initializers must be direct leading constructor statements");

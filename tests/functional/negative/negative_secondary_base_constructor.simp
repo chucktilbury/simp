@@ -11,7 +11,7 @@ class Secondary {
 
 class Combined : Primary, Secondary {
     Combined() {
-        super.Primary()
+        super Primary()
     }
 }
 

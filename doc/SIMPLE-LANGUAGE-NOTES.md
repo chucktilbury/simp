@@ -270,7 +270,7 @@ Both are supported, and both are enforced by the prototype:
   typed local (or a differently named method) to disambiguate.
 - **Constructor overloads use the same selection rule.** Constructors are
   selected by argument count and parameter types in `Class(args...)`,
-  `super.Base(args...)`, and `super.virtual Base(args...)` calls. An identical
+  `super Base(args...)`, and `super virtual Base(args...)` calls. An identical
   constructor signature is a declaration error. In-class constructor
   declarations may have matching out-of-line definitions; native-bound
   constructors remain unsupported and are diagnosed.
@@ -317,7 +317,7 @@ details remain subject to validation as the runtime grows:
 The current compiler prototype validates single- and multiple-inheritance
 layouts, including transitive virtual-base graphs and shared identity across
 repeated paths; qualified field and method access through base paths; direct non-virtual-base
-`super.Base(args)` constructor chaining; unique-subobject implicit upcasts;
+`super Base(args)` constructor chaining; unique-subobject implicit upcasts;
 typed methods; allocation; virtual dispatch through non-virtual and shared
 virtual base views; and a minimal precise collector.
 Overrides must preserve the exact return and parameter
@@ -353,15 +353,15 @@ subobject in reverse declaration/depth-first construction order. Explicit
 destruction and GC finalization use this same chain. If a destructor raises,
 explicit destruction still invokes the remaining base destructors and then
 propagates the first error; the object remains destroyed and cannot be
-finalized again. `super.Base(args)` initializes a named direct non-virtual base. Required
+finalized again. `super Base(args)` initializes a named direct non-virtual base. Required
 non-virtual base constructors must be called once in declared order before the
 derived constructor body. A supported shared base is marked with
 `class Left : virtual Root` (the access and `virtual` modifiers may appear in
 either order); that virtual base may itself have bases, including other
 virtual bases.
 The most-derived constructor supplies arguments with a leading
-`super.virtual Root(args)` statement. Initializers precede every
-`super.Base(args)` call and follow the complete object's depth-first,
+`super virtual Root(args)` or `virtual super Root(args)` statement.
+Initializers precede every `super Base(args)` call and follow the complete object's depth-first,
 left-to-right virtual-base construction order. A virtual base's own virtual
 ancestors are initialized first. Each parameterized virtual base must have
 exactly one such initializer when that class is constructed as a complete
@@ -381,7 +381,7 @@ by base class, while distinct non-virtual subobjects remain distinct. Only a
 class that is not used as a base by another class in the program may declare a
 virtual-base initializer; trying to initialize from an intermediate class is
 rejected. This keeps argument ownership statically unambiguous: only a
-most-derived class supplies them, and ordinary `super.Base(...)` calls never
+most-derived class supplies them, and ordinary `super Base(...)` calls never
 forward them. A thrown exception during transitive virtual-base initialization
 fails construction and suppresses the partial object's destructor chain. As a
 result, a class that is also used as a base cannot separately provide
@@ -493,13 +493,13 @@ non-virtual bases also have no explicit constructors.
   only within their declaring class, and private inheritance prevents further
   derived classes from accessing inherited members. Protected members are
   accessible from their declaring class and derived-class method bodies. Constructor access is
-  checked for object construction and `super.Base(...)`. Destructor access is
+  checked for object construction and `super Base(...)`. Destructor access is
   checked on explicit destruction. The prototype does not
   yet enforce C++'s protected receiver-expression restriction and has no friend
   declarations or per-member inline access labels. Overloads are supported
   but are not access-differentiated: an overload set shares one access
   rule per declaration.
-- An explicit base-constructor call uses `super.Base(args)`, naming the
+- An explicit base-constructor call uses `super Base(args)`, naming the
   specified base class.
 - Base and member accessibility are checked by the prototype within the
   documented subset above; protected receiver-expression restrictions and
@@ -524,7 +524,7 @@ Exception handling supports constructed exception objects and typed filters:
 ```simple
 class NetworkError : Exception {
     NetworkError(strg message) {
-        super.Exception(message)
+        super Exception(message)
     }
 }
 
@@ -539,7 +539,7 @@ try {
 
 `Exception` is a built-in base class with a public `strg message` field and
 an `Exception(strg message)` constructor. User-defined exception classes
-derive from it and initialize it with `super.Exception(message)`. `raise(expr)`
+derive from it and initialize it with `super Exception(message)`. `raise(expr)`
 requires `expr` to be a constructor call for a concrete `Exception` subclass;
 strings, `null`, existing variables, and unrelated classes are rejected.
 A `try` may have multiple ordered `except(Type)` clauses, including qualified
@@ -586,7 +586,7 @@ The following forms capture established examples and intended syntax. They are i
 
 Constructors use the class name; destructors use `destroy`. For example, a
 `Window` constructor is written `Window(...)`, and a base constructor call is
-written `super.Base(args)`. Any earlier grammar production that used `create`
+written `super Base(args)`. Any earlier grammar production that used `create`
 as constructor syntax is superseded. The implemented subset accepts newline
 statement boundaries; semicolons begin comments rather than terminating
 statements.
@@ -1585,7 +1585,7 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - `start` is the only top-level method, and exactly one `start` block is required in a complete program.
 - The parser architecture is recursive descent.
 - Constructors are named exactly after their class, destructors are named
-  `destroy`, and explicit base-constructor calls use `super.Base(args)`;
+  `destroy`, and explicit base-constructor calls use `super Base(args)`;
   constructor syntax using `create` is superseded.
 - The compiler is implemented in C++, using LLVM's C++ APIs and safer compiler
   data structures; the runtime/native-module ABI remains C-compatible where

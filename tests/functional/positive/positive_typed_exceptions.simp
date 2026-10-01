@@ -2,24 +2,24 @@
 class DomainError : Exception {
   int code
   DomainError(strg text, int value) {
-    super.Exception(text)
+    super Exception(text)
     code = value
   }
 }
 class SpecificError : DomainError {
   SpecificError(strg text, int value) {
-    super.DomainError(text, value)
+    super DomainError(text, value)
   }
 }
 class OtherError : Exception {
   OtherError(strg text) {
-    super.Exception(text)
+    super Exception(text)
   }
 }
 namespace errors {
   class QualifiedError : Exception {
     QualifiedError(strg text) {
-      super.Exception(text)
+      super Exception(text)
     }
   }
 }

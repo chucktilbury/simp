@@ -6,7 +6,7 @@ class Text {
 
 class ExtendedString : String {
     ExtendedString() {
-        super.String()
+        super String()
     }
 }
 

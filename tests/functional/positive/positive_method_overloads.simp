@@ -30,7 +30,7 @@ class Formatter {
 
 class LoudFormatter : Formatter {
     LoudFormatter() {
-        super.Formatter()
+        super Formatter()
     }
 
     # Overrides exactly one member of the inherited overload set; the

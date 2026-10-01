@@ -260,8 +260,10 @@ Each base defaults to public access. `public`, `protected`, or `private`
 controls the inheritance path; `virtual` may also mark a base. Multiple
 inheritance, virtual bases, and base-qualified member access are implemented.
 Ambiguous inherited fields/methods must be qualified through a base.
-Constructors initialize direct bases with `super.Base(args)` as leading
-statements; virtual bases use `super.virtual Base(args)`. A derived class may
+Constructors initialize direct bases with `super Base(args)` as leading
+statements. Virtual bases use either `super virtual Base(args)` or
+`virtual super Base(args)`; the two forms have identical semantics. A dot is
+not allowed between these keywords or the base name. A derived class may
 override an inherited method with a compatible signature. Calls use the
 runtime object's method dispatch; there is no separate `virtual` method
 modifier.
@@ -280,7 +282,7 @@ class Meter {
 
 class AdjustedMeter : public Meter {
     AdjustedMeter(int initial) {
-        super.Meter(initial)
+        super Meter(initial)
     }
     int read() {
         return value + 1
@@ -294,9 +296,9 @@ start {
 ```
 
 The above is a complete program; base-qualified member access uses an object
-and a base name (for example, `object.Base.method()`), while `super.Base(...)`
-is only for constructor initialization. The base initializer must appear
-before ordinary constructor statements.
+and a base name (for example, `object.Base.method()`), while a `super` base
+initializer is only for constructor initialization. The base initializer must
+appear before ordinary constructor statements.
 
 Explicit `object.destroy()` invokes the destructor but does not reclaim the
 object; the compiler emits a warning. Destructors cannot be defined out of
@@ -382,7 +384,7 @@ return, and exception propagation. A `try` needs at least one `except` or a
 // Complete program: raising and catching a typed exception.
 class Problem : public Exception {
     Problem(String text) {
-        super.Exception(text)
+        super Exception(text)
     }
 }
 
