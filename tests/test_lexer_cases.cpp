@@ -35,6 +35,18 @@ const TestGroupRegistration registration{0, {
              require(tokens[5].text == "a\\n", "single-quoted backslash was interpreted");
              require(!tokens[5].formattedString, "single-quoted token was marked formatted");
          }},
+        {"double-quoted escape e produces ESC only", [] {
+             simp::Lexer lexer("start { print(\"a\\e\") print('a\\e') }",
+                               "escape-e.simp");
+             const auto tokens = lexer.tokenize();
+             const auto expected = std::string("a") + static_cast<char>(0x1b);
+             require(tokens[4].type == simp::TokenType::String &&
+                         tokens[4].text == expected,
+                     "double-quoted \\\\e did not produce byte 0x1b");
+             require(tokens[8].type == simp::TokenType::String &&
+                         tokens[8].text == "a\\e",
+                     "single-quoted \\\\e did not preserve its backslash");
+         }},
         {"semicolon line comments", [] {
              simp::Lexer lexer("start {\n print(1) ; comment to newline\n print(2)\n}",
                                "semicolon-comment.simp");

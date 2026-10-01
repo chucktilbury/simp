@@ -618,6 +618,9 @@ statements.
   "value: {}"(x)
   ```
 
+- The double-quoted `\e` escape produces the ESC byte (`0x1b`). Other supported
+  escapes are `\n`, `\r`, `\t`, `\\`, and `\"`; single-quoted strings preserve
+  backslashes literally.
 - `strg` aliases the real, inheritable prelude class `String`
   (`prelude/String.simp`). Literals and formatted expressions create
   fresh objects; assignments and arguments share object identity.

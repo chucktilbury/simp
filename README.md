@@ -316,8 +316,9 @@ support for the generated executable, not an IDE integration.
   Arguments are evaluated once in source order. Unmatched braces and
   argument-count mismatches are compile-time errors.
 - Single-quoted strings are raw literals: they have no escapes and cannot be
-  used with formatting arguments. Double-quoted strings support `\\`, `\"`,
-  `\n`, `\r`, and `\t`; their source bytes must be valid UTF-8.
+  used with formatting arguments. Double-quoted strings support `\e` (byte
+  `0x1b`, ESC), `\\`, `\"`, `\n`, `\r`, and `\t`; their source bytes must be
+  valid UTF-8.
 - `strg` is an alias for the prelude `String` class, with a private GC-managed
   `buffer _bytes`. Literals create objects without calling a public constructor.
   Assignment shares the object; `append(other)` mutates all aliases.
@@ -412,8 +413,9 @@ support for the generated executable, not an IDE integration.
   user-defined `toString()` dispatch is not implemented. Class-reference and
   collection values reachable through arrays and maps are traced by the GC.
 - `;`, `#`, and `//` line comments, `/* ... */` block comments, and basic
-  double-quoted escapes (`\\`, `\"`, `\n`, `\r`,
-  `\t`) are accepted. Single-quoted strings have no escape processing.
+  double-quoted escapes (`\e`, `\\`, `\"`, `\n`, `\r`, `\t`) are accepted.
+  `\e` produces byte `0x1b` (ESC). Single-quoted strings have no escape
+  processing.
 - Semantic analysis resolves lexical local names, rejects use before
   initialization and undeclared identifiers, checks `int`/`strg`
   initialization and assignment types, validates integer literal range, and

@@ -37,7 +37,7 @@ FLOAT           ::= DIGIT, { DIGIT }, ".", { DIGIT }, [ EXPONENT ]
 
 DOUBLE_STRING   ::= '"', { DOUBLE_CHAR | ESCAPE }, '"' ;
 SINGLE_STRING   ::= "'", { SINGLE_CHAR }, "'" ;
-ESCAPE          ::= "\", ("n" | "r" | "t" | "\" | '"') ;
+ESCAPE          ::= "\", ("e" | "n" | "r" | "t" | "\" | '"') ;
 DOUBLE_CHAR     ::= any valid UTF-8 character except '"', "\", CR, or LF ;
 SINGLE_CHAR     ::= any valid UTF-8 character except "'", CR, or LF ;
 STRING          ::= DOUBLE_STRING | SINGLE_STRING ;
@@ -69,11 +69,12 @@ Lexical details that affect parsing:
   have no radix prefix, separators, or suffix other than `u`/`U` for unsigned.
   Floats accept leading-dot (`.5`), trailing-dot (`5.`), and exponent forms
   (`1e3`, `1.0E-3`); an exponent must contain digits.
-- Only double-quoted strings interpret escapes, and only `\n`, `\r`, `\t`,
-  `\\`, and `\"` are accepted. Single-quoted strings preserve backslashes
-  literally. Both quote styles are one physical line and must decode to valid
-  UTF-8. A double-quoted string is marked as a possible format string; it is
-  not interpolated unless it is immediately followed by a parenthesized
+- Only double-quoted strings interpret escapes: `\e` produces byte `0x1b`
+  (ESC), and `\n`, `\r`, `\t`, `\\`, and `\"` are also accepted.
+  Single-quoted strings preserve backslashes literally. Both quote styles are
+  one physical line and must decode to valid UTF-8. A double-quoted string is
+  marked as a possible format string; it is not interpolated unless it is
+  immediately followed by a parenthesized
   argument list (see `format-suffix`).
 - `;`, `#`, and `//` begin line comments; a semicolon is **not** a statement
   separator. Block comments are non-nesting. Newline characters inside a

@@ -27,9 +27,9 @@ See `NEWLINE`, `COMMENT`, and `terminator`.
 Integer literals are decimal signed `int` values by default; `u` or `U`
 selects an unsigned literal. Float literals accept decimal points and
 exponents. Signs are unary operators. Double-quoted and single-quoted strings
-are UTF-8 and cannot span physical lines. Double quotes support `\n`, `\r`,
-`\t`, `\\`, and `\"`; single quotes do not interpret escapes. See
-`INTEGER`, `UNSIGNED_INT`, `FLOAT`, `STRING`, and `ESCAPE`.
+are UTF-8 and cannot span physical lines. Double quotes support `\e` (byte
+`0x1b`, ESC), `\n`, `\r`, `\t`, `\\`, and `\"`; single quotes do not interpret
+escapes. See `INTEGER`, `UNSIGNED_INT`, `FLOAT`, `STRING`, and `ESCAPE`.
 
 ```simp
 // Complete program: literal spellings and a formatted string.
