@@ -115,15 +115,15 @@ void simp_string_format_append(void *object, uint64_t tag, int64_t integer,
                                uint64_t file_length, uint64_t line, uint64_t column);
 void simp_string_append(void *receiver, void *other);
 int32_t simp_string_equals(void *receiver, void *other);
-int32_t simp_string_method_to_int(void *receiver);
+int64_t simp_string_method_to_int(void *receiver);
 uint64_t simp_string_method_to_unsigned(void *receiver);
 double simp_string_method_to_float(void *receiver);
-uint64_t simp_string_method_byte_at(void *receiver, int32_t index);
-void *simp_string_method_slice(void *receiver, int32_t first, int32_t last);
-void simp_string_method_insert(void *receiver, int32_t index, void *other);
-void simp_string_method_remove_range(void *receiver, int32_t first, int32_t last);
+uint64_t simp_string_method_byte_at(void *receiver, int64_t index);
+void *simp_string_method_slice(void *receiver, int64_t first, int64_t last);
+void simp_string_method_insert(void *receiver, int64_t index, void *other);
+void simp_string_method_remove_range(void *receiver, int64_t first, int64_t last);
 void simp_string_method_clear(void *receiver);
-int32_t simp_string_method_find(void *receiver, void *needle);
+int64_t simp_string_method_find(void *receiver, void *needle);
 int32_t simp_string_method_contains(void *receiver, void *needle);
 int32_t simp_string_method_starts_with(void *receiver, void *prefix);
 int32_t simp_string_method_ends_with(void *receiver, void *suffix);
@@ -143,7 +143,7 @@ void simp_system_abort(void *self);
  * value (no leading/trailing whitespace, no partial parses) and raises a
  * catchable, source-located exception on any parse failure or out-of-range
  * value; unsigned conversion additionally rejects a leading '-'. */
-int32_t simp_string_to_int(const char *data, uint64_t length, const char *file,
+int64_t simp_string_to_int(const char *data, uint64_t length, const char *file,
                            uint64_t file_length, uint64_t line, uint64_t column);
 uint64_t simp_string_to_unsigned(const char *data, uint64_t length, const char *file,
                                  uint64_t file_length, uint64_t line, uint64_t column);
@@ -167,15 +167,15 @@ void simp_runtime_gil_release(void);
 void simp_runtime_gil_acquire(void);
 void simp_runtime_init_args(int32_t argc, char **argv);
 
-int32_t simp_system_argc(void *self);
+int64_t simp_system_argc(void *self);
 void *simp_system_argv(void *self);
-void *simp_system_arg(void *self, int32_t index);
+void *simp_system_arg(void *self, int64_t index);
 void *simp_system_getenv(void *self, void *name);
 int32_t simp_system_setenv(void *self, void *name, void *value);
 int32_t simp_fs_exists(void *self, void *path);
 int32_t simp_fs_is_file(void *self, void *path);
 int32_t simp_fs_is_dir(void *self, void *path);
-int32_t simp_fs_file_size(void *self, void *path);
+int64_t simp_fs_file_size(void *self, void *path);
 int32_t simp_fs_remove(void *self, void *path);
 int32_t simp_fs_rename(void *self, void *old_path, void *new_path);
 int32_t simp_fs_copy(void *self, void *source, void *destination);
@@ -194,26 +194,26 @@ void *simp_path_extension(void *self, void *path);
 void *simp_fs_temp_file(void *self);
 void *simp_fs_temp_dir(void *self);
 void *simp_file_open(void *self, void *path, void *mode);
-void *simp_file_read(void *self, void *handle, int32_t size);
+void *simp_file_read(void *self, void *handle, int64_t size);
 void *simp_file_read_all(void *self, void *handle);
 void *simp_file_read_line(void *self, void *handle);
 void *simp_file_read_lines(void *self, void *handle);
-int32_t simp_file_write(void *self, void *handle, void *data);
-int32_t simp_file_write_line(void *self, void *handle, void *line);
-int32_t simp_file_seek(void *self, void *handle, int32_t offset, int32_t whence);
-int32_t simp_file_tell(void *self, void *handle);
+int64_t simp_file_write(void *self, void *handle, void *data);
+int64_t simp_file_write_line(void *self, void *handle, void *line);
+int64_t simp_file_seek(void *self, void *handle, int64_t offset, int64_t whence);
+int64_t simp_file_tell(void *self, void *handle);
 void simp_file_flush(void *self, void *handle);
 void simp_file_close(void *self, void *handle);
 int32_t simp_file_eof(void *self, void *handle);
 
-void *simp_stdio_read(void *self, int32_t size);
+void *simp_stdio_read(void *self, int64_t size);
 void *simp_stdio_read_line(void *self);
-int32_t simp_stdio_write(void *self, void *text);
-int32_t simp_stdio_write_line(void *self, void *text);
-int32_t simp_stdio_write_bytes(void *self, void *buffer);
-int32_t simp_stdio_write_error(void *self, void *text);
-int32_t simp_stdio_write_error_line(void *self, void *text);
-int32_t simp_stdio_write_error_bytes(void *self, void *buffer);
+int64_t simp_stdio_write(void *self, void *text);
+int64_t simp_stdio_write_line(void *self, void *text);
+int64_t simp_stdio_write_bytes(void *self, void *buffer);
+int64_t simp_stdio_write_error(void *self, void *text);
+int64_t simp_stdio_write_error_line(void *self, void *text);
+int64_t simp_stdio_write_error_bytes(void *self, void *buffer);
 void simp_stdio_flush(void *self);
 void simp_stdio_flush_error(void *self);
 
@@ -224,26 +224,26 @@ int32_t simp_time_sleep_milliseconds(void *self, uint64_t milliseconds);
 
 int32_t simp_terminal_stdin_interactive(void *self);
 int32_t simp_terminal_stdout_interactive(void *self);
-int32_t simp_terminal_columns(void *self);
-int32_t simp_terminal_rows(void *self);
+int64_t simp_terminal_columns(void *self);
+int64_t simp_terminal_rows(void *self);
 int32_t simp_terminal_supports_color(void *self);
 
 int32_t simp_random_fill(void *self, void *buffer);
-void *simp_random_bytes(void *self, int32_t size);
+void *simp_random_bytes(void *self, int64_t size);
 
 void *simp_process_spawn(void *self, void *executable, void *arguments);
 int32_t simp_process_wait(void *self, void *process);
-int32_t simp_process_exit_code(void *self, void *process);
+int64_t simp_process_exit_code(void *self, void *process);
 void *simp_process_stdout(void *self, void *process);
 void *simp_process_stderr(void *self, void *process);
 void simp_process_close(void *self, void *process);
 
 double simp_math_abs(void *self, double x);
-int32_t simp_math_abs_int(void *self, int32_t x);
+int64_t simp_math_abs_int(void *self, int64_t x);
 double simp_math_min(void *self, double a, double b);
 double simp_math_max(void *self, double a, double b);
-int32_t simp_math_min_int(void *self, int32_t a, int32_t b);
-int32_t simp_math_max_int(void *self, int32_t a, int32_t b);
+int64_t simp_math_min_int(void *self, int64_t a, int64_t b);
+int64_t simp_math_max_int(void *self, int64_t a, int64_t b);
 double simp_math_clamp(void *self, double x, double min_value, double max_value);
 double simp_math_floor(void *self, double x);
 double simp_math_ceil(void *self, double x);
@@ -269,18 +269,18 @@ double simp_math_sinh(void *self, double x);
 double simp_math_cosh(void *self, double x);
 double simp_math_tanh(void *self, double x);
 
-int32_t simp_net_socket_create(void *self);
-int32_t simp_net_socket_connect(void *self, int32_t fd, void *host, int32_t port);
-int32_t simp_net_socket_send(void *self, int32_t fd, void *buffer);
-int32_t simp_net_socket_send_string(void *self, int32_t fd, void *text);
-void *simp_net_socket_recv(void *self, int32_t fd, int32_t max_bytes);
-void *simp_net_socket_recv_string(void *self, int32_t fd, int32_t max_bytes);
-void simp_net_socket_close(void *self, int32_t fd);
-void simp_net_socket_set_timeout(void *self, int32_t fd, int32_t milliseconds);
-int32_t simp_net_server_bind(void *self, void *host, int32_t port, int32_t backlog);
-int32_t simp_net_server_accept(void *self, int32_t server_fd);
-int32_t simp_net_server_port(void *self, int32_t server_fd);
-int32_t simp_net_server_listen(void *self, int32_t server_fd, int32_t backlog);
+int64_t simp_net_socket_create(void *self);
+int32_t simp_net_socket_connect(void *self, int64_t fd, void *host, int64_t port);
+int64_t simp_net_socket_send(void *self, int64_t fd, void *buffer);
+int64_t simp_net_socket_send_string(void *self, int64_t fd, void *text);
+void *simp_net_socket_recv(void *self, int64_t fd, int64_t max_bytes);
+void *simp_net_socket_recv_string(void *self, int64_t fd, int64_t max_bytes);
+void simp_net_socket_close(void *self, int64_t fd);
+void simp_net_socket_set_timeout(void *self, int64_t fd, int64_t milliseconds);
+int64_t simp_net_server_bind(void *self, void *host, int64_t port, int64_t backlog);
+int64_t simp_net_server_accept(void *self, int64_t server_fd);
+int64_t simp_net_server_port(void *self, int64_t server_fd);
+int32_t simp_net_server_listen(void *self, int64_t server_fd, int64_t backlog);
 
 /* Push/pop are LIFO; return 1 on success and 0 for an invalid operation. */
 int simp_gc_push(SimpRootFrame *frame, void *const *slots, uint64_t count);
@@ -292,51 +292,51 @@ void simp_gc_pop_or_abort(SimpRootFrame *frame);
 
 /* Collect before allocating; the returned object's header and fields are zeroed. */
 void *simp_gc_alloc(const SimpClassMeta *metadata);
-void *simp_gc_alloc_array(uint64_t length);
-void simp_array_resize(void *array, int32_t length, const char *file,
+void *simp_gc_alloc_array(int64_t length);
+void simp_array_resize(void *array, int64_t length, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
 void simp_array_append(void *array, const SimpArrayValue *value, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
-void *simp_array_index(void *array, int32_t index, const char *file,
+void *simp_array_index(void *array, int64_t index, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
-void *simp_array_slice(void *array, int32_t start, int32_t end, const char *file,
+void *simp_array_slice(void *array, int64_t start, int64_t end, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column);
-void *simp_array_slice_ex(void *array, int32_t start, int32_t end, int32_t step,
+void *simp_array_slice_ex(void *array, int64_t start, int64_t end, int64_t step,
                           int has_start, int has_end, const char *file,
                           uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_gc_alloc_map(void);
-void *simp_buffer_new(int32_t length, const char *file, uint64_t file_length,
+void *simp_buffer_new(int64_t length, const char *file, uint64_t file_length,
                       uint64_t line, uint64_t column);
 void *simp_buffer_copy(void *buffer, const char *file, uint64_t file_length,
                        uint64_t line, uint64_t column);
-void *simp_buffer_slice(void *buffer, int32_t start, int32_t end, const char *file,
+void *simp_buffer_slice(void *buffer, int64_t start, int64_t end, const char *file,
                         uint64_t file_length, uint64_t line, uint64_t column);
-void *simp_buffer_slice_ex(void *buffer, int32_t start, int32_t end,
+void *simp_buffer_slice_ex(void *buffer, int64_t start, int64_t end,
                            int has_start, int has_end, const char *file,
                            uint64_t file_length, uint64_t line, uint64_t column);
-void simp_buffer_resize(void *buffer, int32_t length, const char *file,
+void simp_buffer_resize(void *buffer, int64_t length, const char *file,
                         uint64_t file_length, uint64_t line, uint64_t column);
 void simp_buffer_clear(void *buffer, const char *file, uint64_t file_length,
                        uint64_t line, uint64_t column);
 void simp_buffer_append(void *buffer, uint64_t value, const char *file,
                         uint64_t file_length, uint64_t line, uint64_t column);
-uint64_t simp_buffer_get(void *buffer, int32_t index, const char *file,
+uint64_t simp_buffer_get(void *buffer, int64_t index, const char *file,
                          uint64_t file_length, uint64_t line, uint64_t column);
-void simp_buffer_set(void *buffer, int32_t index, uint64_t value, const char *file,
+void simp_buffer_set(void *buffer, int64_t index, uint64_t value, const char *file,
                      uint64_t file_length, uint64_t line, uint64_t column);
 void *simp_map_get(void *map, const char *key, uint64_t key_length, const char *file,
                    uint64_t file_length, uint64_t line, uint64_t column);
-int32_t simp_map_contains(void *map, const char *key, uint64_t key_length,
+int64_t simp_map_contains(void *map, const char *key, uint64_t key_length,
                           const char *file, uint64_t file_length, uint64_t line,
                           uint64_t column);
 void *simp_map_entry_at(void *map, uint64_t index, const char *file,
                         uint64_t file_length, uint64_t line, uint64_t column);
-int32_t simp_map_remove(void *map, const char *key, uint64_t key_length,
+int64_t simp_map_remove(void *map, const char *key, uint64_t key_length,
                         const char *file, uint64_t file_length, uint64_t line,
                         uint64_t column);
-void *simp_map_slice(void *map, int32_t start, int32_t end, const char *file,
+void *simp_map_slice(void *map, int64_t start, int64_t end, const char *file,
                      uint64_t file_length, uint64_t line, uint64_t column);
-void *simp_map_slice_ex(void *map, int32_t start, int32_t end,
+void *simp_map_slice_ex(void *map, int64_t start, int64_t end,
                         int has_start, int has_end, const char *file,
                         uint64_t file_length, uint64_t line, uint64_t column);
 void simp_map_set(void *map, const char *key, uint64_t key_length,

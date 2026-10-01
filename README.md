@@ -675,7 +675,7 @@ start {
   compiler emits an ordinary Simple method/dispatch entry as a wrapper around
   the external symbol; the wrapper passes the implicit receiver pointer as
   the **first C ABI argument**, followed by explicit parameters.
-- ABI mapping: `int` is C `int` (`i32`); `String`/`strg`, `array`, `map`,
+- ABI mapping: `int` is C `int64_t` (`i64`); `String`/`strg`, `array`, `map`,
   and other class references are single opaque pointers; `void` is C `void`.
   This **breaks the earlier `SimpString {data,length}` native ABI**: C code
   must use `simp_string_bytes(object, &data, &length)` to borrow non-NUL-

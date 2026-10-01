@@ -46,7 +46,7 @@ start {
     }
 
     try {
-        strg overflow = "99999999999"
+        strg overflow = "9223372036854775808"
         print(overflow.toInt())
     } except() as e {
         print(e)

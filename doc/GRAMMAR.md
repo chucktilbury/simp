@@ -65,10 +65,12 @@ The reserved words are `start`, `int`, `bool`, `float`, `unsigned`, `strg`,
 
 Lexical details that affect parsing:
 
-- A leading `+` or `-` is an operator, not part of a number. Decimal integers
-  have no radix prefix, separators, or suffix other than `u`/`U` for unsigned.
-  Floats accept leading-dot (`.5`), trailing-dot (`5.`), and exponent forms
-  (`1e3`, `1.0E-3`); an exponent must contain digits.
+- A leading `+` or `-` is an operator, not part of a number. Decimal integer
+  literals have no radix prefix or separators. Unsuffixed integer values are
+  signed 64-bit; `u`/`U` marks an unsigned 64-bit literal. Values outside the
+  selected type's range are rejected. Floats accept leading-dot (`.5`),
+  trailing-dot (`5.`), and exponent forms (`1e3`, `1.0E-3`); an exponent must
+  contain digits.
 - Only double-quoted strings interpret escapes, and only `\n`, `\r`, `\t`,
   `\\`, and `\"` are accepted. Single-quoted strings preserve backslashes
   literally. Both quote styles are one physical line and must decode to valid

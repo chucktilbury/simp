@@ -41,7 +41,7 @@ void CodeGenerator::emitInlineC(const Statement& statement) {
         }
         llvmArguments += "ptr " + binding.pointer;
         if (capture.type == "int") {
-            cParameters += "int *" + capture.name;
+            cParameters += "int64_t *" + capture.name;
         } else if (capture.type == "bool") {
             cParameters += "_Bool *" + capture.name;
         } else if (capture.type == "float") {
@@ -189,7 +189,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                 const auto file = internString(statement.target->location.file);
                 address = newTemporary();
                 instructions_ += "  " + address + " = call ptr @simp_array_index(ptr " +
-                                 collection.operand + ", i32 " + index.operand + ", ptr " +
+                                 collection.operand + ", i64 " + index.operand + ", ptr " +
                                  file + ", i64 " +
                                  std::to_string(statement.target->location.file.size()) +
                                  ", i64 " +
@@ -235,7 +235,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
             const auto file = internString(statement.target->location.file);
             address = newTemporary();
             instructions_ += "  " + address + " = call ptr @simp_array_index(ptr " +
-                             arrayPointer + ", i32 " + arrayIndex + ", ptr " +
+                             arrayPointer + ", i64 " + arrayIndex + ", ptr " +
                              file + ", i64 " +
                              std::to_string(statement.target->location.file.size()) +
                              ", i64 " + std::to_string(statement.target->location.line) +
@@ -248,15 +248,9 @@ void CodeGenerator::emitStatement(const Statement& statement) {
             return;
         }
         if (bufferElementTarget) {
-            const auto value64 = newTemporary();
-            if (value.type == "int") {
-                instructions_ += "  " + value64 + " = zext i32 " + value.operand +
-                                 " to i64\n";
-            } else {
-                instructions_ += "  " + value64 + " = add i64 " + value.operand + ", 0\n";
-            }
+            const auto& value64 = value.operand;
             const auto file = internString(statement.target->location.file);
-            instructions_ += "  call void @simp_buffer_set(ptr " + bufferPointer + ", i32 " +
+            instructions_ += "  call void @simp_buffer_set(ptr " + bufferPointer + ", i64 " +
                              bufferIndex.operand + ", i64 " + value64 + ", ptr " + file +
                              ", i64 " +
                              std::to_string(statement.target->location.file.size()) + ", i64 " +
@@ -419,13 +413,11 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                          (array ? "%SimpleArray" : "%SimpleMap") + ", ptr " +
                          source.operand + ", i32 0, i32 1\n"
                          "  " + length + " = load i64, ptr " + lengthAddress + "\n";
-        const auto narrowedLength = newTemporary();
         const auto snapshot = newTemporary();
         const auto file = internString(statement.location.file);
         const auto sliceFunction = array ? "simp_array_slice" : "simp_map_slice";
-        instructions_ += "  " + narrowedLength + " = trunc i64 " + length + " to i32\n"
-                         "  " + snapshot + " = call ptr @" + sliceFunction + "(ptr " +
-                         source.operand + ", i32 0, i32 " + narrowedLength + ", ptr " + file +
+        instructions_ += "  " + snapshot + " = call ptr @" + sliceFunction + "(ptr " +
+                         source.operand + ", i64 0, i64 " + length + ", ptr " + file +
                          ", i64 " + std::to_string(statement.location.file.size()) +
                          ", i64 " + std::to_string(statement.location.line) + ", i64 " +
                          std::to_string(statement.location.column) + ")\n";
@@ -463,12 +455,10 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                          "  br i1 " + inRange + ", label %" + bodyLabel + ", label %" +
                          endLabel + "\n" + bodyLabel + ":\n";
         if (array) {
-            const auto narrowed = newTemporary();
             const auto element = newTemporary();
             const auto loaded = newTemporary();
-            instructions_ += "  " + narrowed + " = trunc i64 " + index + " to i32\n"
-                             "  " + element + " = call ptr @simp_array_index(ptr " +
-                             collection.operand + ", i32 " + narrowed + ", ptr " + file +
+            instructions_ += "  " + element + " = call ptr @simp_array_index(ptr " +
+                             collection.operand + ", i64 " + index + ", ptr " + file +
                              ", i64 " + std::to_string(statement.location.file.size()) +
                              ", i64 " + std::to_string(statement.location.line) + ", i64 " +
                              std::to_string(statement.location.column) + ")\n"

@@ -83,7 +83,7 @@ static void *make_string(const char *text, size_t length) {
     return simp_string_new(&simp_string_class_meta, text, length);
 }
 
-static int write_stream(FILE *stream, const char *bytes, size_t length) {
+static int64_t write_stream(FILE *stream, const char *bytes, size_t length) {
     if (length == 0) {
         simp_runtime_clear_error();
         return 0;
@@ -91,13 +91,21 @@ static int write_stream(FILE *stream, const char *bytes, size_t length) {
     const size_t written = fwrite(bytes, 1, length, stream);
     if (written != length) simp_runtime_set_error(errno == 0 ? EIO : errno);
     else simp_runtime_clear_error();
-    return written > INT32_MAX ? INT32_MAX : (int)written;
+    if (written > (size_t)INT64_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
+        return INT64_MAX;
+    }
+    return (int64_t)written;
 }
 
-void *simp_stdio_read(void *self, int32_t size) {
+void *simp_stdio_read(void *self, int64_t size) {
     (void)self;
     if (size < 0) {
         simp_runtime_set_error(EINVAL);
+        return make_string("", 0);
+    }
+    if ((uint64_t)size > SIZE_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
         return make_string("", 0);
     }
     char *bytes = size == 0 ? NULL : (char *)malloc((size_t)size);
@@ -130,15 +138,15 @@ void *simp_stdio_read_line(void *self) {
     int character;
     while ((character = fgetc(stdin)) != EOF) {
         if (character == '\n') break;
-        if (length == (size_t)INT32_MAX) {
+        if (length == (size_t)INT64_MAX) {
             /* Leave the loop so the GIL is reacquired before reporting the
              * error or allocating the managed result string. */
             allocation_error = EOVERFLOW;
             break;
         }
         if (length == capacity) {
-            const size_t grown = capacity > (size_t)INT32_MAX / 2
-                                     ? (size_t)INT32_MAX
+            const size_t grown = capacity > (size_t)INT64_MAX / 2
+                                     ? (size_t)INT64_MAX
                                      : capacity * 2;
             char *next = (char *)realloc(bytes, grown);
             if (next == NULL) {
@@ -165,7 +173,7 @@ void *simp_stdio_read_line(void *self) {
     return result;
 }
 
-int32_t simp_stdio_write(void *self, void *text) {
+int64_t simp_stdio_write(void *self, void *text) {
     (void)self;
     if (text == NULL) {
         simp_runtime_set_error(EINVAL);
@@ -177,7 +185,7 @@ int32_t simp_stdio_write(void *self, void *text) {
     return write_stream(stdout, bytes, (size_t)length);
 }
 
-static int32_t write_line(FILE *stream, void *text) {
+static int64_t write_line(FILE *stream, void *text) {
     if (text == NULL) {
         simp_runtime_set_error(EINVAL);
         return -1;
@@ -188,18 +196,22 @@ static int32_t write_line(FILE *stream, void *text) {
     const size_t written = length == 0 ? 0 : fwrite(bytes, 1, (size_t)length, stream);
     if (written != length || fputc('\n', stream) == EOF) {
         simp_runtime_set_error(errno == 0 ? EIO : errno);
-        return written > INT32_MAX ? INT32_MAX : (int32_t)written;
+        return written > (size_t)INT64_MAX ? INT64_MAX : (int64_t)written;
+    }
+    if (length >= (uint64_t)INT64_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
+        return INT64_MAX;
     }
     simp_runtime_clear_error();
-    return length >= INT32_MAX ? INT32_MAX : (int32_t)length + 1;
+    return (int64_t)length + 1;
 }
 
-int32_t simp_stdio_write_line(void *self, void *text) {
+int64_t simp_stdio_write_line(void *self, void *text) {
     (void)self;
     return write_line(stdout, text);
 }
 
-int32_t simp_stdio_write_bytes(void *self, void *object) {
+int64_t simp_stdio_write_bytes(void *self, void *object) {
     (void)self;
     if (object == NULL) {
         simp_runtime_set_error(EINVAL);
@@ -210,7 +222,7 @@ int32_t simp_stdio_write_bytes(void *self, void *object) {
                         (size_t)buffer->length);
 }
 
-int32_t simp_stdio_write_error(void *self, void *text) {
+int64_t simp_stdio_write_error(void *self, void *text) {
     (void)self;
     if (text == NULL) {
         simp_runtime_set_error(EINVAL);
@@ -222,12 +234,12 @@ int32_t simp_stdio_write_error(void *self, void *text) {
     return write_stream(stderr, bytes, (size_t)length);
 }
 
-int32_t simp_stdio_write_error_line(void *self, void *text) {
+int64_t simp_stdio_write_error_line(void *self, void *text) {
     (void)self;
     return write_line(stderr, text);
 }
 
-int32_t simp_stdio_write_error_bytes(void *self, void *object) {
+int64_t simp_stdio_write_error_bytes(void *self, void *object) {
     (void)self;
     if (object == NULL) {
         simp_runtime_set_error(EINVAL);
@@ -288,8 +300,14 @@ int32_t simp_time_sleep_milliseconds(void *self, uint64_t milliseconds) {
         simp_runtime_set_error(EOVERFLOW);
         return 0;
     }
+    const uint64_t seconds = milliseconds / UINT64_C(1000);
+    const time_t native_seconds = (time_t)seconds;
+    if ((uint64_t)native_seconds != seconds) {
+        simp_runtime_set_error(EOVERFLOW);
+        return 0;
+    }
     struct timespec remaining = {
-        (time_t)(milliseconds / UINT64_C(1000)),
+        native_seconds,
         (long)((milliseconds % UINT64_C(1000)) * UINT64_C(1000000))
     };
     simp_runtime_gil_release();
@@ -315,21 +333,21 @@ int32_t simp_terminal_stdout_interactive(void *self) {
     return isatty(STDOUT_FILENO) != 0;
 }
 
-static int32_t terminal_dimension(int column) {
+static int64_t terminal_dimension(int column) {
     struct winsize dimensions;
     if (isatty(STDOUT_FILENO) == 0 ||
         ioctl(STDOUT_FILENO, TIOCGWINSZ, &dimensions) != 0) {
         return 0;
     }
-    return column ? (int32_t)dimensions.ws_col : (int32_t)dimensions.ws_row;
+    return column ? dimensions.ws_col : dimensions.ws_row;
 }
 
-int32_t simp_terminal_columns(void *self) {
+int64_t simp_terminal_columns(void *self) {
     (void)self;
     return terminal_dimension(1);
 }
 
-int32_t simp_terminal_rows(void *self) {
+int64_t simp_terminal_rows(void *self) {
     (void)self;
     return terminal_dimension(0);
 }
@@ -394,10 +412,14 @@ int32_t simp_random_fill(void *self, void *object) {
     return 1;
 }
 
-void *simp_random_bytes(void *self, int32_t size) {
+void *simp_random_bytes(void *self, int64_t size) {
     (void)self;
     if (size < 0) {
         simp_runtime_set_error(EINVAL);
+        return NULL;
+    }
+    if ((uint64_t)size > SIZE_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
         return NULL;
     }
     void *buffer = simp_buffer_new(size, "<stdlib>", 8, 0, 0);

@@ -101,8 +101,7 @@ void *simp_process_spawn(void *self, void *executable, void *arguments) {
         return NULL;
     }
     const SimpArray *array = (const SimpArray *)arguments;
-    if (array->length > (uint64_t)INT32_MAX - 1 ||
-        array->length > SIZE_MAX / sizeof(char *) - 2) {
+    if (array->length > SIZE_MAX / sizeof(char *) - 2) {
         free(program);
         simp_runtime_set_error(E2BIG);
         return NULL;
@@ -202,7 +201,7 @@ void *simp_process_spawn(void *self, void *executable, void *arguments) {
 
 static int append_output(char **data, size_t *length, size_t *capacity,
                          const char *bytes, size_t count) {
-    if (count > (size_t)INT32_MAX - *length) {
+    if (*length > (size_t)INT64_MAX || count > (size_t)INT64_MAX - *length) {
         errno = EOVERFLOW;
         return 0;
     }
@@ -210,8 +209,8 @@ static int append_output(char **data, size_t *length, size_t *capacity,
     if (required > *capacity) {
         size_t grown = *capacity == 0 ? 4096 : *capacity;
         while (grown < required) {
-            if (grown > (size_t)INT32_MAX / 2) {
-                grown = (size_t)INT32_MAX;
+            if (grown > (size_t)INT64_MAX / 2) {
+                grown = (size_t)INT64_MAX;
                 break;
             }
             grown *= 2;
@@ -315,7 +314,7 @@ int32_t simp_process_wait(void *self, void *object) {
     return 1;
 }
 
-int32_t simp_process_exit_code(void *self, void *object) {
+int64_t simp_process_exit_code(void *self, void *object) {
     (void)self;
     SimpProcess *process = (SimpProcess *)object;
     return process == NULL || !process->waited ? -1 : process->status;

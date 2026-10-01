@@ -164,7 +164,7 @@ void simp_thread_join(void *receiver, void *worker) {
     free(handle);
 }
 
-void *simp_semaphore_create(void *receiver, int32_t initial_count) {
+void *simp_semaphore_create(void *receiver, int64_t initial_count) {
     (void)receiver;
     if (initial_count < 0) abort();
     SimpSemaphoreObject *semaphore =
@@ -199,6 +199,7 @@ void simp_semaphore_signal(void *receiver, void *semaphore) {
     if (semaphore == NULL) abort();
     SimpSemaphoreObject *sem = (SimpSemaphoreObject *)semaphore;
     pthread_mutex_lock(&sem->mutex);
+    if (sem->count == INT64_MAX) abort();
     ++sem->count;
     pthread_cond_signal(&sem->cond);
     pthread_mutex_unlock(&sem->mutex);

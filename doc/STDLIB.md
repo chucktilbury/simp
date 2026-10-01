@@ -23,6 +23,11 @@ error as a string (or an empty string when no error is recorded). It is not a
 numeric error-code API. `lastError()` is an instance method; with the `Sys`
 alias, call it as `Sys.System().lastError()`.
 
+Simple `int` parameters and results in these APIs are signed 64-bit values;
+`unsigned` values are unsigned 64-bit. The native-binding documentation in
+the [language reference](LANGUAGE-REFERENCE.md#native-bindings-for-library-authors)
+describes their C/LLVM ABI representations.
+
 ## `system`
 
 Import with `import system as Sys`; the alias names the package namespace, so
@@ -74,7 +79,7 @@ string/array or the operation's failure value and set `lastError()`.
 `write`/`writeLine` return the number of bytes written (including the newline
 for `writeLine` when successful); failed writes may return a partial count.
 `seek` returns zero on success and `-1` on failure; `tell` returns the
-position, capped at the `int` range, or `-1`. `File` records whether the
+position, capped at the signed 64-bit `int` range, or `-1`. `File` records whether the
 initial open succeeded; close it explicitly.
 
 `Sys.FileSystem` provides:

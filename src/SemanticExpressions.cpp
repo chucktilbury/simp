@@ -38,7 +38,23 @@ bool isDynamicValueType(const std::string& type) {
     return type == "any";
 }
 
+bool isMinimumIntegerMagnitude(const Expression& expression) {
+    if (expression.kind != ExpressionKind::Integer) return false;
+    std::uint64_t magnitude = 0;
+    const auto parsed = std::from_chars(expression.value.data(),
+                                        expression.value.data() + expression.value.size(),
+                                        magnitude);
+    return parsed.ec == std::errc{} &&
+           parsed.ptr == expression.value.data() + expression.value.size() &&
+           magnitude == (std::uint64_t{1} << 63);
+}
+
 bool constantInteger(const Expression& expression, std::int64_t& value) {
+    if (expression.kind == ExpressionKind::Unary && expression.value == "-" &&
+        expression.left && isMinimumIntegerMagnitude(*expression.left)) {
+        value = std::numeric_limits<std::int64_t>::min();
+        return true;
+    }
     if (expression.kind == ExpressionKind::Integer) {
         const auto parsed = std::from_chars(expression.value.data(),
                                              expression.value.data() + expression.value.size(),
@@ -148,11 +164,11 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             }
             return "unsigned";
         }
-        std::int32_t value = 0;
+        std::int64_t value = 0;
         const auto parsed = std::from_chars(begin, end, value);
         if (parsed.ec != std::errc{} || parsed.ptr != end) {
             throw DiagnosticError(expression.location,
-                                  "integer literal is outside the signed 32-bit range");
+                                  "integer literal is outside the signed 64-bit range");
         }
         return "int";
     }
@@ -814,10 +830,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         return method->returnType;
     }
     case ExpressionKind::Cast: {
-        // Explicit scalar cast (int/unsigned <-> float), same model as C:
-        // widening int/unsigned to float is always exact for values in the
-        // ordinary range, and narrowing float to int/unsigned truncates
-        // toward zero, discarding any fractional part.
+        // Integer-to-float casts round to double precision; float-to-integer
+        // casts truncate toward zero after the backend checks their range.
         const auto operand = analyzeExpression(*expression.arguments.front());
         const auto& target = expression.value;
         const bool widening = target == "float" && (operand == "int" || operand == "unsigned");
@@ -860,6 +874,10 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         return "bool";
     }
     case ExpressionKind::Unary: {
+        if (expression.value == "-" && expression.left &&
+            isMinimumIntegerMagnitude(*expression.left)) {
+            return "int";
+        }
         const auto operand = analyzeExpression(*expression.left);
         if (expression.value == "!") {
             if (operand != "bool") {
