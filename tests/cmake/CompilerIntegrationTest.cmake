@@ -219,11 +219,15 @@ if(DEFINED COMPILE_ONLY)
     if(NOT link_result EQUAL 0)
         message(FATAL_ERROR "Package object relink failed (${link_result}):\n${link_stderr}")
     endif()
+    # Force a non-TTY stdin by default, matching the main run path below, so
+    # results are deterministic regardless of whether ctest was invoked from
+    # an interactive terminal.
     execute_process(
         COMMAND "${OUTPUT}" ${run_arguments}
         RESULT_VARIABLE run_result
         OUTPUT_VARIABLE program_output
         ERROR_VARIABLE run_stderr
+        INPUT_FILE "/dev/null"
     )
     if(NOT run_result EQUAL 0 OR NOT program_output STREQUAL EXPECTED_OUTPUT)
         message(FATAL_ERROR
@@ -373,11 +377,24 @@ set(run_arguments)
 if(DEFINED RUN_ARGUMENTS)
     list(APPEND run_arguments ${RUN_ARGUMENTS})
 endif()
+set(stdin_arguments)
+if(DEFINED STDIN_FILE)
+    list(APPEND stdin_arguments INPUT_FILE "${STDIN_FILE}")
+else()
+    # execute_process() does not redirect stdin unless told to, so the
+    # compiled program otherwise inherits ctest's own stdin. When ctest is
+    # invoked from an interactive shell that is a real TTY, which makes
+    # terminal-detection tests (isInteractive(), etc.) observe different,
+    # non-deterministic results depending on how the test was launched.
+    # Force a non-TTY stdin by default so results are deterministic.
+    list(APPEND stdin_arguments INPUT_FILE "/dev/null")
+endif()
 execute_process(
     COMMAND "${OUTPUT}" ${run_arguments}
     RESULT_VARIABLE run_result
     OUTPUT_VARIABLE program_output
     ERROR_VARIABLE run_stderr
+    ${stdin_arguments}
 )
 if(DEFINED EXPECT_EXIT_CODE)
     if(NOT run_result EQUAL EXPECT_EXIT_CODE)
@@ -436,4 +453,14 @@ if(NOT program_output STREQUAL EXPECTED_OUTPUT)
 endif()
 if(DEFINED EXPECT_EMPTY_RUNTIME_STDERR AND NOT run_stderr STREQUAL "")
     message(FATAL_ERROR "Expected no runtime diagnostic on stderr, got:\n${run_stderr}")
+endif()
+if(DEFINED EXPECT_RUNTIME_STDERR_FILE)
+    if(NOT EXISTS "${EXPECT_RUNTIME_STDERR_FILE}")
+        message(FATAL_ERROR "Missing runtime stderr expectation: ${EXPECT_RUNTIME_STDERR_FILE}")
+    endif()
+    file(READ "${EXPECT_RUNTIME_STDERR_FILE}" expected_runtime_stderr)
+    if(NOT run_stderr STREQUAL expected_runtime_stderr)
+        message(FATAL_ERROR
+            "Expected runtime stderr '${expected_runtime_stderr}', got '${run_stderr}'")
+    endif()
 endif()

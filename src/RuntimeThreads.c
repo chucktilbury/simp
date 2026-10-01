@@ -11,8 +11,12 @@
 #include "simp/RuntimeThreads.h"
 
 #include <pthread.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern void simp_runtime_set_error(int error_number);
+extern void simp_runtime_clear_error(void);
 
 typedef struct SimpThreadHandle {
     pthread_t thread;
@@ -31,6 +35,21 @@ typedef struct SimpSemaphoreObject {
     pthread_cond_t cond;
     int64_t count;
 } SimpSemaphoreObject;
+
+typedef struct SimpMutexObject {
+    pthread_mutex_t guard;
+    pthread_cond_t available;
+    pthread_t owner;
+    int locked;
+    int64_t waiters;
+} SimpMutexObject;
+
+typedef struct SimpConditionObject {
+    pthread_mutex_t guard;
+    pthread_cond_t condition;
+    uint64_t sequence;
+    int64_t waiters;
+} SimpConditionObject;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
@@ -192,4 +211,253 @@ void simp_semaphore_release(void *receiver, void *semaphore) {
     pthread_mutex_destroy(&sem->mutex);
     pthread_cond_destroy(&sem->cond);
     free(sem);
+}
+
+/*
+ * Mutex and Condition are *logical* locks: the native guard mutexes below
+ * only protect a few fields for a short, non-blocking critical section and
+ * are never held while acquiring the global lock (GIL) or while running
+ * Simple code. Blocking waits happen with the GIL released, so a thread that
+ * owns a logical mutex can always reacquire the GIL and unlock it.
+ */
+static int mutex_owned_by_caller(const SimpMutexObject *mutex) {
+    return mutex->locked && pthread_equal(mutex->owner, pthread_self());
+}
+
+void *simp_mutex_create(void *receiver) {
+    (void)receiver;
+    SimpMutexObject *mutex = (SimpMutexObject *)malloc(sizeof(*mutex));
+    if (mutex == NULL) {
+        simp_runtime_set_error(ENOMEM);
+        return NULL;
+    }
+    int result = pthread_mutex_init(&mutex->guard, NULL);
+    if (result != 0) {
+        free(mutex);
+        simp_runtime_set_error(result);
+        return NULL;
+    }
+    result = pthread_cond_init(&mutex->available, NULL);
+    if (result != 0) {
+        pthread_mutex_destroy(&mutex->guard);
+        free(mutex);
+        simp_runtime_set_error(result);
+        return NULL;
+    }
+    mutex->locked = 0;
+    mutex->waiters = 0;
+    simp_runtime_clear_error();
+    return mutex;
+}
+
+/* Caller holds mutex->guard and not the GIL. */
+static void mutex_acquire_locked_guard(SimpMutexObject *mutex) {
+    ++mutex->waiters;
+    while (mutex->locked) {
+        pthread_cond_wait(&mutex->available, &mutex->guard);
+    }
+    --mutex->waiters;
+    mutex->locked = 1;
+    mutex->owner = pthread_self();
+}
+
+int32_t simp_mutex_lock(void *receiver, void *object) {
+    (void)receiver;
+    if (object == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return 0;
+    }
+    SimpMutexObject *mutex = (SimpMutexObject *)object;
+    pthread_mutex_lock(&mutex->guard);
+    if (mutex_owned_by_caller(mutex)) {
+        pthread_mutex_unlock(&mutex->guard);
+        simp_runtime_set_error(EDEADLK);
+        return 0;
+    }
+    if (!mutex->locked) {
+        /* Uncontended fast path: no need to give up the GIL. */
+        mutex->locked = 1;
+        mutex->owner = pthread_self();
+        pthread_mutex_unlock(&mutex->guard);
+        simp_runtime_clear_error();
+        return 1;
+    }
+    pthread_mutex_unlock(&mutex->guard);
+
+    simp_runtime_gil_release();
+    pthread_mutex_lock(&mutex->guard);
+    mutex_acquire_locked_guard(mutex);
+    pthread_mutex_unlock(&mutex->guard);
+    simp_runtime_gil_acquire();
+    simp_runtime_clear_error();
+    return 1;
+}
+
+/* Caller holds mutex->guard. */
+static void mutex_release_locked_guard(SimpMutexObject *mutex) {
+    mutex->locked = 0;
+    if (mutex->waiters > 0) pthread_cond_signal(&mutex->available);
+}
+
+int32_t simp_mutex_unlock(void *receiver, void *object) {
+    (void)receiver;
+    if (object == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return 0;
+    }
+    SimpMutexObject *mutex = (SimpMutexObject *)object;
+    pthread_mutex_lock(&mutex->guard);
+    if (!mutex_owned_by_caller(mutex)) {
+        pthread_mutex_unlock(&mutex->guard);
+        simp_runtime_set_error(EPERM);
+        return 0;
+    }
+    mutex_release_locked_guard(mutex);
+    pthread_mutex_unlock(&mutex->guard);
+    simp_runtime_clear_error();
+    return 1;
+}
+
+int32_t simp_mutex_release(void *receiver, void *object) {
+    (void)receiver;
+    if (object == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return 0;
+    }
+    SimpMutexObject *mutex = (SimpMutexObject *)object;
+    pthread_mutex_lock(&mutex->guard);
+    const int busy = mutex->locked || mutex->waiters > 0;
+    pthread_mutex_unlock(&mutex->guard);
+    if (busy) {
+        simp_runtime_set_error(EBUSY);
+        return 0;
+    }
+    pthread_cond_destroy(&mutex->available);
+    pthread_mutex_destroy(&mutex->guard);
+    free(mutex);
+    simp_runtime_clear_error();
+    return 1;
+}
+
+void *simp_condition_create(void *receiver) {
+    (void)receiver;
+    SimpConditionObject *condition =
+        (SimpConditionObject *)malloc(sizeof(*condition));
+    if (condition == NULL) {
+        simp_runtime_set_error(ENOMEM);
+        return NULL;
+    }
+    int result = pthread_mutex_init(&condition->guard, NULL);
+    if (result != 0) {
+        free(condition);
+        simp_runtime_set_error(result);
+        return NULL;
+    }
+    result = pthread_cond_init(&condition->condition, NULL);
+    if (result != 0) {
+        pthread_mutex_destroy(&condition->guard);
+        free(condition);
+        simp_runtime_set_error(result);
+        return NULL;
+    }
+    condition->sequence = 0;
+    condition->waiters = 0;
+    simp_runtime_clear_error();
+    return condition;
+}
+
+int32_t simp_condition_wait(void *receiver, void *condition_object,
+                            void *mutex_object) {
+    (void)receiver;
+    if (condition_object == NULL || mutex_object == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return 0;
+    }
+    SimpConditionObject *condition = (SimpConditionObject *)condition_object;
+    SimpMutexObject *mutex = (SimpMutexObject *)mutex_object;
+
+    pthread_mutex_lock(&mutex->guard);
+    const int owned = mutex_owned_by_caller(mutex);
+    pthread_mutex_unlock(&mutex->guard);
+    if (!owned) {
+        simp_runtime_set_error(EPERM);
+        return 0;
+    }
+
+    /* Register as a waiter and snapshot the signal sequence while the
+     * logical mutex is still held: any signal issued after the caller
+     * releases the mutex bumps the sequence, so it cannot be lost. */
+    pthread_mutex_lock(&condition->guard);
+    const uint64_t observed = condition->sequence;
+    ++condition->waiters;
+    pthread_mutex_unlock(&condition->guard);
+
+    simp_runtime_gil_release();
+
+    pthread_mutex_lock(&mutex->guard);
+    mutex_release_locked_guard(mutex);
+    pthread_mutex_unlock(&mutex->guard);
+
+    pthread_mutex_lock(&condition->guard);
+    while (condition->sequence == observed) {
+        pthread_cond_wait(&condition->condition, &condition->guard);
+    }
+    --condition->waiters;
+    pthread_mutex_unlock(&condition->guard);
+
+    pthread_mutex_lock(&mutex->guard);
+    mutex_acquire_locked_guard(mutex);
+    pthread_mutex_unlock(&mutex->guard);
+
+    simp_runtime_gil_acquire();
+    simp_runtime_clear_error();
+    return 1;
+}
+
+static int32_t condition_notify(void *object, int broadcast) {
+    if (object == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return 0;
+    }
+    SimpConditionObject *condition = (SimpConditionObject *)object;
+    pthread_mutex_lock(&condition->guard);
+    if (condition->waiters > 0) {
+        ++condition->sequence;
+        if (broadcast) pthread_cond_broadcast(&condition->condition);
+        else pthread_cond_signal(&condition->condition);
+    }
+    pthread_mutex_unlock(&condition->guard);
+    simp_runtime_clear_error();
+    return 1;
+}
+
+int32_t simp_condition_signal(void *receiver, void *object) {
+    (void)receiver;
+    return condition_notify(object, 0);
+}
+
+int32_t simp_condition_broadcast(void *receiver, void *object) {
+    (void)receiver;
+    return condition_notify(object, 1);
+}
+
+int32_t simp_condition_release(void *receiver, void *object) {
+    (void)receiver;
+    if (object == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return 0;
+    }
+    SimpConditionObject *condition = (SimpConditionObject *)object;
+    pthread_mutex_lock(&condition->guard);
+    const int busy = condition->waiters > 0;
+    pthread_mutex_unlock(&condition->guard);
+    if (busy) {
+        simp_runtime_set_error(EBUSY);
+        return 0;
+    }
+    pthread_cond_destroy(&condition->condition);
+    pthread_mutex_destroy(&condition->guard);
+    free(condition);
+    simp_runtime_clear_error();
+    return 1;
 }

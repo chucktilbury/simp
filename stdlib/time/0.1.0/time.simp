@@ -1,0 +1,13 @@
+namespace Time {
+    class Clock {
+        unsigned epochSeconds()
+        unsigned epochMilliseconds()
+        unsigned monotonicMilliseconds()
+        bool sleepMilliseconds(unsigned milliseconds)
+    }
+
+    unsigned Clock.epochSeconds() from "simp_time_epoch_seconds"
+    unsigned Clock.epochMilliseconds() from "simp_time_epoch_milliseconds"
+    unsigned Clock.monotonicMilliseconds() from "simp_time_monotonic_milliseconds"
+    bool Clock.sleepMilliseconds(unsigned milliseconds) from "simp_time_sleep_milliseconds"
+}

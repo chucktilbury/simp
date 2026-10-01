@@ -58,3 +58,8 @@ CMake stages and installs the contents of `stdlib/` automatically:
 
 New standard library packages added here are automatically staged and installed
 without requiring changes to CMake configuration files.
+
+The shipped interfaces are documented in the repository `README.md` and
+`SIMPLE-LANGUAGE-NOTES.md`. They currently include `system`, `math`,
+`networking`, `time`, `process`, `terminal`, `random`, and
+`synchronization`.

@@ -1,0 +1,54 @@
+namespace Process {
+    class Runtime {
+        handle spawn(String executable, array arguments)
+        bool wait(handle process)
+        int exitCode(handle process)
+        String stdout(handle process)
+        String stderr(handle process)
+        void close(handle process)
+    }
+
+    class Process {
+        private:
+        handle _native
+
+        public:
+        Process(String executable, array arguments) {
+            _native = Runtime().spawn(executable, arguments)
+        }
+
+        bool started() {
+            return _native != null
+        }
+
+        bool wait() {
+            return Runtime().wait(_native)
+        }
+
+        int exitCode() {
+            return Runtime().exitCode(_native)
+        }
+
+        String stdout() {
+            return Runtime().stdout(_native)
+        }
+
+        String stderr() {
+            return Runtime().stderr(_native)
+        }
+
+        void close() {
+            if (_native != null) {
+                Runtime().close(_native)
+                _native = null
+            }
+        }
+    }
+
+    handle Runtime.spawn(String executable, array arguments) from "simp_process_spawn"
+    bool Runtime.wait(handle process) from "simp_process_wait"
+    int Runtime.exitCode(handle process) from "simp_process_exit_code"
+    String Runtime.stdout(handle process) from "simp_process_stdout"
+    String Runtime.stderr(handle process) from "simp_process_stderr"
+    void Runtime.close(handle process) from "simp_process_close"
+}

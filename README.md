@@ -101,7 +101,13 @@ available as `Sys.Process`, `Sys.File`, and so on.
   `seek`, `tell`, `flush`, `close`, `isOpen`, and `eof`). Open files with
   `System.open(path, mode)` or construct a `File` directly. `FileSystem`
   provides `exists`, `isFile`, `isDir`, `fileSize`, `remove`, `rename`, `copy`,
-  `mkdir`, `rmdir`, `listDir`, `getCwd`, `chDir`, and `absolutePath`.
+  `mkdir`, `rmdir`, `listDir`, `getCwd`, `chDir`, `absolutePath`, `join`,
+  `normalize`, `basename`, `dirname`, `extension`, `tempFile`, and `tempDir`.
+  `System.lastError()` returns the calling thread's most recent error from
+  these native operations; failed status/sentinel-returning filesystem and
+  stream operations set it, and their successful calls clear it. `System.io()`
+  returns `StandardIO` with `read`, `readLine`, text/byte write methods for
+  stdout and stderr, `writeLine` variants, and separate flush operations.
 - **`math`** exports namespace `Math` and class `Math`: constants `pi`, `e`,
   and `tau`; numeric helpers `abs`, `absInt`, `min`, `max`, `minInt`, `maxInt`,
   and `clamp`; rounding functions `floor`, `ceil`, `round`, and `trunc`;
@@ -115,6 +121,35 @@ available as `Sys.Process`, `Sys.File`, and so on.
   `bindAddress`, `listen`, `accept`, `close`, `isBound`, and `getPort`; `Url`
   exposes parsed `scheme`, `host`, `port`, `path`, `query`, and `fragment`,
   plus `toString`.
+- **`time`** exports `Time.Clock`: `epochSeconds()` and
+  `epochMilliseconds()` are wall-clock Unix timestamps; `monotonicMilliseconds()`
+  is a non-calendar monotonic tick suitable for elapsed-time differences; and
+  `sleepMilliseconds()` sleeps for a duration. No timezone conversion is
+  provided.
+- **`process`** exports `Process.Process`, which starts an executable with an
+  argv array (never through a shell), waits, reports the exit status, and
+  exposes captured stdout/stderr. Close every started process explicitly;
+  `close()` waits and reaps it if needed. A signal termination is represented
+  by a negative signal number, and spawn/capture errors are available from
+  `System.lastError()`. The API methods are `started`, `wait`, `exitCode`,
+  `stdout`, `stderr`, and `close`.
+- **`terminal`** exports `Terminal.Terminal` for stdin/stdout interactivity,
+  terminal dimensions, and a basic ANSI-color capability check. Dimensions are
+  zero and color is disabled when stdout is not a suitable terminal; the
+  package does not change terminal modes.
+- **`random`** exports `Random.SecureRandom`, which fills a buffer or returns
+  cryptographically secure bytes from the OS. A failed `bytes()` returns null;
+  inspect `System.lastError()`. It is not a deterministic pseudorandom
+  generator.
+- **`synchronization`** exports explicit-lifetime `Mutex`, `Condition`, and
+  `Semaphore` wrappers backed by pthreads. Mutexes are logical, owner-tracked
+  locks whose blocking waits release the global runtime lock. They are
+  non-recursive: relocking from the owner, unlocking from a non-owner, or
+  unlocking an unlocked mutex returns `false`. Condition waits require the
+  caller to own the mutex and should be used in a predicate loop.
+  Mutex/condition `close()` returns `false` (EBUSY) while locked or waited on;
+  call it only after no thread can use the primitive.
+  The existing `Thread` subclass launch/join facility remains available.
 
 See "Modules, packages, and priorities" in `SIMPLE-LANGUAGE-NOTES.md` for the
 package API reference and module packaging details.

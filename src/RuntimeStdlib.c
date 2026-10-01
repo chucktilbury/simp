@@ -25,6 +25,8 @@
 #include <unistd.h>
 
 extern const SimpClassMeta simp_string_class_meta __attribute__((weak));
+extern void simp_runtime_set_error(int error_number);
+extern void simp_runtime_clear_error(void);
 static const char stdlib_native_file[] = "<stdlib>";
 
 static int process_argc = 0;
@@ -36,13 +38,26 @@ void simp_runtime_init_args(int32_t argc, char **argv) {
 }
 
 static char *copy_string_bytes(void *object) {
-    if (object == NULL) return NULL;
+    if (object == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return NULL;
+    }
     const char *bytes;
     uint64_t length;
     simp_string_bytes(object, &bytes, &length);
-    if (length > SIZE_MAX - 1) return NULL;
+    if (length > SIZE_MAX - 1) {
+        simp_runtime_set_error(EOVERFLOW);
+        return NULL;
+    }
+    if (memchr(bytes, '\0', (size_t)length) != NULL) {
+        simp_runtime_set_error(EINVAL);
+        return NULL;
+    }
     char *result = (char *)malloc((size_t)length + 1);
-    if (result == NULL) return NULL;
+    if (result == NULL) {
+        simp_runtime_set_error(ENOMEM);
+        return NULL;
+    }
     if (length != 0) memcpy(result, bytes, (size_t)length);
     result[length] = '\0';
     return result;
@@ -117,6 +132,7 @@ void *simp_system_getenv(void *self, void *name) {
     const char *value = getenv(key);
     void *result = simple_string_from_cstr(value);
     free(key);
+    simp_runtime_clear_error();
     return result;
 }
 
@@ -125,13 +141,17 @@ int32_t simp_system_setenv(void *self, void *name, void *value) {
     char *key = copy_string_bytes(name);
     char *text = copy_string_bytes(value);
     if (key == NULL || text == NULL || key[0] == '\0') {
+        if (key != NULL && key[0] == '\0') simp_runtime_set_error(EINVAL);
         free(key);
         free(text);
         return 0;
     }
     const int result = setenv(key, text, 1);
+    const int saved_error = errno;
     free(key);
     free(text);
+    if (result == 0) simp_runtime_clear_error();
+    else simp_runtime_set_error(saved_error);
     return result == 0;
 }
 
@@ -140,9 +160,12 @@ int32_t simp_fs_exists(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return 0;
     struct stat info;
-    const int result = stat(name, &info) == 0;
+    const int status = stat(name, &info);
+    const int saved_error = errno;
     free(name);
-    return result;
+    if (status == 0) simp_runtime_clear_error();
+    else simp_runtime_set_error(saved_error);
+    return status == 0;
 }
 
 int32_t simp_fs_is_file(void *self, void *path) {
@@ -150,7 +173,10 @@ int32_t simp_fs_is_file(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return 0;
     struct stat info;
-    const int result = stat(name, &info) == 0 && S_ISREG(info.st_mode);
+    const int status = stat(name, &info);
+    const int result = status == 0 && S_ISREG(info.st_mode);
+    if (result) simp_runtime_clear_error();
+    else simp_runtime_set_error(status != 0 ? errno : EINVAL);
     free(name);
     return result;
 }
@@ -160,7 +186,10 @@ int32_t simp_fs_is_dir(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return 0;
     struct stat info;
-    const int result = stat(name, &info) == 0 && S_ISDIR(info.st_mode);
+    const int status = stat(name, &info);
+    const int result = status == 0 && S_ISDIR(info.st_mode);
+    if (result) simp_runtime_clear_error();
+    else simp_runtime_set_error(status != 0 ? errno : ENOTDIR);
     free(name);
     return result;
 }
@@ -170,10 +199,15 @@ int32_t simp_fs_file_size(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return -1;
     struct stat info;
-    const int result = stat(name, &info) == 0 && S_ISREG(info.st_mode)
-                           ? (info.st_size > INT32_MAX ? INT32_MAX
-                                                       : (int32_t)info.st_size)
-                           : -1;
+    const int status = stat(name, &info);
+    const int32_t result = status == 0 && S_ISREG(info.st_mode)
+                               ? (info.st_size > INT32_MAX ? INT32_MAX
+                                                           : (int32_t)info.st_size)
+                               : -1;
+    if (status == 0 && S_ISREG(info.st_mode) && info.st_size > INT32_MAX)
+        simp_runtime_set_error(EOVERFLOW);
+    else if (result >= 0) simp_runtime_clear_error();
+    else simp_runtime_set_error(status != 0 ? errno : EINVAL);
     free(name);
     return result;
 }
@@ -183,7 +217,10 @@ int32_t simp_fs_remove(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return 0;
     const int result = remove(name) == 0;
+    const int saved_error = errno;
     free(name);
+    if (result) simp_runtime_clear_error();
+    else simp_runtime_set_error(saved_error);
     return result;
 }
 
@@ -197,8 +234,11 @@ int32_t simp_fs_rename(void *self, void *old_path, void *new_path) {
         return 0;
     }
     const int result = rename(old_name, new_name) == 0;
+    const int saved_error = errno;
     free(old_name);
     free(new_name);
+    if (result) simp_runtime_clear_error();
+    else simp_runtime_set_error(saved_error);
     return result;
 }
 
@@ -212,8 +252,20 @@ int32_t simp_fs_copy(void *self, void *source, void *destination) {
         return 0;
     }
     FILE *input = fopen(source_name, "rb");
-    FILE *output = input == NULL ? NULL : fopen(destination_name, "wb");
-    int success = input != NULL && output != NULL;
+    struct stat source_info;
+    struct stat destination_info;
+    int same_file = 0;
+    if (input != NULL && fstat(fileno(input), &source_info) == 0 &&
+        stat(destination_name, &destination_info) == 0 &&
+        source_info.st_dev == destination_info.st_dev &&
+        source_info.st_ino == destination_info.st_ino) {
+        errno = EINVAL;
+        same_file = 1;
+    }
+    FILE *output = input == NULL || same_file
+                       ? NULL
+                       : fopen(destination_name, "wb");
+    int success = input != NULL && output != NULL && !same_file;
     char buffer[16384];
     while (success) {
         const size_t count = fread(buffer, 1, sizeof(buffer), input);
@@ -225,8 +277,11 @@ int32_t simp_fs_copy(void *self, void *source, void *destination) {
     }
     if (input != NULL && fclose(input) != 0) success = 0;
     if (output != NULL && fclose(output) != 0) success = 0;
+    const int saved_error = errno;
     free(source_name);
     free(destination_name);
+    if (success) simp_runtime_clear_error();
+    else simp_runtime_set_error(saved_error == 0 ? EIO : saved_error);
     return success;
 }
 
@@ -235,7 +290,10 @@ int32_t simp_fs_mkdir(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return 0;
     const int result = mkdir(name, 0777) == 0;
+    const int saved_error = errno;
     free(name);
+    if (result) simp_runtime_clear_error();
+    else simp_runtime_set_error(saved_error);
     return result;
 }
 
@@ -244,7 +302,10 @@ int32_t simp_fs_rmdir(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return 0;
     const int result = rmdir(name) == 0;
+    const int saved_error = errno;
     free(name);
+    if (result) simp_runtime_clear_error();
+    else simp_runtime_set_error(saved_error);
     return result;
 }
 
@@ -253,6 +314,7 @@ void *simp_fs_list_dir(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return new_array();
     DIR *directory = opendir(name);
+    const int open_error = errno;
     free(name);
     SimpArray *array = (SimpArray *)new_array();
     void *root = array;
@@ -260,6 +322,7 @@ void *simp_fs_list_dir(void *self, void *path) {
     void *slots[] = {&root};
     simp_gc_push_or_abort(&frame, slots, 1);
     if (directory != NULL) {
+        errno = 0;
         struct dirent *entry;
         while ((entry = readdir(directory)) != NULL) {
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
@@ -268,7 +331,12 @@ void *simp_fs_list_dir(void *self, void *path) {
             void *value = simple_string_from_cstr(entry->d_name);
             append_array_object((SimpArray *)root, value);
         }
+        const int read_error = errno;
         closedir(directory);
+        if (read_error != 0) simp_runtime_set_error(read_error);
+        else simp_runtime_clear_error();
+    } else {
+        simp_runtime_set_error(open_error);
     }
     simp_gc_pop_or_abort(&frame);
     return root;
@@ -279,14 +347,21 @@ void *simp_fs_get_cwd(void *self) {
     size_t capacity = 256;
     for (;;) {
         char *path = (char *)malloc(capacity);
-        if (path == NULL) return simple_string(NULL, 0);
+        if (path == NULL) {
+            simp_runtime_set_error(ENOMEM);
+            return simple_string(NULL, 0);
+        }
         if (getcwd(path, capacity) != NULL) {
             void *result = simple_string_from_cstr(path);
             free(path);
+            simp_runtime_clear_error();
             return result;
         }
         free(path);
-        if (errno != ERANGE || capacity > SIZE_MAX / 2) return simple_string(NULL, 0);
+        if (errno != ERANGE || capacity > SIZE_MAX / 2) {
+            simp_runtime_set_error(errno);
+            return simple_string(NULL, 0);
+        }
         capacity *= 2;
     }
 }
@@ -296,7 +371,10 @@ int32_t simp_fs_ch_dir(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return 0;
     const int result = chdir(name) == 0;
+    const int saved_error = errno;
     free(name);
+    if (result) simp_runtime_clear_error();
+    else simp_runtime_set_error(saved_error);
     return result;
 }
 
@@ -305,10 +383,15 @@ void *simp_fs_absolute_path(void *self, void *path) {
     char *name = copy_string_bytes(path);
     if (name == NULL) return simple_string(NULL, 0);
     char *resolved = realpath(name, NULL);
+    const int saved_error = errno;
     free(name);
-    if (resolved == NULL) return simple_string(NULL, 0);
+    if (resolved == NULL) {
+        simp_runtime_set_error(saved_error);
+        return simple_string(NULL, 0);
+    }
     void *result = simple_string_from_cstr(resolved);
     free(resolved);
+    simp_runtime_clear_error();
     return result;
 }
 
@@ -322,17 +405,32 @@ void *simp_file_open(void *self, void *path, void *mode) {
         return NULL;
     }
     FILE *file = fopen(name, open_mode);
+    const int saved_error = errno;
     free(name);
     free(open_mode);
+    if (file == NULL) simp_runtime_set_error(saved_error);
+    else simp_runtime_clear_error();
     return file;
 }
 
 void *simp_file_read(void *self, void *handle, int32_t size) {
     (void)self;
-    if (handle == NULL || size <= 0) return simple_string(NULL, 0);
+    if (handle == NULL || size < 0) {
+        simp_runtime_set_error(handle == NULL ? EBADF : EINVAL);
+        return simple_string(NULL, 0);
+    }
+    if (size == 0) {
+        simp_runtime_clear_error();
+        return simple_string(NULL, 0);
+    }
     char *bytes = (char *)malloc((size_t)size);
-    if (bytes == NULL) return simple_string(NULL, 0);
+    if (bytes == NULL) {
+        simp_runtime_set_error(ENOMEM);
+        return simple_string(NULL, 0);
+    }
     const size_t count = fread(bytes, 1, (size_t)size, (FILE *)handle);
+    if (ferror((FILE *)handle)) simp_runtime_set_error(errno == 0 ? EIO : errno);
+    else simp_runtime_clear_error();
     void *result = simple_string(bytes, count);
     free(bytes);
     return result;
@@ -348,6 +446,7 @@ static void *read_all(FILE *file) {
         if (count != 0) {
             if (count > (size_t)INT32_MAX - length) {
                 free(bytes);
+                simp_runtime_set_error(EOVERFLOW);
                 return simple_string(NULL, 0);
             }
             const size_t required = length + count;
@@ -359,6 +458,7 @@ static void *read_all(FILE *file) {
                 char *grown_bytes = (char *)realloc(bytes, grown);
                 if (grown_bytes == NULL) {
                     free(bytes);
+                    simp_runtime_set_error(ENOMEM);
                     return simple_string(NULL, 0);
                 }
                 bytes = grown_bytes;
@@ -367,7 +467,11 @@ static void *read_all(FILE *file) {
             memcpy(bytes + length, chunk, count);
             length += count;
         }
-        if (count < sizeof(chunk)) break;
+        if (count < sizeof(chunk)) {
+            if (ferror(file)) simp_runtime_set_error(errno == 0 ? EIO : errno);
+            else simp_runtime_clear_error();
+            break;
+        }
     }
     void *result = simple_string(bytes, length);
     free(bytes);
@@ -376,14 +480,22 @@ static void *read_all(FILE *file) {
 
 void *simp_file_read_all(void *self, void *handle) {
     (void)self;
-    return handle == NULL ? simple_string(NULL, 0) : read_all((FILE *)handle);
+    if (handle == NULL) {
+        simp_runtime_set_error(EBADF);
+        return simple_string(NULL, 0);
+    }
+    return read_all((FILE *)handle);
 }
 
 static int read_line_bytes(FILE *file, char **line, size_t *length) {
+    errno = 0;
     size_t capacity = 128;
     size_t used = 0;
     char *bytes = (char *)malloc(capacity);
-    if (bytes == NULL) return 0;
+    if (bytes == NULL) {
+        errno = ENOMEM;
+        return 0;
+    }
     int character;
     while ((character = fgetc(file)) != EOF) {
         if (character == '\n') break;
@@ -394,6 +506,7 @@ static int read_line_bytes(FILE *file, char **line, size_t *length) {
                                      : capacity * 2;
             char *grown_bytes = (char *)realloc(bytes, grown);
             if (grown_bytes == NULL) {
+                errno = ENOMEM;
                 free(bytes);
                 return 0;
             }
@@ -414,10 +527,19 @@ static int read_line_bytes(FILE *file, char **line, size_t *length) {
 
 void *simp_file_read_line(void *self, void *handle) {
     (void)self;
-    if (handle == NULL) return simple_string(NULL, 0);
+    if (handle == NULL) {
+        simp_runtime_set_error(EBADF);
+        return simple_string(NULL, 0);
+    }
     char *line;
     size_t length;
-    if (!read_line_bytes((FILE *)handle, &line, &length)) return simple_string(NULL, 0);
+    if (!read_line_bytes((FILE *)handle, &line, &length)) {
+        if (ferror((FILE *)handle) || errno == ENOMEM)
+            simp_runtime_set_error(errno == 0 ? EIO : errno);
+        else simp_runtime_clear_error();
+        return simple_string(NULL, 0);
+    }
+    simp_runtime_clear_error();
     void *result = simple_string(line, length);
     free(line);
     return result;
@@ -438,6 +560,11 @@ void *simp_file_read_lines(void *self, void *handle) {
             free(line);
             append_array_object((SimpArray *)root, value);
         }
+        if (ferror((FILE *)handle) || errno == ENOMEM)
+            simp_runtime_set_error(errno == 0 ? EIO : errno);
+        else simp_runtime_clear_error();
+    } else {
+        simp_runtime_set_error(EBADF);
     }
     simp_gc_pop_or_abort(&frame);
     return root;
@@ -445,47 +572,87 @@ void *simp_file_read_lines(void *self, void *handle) {
 
 int32_t simp_file_write(void *self, void *handle, void *data) {
     (void)self;
-    if (handle == NULL || data == NULL) return 0;
+    if (handle == NULL || data == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return 0;
+    }
     const char *bytes;
     uint64_t length;
     simp_string_bytes(data, &bytes, &length);
     const size_t written = fwrite(bytes, 1, (size_t)length, (FILE *)handle);
+    if (written != length) simp_runtime_set_error(errno == 0 ? EIO : errno);
+    else simp_runtime_clear_error();
     return written > INT32_MAX ? INT32_MAX : (int32_t)written;
 }
 
 int32_t simp_file_write_line(void *self, void *handle, void *line) {
     (void)self;
-    const int32_t written = simp_file_write(self, handle, line);
-    if (handle == NULL || line == NULL) return written;
+    if (handle == NULL || line == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return 0;
+    }
+    const char *bytes;
+    uint64_t length;
+    simp_string_bytes(line, &bytes, &length);
+    const size_t written = fwrite(bytes, 1, (size_t)length, (FILE *)handle);
+    if (written != length) {
+        simp_runtime_set_error(errno == 0 ? EIO : errno);
+        return written > INT32_MAX ? INT32_MAX : (int32_t)written;
+    }
     const int newline = fputc('\n', (FILE *)handle);
-    return newline == EOF || written == INT32_MAX ? written : written + 1;
+    if (newline == EOF) simp_runtime_set_error(errno == 0 ? EIO : errno);
+    else simp_runtime_clear_error();
+    return newline == EOF || written >= INT32_MAX
+               ? (written > INT32_MAX ? INT32_MAX : (int32_t)written)
+               : (int32_t)written + 1;
 }
 
 int32_t simp_file_seek(void *self, void *handle, int32_t offset, int32_t whence) {
     (void)self;
-    return handle == NULL ? -1 : fseek((FILE *)handle, (long)offset, whence);
+    if (handle == NULL) {
+        simp_runtime_set_error(EBADF);
+        return -1;
+    }
+    const int result = fseek((FILE *)handle, (long)offset, whence);
+    if (result != 0) simp_runtime_set_error(errno);
+    else simp_runtime_clear_error();
+    return result;
 }
 
 int32_t simp_file_tell(void *self, void *handle) {
     (void)self;
-    if (handle == NULL) return -1;
+    if (handle == NULL) {
+        simp_runtime_set_error(EBADF);
+        return -1;
+    }
     const long position = ftell((FILE *)handle);
+    if (position < 0) simp_runtime_set_error(errno);
+    else simp_runtime_clear_error();
     return position < 0 ? -1 : position > INT32_MAX ? INT32_MAX : (int32_t)position;
 }
 
 void simp_file_flush(void *self, void *handle) {
     (void)self;
-    if (handle != NULL) (void)fflush((FILE *)handle);
+    if (handle == NULL) simp_runtime_set_error(EBADF);
+    else if (fflush((FILE *)handle) != 0) simp_runtime_set_error(errno);
+    else simp_runtime_clear_error();
 }
 
 void simp_file_close(void *self, void *handle) {
     (void)self;
-    if (handle != NULL) (void)fclose((FILE *)handle);
+    if (handle == NULL) simp_runtime_set_error(EBADF);
+    else if (fclose((FILE *)handle) != 0) simp_runtime_set_error(errno);
+    else simp_runtime_clear_error();
 }
 
 int32_t simp_file_eof(void *self, void *handle) {
     (void)self;
-    return handle != NULL && feof((FILE *)handle);
+    if (handle == NULL) {
+        simp_runtime_set_error(EBADF);
+        return 0;
+    }
+    simp_runtime_clear_error();
+    return feof((FILE *)handle);
 }
 
 double simp_math_abs(void *self, double x) { (void)self; return fabs(x); }

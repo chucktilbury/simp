@@ -61,6 +61,18 @@ void simp_semaphore_wait(void *receiver, void *semaphore);
 void simp_semaphore_signal(void *receiver, void *semaphore);
 void simp_semaphore_release(void *receiver, void *semaphore);
 
+/* Explicitly owned non-recursive mutexes and condition variables. A Condition
+ * wait atomically releases/reacquires the associated Mutex, like pthreads. */
+void *simp_mutex_create(void *receiver);
+int32_t simp_mutex_lock(void *receiver, void *mutex);
+int32_t simp_mutex_unlock(void *receiver, void *mutex);
+int32_t simp_mutex_release(void *receiver, void *mutex);
+void *simp_condition_create(void *receiver);
+int32_t simp_condition_wait(void *receiver, void *condition, void *mutex);
+int32_t simp_condition_signal(void *receiver, void *condition);
+int32_t simp_condition_broadcast(void *receiver, void *condition);
+int32_t simp_condition_release(void *receiver, void *condition);
+
 #ifdef __cplusplus
 }
 #endif

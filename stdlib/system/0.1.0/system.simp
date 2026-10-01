@@ -24,6 +24,19 @@ namespace System {
         bool setEnv(String name, String value)
     }
 
+    class StandardIO {
+        String read(int size)
+        String readLine()
+        int write(String text)
+        int writeLine(String text)
+        int writeBytes(buffer data)
+        int writeError(String text)
+        int writeErrorLine(String text)
+        int writeErrorBytes(buffer data)
+        void flush()
+        void flushError()
+    }
+
     class File {
         private:
         handle _fp
@@ -114,6 +127,13 @@ namespace System {
         String getCwd()
         bool chDir(String path)
         String absolutePath(String path)
+        String join(String left, String right)
+        String normalize(String path)
+        String basename(String path)
+        String dirname(String path)
+        String extension(String path)
+        String tempFile()
+        String tempDir()
     }
 
     class System {
@@ -131,6 +151,12 @@ namespace System {
 
         void exit(int code)
         void abort()
+
+        StandardIO io() {
+            return StandardIO()
+        }
+
+        String lastError()
 
         File open(String path, String mode) {
             return File(path, mode)
@@ -152,6 +178,18 @@ namespace System {
     void Process.abort() from "simp_system_abort"
     String Process.getEnv(String name) from "simp_system_getenv"
     bool Process.setEnv(String name, String value) from "simp_system_setenv"
+    String System.lastError() from "simp_system_last_error"
+
+    String StandardIO.read(int size) from "simp_stdio_read"
+    String StandardIO.readLine() from "simp_stdio_read_line"
+    int StandardIO.write(String text) from "simp_stdio_write"
+    int StandardIO.writeLine(String text) from "simp_stdio_write_line"
+    int StandardIO.writeBytes(buffer data) from "simp_stdio_write_bytes"
+    int StandardIO.writeError(String text) from "simp_stdio_write_error"
+    int StandardIO.writeErrorLine(String text) from "simp_stdio_write_error_line"
+    int StandardIO.writeErrorBytes(buffer data) from "simp_stdio_write_error_bytes"
+    void StandardIO.flush() from "simp_stdio_flush"
+    void StandardIO.flushError() from "simp_stdio_flush_error"
 
     handle Runtime.fileOpen(String path, String mode) from "simp_file_open"
     String Runtime.fileRead(handle fp, int size) from "simp_file_read"
@@ -179,6 +217,13 @@ namespace System {
     String FileSystem.getCwd() from "simp_fs_get_cwd"
     bool FileSystem.chDir(String path) from "simp_fs_ch_dir"
     String FileSystem.absolutePath(String path) from "simp_fs_absolute_path"
+    String FileSystem.join(String left, String right) from "simp_path_join"
+    String FileSystem.normalize(String path) from "simp_path_normalize"
+    String FileSystem.basename(String path) from "simp_path_basename"
+    String FileSystem.dirname(String path) from "simp_path_dirname"
+    String FileSystem.extension(String path) from "simp_path_extension"
+    String FileSystem.tempFile() from "simp_fs_temp_file"
+    String FileSystem.tempDir() from "simp_fs_temp_dir"
 
     void System.exit(int code) from "simp_system_exit"
     void System.abort() from "simp_system_abort"

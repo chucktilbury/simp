@@ -185,6 +185,14 @@ void *simp_fs_list_dir(void *self, void *path);
 void *simp_fs_get_cwd(void *self);
 int32_t simp_fs_ch_dir(void *self, void *path);
 void *simp_fs_absolute_path(void *self, void *path);
+void *simp_system_last_error(void *self);
+void *simp_path_join(void *self, void *left, void *right);
+void *simp_path_normalize(void *self, void *path);
+void *simp_path_basename(void *self, void *path);
+void *simp_path_dirname(void *self, void *path);
+void *simp_path_extension(void *self, void *path);
+void *simp_fs_temp_file(void *self);
+void *simp_fs_temp_dir(void *self);
 void *simp_file_open(void *self, void *path, void *mode);
 void *simp_file_read(void *self, void *handle, int32_t size);
 void *simp_file_read_all(void *self, void *handle);
@@ -197,6 +205,38 @@ int32_t simp_file_tell(void *self, void *handle);
 void simp_file_flush(void *self, void *handle);
 void simp_file_close(void *self, void *handle);
 int32_t simp_file_eof(void *self, void *handle);
+
+void *simp_stdio_read(void *self, int32_t size);
+void *simp_stdio_read_line(void *self);
+int32_t simp_stdio_write(void *self, void *text);
+int32_t simp_stdio_write_line(void *self, void *text);
+int32_t simp_stdio_write_bytes(void *self, void *buffer);
+int32_t simp_stdio_write_error(void *self, void *text);
+int32_t simp_stdio_write_error_line(void *self, void *text);
+int32_t simp_stdio_write_error_bytes(void *self, void *buffer);
+void simp_stdio_flush(void *self);
+void simp_stdio_flush_error(void *self);
+
+uint64_t simp_time_epoch_seconds(void *self);
+uint64_t simp_time_epoch_milliseconds(void *self);
+uint64_t simp_time_monotonic_milliseconds(void *self);
+int32_t simp_time_sleep_milliseconds(void *self, uint64_t milliseconds);
+
+int32_t simp_terminal_stdin_interactive(void *self);
+int32_t simp_terminal_stdout_interactive(void *self);
+int32_t simp_terminal_columns(void *self);
+int32_t simp_terminal_rows(void *self);
+int32_t simp_terminal_supports_color(void *self);
+
+int32_t simp_random_fill(void *self, void *buffer);
+void *simp_random_bytes(void *self, int32_t size);
+
+void *simp_process_spawn(void *self, void *executable, void *arguments);
+int32_t simp_process_wait(void *self, void *process);
+int32_t simp_process_exit_code(void *self, void *process);
+void *simp_process_stdout(void *self, void *process);
+void *simp_process_stderr(void *self, void *process);
+void simp_process_close(void *self, void *process);
 
 double simp_math_abs(void *self, double x);
 int32_t simp_math_abs_int(void *self, int32_t x);

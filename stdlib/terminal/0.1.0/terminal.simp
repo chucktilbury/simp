@@ -1,0 +1,15 @@
+namespace Terminal {
+    class Terminal {
+        bool isInteractive()
+        bool isOutputInteractive()
+        int columns()
+        int rows()
+        bool supportsColor()
+    }
+
+    bool Terminal.isInteractive() from "simp_terminal_stdin_interactive"
+    bool Terminal.isOutputInteractive() from "simp_terminal_stdout_interactive"
+    int Terminal.columns() from "simp_terminal_columns"
+    int Terminal.rows() from "simp_terminal_rows"
+    bool Terminal.supportsColor() from "simp_terminal_supports_color"
+}
