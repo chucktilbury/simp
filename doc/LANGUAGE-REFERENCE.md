@@ -74,9 +74,19 @@ The built-in types are:
 | `map` / `dict` | String-keyed collection with dynamically typed values. |
 | `buffer` | Mutable sequence of bytes. |
 | `handle` | Opaque native/runtime handle with no built-in language operations. |
-| `any` | Dynamically tagged value used especially by collection reads and loop values. Assign it to a typed local before using it. |
+| `any` | Internal inferred type for dynamically tagged values, especially collection reads and loop values. It is not a user-declarable type. |
 | `type` | Runtime type descriptor, produced by `type(value)` or a type name used as a value. |
 | class name | Managed object reference, including `Exception` subclasses. |
+
+Although `any` is a reserved token and an internal inferred type name, users
+cannot declare `any` variables, fields, parameters, or return types. Collection
+reads and foreach values are inferred as `any` internally; that does not make
+`any` legal in a declaration. Such values can be inspected with `is` or
+`type(...)`, printed, compared with `null`, and stored or passed where the
+dynamic value is supported. To use a value in ordinary member access or
+arithmetic, first extract it into a concrete typed local; extraction performs
+a runtime type check and raises if the value has a different type. See
+`primitive-type`, `type`, `return-type`, and `type-test-name`.
 
 The parser also recognizes `void` as a method return type. It is not a
 storable value type. See `primitive-type`, `type`, `return-type`, and
@@ -84,8 +94,9 @@ storable value type. See `primitive-type`, `type`, `return-type`, and
 
 Conversions are deliberately limited. Compatible class references can be
 assigned to a base-class variable when the inheritance path is unambiguous
-and accessible. `any` can be assigned to supported concrete local types;
-the runtime checks the contained value. Explicit numeric casts use
+and accessible. Dynamically tagged collection values can be extracted into
+supported concrete local types; the runtime checks the contained value.
+Explicit numeric casts use
 `int(expr)`, `unsigned(expr)`, or `float(expr)`. Implicit numeric conversions
 are not general-purpose; overload resolution allows a plain integer literal
 to match an `unsigned` parameter, while `u` literals are unsigned directly.
@@ -123,24 +134,28 @@ start {
 ## Variables and scope
 
 Declare a local with `type name` and optionally initialize it with
-`type name = expression`. Locals are block-scoped, may be initialized later,
-and may not be redeclared in the same scope. The compiler diagnoses a read
-that may occur before initialization. Parameters and fields are introduced by
-their declarations; `for` loop variables exist only in the loop body.
-Assignments use `=` as a statement (`declaration`, `assignment`).
+`type name = expression`. Locals are block-scoped and may be initialized
+later. An inner declaration shadows an outer binding; assignments to the
+inner variable do not change the outer one, and shadowing currently emits no
+warning. Redeclaring a name in the same scope is an error. The compiler
+diagnoses a read that may occur before initialization. Parameters and fields
+are introduced by their declarations; `for` loop variables exist only in the
+loop body. Assignments use `=` as a statement (`declaration`, `assignment`).
 
 ```simp
-// Complete program: local scope and assignment.
+// Complete program: an inner value shadows, rather than changes, the outer value.
 start {
-    int value
-    value = 40
+    int value = 40
     {
-        int increment = 2
-        value = value + increment
+        int value = 2
+        value = value + 1
+        print(value)
     }
     print(value)
 }
 ```
+
+This prints `3`, then `40`, on separate lines.
 
 ## Expressions and operators
 
@@ -156,7 +171,7 @@ Operators from lowest to highest precedence:
 
 | Operators | Associativity |
 |---|---|
-| `or`, `||` | left |
+| `or`, `\|\|` | left |
 | `and`, `&&` | left |
 | `not`, `!` | right prefix |
 | `==`, `!=` | left |
@@ -432,35 +447,45 @@ handle nativeResource = null
 ## Collections
 
 Array literals use `[...]` and may mix supported scalar values, strings,
-class references, arrays, maps, buffers, handles, `null`, and `any`.
+class references, arrays, maps, buffers, handles, and `null`. Values are
+stored with dynamic tags, but `any` is not a type that can be declared for an
+element, variable, field, parameter, or return.
 `array.length` is read-only; `append(value)` and `resize(int)` mutate it.
 Although literals accept buffers and handles, the current `append` semantic
 check does not accept those two element types directly.
-Indexing returns `any`; assign an element to a typed local before using
-type-specific operators. Array slices return a copy and can include a step:
+Indexing and foreach iteration produce values inferred as `any` internally,
+not declared `any` variables. A dynamic value can be type-tested, passed,
+printed, or compared with `null`; extract it into a concrete local before
+using ordinary member access or arithmetic. The runtime checks extraction.
+Array slices return a copy and can include a step:
 `values[start:end:step]`. Bounds are checked by the runtime.
 
 Map literals use `{ key: value, ... }`. Keys must be strings; values may be
-supported scalar/reference/collection types and are read as `any`. Maps
-support `length`, `contains(strg)`, `remove(strg)`, string-key indexing,
+supported scalar/reference/collection types. Indexed reads and foreach
+iteration produce dynamically tagged values inferred internally as `any`,
+not legal `any` declarations. Maps
+support `length`, `contains(string)`, `remove(string)`, string-key indexing,
 and slicing. Map slice bounds are integer positions in iteration order;
-stepped map slices are not supported. See `array-literal`, `map-literal`,
+stepped map slices are not supported.
+
+In the current runtime implementation, map keys are hashed bytewise using
+64-bit FNV-1a (offset basis `14695981039346656037`, prime `1099511628211`).
+The hash index uses a power-of-two, open-addressed bucket table with linear
+probing; the table grows and is rebuilt to keep its load at or below one
+half. After a hash match, key byte length and byte contents are compared.
+Entries themselves are stored in insertion order, so current iteration and
+map slicing follow insertion order. These are implementation details, not a
+stable complexity guarantee. See `array-literal`, `map-literal`,
 `index-or-slice-suffix`, `foreach-statement`, and [STDLIB.md](STDLIB.md).
 
 ```simp
-// Complete program: a heterogeneous array, map lookup, and iteration.
+// Complete program: type-check and extract an indexed collection value.
 start {
-    array values = [10, "twenty", 30]
-    map scores = {"Ada": 42, "Lin": 17}
-    print(scores["Ada"])
-    int total = 0
-    for (value in values) {
-        if (value is int) {
-            int number = value
-            total = total + number
-        }
+    array values = [42, "text"]
+    if (values[0] is int) {
+        int number = values[0]
+        print(number)
     }
-    print(total)
 }
 ```
 
