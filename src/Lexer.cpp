@@ -143,6 +143,11 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Star: return "'*'";
     case TokenType::Slash: return "'/'";
     case TokenType::Percent: return "'%'";
+    case TokenType::PlusEqual: return "'+='";
+    case TokenType::MinusEqual: return "'-='";
+    case TokenType::StarEqual: return "'*='";
+    case TokenType::SlashEqual: return "'/='";
+    case TokenType::PercentEqual: return "'%='";
     case TokenType::Bang: return "'!'";
     case TokenType::AndAnd: return "'&&'";
     case TokenType::OrOr: return "'||'";
@@ -499,11 +504,21 @@ std::vector<Token> Lexer::tokenize() {
         case ',': type = TokenType::Comma; break;
         case '.': type = TokenType::Dot; break;
         case ':': type = TokenType::Colon; break;
-        case '+': type = TokenType::Plus; break;
-        case '-': type = TokenType::Minus; break;
-        case '*': type = TokenType::Star; break;
-        case '/': type = TokenType::Slash; break;
-        case '%': type = TokenType::Percent; break;
+        case '+':
+            type = peek() == '=' ? (advance(), TokenType::PlusEqual) : TokenType::Plus;
+            break;
+        case '-':
+            type = peek() == '=' ? (advance(), TokenType::MinusEqual) : TokenType::Minus;
+            break;
+        case '*':
+            type = peek() == '=' ? (advance(), TokenType::StarEqual) : TokenType::Star;
+            break;
+        case '/':
+            type = peek() == '=' ? (advance(), TokenType::SlashEqual) : TokenType::Slash;
+            break;
+        case '%':
+            type = peek() == '=' ? (advance(), TokenType::PercentEqual) : TokenType::Percent;
+            break;
         case '&':
             if (peek() != '&') {
                 throw DiagnosticError(location, "unexpected character");
@@ -540,7 +555,11 @@ std::vector<Token> Lexer::tokenize() {
             --parenthesisDepth;
         }
         std::string text(1, value);
-        if (type == TokenType::BangEqual || type == TokenType::EqualEqual ||
+        if (type == TokenType::PlusEqual || type == TokenType::MinusEqual ||
+            type == TokenType::StarEqual || type == TokenType::SlashEqual ||
+            type == TokenType::PercentEqual) {
+            text.push_back('=');
+        } else if (type == TokenType::BangEqual || type == TokenType::EqualEqual ||
             type == TokenType::LessEqual || type == TokenType::GreaterEqual ||
             type == TokenType::AndAnd || type == TokenType::OrOr) {
             if (type == TokenType::AndAnd || type == TokenType::OrOr) {

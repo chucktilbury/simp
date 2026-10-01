@@ -174,6 +174,22 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
     }
     case StatementKind::Assignment: {
         const auto targetType = analyzeLValue(*statement.target);
+        const bool compoundAssignment = statement.assignmentOperator != "=";
+        if (compoundAssignment) {
+            if (statement.target->kind != ExpressionKind::Identifier &&
+                statement.target->kind != ExpressionKind::Member) {
+                throw DiagnosticError(statement.target->location,
+                                      "compound assignment target must be a scalar variable or "
+                                      "object field");
+            }
+            if (targetType != "int" && targetType != "unsigned" &&
+                targetType != "float") {
+                throw DiagnosticError(statement.target->location,
+                                      "compound assignment requires an int, unsigned, or float "
+                                      "target");
+            }
+            (void)analyzeExpression(*statement.target);
+        }
         if (statement.target->kind == ExpressionKind::Identifier) {
             const auto index = findSymbolIndex(statement.target->value);
             if (index != symbols_.size() && symbols_[index].readOnly) {
@@ -182,7 +198,21 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
                                           "' is read-only");
             }
         }
-        const auto valueType = analyzeExpression(*statement.expressions.front(), targetType);
+        const auto valueType = analyzeExpression(
+            *statement.expressions.front(), compoundAssignment ? "" : targetType);
+        if (compoundAssignment) {
+            const auto operation = statement.assignmentOperator.substr(
+                0, statement.assignmentOperator.size() - 1);
+            if (valueType != targetType || (operation == "%" && targetType == "float")) {
+                throw DiagnosticError(
+                    statement.assignmentOperatorLocation,
+                    "operator '" + statement.assignmentOperator +
+                        "' requires matching int, float, or unsigned operands" +
+                        (operation == "%" && targetType == "float"
+                             ? " (float remainder is unsupported)"
+                             : ""));
+            }
+        }
         if (targetType == "buffer-byte") {
             if (valueType != "int" && valueType != "unsigned") {
                 throw DiagnosticError(statement.expressions.front()->location,

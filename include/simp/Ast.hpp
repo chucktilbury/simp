@@ -65,6 +65,8 @@ struct Statement {
     std::string name;
     std::string keyName;
     bool rethrowsException = false;
+    std::string assignmentOperator = "=";
+    SourceLocation assignmentOperatorLocation;
     std::string declaredType;
     std::string inlineSource;
     std::vector<InlineCapture> inlineCaptures;

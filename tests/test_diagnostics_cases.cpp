@@ -71,6 +71,25 @@ const TestGroupRegistration registration{2, {
              expectDiagnostic("start {\n int value = 1\n value = \"wrong\"\n}",
                               "cannot assign String to int variable 'value'");
          }},
+        {"compound assignments require matching arithmetic types", [] {
+             expectDiagnostic("start {\n int value = 1\n value += 2u\n}",
+                              "operator '+=' requires matching");
+             expectDiagnostic("start {\n float value = 1.0\n value %= 2.0\n}",
+                              "float remainder is unsupported");
+         }},
+        {"compound assignments reject unsupported targets", [] {
+             expectDiagnostic("start {\n bool ready = true\n ready += true\n}",
+                              "requires an int, unsigned, or float target");
+             expectDiagnostic("start {\n list values = [1]\n values[0] += 1\n}",
+                              "target must be a scalar variable or object field");
+             expectDiagnostic("class Item {}\nstart {\n Item value = Item()\n"
+                              " value += value\n}",
+                              "requires an int, unsigned, or float target");
+         }},
+        {"compound assignments require initialized values", [] {
+             expectDiagnostic("start {\n int value\n value += 1\n}",
+                              "variable 'value' may be uninitialized");
+         }},
         {"semantic undefined variable", [] {
              expectDiagnostic("start {\n print(missing)\n}", "undefined variable 'missing'");
          }},

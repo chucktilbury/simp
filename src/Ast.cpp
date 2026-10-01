@@ -109,7 +109,11 @@ void dumpStatement(const Statement& statement, std::ostream& output, int depth) 
         output << "Declaration [" << statement.declaredType << " " << statement.name << "]\n";
         break;
     case StatementKind::Assignment:
-        output << "Assignment\n";
+        output << "Assignment";
+        if (statement.assignmentOperator != "=") {
+            output << " [" << statement.assignmentOperator << "]";
+        }
+        output << '\n';
         break;
     case StatementKind::Print: output << "Print\n"; break;
     case StatementKind::If: output << "If\n"; break;

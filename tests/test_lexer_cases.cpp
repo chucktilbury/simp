@@ -114,6 +114,28 @@ const TestGroupRegistration registration{0, {
              require(foundTrue && foundFloat && foundUnsigned,
                      "boolean, float, or unsigned literal token missing");
          }},
+        {"scalar compound-assignment operators", [] {
+             simp::Lexer lexer("a += 1 a -= 1 a *= 1 a /= 1 a %= 1",
+                               "compound-assignment.simp");
+             const auto tokens = lexer.tokenize();
+             const std::vector<simp::TokenType> expected{
+                 simp::TokenType::Identifier, simp::TokenType::PlusEqual,
+                 simp::TokenType::Integer, simp::TokenType::Identifier,
+                 simp::TokenType::MinusEqual, simp::TokenType::Integer,
+                 simp::TokenType::Identifier, simp::TokenType::StarEqual,
+                 simp::TokenType::Integer, simp::TokenType::Identifier,
+                 simp::TokenType::SlashEqual, simp::TokenType::Integer,
+                 simp::TokenType::Identifier, simp::TokenType::PercentEqual,
+                 simp::TokenType::Integer};
+             for (std::size_t index = 0; index < expected.size(); ++index) {
+                 require(tokens[index].type == expected[index],
+                         "compound-assignment token sequence is incorrect");
+             }
+             require(tokens[1].text == "+=" && tokens[4].text == "-=" &&
+                         tokens[7].text == "*=" && tokens[10].text == "/=" &&
+                         tokens[13].text == "%=",
+                     "compound-assignment token spelling was not retained");
+         }},
         {"hexadecimal integer spellings", [] {
              simp::Lexer lexer("start { int a = 0x1234 int b = 0XAbCd "
                                "unsigned c = 0xFFu unsigned d = 0XfFU }",

@@ -175,6 +175,7 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         std::string arrayPointer;
         std::string arrayIndex;
         Value mapKey;
+        Value compoundLeft;
         if (statement.target->kind == ExpressionKind::Identifier) {
             binding = findVariable(statement.target->value, statement.target->location);
             address = emitAddress(binding, statement.location);
@@ -229,7 +230,21 @@ void CodeGenerator::emitStatement(const Statement& statement) {
             binding.type = field->type;
             address = emitFieldAddress(receiver.operand, *owner, fieldPath);
         }
-        const auto value = emitExpression(*statement.expressions.front(), binding.type);
+        const bool compoundAssignment = statement.assignmentOperator != "=";
+        if (compoundAssignment) {
+            const auto loaded = newTemporary();
+            instructions_ += "  " + loaded + " = load " + llvmType(binding.type) +
+                             ", ptr " + address + "\n";
+            compoundLeft = {binding.type, loaded};
+        }
+        auto value = emitExpression(*statement.expressions.front(),
+                                    compoundAssignment ? "" : binding.type);
+        if (compoundAssignment) {
+            const auto operation = statement.assignmentOperator.substr(
+                0, statement.assignmentOperator.size() - 1);
+            value = emitArithmeticOperation(operation, statement.assignmentOperatorLocation,
+                                            compoundLeft, value);
+        }
         if (arrayElementTarget) {
             // The RHS may resize the array and relocate its elements.
             const auto file = internString(statement.target->location.file);

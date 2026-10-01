@@ -143,6 +143,22 @@ const TestGroupRegistration registration{1, {
              require(tree.find("Binary [+]") != std::string::npos, "addition absent from AST");
              require(tree.find("Binary [*]") != std::string::npos, "multiplication absent from AST");
          }},
+        {"compound assignments are assignment statements in the AST", [] {
+             simp::Lexer lexer(
+                 "start {\n int value = 12\n value += 1\n value -= 1\n value *= 2\n"
+                 " value /= 2\n value %= 3\n}",
+                 "compound-assignment.simp");
+             const auto program = simp::Parser(lexer.tokenize()).parseProgram();
+             require(program.statements.size() == 6,
+                     "compound assignments did not parse as separate statements");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             for (const auto* operation : {"+=", "-=", "*=", "/=", "%="}) {
+                 require(output.str().find("Assignment [" + std::string(operation) + "]") !=
+                             std::string::npos,
+                         "compound assignment operator missing from AST");
+             }
+         }},
         {"dict literals are represented in the AST", [] {
              const auto program = parse(
                  "start {\n dict values = {\"answer\": 42}\n}");
