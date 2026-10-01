@@ -1,5 +1,5 @@
-# Rejects assigning to the read-only length property of a map.
+# Rejects assigning to the read-only length property of a dict.
 start {
-    map values = {}
+    dict values = {}
     values.length = 1
 }

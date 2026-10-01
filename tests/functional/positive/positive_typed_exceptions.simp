@@ -108,7 +108,7 @@ start {
     print("null caught as Exception")
   }
 
-  array empty = []
+  list empty = []
   try {
     int missing = empty[0]
   } except(Exception) {

@@ -1,4 +1,4 @@
-# Exercises heterogeneous array values, mutation, slicing, list aliases, typed extraction, retained references, and bounds exceptions.
+# Exercises heterogeneous list values, mutation, slicing, list aliases, typed extraction, retained references, and bounds exceptions.
 class Node {
     int value
     Node(int initial) {
@@ -7,11 +7,11 @@ class Node {
 }
 
 class Holder {
-    array nodes
-    Holder(array initial) {
+    list nodes
+    Holder(list initial) {
         nodes = initial
     }
-    array copyNodes(array source) {
+    list copyNodes(list source) {
         return source[0:2]
     }
 }
@@ -19,7 +19,7 @@ class Holder {
 start {
     // Arrays (and their 'list' keyword alias) are heterogeneous bags: one
     // literal can freely mix ints, strings, and class references.
-    array items = [10, "twenty", 30, "forty"]
+    list items = [10, "twenty", 30, "forty"]
     print(items.length)
     print(items[1])
     items[1] = "twenty-five"
@@ -27,26 +27,26 @@ start {
     items[1] = 25
     print(items[1])
 
-    array middle = items[1:3]
+    list middle = items[1:3]
     print(middle.length)
     print(middle[0])
     middle[0] = 99
     print(items[1])
     print(middle[0])
-    array empty = items[2:2]
+    list empty = items[2:2]
     print(empty.length)
-    array emptyLiteral = []
+    list emptyLiteral = []
     print(emptyLiteral.length)
-    array alias = items
+    list alias = items
     alias[0] = 11
     print(items[0])
 
     list words = ["one", "two"]
     print(words[1])
 
-    array nodes = [Node(7), Node(8)]
+    list nodes = [Node(7), Node(8)]
     Holder holder = Holder(nodes)
-    array copiedNodes = holder.copyNodes(holder.nodes)
+    list copiedNodes = holder.copyNodes(holder.nodes)
     nodes = []
     int counter = 0
     while (counter < 40) {
@@ -67,7 +67,7 @@ start {
     int extracted = items[0]
     print(extracted)
 
-    array mixed = [1, "two", Node(3), null]
+    list mixed = [1, "two", Node(3), null]
     print(mixed[0])
     print(mixed[1])
     print(mixed[2])
@@ -78,6 +78,6 @@ start {
     } except() as error {
         print(error)
     }
-    array invalid = items[3:2]
+    list invalid = items[3:2]
     print(invalid.length)
 }

@@ -1,6 +1,6 @@
 namespace Process {
     class Runtime {
-        handle spawn(String executable, array arguments)
+        handle spawn(String executable, list arguments)
         bool wait(handle process)
         int exitCode(handle process)
         String stdout(handle process)
@@ -13,7 +13,7 @@ namespace Process {
         handle _native
 
         public:
-        Process(String executable, array arguments) {
+        Process(String executable, list arguments) {
             _native = Runtime().spawn(executable, arguments)
         }
 
@@ -45,7 +45,7 @@ namespace Process {
         }
     }
 
-    handle Runtime.spawn(String executable, array arguments) from "simp_process_spawn"
+    handle Runtime.spawn(String executable, list arguments) from "simp_process_spawn"
     bool Runtime.wait(handle process) from "simp_process_wait"
     int Runtime.exitCode(handle process) from "simp_process_exit_code"
     String Runtime.stdout(handle process) from "simp_process_stdout"

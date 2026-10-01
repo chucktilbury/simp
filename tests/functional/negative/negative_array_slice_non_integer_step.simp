@@ -1,5 +1,5 @@
-# Rejects a non-integer array slice step.
+# Rejects a non-integer list slice step.
 start {
-    array values = [1, 2, 3]
-    array invalid = values[::"two"]
+    list values = [1, 2, 3]
+    list invalid = values[::"two"]
 }

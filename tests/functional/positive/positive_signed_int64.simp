@@ -49,19 +49,19 @@ start {
     print(native.absolute(above32))
     print(native.absolute(maximum))
 
-    array values = [minimum, maximum, above32]
+    list values = [minimum, maximum, above32]
     print(values[0])
     print(values[1])
     int arrayValue = values[2]
     print(arrayValue)
     try {
         int invalidIndex = values[4294967296]
-        print("unexpected array index")
+        print("unexpected list index")
     } except(Exception) as error {
         print(error.message)
     }
 
-    map bounds = {"minimum": minimum, "maximum": maximum}
+    dict bounds = {"minimum": minimum, "maximum": maximum}
     print(bounds["minimum"])
     print(bounds["maximum"])
 

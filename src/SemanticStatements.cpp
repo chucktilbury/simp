@@ -283,19 +283,19 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
     }
     case StatementKind::ForEach: {
         const auto collectionType = analyzeExpression(*statement.expressions.front());
-        const bool array = collectionType == "array";
-        const bool map = collectionType == "map";
-        if (!array && !map) {
+        const bool list = collectionType == "list";
+        const bool dict = collectionType == "dict";
+        if (!list && !dict) {
             throw DiagnosticError(statement.expressions.front()->location,
-                                  "for-each requires an array or map");
+                                  "for-each requires a list or dict");
         }
-        if (array && !statement.keyName.empty()) {
+        if (list && !statement.keyName.empty()) {
             throw DiagnosticError(statement.location,
-                                  "array iteration accepts one value variable");
+                                  "list iteration accepts one value variable");
         }
         if (!statement.keyName.empty() && statement.keyName == statement.name) {
             throw DiagnosticError(statement.location,
-                                  "map key and value iteration variables must be distinct");
+                                  "dict key and value iteration variables must be distinct");
         }
         const auto before = initializationState();
         scopes_.emplace_back();
@@ -481,13 +481,13 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
             if (capture.type != "int" && capture.type != "bool" &&
                 capture.type != "float" && capture.type != "unsigned" &&
                 capture.type != "String" &&
-                capture.type != "array" && capture.type != "map" &&
+                capture.type != "list" && capture.type != "dict" &&
                 capture.type != "buffer" &&
                 capture.type != "handle" &&
                 classes_.find(capture.type) == classes_.end()) {
                 throw DiagnosticError(capture.location,
                                       "inline capture type must be int, bool, float, unsigned, "
-                                      "strg, array, map, buffer, handle, or a declared class type");
+                                      "strg, list, dict, buffer, handle, or a declared class type");
             }
         }
         std::unordered_set<std::string> captureNames;

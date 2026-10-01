@@ -16,7 +16,7 @@ start {
     print(text.endsWith(","))
     print(text.endsWith(""))
 
-    array parts = text.split(",")
+    list parts = text.split(",")
     print(parts.length)
     strg part = parts[0]
     print(part)

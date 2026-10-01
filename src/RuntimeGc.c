@@ -359,10 +359,10 @@ void simp_runtime_gil_acquire(void) {
 }
 
 static const SimpClassMeta array_metadata = {
-    "array", 5, 0, NULL, 0, sizeof(SimpArray), 0, NULL, NULL, 0, NULL, 0, NULL
+    "list", 4, 0, NULL, 0, sizeof(SimpArray), 0, NULL, NULL, 0, NULL, 0, NULL
 };
 static const SimpClassMeta map_metadata = {
-    "map", 3, 0, NULL, 0, sizeof(SimpMap), 0, NULL, NULL, 0, NULL, 0, NULL
+    "dict", 4, 0, NULL, 0, sizeof(SimpMap), 0, NULL, NULL, 0, NULL, 0, NULL
 };
 static const SimpClassMeta buffer_metadata = {
     "buffer", 6, 0, NULL, 0, sizeof(SimpBuffer), 0, NULL, NULL, 0, NULL, 0, NULL
@@ -720,8 +720,8 @@ const char *simp_value_type_name(uint64_t tag, void *pointer, uint64_t *length) 
     case SIMP_ARRAY_INTEGER: *length = 3; return "int";
     case SIMP_ARRAY_STRING: *length = 6; return "string";
     case SIMP_ARRAY_OBJECT: return simp_object_type_name(pointer, length);
-    case SIMP_ARRAY_MAP: *length = 3; return "map";
-    case SIMP_ARRAY_ARRAY: *length = 5; return "array";
+    case SIMP_ARRAY_MAP: *length = 4; return "dict";
+    case SIMP_ARRAY_ARRAY: *length = 4; return "list";
     case SIMP_ARRAY_BOOLEAN: *length = 4; return "bool";
     case SIMP_ARRAY_FLOAT: *length = 5; return "float";
     case SIMP_ARRAY_UNSIGNED: *length = 8; return "unsigned";
@@ -938,7 +938,7 @@ void simp_value_require_class(uint64_t actual_tag, void *pointer,
 
 void simp_value_require_map(uint64_t actual_tag, void *pointer, const char *file,
                            uint64_t file_length, uint64_t line, uint64_t column) {
-    static const char message[] = "'any' value does not hold a map reference";
+    static const char message[] = "'any' value does not hold a dict reference";
     if (actual_tag != SIMP_ARRAY_MAP) {
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
@@ -953,7 +953,7 @@ void simp_value_require_map(uint64_t actual_tag, void *pointer, const char *file
 
 void simp_value_require_array(uint64_t actual_tag, void *pointer, const char *file,
                               uint64_t file_length, uint64_t line, uint64_t column) {
-    static const char message[] = "'any' value does not hold an array reference";
+    static const char message[] = "'any' value does not hold a list reference";
     if (actual_tag != SIMP_ARRAY_ARRAY) {
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
@@ -1289,12 +1289,12 @@ void *simp_gc_alloc_map(void) {
 static SimpArray *checked_array(void *object, const char *file, uint64_t file_length,
                                 uint64_t line, uint64_t column) {
     if (object == NULL) {
-        static const char message[] = "null array reference";
+        static const char message[] = "null list reference";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     HeapNode *node = find_object(object);
     if (node == NULL || !node->is_array) {
-        static const char message[] = "invalid array reference";
+        static const char message[] = "invalid list reference";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     return (SimpArray *)object;
@@ -1304,12 +1304,12 @@ void simp_array_resize(void *object, int64_t length, const char *file,
                        uint64_t file_length, uint64_t line, uint64_t column) {
     SimpArray *array = checked_array(object, file, file_length, line, column);
     if (length < 0) {
-        static const char message[] = "array length must not be negative";
+        static const char message[] = "list length must not be negative";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     const uint64_t new_length = (uint64_t)length;
     if (new_length > SIZE_MAX / sizeof(SimpArrayValue)) {
-        static const char message[] = "array length exceeds allocation limit";
+        static const char message[] = "list length exceeds allocation limit";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     if (new_length > array->capacity) {
@@ -1344,7 +1344,7 @@ void simp_array_append(void *object, const SimpArrayValue *value, const char *fi
                        uint64_t file_length, uint64_t line, uint64_t column) {
     SimpArray *array = checked_array(object, file, file_length, line, column);
     if (array->length >= (uint64_t)INT64_MAX) {
-        static const char message[] = "array length exceeds int64 range";
+        static const char message[] = "list length exceeds int64 range";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     if (value == NULL) abort();
@@ -1356,12 +1356,12 @@ void simp_array_append(void *object, const SimpArrayValue *value, const char *fi
 static SimpMap *checked_map(void *object, const char *file, uint64_t file_length,
                             uint64_t line, uint64_t column) {
     if (object == NULL) {
-        static const char message[] = "null map reference";
+        static const char message[] = "null dict reference";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     HeapNode *node = find_object(object);
     if (node == NULL || !node->is_map) {
-        static const char message[] = "invalid map reference";
+        static const char message[] = "invalid dict reference";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     return (SimpMap *)object;
@@ -2081,7 +2081,7 @@ void *simp_map_get(void *object, const char *key, uint64_t key_length, const cha
     const uint64_t index = map_find_index(map, key, key_length,
                                           map_key_hash(key, key_length));
     if (index != UINT64_MAX) return &map->entries[index].value;
-    static const char message[] = "map key not found";
+    static const char message[] = "dict key not found";
     simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     abort();
 }
@@ -2099,7 +2099,7 @@ void *simp_map_entry_at(void *object, uint64_t index, const char *file,
                         uint64_t file_length, uint64_t line, uint64_t column) {
     SimpMap *map = checked_map(object, file, file_length, line, column);
     if (index >= map->length) {
-        static const char message[] = "map iteration index out of bounds";
+        static const char message[] = "dict iteration index out of bounds";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     return &map->entries[index];
@@ -2204,7 +2204,7 @@ void *simp_array_index(void *object, int64_t index, const char *file,
     SimpArray *array = checked_array(object, file, file_length, line, column);
     const int64_t normalized = normalize_collection_index(index, array->length);
     if (normalized < 0 || (uint64_t)normalized >= array->length) {
-        static const char message[] = "array index out of bounds";
+        static const char message[] = "list index out of bounds";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     return &array->values[normalized];
@@ -2215,7 +2215,7 @@ void *simp_array_slice_ex(void *object, int64_t start, int64_t end, int64_t step
                           uint64_t file_length, uint64_t line, uint64_t column) {
     SimpArray *source = checked_array(object, file, file_length, line, column);
     if (step == 0) {
-        static const char message[] = "array slice step cannot be zero";
+        static const char message[] = "list slice step cannot be zero";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     const int64_t first = normalize_slice_bound(start, source->length, step, 1, has_start);
@@ -2232,7 +2232,7 @@ void *simp_array_slice_ex(void *object, int64_t start, int64_t end, int64_t step
         length = 1 + (distance - 1) / stride;
     }
     if (length > (uint64_t)INT64_MAX) {
-        static const char message[] = "array slice length exceeds int64 range";
+        static const char message[] = "list slice length exceeds int64 range";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     SimpArray *copy = (SimpArray *)simp_gc_alloc_array((int64_t)length);

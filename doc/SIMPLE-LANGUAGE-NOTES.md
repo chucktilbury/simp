@@ -22,7 +22,7 @@ The language is intended to have full object-oriented programming support. Broad
 - Types are explicit; Simple does not infer variable types.
 - A variable's type is fixed after declaration. The language is strongly typed.
 - The required scalar types are `bool`, `int`, `unsigned`, and `float`, alongside
-  `strg`, `array`, and `map`. Collection reads use an internal tagged
+  `strg`, `list`, and `dict`. Collection reads use an internal tagged
   dynamic representation that is not available as a declared type; `any`
   remains a reserved keyword to produce a clear diagnostic. `bool` is distinct
   from `int`; it is
@@ -59,8 +59,8 @@ The language is intended to have full object-oriented programming support. Broad
   type. Integer division and remainder are signed for `int` and unsigned for
   `unsigned`. Remainder on `float` is not supported.
 - The boolean type-test operator `expr is TypeName` recognizes the built-in
-  types `int`, `unsigned`, `float`, `bool`, `strg`, `array`/`list`,
-  `map`/`dict`, `buffer`, and `handle`, plus class names including qualified
+  types `int`, `unsigned`, `float`, `bool`, `strg`, `list`, `dict`, `buffer`,
+  and `handle`, plus class names including qualified
   names. For a class target, the runtime class or any subclass matches. On an
   `any` operand it tests the dynamic tag; a null value matches no type.
   Statically known non-class operands can be answered from their type and null
@@ -93,7 +93,7 @@ The language is intended to have full object-oriented programming support. Broad
   prints the literal text `(null)`. The only place null causes a runtime
   exception is an attempt to use the *payload* a null value would otherwise
   hold — member access, a method call, or indexing (`x.field`, `x.method()`,
-  `arr[i]`, `map[k]`) on a null reference/array/map/buffer/handle raises an
+  `arr[i]`, `dict[k]`) on a null reference/list/dict/buffer/handle raises an
   exception, exactly as an operation on "no value" would with no assigned
   value at all. This supersedes the two bullets previously here (a
   compile-time "definitely null" error and a possibly-null warning); neither
@@ -102,7 +102,7 @@ The language is intended to have full object-oriented programming support. Broad
 - **Implemented, with a documented scope boundary for scalar locals.**
   `null` is now accepted at declaration/assignment for every type,
   including the scalars (`int`, `unsigned`, `float`, `bool`) and `strg`,
-  in addition to the reference types (`class`, `array`, `map`, `buffer`,
+  in addition to the reference types (`class`, `list`, `dict`, `buffer`,
   `handle`, `any`) that already supported it. `x == null` / `x != null`
   work for every type. Printing a null value of any type — scalar, `strg`,
   or `any` — prints `(null)`, matching the confirmed model.
@@ -114,7 +114,7 @@ The language is intended to have full object-oriented programming support. Broad
   - **Scope boundary (intentional, not a bug):** the null flag is a
     per-local-variable construct only. It does **not** propagate through
     function-call arguments, `return` values, class field storage, or
-    array/map element storage — a null scalar handed to any of those
+    list/dict element storage — a null scalar handed to any of those
     silently decays to that type's zero value (`0`, `0.0`, `false`) rather
     than being tracked further. For example, passing a null `int` local as
     a constructor argument stores `0` in the resulting field; there is no
@@ -125,9 +125,9 @@ The language is intended to have full object-oriented programming support. Broad
     this pass.
   - **String representation:** `strg` aliases the `String` class. A null
     string is a null object reference, which prints as `(null)`.
-  - **Bug fixed alongside this work:** `array`/`map` `.length` access
+  - **Bug fixed alongside this work:** `list`/`dict` `.length` access
     previously performed a raw, unchecked dereference of the receiver with
-    no null guard; now that `array a = null` / `map m = null` are legal, a
+    no null guard; now that `list a = null` / `dict m = null` are legal, a
     null-check was added before `.length` so it raises the same runtime
     exception as any other member access on a null reference, instead of
     crashing.
@@ -211,7 +211,7 @@ mangling but in a much simpler, readable form.
 - **Parameter type codes** are one character per scalar or built-in type:
   `i` int, `u` unsigned, `f` float, `b` bool, `s` strg, `y` internal dynamic
   value (not usable in a declared parameter),
-  `a` array/list, `m` map/dict, `B` buffer, `h` handle. A class-typed
+  `a` list, `m` dict, `B` buffer, `h` handle. A class-typed
   parameter is encoded `C<length><name>`, length-prefixed so a dotted
   namespace path stays unambiguous when codes are concatenated. Examples:
   `@simp.Formatter.describe$i`, `@simp.Formatter.describe$ii`,
@@ -511,9 +511,9 @@ is a syntax error. The import words `import` and `as`, collection loop words
 `for` and `in`, and logical words `and`, `or`, and `not` are reserved too.
 
 In the current prototype subset, simple statements are terminated by a
-newline or a closing block brace. Newlines inside parentheses and array
+newline or a closing block brace. Newlines inside parentheses and list
 brackets are treated as whitespace, allowing wrapped expressions, argument
-lists, and array literals. Adjacent simple
+lists, and list literals. Adjacent simple
 statements on one line are not supported. The lexer recognizes `;`, `#`, and
 `//` as single-line comment introducers and `/* ... */` as a block comment;
 block-comment newlines continue to terminate statements. A semicolon never
@@ -598,8 +598,8 @@ statements.
   testing the boolean condition at the end of each iteration. `if`, `while`,
   and `do ... while` conditions strictly require `bool`; integer truthiness is
   rejected.
-- `for (value in collection) { <statement>* }` iterates over an array or map;
-  `for (key, value in map) { <statement>* }` also binds map keys.
+- `for (value in collection) { <statement>* }` iterates over a list or dict;
+  `for (key, value in dict) { <statement>* }` also binds dict keys.
 - `break` exits the innermost enclosing `while`, `do ... while`, or collection
   `for` loop. `continue` proceeds to that loop's next condition or iteration
   step. Both are valid inside nested conditional, exception-handler, and
@@ -695,7 +695,7 @@ exception-catching via `try`/`except`.
 ### `buffer` and `handle` types (implemented subset)
 
 Two new built-in reference types, `buffer` and `handle`, are confirmed. Both
-are, like `array` and `map`, not classes: no user-defined methods, no
+are, like `list` and `dict`, not classes: no user-defined methods, no
 subclassing, only a small fixed set of compiler-built-in operations.
 
 #### `buffer`
@@ -705,7 +705,7 @@ subclassing, only a small fixed set of compiler-built-in operations.
   There is no buffer literal syntax.
 - `b.resize(newLength)` grows or shrinks in place; new bytes introduced by
   growth are zero-filled, and shrinking discards trailing bytes.
-- `b.length` is a read-only `int`, matching the existing `array`/`map`
+- `b.length` is a read-only `int`, matching the existing `list`/`dict`
   property style (not a method call).
 - `b.clear()` truncates the buffer to zero length.
 - `b.append(value)` appends one element, growing length by one; `value`
@@ -725,13 +725,13 @@ subclassing, only a small fixed set of compiler-built-in operations.
   the last byte); an index still out of range after normalization raises a
   catchable, source-located exception.
 - `b[start:end]` slices a half-open byte range into a new, independent
-  `buffer` — a copy, matching `array`/`map` slice-copy semantics. Either bound
+  `buffer` — a copy, matching `list`/`dict` slice-copy semantics. Either bound
   may be omitted: `b[:end]` starts at zero, `b[start:]` ends at the buffer
   length, and `b[:]` copies the entire buffer. Buffer slices do not accept a
   step. Negative explicit bounds are offset from the buffer length and
   out-of-range bounds are clamped to the valid slice range.
 - **Assigning a `buffer` copies it**, producing an exact, independent
-  duplicate. This is different from `array`/`map`, whose assignment aliases
+  duplicate. This is different from `list`/`dict`, whose assignment aliases
   shared mutable storage; `buffer` assignment is a value type in this
   respect.
 - No comparisons (`==`, `<`, and so on) are defined for `buffer`; a `buffer`
@@ -788,23 +788,23 @@ subclassing, only a small fixed set of compiler-built-in operations.
 #### Integration points for `buffer` and `handle` (confirmed, filling gaps before implementation)
 
 These points were not covered above and are needed before implementation can
-begin, following the precedent set by `array`/`map`/class references:
+begin, following the precedent set by `list`/`dict`/class references:
 
 - **`any`:** both `buffer` and `handle` may be stored in and extracted from
-  `any`, exactly like `array`/`map`/class references — a runtime-checked
+  `any`, exactly like `list`/`dict`/class references — a runtime-checked
   tag/extraction operation, using two new tags analogous to the existing
   `SIMP_ARRAY_ARRAY`/`SIMP_ARRAY_MAP`/`SIMP_ARRAY_OBJECT` entries in
   `SimpArrayValueTag` (`include/simp/RuntimeGc.h`).
-- **Collection literals:** a `buffer` reference may be an `array`/`map`
+- **Collection literals:** a `buffer` reference may be a `list`/`dict`
   element/value (traced by the GC like any other reference element). A
-  `handle` may also be an `array`/`map` element/value; because it is
+  `handle` may also be a `list`/`dict` element/value; because it is
   opaque, the GC does not trace what it points to, but the slot holding the
   `handle` reference itself is an ordinary untraced payload, exactly like
   today's `int`/`unsigned` elements — consistent with `handle` never being
   GC-managed.
 - **Native ABI (`from "<symbol>"`):** both are valid native-bound parameter
   and return types. `buffer` lowers as an opaque pointer, the same
-  treatment `array`/`map`/class references already receive. `handle` also
+  treatment `list`/`dict`/class references already receive. `handle` also
   lowers as a single opaque pointer (`void *`) — the natural, minimal ABI
   for a type whose entire purpose is carrying an untyped native pointer
   across the Simple/C boundary.
@@ -816,7 +816,7 @@ begin, following the precedent set by `array`/`map`/class references:
 - **`null`:** both `buffer` and `handle` variables may hold `null` and be
   compared against `null` with `==`/`!=`; this is not a general operator
   expression exception, it is the same null-check every reference type
-  (`array`, `map`, class, `strg`) already supports today.
+  (`list`, `dict`, class, `strg`) already supports today.
 
 #### Equality and comparison for strings (confirmed)
 
@@ -836,11 +836,11 @@ assignment still copies, while `String` assignment aliases its object.
   other string-valued expressions are valid, while numbers and `any` values are
   not accepted without a dynamic type check or typed extraction.
 - Map keys compare by exact UTF-8 bytes, case-sensitively and without Unicode normalization.
-- Assigning an existing map key replaces its value; missing-key access raises a catchable exception.
+- Assigning an existing dict key replaces its value; missing-key access raises a catchable exception.
 - Internal “under-the-table” object copying is needed by the runtime and collection behavior.
 
-The current compiler implements the heterogeneous-bag design goal for arrays,
-using the keyword `array` (`list` is an alias for the same type). An array
+The current compiler implements the heterogeneous-bag design goal for lists,
+using the keyword `list`. A list
 literal, for example
 `[1, true, 3.14, 42u, "two", Node(3), {"name": "Ada"}, null]`, may freely mix
 scalar values, strings, class references, maps, and `null` in the same collection; empty literals `[]`
@@ -859,7 +859,7 @@ without extracting it, and returns false for null.
 prints as that name; the null type is named `null`.
 `values.length` is a read-only `int`, and `values[start:end]` copies the
 half-open range `[start, end)` into independent storage. Either bound may be
-omitted: an omitted start is zero and an omitted end is the array length, so
+omitted: an omitted start is zero and an omitted end is the list length, so
 `values[:]` is a full shallow copy. `values[start:end:step]` selects entries
 with the given nonzero integer step; either bound may also be omitted, and
 `values[::]` is equivalent to a full copy. Negative steps traverse backward:
@@ -885,7 +885,7 @@ copies. The GC-managed array header remains stable as its separately allocated
 element buffer grows. Out-of-range indices raise catchable, source-located
 exceptions; slice bounds normalize and clamp as described above. The internal
 dynamic representation holds an `int`, `bool`, `float`, `unsigned`, `strg`,
-class reference, array reference, map reference, buffer, handle, or `null`.
+class reference, list reference, dict reference, buffer, handle, or `null`.
 Typed extraction is runtime-checked and raises on a tag or exact-class mismatch;
 there is no covariant/polymorphic downcast support. Nested arrays and
 collections are supported as elements and are traced by the GC.
@@ -900,42 +900,42 @@ carried through tagged values produced by collection indexing. The runtime
 traces class-reference and nested collection references reached through arrays,
 maps, `any` values, and object fields.
 
-Maps are implemented as the corresponding keyed collection using `map` (with
-`dict` as an alias), brace literals such as `{"name": "Ada", "age": 37}`, and
+Dicts are implemented as the corresponding keyed collection using `dict`,
+brace literals such as `{"name": "Ada", "age": 37}`, and
 string-expression indexing such as `person[key]`. Keys compare by exact
 UTF-8 byte sequence; they are case-sensitive and are not Unicode-normalized.
 Insertion copies key bytes so subsequent mutation of the source `String`
 does not change the key.
-Map indexing returns an internal dynamic value; assignment inserts or replaces, and a duplicate
-literal key replaces its earlier value without increasing the map's distinct
+Dict indexing returns an internal dynamic value; assignment inserts or replaces, and a duplicate
+literal key replaces its earlier value without increasing the dict's distinct
 key count. The read-only `length` member reports that count. `contains(key)`
 returns integer `1` or `0` without raising for a missing key. Missing-key index
 access raises a source-located runtime exception that can be caught with
-`try`/`except`. Map assignment aliases its mutable storage.
+`try`/`except`. Dict assignment aliases its mutable storage.
 
-Map values accept scalar values, strings, class references, null, arrays, and
-maps. Arrays and maps may recursively contain either collection type. Array
-and map references in internal tagged values use distinct tags, so typed extraction
+Dict values accept scalar values, strings, class references, null, lists, and
+dicts. Lists and dicts may recursively contain either collection type. List
+and dict references in internal tagged values use distinct tags, so typed extraction
 checks the requested collection kind. The precise collector traces
 class-reference and nested collection references in both collection kinds,
-including values reached through `any`. Map lookup and membership use a
+including values reached through `any`. Dict lookup and membership use a
 hash index over exact UTF-8 key bytes; iteration uses a separate ordered entry
-sequence, keeping insertion order deterministic. Runtime-owned copies of map
+sequence, keeping insertion order deterministic. Runtime-owned copies of dict
 key bytes avoid retaining pointers into transient string expressions.
 
-`map.remove(key)` returns integer `1` if the key existed and was deleted, or
+`dict.remove(key)` returns integer `1` if the key existed and was deleted, or
 `0` if it was absent. Deletion preserves the relative order of remaining
-entries; reinserting a deleted key places it at the end. `map[start:end]`
+entries; reinserting a deleted key places it at the end. `dict[start:end]`
 copies the half-open range of entries in insertion order into an independent,
-shallow map. Either bound may be omitted, defaulting to the first entry or the
-map length, respectively. Its keys and values are copied, but referenced
+shallow dict. Either bound may be omitted, defaulting to the first entry or the
+dict length, respectively. Its keys and values are copied, but referenced
 objects and nested collections are shared. Negative explicit bounds are
-offset from the map length and out-of-range bounds are clamped. Map indexing
-continues to use string keys. Step slices are supported only for arrays.
+offset from the dict length and out-of-range bounds are clamped. Dict indexing
+continues to use string keys. Step slices are supported only for lists.
 
-Array iteration uses `for (value in array)` and binds each element as an
-internal dynamic value in increasing index order. Map iteration accepts
-`for (value in map)` for value-only binding or `for (key, value in map)` for
+List iteration uses `for (value in list)` and binds each element as an
+internal dynamic value in increasing index order. Dict iteration accepts
+`for (value in dict)` for value-only binding or `for (key, value in dict)` for
 both a `strg` key and an internal dynamic value. These bindings follow the
 same restrictions as collection reads. Both forms iterate over a shallow snapshot of entries and values
 taken when the loop starts. Mutations to the original collection during the
@@ -1332,7 +1332,7 @@ return(h)
   statements, not top-level declarations; they may appear wherever an
   ordinary statement may appear inside a function body. The capture list is
   optional. Capture types are `int`, `bool`, `float`, `unsigned`, `strg`,
-  `array`, `map`, `buffer`, `handle`, or a declared class type; `void` and
+  `list`, `dict`, `buffer`, `handle`, or a declared class type; `void` and
   `any` are not capture types. Every
   listed type must exactly match an enclosing Simple local or parameter.
   Captures are by name, cannot be duplicated, and only listed locals are
@@ -1350,7 +1350,7 @@ return(h)
 - Captured locals are passed by address so C writes are visible to the Simple
   code after the block. The generated shim parameters are `int64_t *` for `int`,
   `_Bool *` for `bool`, `double *` for `float`, `uint64_t *` for `unsigned`,
-  `SimpBuffer **` for `buffer`, and `void **` for `strg`, `array`, `map`,
+  `SimpBuffer **` for `buffer`, and `void **` for `strg`, `list`, `dict`,
   `handle`, and class references. Thus, for example, C reads or updates `n` through `*n`; a
   reference capture's `void **` addresses the Simple reference slot — for
   `handle`, C assigns whatever opaque pointer value it holds (a `FILE *`, a
@@ -1455,7 +1455,7 @@ strg Foo.echo(strg value) from "c_foo_echo"
   parameters. C code may ignore it or use it as an opaque reference.
 - The prototype ABI uses `int` as C `int64_t` (`i64`), `bool` as
   `_Bool` (`i1`), `float` as `double`, and `unsigned` as `uint64_t` (`i64`);
-  `String`/`strg`, `array`, `map`, and class references are opaque pointers,
+  `String`/`strg`, `list`, `dict`, and class references are opaque pointers,
   and `void` is supported for returns. This replaces the old two-word
   `SimpString` native ABI. Use `simp_string_bytes()` to borrow explicit-length,
   non-NUL-terminated bytes; do not retain the view across buffer resize.
@@ -1474,7 +1474,7 @@ strg Foo.echo(strg value) from "c_foo_echo"
   symbol across several methods is accepted only when the lowered return and
   parameter ABI shapes match (including the receiver pointer).
 - The end-to-end test `tests/functional/positive/positive_extern_functions.simp`
-  demonstrates integer, string-argument/string-return, array, and
+  demonstrates integer, string-argument/string-return, list, and
   class-reference methods. Its bundled C shims include a real call to libc
   `abs()`. The receiver is why the sample binds a C shim rather than binding
   libc `abs` directly.
@@ -1617,7 +1617,7 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   symbolic forms `&&`, `||`, `!`.
 - `bool`, `float` (an alias for `double`-precision IEEE 754), and `unsigned`
   are required scalar types with full static type checking, alongside the
-  existing `int`, `strg`, `array`, `map`, and `any`.
+  existing `int`, `strg`, `list`, `dict`, and `any`.
 - Float literals follow `strtod()`'s decimal-constant lexical shape,
   including leading-dot (`.5`) and trailing-dot (`5.`) forms; a bare digit
   sequence with no point or exponent remains `int`.
@@ -1669,7 +1669,7 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   { ... }` declare-and-capture sugar) compile to a generated C shim per the
   "Inline C and LLVM/backend direction" section, built and linked through
   the existing C toolchain step. Captured managed references (`strg`,
-  `array`, `map`, `handle`, class types) are passed as rooted addresses;
+  `list`, `dict`, `handle`, class types) are passed as rooted addresses;
   the wrapper roots the implicit receiver and managed parameters for the
   duration of the call, matching native-bound methods.
 - `simp_string_cstr`'s storage/cleanup contract is implemented and final:
@@ -1710,7 +1710,7 @@ next things to resolve, roughly in priority order:
 2. **Resolved and implemented:** `null` is a universal value (see
    "Nullability model (confirmed)" above) — assignable to any type
    including scalars, with no flow-sensitive null analysis. Scalars,
-   `strg`, `array`, and `map` now all support `null`, with printing,
+   `strg`, `list`, and `dict` now all support `null`, with printing,
    `==`/`!=`, and (for scalar locals) a documented decay-at-boundary rule.
    See the "Implemented, with a documented scope boundary for scalar
    locals" bullet above for the exact scope.

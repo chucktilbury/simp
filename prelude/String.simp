@@ -24,7 +24,7 @@ class String {
     bool contains(String needle)
     bool startsWith(String prefix)
     bool endsWith(String suffix)
-    array split(String separator)
+    list split(String separator)
     String replace(String target, String replacement)
     String trim()
     String strip()
@@ -46,7 +46,7 @@ int String.find(String needle) from "simp_string_method_find"
 bool String.contains(String needle) from "simp_string_method_contains"
 bool String.startsWith(String prefix) from "simp_string_method_starts_with"
 bool String.endsWith(String suffix) from "simp_string_method_ends_with"
-array String.split(String separator) from "simp_string_method_split"
+list String.split(String separator) from "simp_string_method_split"
 String String.replace(String target, String replacement) from "simp_string_method_replace"
 String String.trim() from "simp_string_method_trim"
 String String.strip() from "simp_string_method_trim"

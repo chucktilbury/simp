@@ -249,13 +249,14 @@ support for the generated executable, not an IDE integration.
 - Reserved keywords are case-insensitive: `start`, `int`, `strg`, `if`,
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
   `raise`, `try`, `except`, `finally`, `for`, `in`, `public`, `protected`,
-  `private`, `virtual`, `from`, `map`, `dict`, `namespace`, `include`,
+  `private`, `virtual`, `from`, `list`, `dict`, `namespace`, `include`,
   `import`, `as`, `is`, `type`, and `any`.
-  `dict` is an alias for the `map` type.
+  `list` and `dict` are the collection type keywords. `array` and `map` are
+  ordinary identifiers, not collection type aliases.
   Every capitalization is reserved.
 - Use `strg` for the managed string type; lowercase `string` is no longer
   reserved and may be used as an identifier.
-- `int`, `strg`, class-reference, `array`, and `map`/`dict` declarations
+- `int`, `strg`, class-reference, `list`, and `dict` declarations
   (with optional initializer), assignment, `print`, `return`, and
   `super.Base(...)` statements end at a
   newline or closing brace. Newlines inside parentheses and square brackets
@@ -273,13 +274,13 @@ support for the generated executable, not an IDE integration.
   null is reported as the type name `null`. Type values compare by exact name
   with `==`/`!=` (not by inheritance) and print that name; ordering is not
   supported.
-  array and map literals, zero-based indexing, copying array/map slices, and
-  map operations `mapValue.contains(stringExpression)` and
-  `mapValue.remove(stringExpression)`.
+  list and dict literals, zero-based indexing, copying list/dict slices, and
+  dict operations `dictValue.contains(stringExpression)` and
+  `dictValue.remove(stringExpression)`.
 - `if (condition) { ... }`, unconditional `else { ... }`, and
-  `while (condition) { ... }`, `for (value in arrayValue) { ... }`,
-  `for (value in mapValue) { ... }`, and
-  `for (key, value in mapValue) { ... }` execute in the LLVM backend.
+  `while (condition) { ... }`, `for (value in listValue) { ... }`,
+  `for (value in dictValue) { ... }`, and
+  `for (key, value in dictValue) { ... }` execute in the LLVM backend.
   Conditions must be `bool`. An `else (condition)` form is explicitly rejected.
 - `raise(Exception("message"))` throws a constructed exception object. User
   exception classes derive from `Exception`; `raise(MyError(args))` accepts
@@ -328,16 +329,15 @@ support for the generated executable, not an IDE integration.
   available as byte-based methods; invalid bounds and UTF-8-splitting ranges
   raise catchable exceptions. Unicode case mapping, code-point operations,
   and direct string index syntax are deferred. `toInt()`, `toUnsigned()`, and
-  `toFloat()` parse checked numbers. Map keys copy the bytes at insertion, so
+  `toFloat()` parse checked numbers. Dict keys copy the bytes at insertion, so
   later mutation cannot change a stored key.
-- Arrays (`array`, with `list` accepted as an alias keyword for the exact same
-  type) are heterogeneous bags: a single literal such as
+- Lists (`list`) are heterogeneous bags: a single literal such as
   `[1, "two", Node(3), null]` may freely mix ints, strings, class references,
-  arrays, maps, and `null` in one collection; an empty literal `[]` is always
-  allowed. Nested arrays and collections are traced by the GC.
+  lists, dicts, and `null` in one collection; an empty literal `[]` is always
+  allowed. Nested lists and collections are traced by the GC.
   Reading an element with `values[index]` yields an internal dynamic value —
   it does not statically know whether that slot holds an `int`, a `strg`, a
-  class reference, or a map reference. Dynamic values are not a declared
+  class reference, or a dict reference. Dynamic values are not a declared
   type: they can be tested with `is`/`type`, compared with `null`, printed,
   stored in collections, or extracted into a concretely typed variable, field,
   parameter, or return value (with a runtime check). Other operations such as
@@ -345,49 +345,49 @@ support for the generated executable, not an IDE integration.
   `values[index] = expr` accepts
   any of the supported element types directly. The read-only
   `values.length` property returns an `int`. Indexing is zero-based.
-  `values[start:end]` creates a new array containing the half-open range
+  `values[start:end]` creates a new list containing the half-open range
   `[start, end)`; either bound may be omitted (`values[:end]`,
   `values[start:]`, or `values[:]`). Slices are independent shallow copies, so
   changing a copied scalar slot does not change the source (class-reference
-  elements still refer to the same objects). Arrays also support
+  elements still refer to the same objects). Lists also support
   `values[start:end:step]`, including omitted bounds such as `values[::2]`;
   positive and negative steps follow Python's slice-bound normalization,
   including clamping out-of-range bounds, and a zero step raises a catchable
-  runtime exception. Array and buffer indexing accept negative indices, where
+  runtime exception. List and buffer indexing accept negative indices, where
   `-1` selects the last element; indices still out of range after normalization
   raise catchable runtime exceptions with source locations.
-- Array iteration visits elements in index order and binds each element as an
-  internal dynamic value; map iteration binds an internal dynamic value alone
+- List iteration visits elements in index order and binds each element as an
+  internal dynamic value; dict iteration binds an internal dynamic value alone
   or a `strg` key and dynamic value in insertion order. The binding follows
   the same use restrictions as an indexed collection read. Both forms snapshot
   their entries (including
   values) at loop start: insertion, removal, or replacement during the loop
   does not change the current iteration. The snapshot is shallow, so referenced
   objects and nested collections remain shared.
-- Maps (`map`, with `dict` as an alias) are mutable heterogeneous dictionaries.
+- Dicts (`dict`) are mutable heterogeneous dictionaries.
   A literal uses `{ "name": "Ada", "age": 37 }`; keys are string expressions
   and are compared by exact UTF-8 bytes (case-sensitive, without normalization).
   Reading `values[key]` yields an internal dynamic value; writing
   `values[key] = value` inserts
   a new key or replaces the existing value. Replacing a key does not change
   `values.length`, which counts distinct keys and is read-only. A missing key
-  raises a source-located, catchable `map key not found` exception. Map
+  raises a source-located, catchable `dict key not found` exception. Dict
   assignment aliases the same mutable storage. Values may be ints, strings,
-  class references, null, `any`, arrays, or maps; array/map references extracted
-  from `any` are runtime-checked. Maps can contain nested maps and arrays, and
-  arrays can contain nested arrays. Exact UTF-8 byte hashing provides expected
+  class references, null, `any`, lists, or dicts; list/dict references extracted
+  from `any` are runtime-checked. Dicts can contain nested dicts and lists, and
+  lists can contain nested lists. Exact UTF-8 byte hashing provides expected
   constant-time lookup while a separate insertion-order sequence keeps
   iteration deterministic. Keys must have statically known type `strg`; an
   `any` value is not accepted as a key without first testing or extracting it
   to `strg`. `values.remove(key)` returns `1` when an entry was removed and
   `0` when it was absent; removing a key preserves the order of other entries,
   and reinserting it appends it. `values[start:end]` makes an independent
-  shallow map copy from the half-open insertion-order range `[start, end)`;
+  shallow dict copy from the half-open insertion-order range `[start, end)`;
   either bound may be omitted, with omitted bounds defaulting to the start and
   end of the insertion-ordered entries. Buffers likewise support omitted
-  bounds and return independent copies. Negative bounds on map and buffer
+  bounds and return independent copies. Negative bounds on dict and buffer
   slices are normalized relative to collection length and clamped to the valid
-  range. Step slices are restricted to arrays. Map indexing remains
+  range. Step slices are restricted to lists. Dict indexing remains
   string-keyed.
 - Equality and ordering comparisons require matching numeric types
   (`int`, `unsigned`, or `float`); equality also supports matching `bool`
@@ -396,11 +396,11 @@ support for the generated executable, not an IDE integration.
   reference compares the same base subobject as its derived reference.
   Unrelated class references cannot be compared. Any nullable type may be
   compared with `null`. Strings follow class-reference identity rules;
-  arrays, maps, and `any` do not support equality with each other.
+  lists, dicts, and `any` do not support equality with each other.
 - Collection reads and loop bindings use an internal tagged dynamic value;
   the reserved keyword `any` is not permitted as a declared type (locals,
   fields, parameters, returns, or native signatures). The representation can
-  carry scalars, strings, class references, arrays, maps, buffers, handles, and
+  carry scalars, strings, class references, lists, dicts, buffers, handles, and
   `null`. It may only be printed, tested with `is` or `type`, compared with
   `null`, extracted into a concretely typed variable/field/parameter/return
   value, or inserted into another collection. Extraction is runtime-checked
@@ -411,7 +411,7 @@ support for the generated executable, not an IDE integration.
   arithmetic or other operators. Printing dispatches on the runtime tag;
   object references print a fixed `<object>` placeholder (or `null`), since
   user-defined `toString()` dispatch is not implemented. Class-reference and
-  collection values reachable through arrays and maps are traced by the GC.
+  collection values reachable through lists and dicts are traced by the GC.
 - `;`, `#`, and `//` line comments, `/* ... */` block comments, and basic
   double-quoted escapes (`\e`, `\\`, `\"`, `\n`, `\r`, `\t`) are accepted.
   `\e` produces byte `0x1b` (ESC). Single-quoted strings have no escape
@@ -422,7 +422,7 @@ support for the generated executable, not an IDE integration.
   requires integer conditions. Definite initialization across `if` branches
   and loops is conservative.
 - A small class subset is supported: top-level `class` declarations with
-  `int`, `strg`, `array`, `map`, or class-reference fields; class-named constructors
+  `int`, `strg`, `list`, `dict`, or class-reference fields; class-named constructors
   overloaded by parameter types;
   typed methods; `Class(args)` construction/allocation; nullable class-reference
   variables; field access/assignment; method calls; and direct `return`
@@ -551,7 +551,7 @@ the declarations and initialization state seen by semantic analysis.
 
 The backend emits textual LLVM IR using opaque pointers, then the configured
 Clang executable compiles and links it. It supports scalar and string
-declarations/assignments, heterogeneous `array` and `map` collections (with
+declarations/assignments, heterogeneous `list` and `dict` collections (with
 internal tagged values for dynamic elements and values), integer
 expressions and comparisons, integer
 `if`/`else` and `while`, `raise`/typed `try`/`except`/`finally`,
@@ -631,13 +631,13 @@ class Native {
     int absolute(int value)
     int stringLength(strg text)
     strg stringIdentity(strg text)
-    array identityArray(array items)
+    list identityArray(list items)
 }
 
 int Native.absolute(int value) from "simp_method_demo_abs"
 int Native.stringLength(strg text) from "simp_method_demo_string_length"
 strg Native.stringIdentity(strg text) from "simp_method_demo_string_identity"
-array Native.identityArray(array items) from "simp_method_demo_identity"
+list Native.identityArray(list items) from "simp_method_demo_identity"
 
 class Doubler {
     int compute(int x)
@@ -652,7 +652,7 @@ start {
     print(native.absolute(0 - 7))       # 7; C shim calls libc abs()
     print(native.stringLength("hello")) # 5
     print(native.stringIdentity("hello")) # hello
-    array numbers = [1, 2, 3]
+    list numbers = [1, 2, 3]
     print(native.identityArray(numbers).length) # 3
     print(Doubler().compute(5)) # 10
 }
@@ -677,7 +677,7 @@ start {
   compiler emits an ordinary Simple method/dispatch entry as a wrapper around
   the external symbol; the wrapper passes the implicit receiver pointer as
   the **first C ABI argument**, followed by explicit parameters.
-- ABI mapping: `int` is C `int64_t` (`i64`); `String`/`strg`, `array`, `map`,
+- ABI mapping: `int` is C `int64_t` (`i64`); `String`/`strg`, `list`, `dict`,
   and other class references are single opaque pointers; `void` is C `void`.
   This **breaks the earlier `SimpString {data,length}` native ABI**: C code
   must use `simp_string_bytes(object, &data, &length)` to borrow non-NUL-
@@ -695,7 +695,7 @@ start {
   for its own temporary references.
 - A missing `<symbol>` is diagnosed by the linker at link time, not by
   semantic analysis. `tests/functional/positive/positive_extern_functions.simp`
-  exercises `from` bindings for integer, strg argument/return, array, and
+  exercises `from` bindings for integer, strg argument/return, list, and
   class-reference values; its bundled C shims include a call to libc `abs()`.
 - Compiled imports use `import <package-or-module> as <symbol>`. Packages live
   at `<search-root>/<name>/<version>/simp-package.toml`; their Simple source,

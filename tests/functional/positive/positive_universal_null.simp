@@ -34,10 +34,10 @@ start {
     print(nullString)
     print(nullString == null)
 
-    array nullArray = null
+    list nullArray = null
     print(nullArray == null)
 
-    map nullMap = null
+    dict nullMap = null
     print(nullMap == null)
 
     Holder missing = null

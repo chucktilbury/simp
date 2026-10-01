@@ -1,4 +1,4 @@
 start {
-    array values = []
+    list values = []
     values.resize(-1)
 }

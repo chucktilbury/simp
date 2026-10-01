@@ -58,7 +58,7 @@ start {
     print(maximum > 9223372036854775808u)
     print("formatted {} {} {}"(no, scientific, 42u))
 
-    array values = [yes, amount, maximum]
+    list values = [yes, amount, maximum]
     print(values[0])
     print(values[1])
     print(values[2])
@@ -69,7 +69,7 @@ start {
     print(extractedFloat)
     print(extractedUnsigned)
 
-    map entries = {"flag": no, "amount": scientific, "count": 42u}
+    dict entries = {"flag": no, "amount": scientific, "count": 42u}
     bool mapBool = entries["flag"]
     float mapFloat = entries["amount"]
     unsigned mapUnsigned = entries["count"]

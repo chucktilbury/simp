@@ -28,18 +28,18 @@ start {
     shapes.Named named = shapes.Named()
     print(named is shapes.Named)
 
-    map values = {"integer": 42, "text": "hello", "real": 3.5, "dictionary": {"key": 1}, "sequence": [1, 2], "object": leaf, "nothing": null, "flag": true, "count": 5u}
+    dict values = {"integer": 42, "text": "hello", "real": 3.5, "dictionary": {"key": 1}, "sequence": [1, 2], "object": leaf, "nothing": null, "flag": true, "count": 5u}
     print(values["integer"] is int)
     print(values["integer"] is strg)
     print(values["text"] is strg)
     print(values["text"] is float)
     print(values["real"] is float)
-    print(values["dictionary"] is map)
     print(values["dictionary"] is dict)
-    print(values["dictionary"] is array)
-    print(values["sequence"] is array)
+    print(values["dictionary"] is dict)
+    print(values["dictionary"] is list)
     print(values["sequence"] is list)
-    print(values["sequence"] is map)
+    print(values["sequence"] is list)
+    print(values["sequence"] is dict)
     print(values["object"] is Leaf)
     print(values["object"] is Root)
     print(values["object"] is Other)
@@ -51,10 +51,10 @@ start {
 
     Root emptyObject = null
     strg emptyText = null
-    array emptyArray = null
+    list emptyArray = null
     print(emptyObject is Root)
     print(emptyText is strg)
-    print(emptyArray is array)
+    print(emptyArray is list)
     int emptyInteger = null
     print(emptyInteger is int)
     handle emptyHandle = null

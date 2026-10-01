@@ -44,7 +44,7 @@ start {
     } while (true)
     print(doCount)
 
-    array values = [1, 2, 3, 4]
+    list values = [1, 2, 3, 4]
     int forTotal = 0
     for (item in values) {
         int value = item
@@ -58,7 +58,7 @@ start {
     }
     print(forTotal)
 
-    map entries = {"first": 1, "skip": 2, "stop": 3, "last": 4}
+    dict entries = {"first": 1, "skip": 2, "stop": 3, "last": 4}
     int mapTotal = 0
     for (key, item in entries) {
         int value = item

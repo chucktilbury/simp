@@ -1,5 +1,5 @@
-# Rejects using a string rather than an integer as an array index.
+# Rejects using a string rather than an integer as an list index.
 start {
-    array values = [1, 2]
+    list values = [1, 2]
     print(values["zero"])
 }

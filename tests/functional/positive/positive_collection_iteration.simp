@@ -1,4 +1,4 @@
-# Exercises map lookup and membership, key/value iteration, array iteration, and collection-held object references.
+# Exercises dict lookup and membership, key/value iteration, list iteration, and collection-held object references.
 class Node {
     int value
     Node(int initial) {
@@ -11,7 +11,7 @@ class Node {
 
 start {
     strg selected = "dynamic"
-    map table = {"first": Node(10), selected: Node(20), "third": Node(30)}
+    dict table = {"first": Node(10), selected: Node(20), "third": Node(30)}
     print(table.length)
     print(table.contains(selected))
     print(table.contains("absent"))
@@ -31,12 +31,12 @@ start {
     print(seen)
     print(table.length)
 
-    array mixed = [1, "two", Node(3), table]
+    list mixed = [1, "two", Node(3), table]
     for (item in mixed) {
         print(item)
     }
 
-    array references = [Node(42)]
+    list references = [Node(42)]
     for (item in references) {
         Node retained = item
         Node churn = Node(100)

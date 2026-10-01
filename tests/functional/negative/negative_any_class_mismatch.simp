@@ -1,4 +1,4 @@
-# Rejects extracting an array-held Cat into Dog because the runtime object has a different exact class.
+# Rejects extracting an list-held Cat into Dog because the runtime object has a different exact class.
 class Cat {
     int lives
     Cat(int initial) {
@@ -16,7 +16,7 @@ class Dog {
 start {
     // Extraction into a class type requires an exact runtime class match;
     // this prototype does not support polymorphic/covariant downcasts.
-    array pets = [Cat(9), Dog(1)]
+    list pets = [Cat(9), Dog(1)]
     Dog mismatched = pets[0]
     print(mismatched.loyalty)
 }

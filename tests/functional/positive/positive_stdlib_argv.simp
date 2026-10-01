@@ -2,7 +2,7 @@ import system as Sys
 
 start {
     Sys.Process process = Sys.Process()
-    array arguments = process.argv()
+    list arguments = process.argv()
     print(process.argc())
     print(arguments.length)
     print(process.arg(1).equals(arguments[1]))

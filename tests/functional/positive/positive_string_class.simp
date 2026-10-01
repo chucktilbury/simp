@@ -45,12 +45,12 @@ start {
     print(ordered)
     print(order.count)
     print(Text().wrap(original))
-    array values = ["array {}"(original)]
+    list values = ["list {}"(original)]
     strg item = values[0]
     print(item)
-    map formattedKey = {"key {}"(1): 7}
+    dict formattedKey = {"key {}"(1): 7}
     print(formattedKey["key 1"])
-    map lookup = {"key": 1}
+    dict lookup = {"key": 1}
     strg key = "key"
     lookup[key] = 5
     key.append("!")

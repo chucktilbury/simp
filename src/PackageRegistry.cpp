@@ -42,8 +42,8 @@ bool identifier(const std::string& value) {
         return false;
     }
     static const std::unordered_set<std::string> keywords{
-        "start", "int", "bool", "float", "unsigned", "strg", "array",
-        "list", "map", "dict", "buffer", "handle", "any", "type", "if",
+        "start", "int", "bool", "float", "unsigned", "strg", "list",
+        "dict", "buffer", "handle", "any", "type", "if",
         "else", "while", "do", "for", "in", "is", "break", "continue",
         "and", "or", "not", "print", "raise", "try", "except", "finally",
         "class", "namespace", "include", "inline", "import", "as", "from",

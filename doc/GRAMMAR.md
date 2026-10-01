@@ -57,7 +57,7 @@ OPERATOR        ::= "+" | "-" | "*" | "/" | "%" | "!" | "&&" | "||"
 ```
 
 The reserved words are `start`, `int`, `bool`, `float`, `unsigned`, `strg`,
-`array`/`list`, `map`/`dict`, `buffer`, `handle`, `any`, `type`, `class`,
+`list`, `dict`, `buffer`, `handle`, `any`, `type`, `class`,
 `namespace`, `include`, `inline`, `import`, `as`, `public`, `protected`,
 `private`, `virtual`, `super`, `null`, `true`, `false`, `return`, `void`,
 `if`, `else`, `while`, `do`, `for`, `in`, `is`, `break`, `continue`, `and`,
@@ -155,7 +155,7 @@ parameter-list      ::= "(", [ parameter, { ",", parameter } ], ")" ;
 parameter           ::= type, IDENT ;
 type                ::= primitive-type | QUALIFIED_IDENT ;
 primitive-type      ::= "int" | "bool" | "float" | "unsigned" | "strg"
-                      | "array" | "list" | "map" | "dict" | "buffer"
+                      | "list" | "dict" | "buffer"
                       | "handle" | "any" | "type" ;
 
 include-directive   ::= "include", DOUBLE_STRING, terminator ;
@@ -284,11 +284,11 @@ primary             ::= INTEGER | UNSIGNED_INT | FLOAT | STRING
                       | "float", "(", expression, ")"
                       | "buffer", "(", [ expression, { ",", expression } ], ")"
                       | "(", expression, ")"
-                      | array-literal | map-literal | type-value ;
-array-literal       ::= "[", [ argument-list ], "]" ;
-map-literal         ::= "{", [ map-entry, { ",", map-entry } ], "}" ;
-map-entry           ::= expression, ":", expression ;
-type-value          ::= "bool" | "strg" | "array" | "list" | "map" | "dict"
+                      | list-literal | dict-literal | type-value ;
+list-literal        ::= "[", [ argument-list ], "]" ;
+dict-literal        ::= "{", [ dict-entry, { ",", dict-entry } ], "}" ;
+dict-entry          ::= expression, ":", expression ;
+type-value          ::= "bool" | "strg" | "list" | "dict"
                       | "handle" | "any"
                       | "int" | "unsigned" | "float"  (* only when not followed by "(" *)
                       | "buffer"                      (* only when not followed by "(" *) ;
@@ -334,7 +334,7 @@ methods are identified as parser infrastructure or validation helpers. The
 95 `tests/functional/positive/*.simp` fixtures were checked against this map:
 all their parsed forms are represented by productions above. The fixtures
 exercise scalar and float literal variants, declarations and assignments,
-calls and overloads, casts and type tests, arrays/maps/buffers/handles,
+calls and overloads, casts and type tests, lists/dicts/buffers/handles,
 indexing/slicing/iteration, conditionals and loops, classes and inheritance
 (including virtual and secondary bases), exceptions, namespaces, imports,
 textual inclusion, native bindings, inline C, strings, and thread bindings.
@@ -346,8 +346,7 @@ No positive-fixture syntax or parser routine was left unmapped. The
 - Keywords are case-folded, but ordinary identifiers are case-sensitive.
   `String` is an identifier naming the prelude class, `strg` is the primitive
   string type keyword, and lowercase `string` is an ordinary identifier.
-- `list` and `array` share a token, as do `dict` and `map`; their distinction
-  is lost at parse time.
+- `array` and `map` are ordinary identifiers, not collection type aliases.
 - Newline suppression tracks both `()` and `[]` with one nesting counter. A
   mismatched closer can therefore affect whether later newlines are emitted;
   syntax diagnostics, not the lexer, report unmatched delimiters.
@@ -357,7 +356,7 @@ No positive-fixture syntax or parser routine was left unmapped. The
 - `else if` has no dedicated form; `else` must be followed by a block.
   `do { ... } while (...)` has no required trailing terminator.
 - Newlines in `()` and `[]` are suppressed, but newlines inside `{}` are not.
-  In particular, braces used for map literals do not provide multiline
+  In particular, braces used for dict literals do not provide multiline
   continuation.
 - `return ()` is accepted as a void return, alongside bare `return`.
   Parenthesized non-empty returns are ordinary expressions.
@@ -382,7 +381,7 @@ No positive-fixture syntax or parser routine was left unmapped. The
   dotted class names can be reclassified after semantic name resolution.
   There are no free-function declarations or arbitrary first-class callable
   expressions in the accepted subset.
-- The grammar allows array literals to contain buffers and handles, while the
-  semantic check for `array.append(...)` accepts a narrower list of element
+- The grammar allows list literals to contain buffers and handles, while the
+  semantic check for `list.append(...)` accepts a narrower list of element
   types. The syntax is shared, but those two construction routes are not
   type-equivalent in every case.

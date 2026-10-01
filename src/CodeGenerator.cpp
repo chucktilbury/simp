@@ -36,11 +36,11 @@ CodeGenerator::CodeGenerator(std::string targetTriple, bool debug)
     : targetTriple_(std::move(targetTriple)), debug_(debug) {}
 
 bool CodeGenerator::isArrayType(const std::string& type) const {
-    return type == "array";
+    return type == "list";
 }
 
 bool CodeGenerator::isMapType(const std::string& type) const {
-    return type == "map";
+    return type == "dict";
 }
 
 bool CodeGenerator::isBufferType(const std::string& type) const {
@@ -530,11 +530,12 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
                          length + ", 1\n";
         return {expectedType, result};
     }
-    if (expectedType == "map" || expectedType == "array") {
+    if (expectedType == "dict" || expectedType == "list") {
+        const auto runtimeCollection = expectedType == "dict" ? "map" : "array";
         const auto pointer = newTemporary();
         instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " +
                          value.operand + ", 2\n"
-                         "  call void @simp_value_require_" + expectedType +
+                         "  call void @simp_value_require_" + runtimeCollection +
                          "(i64 " + tag + ", ptr " + pointer + ", ptr " + file +
                          ", i64 " + fileLength + ", i64 " + line + ", i64 " + column +
                          ")\n";
@@ -698,7 +699,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             std::string nullCondition;
             if (!operand.nullFlag.empty()) {
                 nullCondition = operand.nullFlag;
-            } else if (operand.type == "array" || operand.type == "map" ||
+            } else if (operand.type == "list" || operand.type == "dict" ||
                        operand.type == "buffer" || operand.type == "handle") {
                 nullCondition = newTemporary();
                 instructions_ += "  " + nullCondition + " = icmp eq ptr " + operand.operand +
@@ -756,7 +757,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto array = newTemporary();
         instructions_ += "  " + array + " = call ptr @simp_gc_alloc_array(i64 " +
                          std::to_string(expression.arguments.size()) + ")\n";
-        rootObjectValue({"array", array}, expression.location);
+        rootObjectValue({"list", array}, expression.location);
         for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
             const auto element = emitExpression(*expression.arguments[index]);
             const auto valuesAddress = newTemporary();
@@ -770,18 +771,18 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              ", i64 " + std::to_string(index) + "\n";
             emitArrayElementStore(valuePointer, element, expression.arguments[index]->location);
         }
-        return {"array", array};
+        return {"list", array};
     }
     case ExpressionKind::MapLiteral: {
         const auto map = newTemporary();
         instructions_ += "  " + map + " = call ptr @simp_gc_alloc_map()\n";
-        rootObjectValue({"map", map}, expression.location);
+        rootObjectValue({"dict", map}, expression.location);
         for (std::size_t index = 0; index < expression.arguments.size(); index += 2) {
             const auto key = emitExpression(*expression.arguments[index]);
             const auto value = emitExpression(*expression.arguments[index + 1]);
             emitMapElementStore(map, key, value, expression.arguments[index]->location);
         }
-        return {"map", map};
+        return {"dict", map};
     }
     case ExpressionKind::Identifier: {
         const auto binding = findVariable(expression.value, expression.location);
@@ -1297,8 +1298,8 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             const auto matches = newTemporary();
             const auto result = newTemporary();
             const auto expectedTag = target == "int" ? "1" :
-                                     target == "map" ? "4" :
-                                     target == "array" ? "5" :
+                                     target == "dict" ? "4" :
+                                     target == "list" ? "5" :
                                      target == "bool" ? "6" :
                                      target == "float" ? "7" :
                                      target == "unsigned" ? "8" :

@@ -1,6 +1,6 @@
-# Rejects a map lookup key whose static type is any rather than string.
+# Rejects a dict lookup key whose static type is any rather than string.
 start {
-    map values = {}
-    array keys = ["present"]
-    map value = values[keys[0]]
+    dict values = {}
+    list keys = ["present"]
+    dict value = values[keys[0]]
 }

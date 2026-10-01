@@ -4,7 +4,7 @@ namespace System {
         String fileRead(handle fp, int size)
         String fileReadAll(handle fp)
         String fileReadLine(handle fp)
-        array fileReadLines(handle fp)
+        list fileReadLines(handle fp)
         int fileWrite(handle fp, String data)
         int fileWriteLine(handle fp, String line)
         int fileSeek(handle fp, int offset, int whence)
@@ -16,7 +16,7 @@ namespace System {
 
     class Process {
         int argc()
-        array argv()
+        list argv()
         String arg(int index)
         void exit(int code)
         void abort()
@@ -80,7 +80,7 @@ namespace System {
             return Runtime().fileReadLine(_fp)
         }
 
-        array readLines() {
+        list readLines() {
             return Runtime().fileReadLines(_fp)
         }
 
@@ -123,7 +123,7 @@ namespace System {
         bool copy(String src, String dest)
         bool mkdir(String path)
         bool rmdir(String path)
-        array listDir(String path)
+        list listDir(String path)
         String getCwd()
         bool chDir(String path)
         String absolutePath(String path)
@@ -141,7 +141,7 @@ namespace System {
             return Process().argc()
         }
 
-        array argv() {
+        list argv() {
             return Process().argv()
         }
 
@@ -172,7 +172,7 @@ namespace System {
     }
 
     int Process.argc() from "simp_system_argc"
-    array Process.argv() from "simp_system_argv"
+    list Process.argv() from "simp_system_argv"
     String Process.arg(int index) from "simp_system_arg"
     void Process.exit(int code) from "simp_system_exit"
     void Process.abort() from "simp_system_abort"
@@ -195,7 +195,7 @@ namespace System {
     String Runtime.fileRead(handle fp, int size) from "simp_file_read"
     String Runtime.fileReadAll(handle fp) from "simp_file_read_all"
     String Runtime.fileReadLine(handle fp) from "simp_file_read_line"
-    array Runtime.fileReadLines(handle fp) from "simp_file_read_lines"
+    list Runtime.fileReadLines(handle fp) from "simp_file_read_lines"
     int Runtime.fileWrite(handle fp, String data) from "simp_file_write"
     int Runtime.fileWriteLine(handle fp, String line) from "simp_file_write_line"
     int Runtime.fileSeek(handle fp, int offset, int whence) from "simp_file_seek"
@@ -213,7 +213,7 @@ namespace System {
     bool FileSystem.copy(String src, String dest) from "simp_fs_copy"
     bool FileSystem.mkdir(String path) from "simp_fs_mkdir"
     bool FileSystem.rmdir(String path) from "simp_fs_rmdir"
-    array FileSystem.listDir(String path) from "simp_fs_list_dir"
+    list FileSystem.listDir(String path) from "simp_fs_list_dir"
     String FileSystem.getCwd() from "simp_fs_get_cwd"
     bool FileSystem.chDir(String path) from "simp_fs_ch_dir"
     String FileSystem.absolutePath(String path) from "simp_fs_absolute_path"

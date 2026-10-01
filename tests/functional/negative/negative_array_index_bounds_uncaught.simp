@@ -1,5 +1,5 @@
-# Raises when an array index is below the negative length.
+# Raises when an list index is below the negative length.
 start {
-    array values = [1, 2]
+    list values = [1, 2]
     int value = values[-3]
 }

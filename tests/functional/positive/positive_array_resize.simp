@@ -9,7 +9,7 @@ class Node {
 }
 
 class Grower {
-    int grow(array values) {
+    int grow(list values) {
         values.resize(12)
         return 7
     }
@@ -17,10 +17,10 @@ class Grower {
 
 start {
     list values = [1, "two"]
-    array alias = values
+    list alias = values
     values.append([3])
     print(alias.length)
-    array nested = alias[2]
+    list nested = alias[2]
     print(nested[0])
     alias.resize(5)
     print(values.length)
@@ -32,7 +32,7 @@ start {
     print(values[4])
     values.append("last")
     print(alias[5])
-    array copy = values[0:2]
+    list copy = values[0:2]
     alias.resize(1)
     print(copy.length)
     print(values.length)
@@ -45,7 +45,7 @@ start {
     } except() as error {
         print(error)
     }
-    array refs = []
+    list refs = []
     refs.append(Node(55))
     int churn = 0
     while (churn < 20) {

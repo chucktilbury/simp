@@ -6,21 +6,21 @@ class Holder {
 }
 
 class Reader {
-    int read(array values) { return values[0] }
+    int read(list values) { return values[0] }
 }
 
 start {
-    array values = [42, "text", null]
+    list values = [42, "text", null]
     int extracted = values[0]
     Holder holder = Holder()
     holder.value = values[0]
     holder.set(values[0])
     int returned = Reader().read(values)
 
-    array nested = [values[0]]
+    list nested = [values[0]]
     nested.append(values[0])
     nested[0] = values[0]
-    map mapped = {"value": values[0]}
+    dict mapped = {"value": values[0]}
     mapped["value"] = values[0]
 
     print(values[0])

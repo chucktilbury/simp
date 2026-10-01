@@ -1,7 +1,7 @@
 5
 14
 7
-array index out of bounds
+list index out of bounds
 7
 7
 2
@@ -27,7 +27,7 @@ array index out of bounds
 6
 5
 3
-array slice step cannot be zero
+list slice step cannot be zero
 2
 20
 20

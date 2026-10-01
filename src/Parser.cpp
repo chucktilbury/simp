@@ -51,8 +51,8 @@ bool Parser::startsOutOfLineDefinition() const {
     case TokenType::FloatType:
     case TokenType::Unsigned:
     case TokenType::StrgType:
-    case TokenType::ArrayType:
-    case TokenType::MapType:
+    case TokenType::ListType:
+    case TokenType::DictType:
     case TokenType::BufferType:
     case TokenType::HandleType:
     case TokenType::AnyType:
@@ -274,8 +274,8 @@ Statement Parser::parseStatement() {
     }
     if (check(TokenType::Int) || check(TokenType::Bool) ||
         check(TokenType::FloatType) || check(TokenType::Unsigned) ||
-        check(TokenType::StrgType) || check(TokenType::ArrayType) ||
-        check(TokenType::MapType) || check(TokenType::BufferType) ||
+        check(TokenType::StrgType) || check(TokenType::ListType) ||
+        check(TokenType::DictType) || check(TokenType::BufferType) ||
         check(TokenType::HandleType) || check(TokenType::AnyType) ||
         check(TokenType::TypeType) || check(TokenType::Void)) {
         return parseDeclaration();
@@ -699,8 +699,8 @@ std::string Parser::parseTypeTestName() {
     if (match(TokenType::FloatType)) return "float";
     if (match(TokenType::Bool)) return "bool";
     if (match(TokenType::StrgType)) return "String";
-    if (match(TokenType::ArrayType)) return "array";
-    if (match(TokenType::MapType)) return "map";
+    if (match(TokenType::ListType)) return "list";
+    if (match(TokenType::DictType)) return "dict";
     if (match(TokenType::BufferType)) return "buffer";
     if (match(TokenType::HandleType)) return "handle";
     if (match(TokenType::AnyType)) return "any";
@@ -787,13 +787,13 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         ++current_;
         return parseTypeName(token, "String");
     }
-    if (check(TokenType::ArrayType)) {
+    if (check(TokenType::ListType)) {
         ++current_;
-        return parseTypeName(token, "array");
+        return parseTypeName(token, "list");
     }
-    if (check(TokenType::MapType)) {
+    if (check(TokenType::DictType)) {
         ++current_;
-        return parseTypeName(token, "map");
+        return parseTypeName(token, "dict");
     }
     if (check(TokenType::BufferType) && current_ + 1 < tokens_.size() &&
         tokens_[current_ + 1].type != TokenType::LeftParen) {
@@ -899,7 +899,7 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
                 expression->arguments.push_back(parseExpression());
             } while (match(TokenType::Comma));
         }
-        consume(TokenType::RightBracket, "']' after array elements");
+        consume(TokenType::RightBracket, "']' after list elements");
         return expression;
     }
     if (match(TokenType::LeftBrace)) {
@@ -909,11 +909,11 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         if (!check(TokenType::RightBrace)) {
             do {
                 expression->arguments.push_back(parseExpression());
-                consume(TokenType::Colon, "':' between map key and value");
+                consume(TokenType::Colon, "':' between dict key and value");
                 expression->arguments.push_back(parseExpression());
             } while (match(TokenType::Comma));
         }
-        consume(TokenType::RightBrace, "'}' after map entries");
+        consume(TokenType::RightBrace, "'}' after dict entries");
         return expression;
     }
     error(current(), std::string("expected expression, found ") + tokenTypeName(current().type));

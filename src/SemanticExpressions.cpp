@@ -19,11 +19,11 @@ namespace simp {
 namespace {
 
 bool isArrayType(const std::string& type) {
-    return type == "array";
+    return type == "list";
 }
 
 bool isMapType(const std::string& type) {
-    return type == "map";
+    return type == "dict";
 }
 
 bool isBufferType(const std::string& type) {
@@ -205,7 +205,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         for (auto& argument : expression.arguments) {
             const auto type = analyzeExpression(*argument);
             if (type == "void" || type == "buffer" || type == "handle" ||
-                type == "array" || type == "map") {
+                type == "list" || type == "dict") {
                 throw DiagnosticError(argument->location,
                                       "formatted string argument is not printable");
             }
@@ -217,7 +217,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         const auto& target = expression.value;
         const bool known = target == "int" || target == "bool" || target == "float" ||
                            target == "unsigned" || target == "String" ||
-                           target == "array" || target == "map" || target == "buffer" ||
+                           target == "list" || target == "dict" || target == "buffer" ||
                            target == "handle" || target == "any" || target == "type" ||
                            classes_.find(target) != classes_.end();
         if (!known) {
@@ -307,18 +307,18 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             if (isArrayType(receiverType)) {
                 if (expression.value == "length") return "int";
                 throw DiagnosticError(expression.location,
-                                      "arrays support only the read-only 'length' member and "
+                                      "lists support only the read-only 'length' member and "
                                       "'resize' and 'append' methods");
             }
             if (isMapType(receiverType)) {
                 if (expression.value == "length") return "int";
                 if (expression.value == "contains" || expression.value == "remove") {
                     throw DiagnosticError(expression.location,
-                                          "map '" + expression.value +
+                                          "dict '" + expression.value +
                                               "' must be called with a strg key");
                 }
                 throw DiagnosticError(expression.location,
-                                      "maps support only the read-only 'length' member and "
+                                      "dicts support only the read-only 'length' member and "
                                       "'contains' and 'remove' methods");
             }
             if (isBufferType(receiverType)) {
@@ -376,36 +376,36 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                       classes_.find(actualType) != classes_.end();
             if (!validElement) {
                 throw DiagnosticError(element->location,
-                                      "array elements must be scalar, strg, a class reference, "
-                                  "an array, a map, a buffer, a handle, null, or 'any'; found " +
+                                      "list elements must be scalar, strg, a class reference, "
+                                  "a list, a dict, a buffer, a handle, null, or 'any'; found " +
                                       actualType);
             }
         }
-        return "array";
+        return "list";
     }
     case ExpressionKind::MapLiteral: {
         for (std::size_t index = 0; index < expression.arguments.size(); index += 2) {
             auto& key = *expression.arguments[index];
             if (analyzeExpression(key) != "String") {
                 throw DiagnosticError(key.location,
-                                      "map keys must have type strg");
+                                      "dict keys must have type strg");
             }
             const auto valueType = analyzeExpression(*expression.arguments[index + 1]);
             const bool validValue = valueType == "int" || valueType == "bool" ||
                                     valueType == "float" || valueType == "unsigned" ||
                                     valueType == "String" ||
                                     valueType == "null" || valueType == "any" ||
-                                    valueType == "array" || valueType == "map" ||
+                                    valueType == "list" || valueType == "dict" ||
                                     valueType == "buffer" || valueType == "handle" ||
                                     classes_.find(valueType) != classes_.end();
             if (!validValue) {
                 throw DiagnosticError(expression.arguments[index + 1]->location,
-                                      "map values must be scalar, strg, a collection, a class "
+                                      "dict values must be scalar, strg, a collection, a class "
                                       "reference, a buffer, a handle, null, or 'any'; found " +
                                           valueType);
             }
         }
-        return "map";
+        return "dict";
     }
     case ExpressionKind::Index:
     case ExpressionKind::Slice: {
@@ -413,13 +413,13 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         if (expression.kind == ExpressionKind::Slice && expression.sliceHasStep &&
             !isArrayType(collectionType)) {
             throw DiagnosticError(expression.location,
-                                  "slice steps are only supported for arrays");
+                                  "slice steps are only supported for lists");
         }
         if (isArrayType(collectionType)) {
             if (expression.kind == ExpressionKind::Index) {
                 if (analyzeExpression(*expression.arguments.front()) != "int") {
                     throw DiagnosticError(expression.arguments.front()->location,
-                                          "array index and slice bounds must be int");
+                                          "list index and slice bounds must be int");
                 }
                 return "any";
             }
@@ -428,20 +428,20 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                                 : expression.sliceHasEnd;
                 if (present && analyzeExpression(*expression.arguments[index]) != "int") {
                     throw DiagnosticError(expression.arguments[index]->location,
-                                          "array index and slice bounds must be int");
+                                          "list index and slice bounds must be int");
                 }
             }
             if (expression.sliceHasStep) {
                 auto& step = *expression.arguments[2];
                 if (analyzeExpression(step) != "int") {
-                    throw DiagnosticError(step.location, "array slice step must be int");
+                    throw DiagnosticError(step.location, "list slice step must be int");
                 }
                 std::int64_t constantStep = 0;
                 if (constantInteger(step, constantStep) && constantStep == 0) {
-                    throw DiagnosticError(step.location, "array slice step cannot be zero");
+                    throw DiagnosticError(step.location, "list slice step cannot be zero");
                 }
             }
-            return "array";
+            return "list";
         }
         if (isMapType(collectionType) && expression.kind == ExpressionKind::Slice) {
             for (const auto index : {0U, 1U}) {
@@ -449,16 +449,16 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                                 : expression.sliceHasEnd;
                 if (present && analyzeExpression(*expression.arguments[index]) != "int") {
                     throw DiagnosticError(expression.arguments[index]->location,
-                                          "map index and slice bounds must be int");
+                                          "dict index and slice bounds must be int");
                 }
             }
-            return "map";
+            return "dict";
         }
         if (isMapType(collectionType) && expression.kind == ExpressionKind::Index) {
             auto& key = *expression.arguments.front();
             if (analyzeExpression(key) != "String") {
                 throw DiagnosticError(key.location,
-                                      "map keys must have type strg");
+                                      "dict keys must have type strg");
             }
             return "any";
         }
@@ -482,8 +482,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         throw DiagnosticError(expression.location,
                               expression.kind == ExpressionKind::Slice
-                                  ? "slicing requires an array, map, or buffer"
-                                  : "indexing requires an array, map, or buffer");
+                                  ? "slicing requires a list, dict, or buffer"
+                                  : "indexing requires a list, dict, or buffer");
     }
     case ExpressionKind::BufferConstructor:
         if (expression.arguments.size() != 1) {
@@ -646,11 +646,11 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             if (isArrayType(receiverType)) {
                 if (target.value != "resize" && target.value != "append") {
                     throw DiagnosticError(target.location,
-                                          "arrays support only 'resize(int)' and 'append(value)'");
+                                          "lists support only 'resize(int)' and 'append(value)'");
                 }
                 if (expression.arguments.size() != 1) {
                     throw DiagnosticError(expression.location,
-                                          "array '" + target.value + "' expects one argument");
+                                          "list '" + target.value + "' expects one argument");
                 }
                 const auto type = analyzeExpression(*expression.arguments.front());
                 if (target.value == "resize" ? type != "int" :
@@ -660,8 +660,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                      classes_.find(type) == classes_.end())) {
                     throw DiagnosticError(expression.arguments.front()->location,
                                           target.value == "resize"
-                                              ? "array resize length must be int"
-                                              : "array append value must be a supported collection "
+                                              ? "list resize length must be int"
+                                              : "list append value must be a supported collection "
                                                 "element");
                 }
                 return "void";
@@ -669,16 +669,16 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             if (isMapType(receiverType)) {
                 if (target.value != "contains" && target.value != "remove") {
                     throw DiagnosticError(target.location,
-                                          "maps support only the 'contains' and 'remove' methods");
+                                          "dicts support only the 'contains' and 'remove' methods");
                 }
                 if (expression.arguments.size() != 1) {
                     throw DiagnosticError(expression.location,
-                                          "map '" + target.value +
+                                          "dict '" + target.value +
                                               "' expects one strg key");
                 }
                 if (analyzeExpression(*expression.arguments.front()) != "String") {
                     throw DiagnosticError(expression.arguments.front()->location,
-                                          "map key must have type strg");
+                                          "dict key must have type strg");
                 }
                 return "int";
             }
@@ -852,8 +852,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         const bool knownTarget = target == "int" || target == "bool" ||
                                  target == "float" || target == "unsigned" ||
-                                 target == "String" || target == "array" ||
-                                 target == "map" || target == "buffer" ||
+                                 target == "String" || target == "list" ||
+                                 target == "dict" || target == "buffer" ||
                                  target == "handle" || target == "type" ||
                                  classes_.find(target) != classes_.end();
         if (!knownTarget) {
@@ -863,8 +863,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         const bool knownOperand = operand == "null" || operand == "any" ||
                                   operand == "int" || operand == "bool" ||
                                   operand == "float" || operand == "unsigned" ||
-                                  operand == "String" || operand == "array" ||
-                                  operand == "map" || operand == "buffer" ||
+                                  operand == "String" || operand == "list" ||
+                                  operand == "dict" || operand == "buffer" ||
                                   operand == "handle" || operand == "type" ||
                                   classes_.find(operand) != classes_.end();
         if (!knownOperand) {
@@ -930,7 +930,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             // null-capable type supports.
             const auto isNullComparable = [this](const std::string& type) {
                 return type == "any" || type == "buffer" || type == "handle" || type == "String" ||
-                       type == "array" || type == "map" || type == "int" ||
+                       type == "list" || type == "dict" || type == "int" ||
                        type == "bool" || type == "float" || type == "unsigned" ||
                        classes_.find(type) != classes_.end();
             };
@@ -1029,7 +1029,7 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
         if (isArrayType(collectionType)) {
             if (analyzeExpression(*expression.arguments.front()) != "int") {
                 throw DiagnosticError(expression.arguments.front()->location,
-                                      "array index must be int");
+                                      "list index must be int");
             }
             return "any";
         }
@@ -1037,7 +1037,7 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
             auto& key = *expression.arguments.front();
             if (analyzeExpression(key) != "String") {
                 throw DiagnosticError(key.location,
-                                      "map keys must have type strg");
+                                      "dict keys must have type strg");
             }
             return "any";
         }
@@ -1049,7 +1049,7 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
             return "buffer-byte";
         }
         throw DiagnosticError(expression.location,
-                              "index assignment requires an array, map, or buffer");
+                              "index assignment requires a list, dict, or buffer");
     }
     if (expression.kind == ExpressionKind::Slice) {
         throw DiagnosticError(expression.location,
@@ -1068,10 +1068,10 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
                                       "value to a typed variable first");
             }
             if (isArrayType(receiverType) && expression.value == "length") {
-                throw DiagnosticError(expression.location, "array length is read-only");
+                throw DiagnosticError(expression.location, "list length is read-only");
             }
             if (isMapType(receiverType) && expression.value == "length") {
-                throw DiagnosticError(expression.location, "map length is read-only");
+                throw DiagnosticError(expression.location, "dict length is read-only");
             }
             owner = findClass(receiverType, expression.location);
         }

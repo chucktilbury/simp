@@ -9,8 +9,8 @@ class Native {
     int absolute(int value)
     int stringLength(strg text)
     strg stringIdentity(strg text)
-    array identityArray(array items)
-    map identityMap(map items)
+    list identityArray(list items)
+    dict identityMap(dict items)
     Counter identityCounter(Counter value)
     void ignore(int value)
 }
@@ -32,8 +32,8 @@ class Counter {
 int Native.absolute(int value) from "simp_method_demo_abs"
 int Native.stringLength(strg text) from "simp_method_demo_string_length"
 strg Native.stringIdentity(strg text) from "simp_method_demo_string_identity"
-array Native.identityArray(array items) from "simp_method_demo_identity"
-map Native.identityMap(map items) from "simp_method_demo_identity"
+list Native.identityArray(list items) from "simp_method_demo_identity"
+dict Native.identityMap(dict items) from "simp_method_demo_identity"
 Counter Native.identityCounter(Counter value) from "simp_method_demo_identity"
 void Native.ignore(int value) from "simp_method_demo_ignore"
 
@@ -50,12 +50,12 @@ start {
     print(native.stringIdentity("hello"))
     native.ignore(9)
 
-    array numbers = [1, 2, 3]
-    array same = native.identityArray(numbers)
+    list numbers = [1, 2, 3]
+    list same = native.identityArray(numbers)
     print(same.length)
 
-    map values = {"answer": 42}
-    map sameMap = native.identityMap(values)
+    dict values = {"answer": 42}
+    dict sameMap = native.identityMap(values)
     print(sameMap.length)
 
     Counter counter = Counter(42)

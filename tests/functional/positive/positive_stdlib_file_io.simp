@@ -9,7 +9,7 @@ start {
     print(output.tell())
     output.seek(0, 0)
     print(output.readLine())
-    array remainingLines = output.readLines()
+    list remainingLines = output.readLines()
     print(remainingLines.length)
     String remaining = remainingLines[0]
     print(remaining)

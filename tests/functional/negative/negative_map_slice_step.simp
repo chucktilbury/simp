@@ -1,5 +1,5 @@
-# Rejects steps on insertion-order map slices.
+# Rejects steps on insertion-order dict slices.
 start {
-    map values = {"a": 1}
-    map invalid = values[::2]
+    dict values = {"a": 1}
+    dict invalid = values[::2]
 }

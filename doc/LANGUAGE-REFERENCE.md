@@ -15,7 +15,8 @@ Identifiers start with an ASCII letter or `_` and continue with letters,
 digits, or `_`. Keywords are case-insensitive; identifiers are case-sensitive.
 The exact identifier `String` names the built-in string class, while `strg` is
 the primitive type keyword for string values. Lowercase `string` is an ordinary
-identifier. `array`/`list` and `map`/`dict` are synonyms. See `IDENT`,
+identifier. `list` and `dict` are the collection type keywords; `array` and
+`map` are ordinary identifiers. See `IDENT`,
 `primitive-type`, and the lexical grammar.
 
 Statements normally end at a newline. Braces delimit blocks; indentation is
@@ -70,8 +71,8 @@ The built-in types are:
 | `float` | IEEE double-precision floating-point value. Literal parsing rejects non-finite/out-of-range values. |
 | `bool` | `true` or `false`. Conditions must have this type; there is no general truthiness conversion. |
 | `String` / `strg` | Managed UTF-8 string object. `strg` names the existing `String` class type. |
-| `array` / `list` | Ordered, dynamically sized, heterogeneous collection. |
-| `map` / `dict` | String-keyed collection with dynamically typed values. |
+| `list` | Ordered, dynamically sized, heterogeneous collection. |
+| `dict` | String-keyed collection with dynamically typed values. |
 | `buffer` | Mutable sequence of bytes. |
 | `handle` | Opaque native/runtime handle with no built-in language operations. |
 | `any` | Internal inferred type for dynamically tagged values, especially collection reads and loop values. It is not a user-declarable type. |
@@ -159,7 +160,7 @@ This prints `3`, then `40`, on separate lines.
 
 ## Expressions and operators
 
-Expressions include literals, names, parentheses, array and map literals,
+Expressions include literals, names, parentheses, list and dict literals,
 casts, `type(value)`, `buffer(length)`, class construction, method calls,
 member access, indexing, slicing, and type tests. Calls are written as
 `ClassName(arguments)` for construction or `object.method(arguments)` for
@@ -215,14 +216,14 @@ expression statements, `print`, nested blocks, `if`/`else`, `while`,
 
 Conditions are parenthesized and must be `bool`. `else` always introduces a
 block; there is no `else if` production. The `do` body executes at least once.
-`for (value in collection)` iterates array values; `for (key, value in map)`
-iterates map keys and values. The value variable has type `any`; the key
+`for (value in collection)` iterates list values; `for (key, value in dict)`
+iterates dict keys and values. The value variable has type `any`; the key
 variable has type `String`. `break` and `continue` are valid only in loops.
 
 ```simp
 // Complete program: while, continue, and for-each.
 start {
-    array values = [2, 3, 4]
+    list values = [2, 3, 4]
     int total = 0
     for (value in values) {
         if (value is int) {
@@ -446,42 +447,42 @@ handle nativeResource = null
 
 ## Collections
 
-Array literals use `[...]` and may mix supported scalar values, strings,
-class references, arrays, maps, buffers, handles, and `null`. Values are
+List literals use `[...]` and may mix supported scalar values, strings,
+class references, lists, dicts, buffers, handles, and `null`. Values are
 stored with dynamic tags, but `any` is not a type that can be declared for an
 element, variable, field, parameter, or return.
-`array.length` is read-only; `append(value)` and `resize(int)` mutate it.
+`list.length` is read-only; `append(value)` and `resize(int)` mutate it.
 Although literals accept buffers and handles, the current `append` semantic
 check does not accept those two element types directly.
 Indexing and foreach iteration produce values inferred as `any` internally,
 not declared `any` variables. A dynamic value can be type-tested, passed,
 printed, or compared with `null`; extract it into a concrete local before
 using ordinary member access or arithmetic. The runtime checks extraction.
-Array slices return a copy and can include a step:
+List slices return a copy and can include a step:
 `values[start:end:step]`. Bounds are checked by the runtime.
 
-Map literals use `{ key: value, ... }`. Keys must be strings; values may be
+Dict literals use `{ key: value, ... }`. Keys must be strings; values may be
 supported scalar/reference/collection types. Indexed reads and foreach
 iteration produce dynamically tagged values inferred internally as `any`,
-not legal `any` declarations. Maps
+not legal `any` declarations. Dicts
 support `length`, `contains(string)`, `remove(string)`, string-key indexing,
-and slicing. Map slice bounds are integer positions in iteration order;
-stepped map slices are not supported.
+and slicing. Dict slice bounds are integer positions in iteration order;
+stepped dict slices are not supported.
 
-In the current runtime implementation, map keys are hashed bytewise using
+In the current runtime implementation, dict keys are hashed bytewise using
 64-bit FNV-1a (offset basis `14695981039346656037`, prime `1099511628211`).
 The hash index uses a power-of-two, open-addressed bucket table with linear
 probing; the table grows and is rebuilt to keep its load at or below one
 half. After a hash match, key byte length and byte contents are compared.
 Entries themselves are stored in insertion order, so current iteration and
-map slicing follow insertion order. These are implementation details, not a
-stable complexity guarantee. See `array-literal`, `map-literal`,
+dict slicing follow insertion order. These are implementation details, not a
+stable complexity guarantee. See `list-literal`, `dict-literal`,
 `index-or-slice-suffix`, `foreach-statement`, and [STDLIB.md](STDLIB.md).
 
 ```simp
 // Complete program: type-check and extract an indexed collection value.
 start {
-    array values = [42, "text"]
+    list values = [42, "text"]
     if (values[0] is int) {
         int number = values[0]
         print(number)
@@ -561,7 +562,7 @@ String System.lastError() from "simp_system_last_error"
 The external symbol must be linkable by Clang and use the runtime's expected
 ABI. Primitive parameters/results use the corresponding C/LLVM scalar
 representation (`int` is signed 64-bit, `bool` is 1-bit in IR, `float` is double,
-`unsigned` is 64-bit); strings, arrays, maps, buffers, handles, and class
+`unsigned` is 64-bit); strings, lists, dicts, buffers, handles, and class
 references are pointer-based. `void` is allowed only as a method result.
 Declarations and definitions must have matching names, parameter types, and
 return types, and native definitions must be in the same compilation unit

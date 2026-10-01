@@ -88,8 +88,8 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::FloatType: return "'float'";
     case TokenType::Unsigned: return "'unsigned'";
     case TokenType::StrgType: return "'strg'";
-    case TokenType::ArrayType: return "'array'";
-    case TokenType::MapType: return "'map'";
+    case TokenType::ListType: return "'list'";
+    case TokenType::DictType: return "'dict'";
     case TokenType::BufferType: return "'buffer'";
     case TokenType::HandleType: return "'handle'";
     case TokenType::AnyType: return "'any'";
@@ -295,8 +295,7 @@ Token Lexer::scanIdentifierOrInteger() {
         {"bool", TokenType::Bool}, {"float", TokenType::FloatType},
         {"unsigned", TokenType::Unsigned},
         {"strg", TokenType::StrgType},
-        {"array", TokenType::ArrayType}, {"list", TokenType::ArrayType},
-        {"map", TokenType::MapType}, {"dict", TokenType::MapType},
+        {"list", TokenType::ListType}, {"dict", TokenType::DictType},
         {"buffer", TokenType::BufferType}, {"handle", TokenType::HandleType},
         {"any", TokenType::AnyType}, {"type", TokenType::TypeType},
         {"if", TokenType::If},

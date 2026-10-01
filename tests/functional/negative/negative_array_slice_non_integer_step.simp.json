@@ -1,5 +1,5 @@
 {
-  "friendly_name": "reject non-integer array slice step",
-  "expected_diagnostic": "array slice step must be int",
+  "friendly_name": "reject non-integer list slice step",
+  "expected_diagnostic": "list slice step must be int",
   "enabled": true
 }

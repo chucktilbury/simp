@@ -3,8 +3,8 @@ bool
 float
 unsigned
 String
-array
-map
+list
+dict
 buffer
 handle
 Derived

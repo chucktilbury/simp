@@ -1,6 +1,6 @@
-# Covers omitted slice bounds for arrays, maps, and buffers plus array steps.
+# Covers omitted slice bounds for arrays, maps, and buffers plus list steps.
 start {
-    array values = [0, 1, 2, 3, 4, 5]
+    list values = [0, 1, 2, 3, 4, 5]
     print(values[-1])
     int previous = values[-2]
     values[-2] = previous + 10
@@ -20,9 +20,9 @@ start {
         print("negative length should be valid")
     }
 
-    array prefix = values[:3]
-    array suffix = values[3:]
-    array entire = values[:]
+    list prefix = values[:3]
+    list suffix = values[3:]
+    list entire = values[:]
     entire[0] = 99
     print(prefix[0])
     print(prefix[2])
@@ -31,12 +31,12 @@ start {
     print(entire[0])
     print(values[0])
 
-    array reverse = values[::-1]
-    array everyOther = values[::2]
-    array odd = values[1::2]
-    array middle = values[1:5:2]
-    array bounded = values[:5:2]
-    array fullStep = values[::]
+    list reverse = values[::-1]
+    list everyOther = values[::2]
+    list odd = values[1::2]
+    list middle = values[1:5:2]
+    list bounded = values[:5:2]
+    list fullStep = values[::]
     print(reverse[0])
     print(reverse[5])
     print(everyOther[1])
@@ -46,13 +46,13 @@ start {
     fullStep[1] = 88
     print(values[1])
 
-    array descending = values[4:1:-2]
-    array fromFirst = values[0::-1]
-    array fromBoundary = values[6::-2]
-    array negativeRange = values[-2:]
-    array negativeEnd = values[:-1]
-    array clamped = values[-100:100]
-    array mixedNegativeStep = values[-1:-4:-1]
+    list descending = values[4:1:-2]
+    list fromFirst = values[0::-1]
+    list fromBoundary = values[6::-2]
+    list negativeRange = values[-2:]
+    list negativeEnd = values[:-1]
+    list clamped = values[-100:100]
+    list mixedNegativeStep = values[-1:-4:-1]
     print(descending[0])
     print(descending[1])
     print(fromFirst[0])
@@ -67,19 +67,19 @@ start {
 
     int zero = 0
     try {
-        array invalid = values[1:5:zero]
+        list invalid = values[1:5:zero]
         print("unreachable")
     } except(Exception) as error {
         print(error.message)
     }
 
-    map entries = {"a": 10, "b": 20, "c": 30, "d": 40}
-    map firstEntries = entries[:2]
-    map lastEntries = entries[1:]
-    map allEntries = entries[:]
-    map negativeEntries = entries[-2:]
-    map negativeRangeEntries = entries[-3:-1]
-    map clampedEntries = entries[-100:100]
+    dict entries = {"a": 10, "b": 20, "c": 30, "d": 40}
+    dict firstEntries = entries[:2]
+    dict lastEntries = entries[1:]
+    dict allEntries = entries[:]
+    dict negativeEntries = entries[-2:]
+    dict negativeRangeEntries = entries[-3:-1]
+    dict clampedEntries = entries[-100:100]
     firstEntries["a"] = 99
     print(firstEntries.length)
     print(firstEntries["b"])

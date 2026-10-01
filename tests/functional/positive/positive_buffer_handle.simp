@@ -66,23 +66,23 @@ start {
         print(message)
     }
 
-    array buffers = [piece]
+    list buffers = [piece]
     buffer arrayBuffer = buffers[0]
     print(arrayBuffer[0])
     buffer extractedBuffer = buffers[0]
     print(extractedBuffer[1])
-    map bufferMap = {"bytes": piece}
+    dict bufferMap = {"bytes": piece}
     buffer mapBuffer = bufferMap["bytes"]
     print(mapBuffer[1])
     buffer nativeBuffer = Native(91).identityBuffer(piece)
     print(nativeBuffer[1])
 
-    array aliases = [1]
-    array arrayAlias = aliases
+    list aliases = [1]
+    list arrayAlias = aliases
     aliases[0] = 2
     print(arrayAlias[0])
-    map mapAliases = {"value": 3}
-    map mapAlias = mapAliases
+    dict mapAliases = {"value": 3}
+    dict mapAlias = mapAliases
     mapAliases["value"] = 4
     print(mapAlias["value"])
 
@@ -101,13 +101,13 @@ start {
     handle fieldHandle = native.recall()
     print(fieldHandle != null)
 
-    array inlineHandles = [inlineHandle]
+    list inlineHandles = [inlineHandle]
     handle extractedHandle = inlineHandles[0]
     print(extractedHandle != null)
-    array handles = [nativeHandle]
+    list handles = [nativeHandle]
     handle arrayHandle = handles[0]
     native.consume(arrayHandle)
-    map handleMap = {"handle": inlineHandle}
+    dict handleMap = {"handle": inlineHandle}
     handle mapHandle = handleMap["handle"]
     native.consume(mapHandle)
     handle missingHandle = null

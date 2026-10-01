@@ -185,7 +185,7 @@ void SemanticAnalyzer::normalizeType(
     std::string& type, const std::vector<std::string>& namespacePath,
     const SourceLocation& location) const {
     if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
-        type == "array" || type == "map" ||
+        type == "list" || type == "dict" ||
         type == "buffer" || type == "handle" ||
         type == "any" || type == "type" || type == "void") {
         return;
@@ -202,8 +202,8 @@ void SemanticAnalyzer::normalizeExpression(
     if (expression.kind == ExpressionKind::TypeTest &&
         expression.value != "int" && expression.value != "bool" &&
         expression.value != "float" && expression.value != "unsigned" &&
-        expression.value != "array" &&
-        expression.value != "map" && expression.value != "buffer" &&
+        expression.value != "list" &&
+        expression.value != "dict" && expression.value != "buffer" &&
         expression.value != "handle" && expression.value != "any" &&
         expression.value != "type" &&
         expression.value != "void") {
@@ -218,8 +218,8 @@ void SemanticAnalyzer::normalizeExpression(
     if (expression.kind == ExpressionKind::TypeName &&
         expression.value != "int" && expression.value != "bool" &&
         expression.value != "float" && expression.value != "unsigned" &&
-        expression.value != "array" &&
-        expression.value != "map" && expression.value != "buffer" &&
+        expression.value != "list" &&
+        expression.value != "dict" && expression.value != "buffer" &&
         expression.value != "handle" && expression.value != "any" &&
         expression.value != "type") {
         expression.value = resolveClassName(expression.value, namespacePath,
@@ -702,7 +702,7 @@ void SemanticAnalyzer::validateType(const std::string& type, const SourceLocatio
             "into a concrete type");
     }
     if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
-        type == "array" || type == "map" ||
+        type == "list" || type == "dict" ||
         type == "buffer" || type == "handle" || type == "type" ||
         (allowVoid && type == "void")) {
         return;

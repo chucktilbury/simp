@@ -444,25 +444,25 @@ bool SemanticAnalyzer::isAssignable(const std::string& target,
     if (target == "any") {
         return source == "int" || source == "bool" || source == "float" ||
                source == "unsigned" || source == "String" || source == "null" ||
-               source == "array" || source == "map" || source == "buffer" ||
+               source == "list" || source == "dict" || source == "buffer" ||
                source == "handle" || source == "type" ||
                classes_.find(source) != classes_.end();
     }
     if (source == "any") {
         return target == "int" || target == "bool" || target == "float" ||
-               target == "unsigned" || target == "String" || target == "map" ||
-               target == "array" || target == "buffer" || target == "handle" ||
+               target == "unsigned" || target == "String" || target == "dict" ||
+               target == "list" || target == "buffer" || target == "handle" ||
                classes_.find(target) != classes_.end();
     }
     if (source == "null") {
         // Universal-null model (confirmed): null is assignable to every type,
         // including scalars. Scalar null-holding is supported for local
         // variables only (see the "Nullability model (confirmed)" note in
-        // SIMPLE-LANGUAGE-NOTES.md); other scalar contexts (fields, array/map
+        // SIMPLE-LANGUAGE-NOTES.md); other scalar contexts (fields, list/dict
         // elements, function arguments/returns) are unaffected by this and
         // continue to use the plain unboxed representation.
         return target == "buffer" || target == "handle" || target == "String" ||
-               target == "array" || target == "map" || target == "int" ||
+               target == "list" || target == "dict" || target == "int" ||
                target == "unsigned" || target == "float" || target == "bool" ||
                target == "type" || classes_.find(target) != classes_.end();
     }

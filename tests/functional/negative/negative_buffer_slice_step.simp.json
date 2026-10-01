@@ -1,5 +1,5 @@
 {
   "friendly_name": "reject buffer slice step",
-  "expected_diagnostic": "slice steps are only supported for arrays",
+  "expected_diagnostic": "slice steps are only supported for lists",
   "enabled": true
 }

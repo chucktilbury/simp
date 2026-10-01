@@ -1,5 +1,5 @@
 {
-  "friendly_name": "reject constant zero array slice step",
-  "expected_diagnostic": "array slice step cannot be zero",
+  "friendly_name": "reject constant zero list slice step",
+  "expected_diagnostic": "list slice step cannot be zero",
   "enabled": true
 }

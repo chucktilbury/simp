@@ -38,7 +38,7 @@ the exported classes are available directly as `Sys.Process`, `Sys.File`,
 
 ```text
 int argc()
-array argv()
+list argv()
 String arg(int index)
 void exit(int code)
 void abort()
@@ -63,7 +63,7 @@ bool eof()
 String read(int size)
 String readAll()
 String readLine()
-array readLines()
+list readLines()
 int write(String data)
 int writeLine(String line)
 int seek(int offset, int whence)
@@ -73,9 +73,9 @@ void close()
 ```
 
 `readLine` removes the line ending (including a preceding carriage return);
-`readLines` returns lines as an array. End-of-file reads return empty
-string/array results. Invalid handles and I/O failures also return empty
-string/array or the operation's failure value and set `lastError()`.
+`readLines` returns lines as a list. End-of-file reads return empty
+string/list results. Invalid handles and I/O failures also return empty
+string/list or the operation's failure value and set `lastError()`.
 `write`/`writeLine` return the number of bytes written (including the newline
 for `writeLine` when successful); failed writes may return a partial count.
 `seek` returns zero on success and `-1` on failure; `tell` returns the
@@ -94,7 +94,7 @@ bool rename(String oldPath, String newPath)
 bool copy(String src, String dest)
 bool mkdir(String path)
 bool rmdir(String path)
-array listDir(String path)
+list listDir(String path)
 String getCwd()
 bool chDir(String path)
 String absolutePath(String path)
@@ -108,7 +108,7 @@ String tempDir()
 ```
 
 Status operations return `false` on failure; `fileSize` returns `-1`, directory
-listing returns an empty array, and path-producing operations return an empty
+listing returns an empty list, and path-producing operations return an empty
 string on failure. These failures set `lastError()`; successful filesystem
 calls clear it. `absolutePath` resolves an existing path with `realpath`.
 `normalize` is lexical and does not resolve symbolic links. `tempFile` creates
@@ -311,7 +311,7 @@ Import with `import process as P`; the alias names the package namespace, so
 the exported class is available directly as `P.Process`.
 
 ```text
-Process(String executable, array arguments)
+Process(String executable, list arguments)
 bool started()
 bool wait()
 int exitCode()
@@ -320,7 +320,7 @@ String stderr()
 void close()
 ```
 
-The argument array contains arguments after argv[0]; the executable is
+The argument list contains arguments after argv[0]; the executable is
 inserted as argv[0] and launched directly with `posix_spawnp`, not through a
 shell. The child inherits stdin and the caller's environment. `wait()` waits
 for termination while collecting stdout and stderr separately; read those

@@ -1,6 +1,6 @@
 # Exercises string-to-number conversion (s.toInt(), s.toUnsigned(),
 # s.toFloat()): the built-in, non-class dot-operations on 'string', in the
-# same style as array.length/buffer.resize(). Covers success, a leading
+# same style as list.length/buffer.resize(). Covers success, a leading
 # '+', overflow, invalid characters (including trailing garbage and an
 # empty string), a negative sign rejected by toUnsigned, and a null
 # receiver raising instead of crashing.

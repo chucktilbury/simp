@@ -105,13 +105,13 @@ const TestGroupRegistration registration{1, {
              require(tree.find("Binary [+]") != std::string::npos, "addition absent from AST");
              require(tree.find("Binary [*]") != std::string::npos, "multiplication absent from AST");
          }},
-        {"map literals are represented in the AST", [] {
+        {"dict literals are represented in the AST", [] {
              const auto program = parse(
-                 "start {\n map values = {\"answer\": 42}\n}");
+                 "start {\n dict values = {\"answer\": 42}\n}");
              std::ostringstream output;
              simp::dumpAst(program, output);
              require(output.str().find("MapLiteral") != std::string::npos,
-                     "map literal missing from AST");
+                     "dict literal missing from AST");
          }},
         {"raise, catch-all, and finally syntax", [] {
              const auto program = parse(

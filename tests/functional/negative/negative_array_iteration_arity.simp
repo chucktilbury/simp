@@ -1,6 +1,6 @@
-# Rejects binding both a key and value while iterating an array, which supplies values only.
+# Rejects binding both a key and value while iterating an list, which supplies values only.
 start {
-    array values = [1, 2]
+    list values = [1, 2]
     for (key, value in values) {
         print(value)
     }

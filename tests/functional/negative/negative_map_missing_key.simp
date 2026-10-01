@@ -1,5 +1,5 @@
-# Raises an uncaught runtime error when indexing a map with an absent key.
+# Raises an uncaught runtime error when indexing a dict with an absent key.
 start {
-    map values = {}
+    dict values = {}
     print(values["missing"])
 }

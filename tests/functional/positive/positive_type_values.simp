@@ -27,8 +27,8 @@ start {
     float real = 2.5
     unsigned count = 5u
     strg text = "text"
-    array sequence = [1]
-    map dictionary = {"key": 1}
+    list sequence = [1]
+    dict dictionary = {"key": 1}
     buffer bytes = buffer(1)
     Native native = Native(91)
     handle handleValue = native.create()
@@ -65,15 +65,15 @@ start {
     print(type(base) != Base)
     print(type(qualified) == ns.Thing)
 
-    array dynamicValues = [integer, boolean, real, count, text, sequence,
+    list dynamicValues = [integer, boolean, real, count, text, sequence,
                            dictionary, bytes, handleValue, base, null]
     print(type(dynamicValues[0]) == int)
     print(type(dynamicValues[1]) == bool)
     print(type(dynamicValues[2]) == float)
     print(type(dynamicValues[3]) == unsigned)
     print(type(dynamicValues[4]) == strg)
-    print(type(dynamicValues[5]) == array)
-    print(type(dynamicValues[6]) == map)
+    print(type(dynamicValues[5]) == list)
+    print(type(dynamicValues[6]) == dict)
     print(type(dynamicValues[7]) == buffer)
     print(type(dynamicValues[8]) == handle)
     print(type(dynamicValues[9]) == Derived)

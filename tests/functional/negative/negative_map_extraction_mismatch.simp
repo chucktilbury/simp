@@ -1,5 +1,5 @@
-# Raises a runtime error when an integer-valued any is extracted as a map.
+# Raises a runtime error when an integer-valued any is extracted as a dict.
 start {
-    array values = [7]
-    map invalid = values[0]
+    list values = [7]
+    dict invalid = values[0]
 }

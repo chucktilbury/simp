@@ -30,8 +30,8 @@ inline std::string mangleTypeCode(const std::string& type) {
     if (type == "bool") return "b";
     if (type == "any") return "y";
     if (type == "void") return "v";
-    if (type == "array" || type == "list") return "a";
-    if (type == "map" || type == "dict") return "m";
+    if (type == "list") return "a";
+    if (type == "dict") return "m";
     if (type == "buffer") return "B";
     if (type == "handle") return "h";
     // A class type, possibly namespace-qualified. Length-prefixing keeps the

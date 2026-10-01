@@ -10,17 +10,17 @@ class Node {
 }
 
 class Catalog {
-    map content
-    Catalog(map initial) {
+    dict content
+    Catalog(dict initial) {
         content = initial
     }
-    map read() {
+    dict read() {
         return content
     }
 }
 
 start {
-    map table = {"number": 7, "text": "seven", "node": Node(64), "items": [Node(77)], "child": {"value": 9, "node": Node(88)}}
+    dict table = {"number": 7, "text": "seven", "node": Node(64), "items": [Node(77)], "child": {"value": 9, "node": Node(88)}}
     Catalog catalog = Catalog(table)
     print(table.length)
     print(table["number"])
@@ -32,19 +32,19 @@ start {
     dict alias = table
     alias["number"] = 11
     print(table["number"])
-    map repeated = {"same": 1, "same": 2}
+    dict repeated = {"same": 1, "same": 2}
     print(repeated.length)
     print(repeated["same"])
-    map keySemantics = {"Key": 1, "key": 2, "café": 3}
+    dict keySemantics = {"Key": 1, "key": 2, "café": 3}
     print(keySemantics.length)
     print(keySemantics["Key"])
     print(keySemantics["key"])
     print(keySemantics["café"])
 
-    array holder = [table]
-    map fieldMap = catalog.read()
-    map recovered = holder[0]
-    map recoveredAgain = recovered
+    list holder = [table]
+    dict fieldMap = catalog.read()
+    dict recovered = holder[0]
+    dict recoveredAgain = recovered
     Node scratch = Node(0)
     int count = 0
     while (count < 8) {
@@ -53,16 +53,16 @@ start {
     }
     Node retainedNode = recoveredAgain["node"]
     print(retainedNode.read())
-    map retainedChild = recoveredAgain["child"]
+    dict retainedChild = recoveredAgain["child"]
     print(retainedChild["value"])
     Node retainedChildNode = retainedChild["node"]
     print(retainedChildNode.read())
-    array retainedItems = recoveredAgain["items"]
+    list retainedItems = recoveredAgain["items"]
     Node retained = retainedItems[0]
     print(retained.read())
 
     try {
-        map absent = table["absent"]
+        dict absent = table["absent"]
     } except() as error {
         print(error)
     }

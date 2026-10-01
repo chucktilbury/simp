@@ -1,7 +1,7 @@
-# Passes an array into inline C and verifies its length is visible both inside C and in Simple.
+# Passes an list into inline C and verifies its length is visible both inside C and in Simple.
 start {
-    array values = [1, 2, 3]
-    inline (array values) {
+    list values = [1, 2, 3]
+    inline (list values) {
         printf("%llu\n", (unsigned long long)((SimpArray *)*values)->length);
     }
     print(values.length)

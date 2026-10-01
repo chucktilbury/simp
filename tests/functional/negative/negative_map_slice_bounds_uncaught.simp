@@ -1,6 +1,6 @@
-# Raises an uncaught runtime error when a map slice extends beyond its entries.
+# Raises an uncaught runtime error when a dict slice extends beyond its entries.
 start {
-    map values = {"first": 1, "second": 2}
-    map copy = values[0:3]
+    dict values = {"first": 1, "second": 2}
+    dict copy = values[0:3]
     print(copy.length)
 }
