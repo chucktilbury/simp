@@ -90,6 +90,8 @@ bool SemanticAnalyzer::hasNamespaceOrClass(
         const auto classFound = classes_.find(candidate);
         if (classFound != classes_.end()) {
             return classFound->second->builtin ||
+                   (classFound->second->moduleName.empty() &&
+                    classFound->second->name == "String") ||
                    classFound->second->moduleName == currentModule_;
         }
         const auto namespaceFound = namespaceOwners_.find(candidate);
@@ -135,6 +137,8 @@ std::string SemanticAnalyzer::resolveClassName(
         const auto classFound = classes_.find(candidate);
         if (classFound != classes_.end()) {
             return classFound->second->builtin ||
+                   (classFound->second->moduleName.empty() &&
+                    classFound->second->name == "String") ||
                    classFound->second->moduleName == owner;
         }
         const auto namespaceFound = namespaceOwners_.find(candidate);

@@ -182,13 +182,17 @@ if(NO_RUN)
     return()
 endif()
 
-if(NOT DEFINED IR_OUTPUT OR NOT DEFINED EXPECTED_OUTPUT_FILE)
+if(NOT DEFINED IR_OUTPUT OR
+   (NOT DEFINED EXPECTED_OUTPUT_FILE AND NOT DEFINED EXPECT_EMPTY_OUTPUT))
     message(FATAL_ERROR "IR_OUTPUT and EXPECTED_OUTPUT_FILE are required for run mode")
 endif()
-if(NOT EXISTS "${EXPECTED_OUTPUT_FILE}")
+if(DEFINED EXPECT_EMPTY_OUTPUT)
+    set(EXPECTED_OUTPUT "")
+elseif(NOT EXISTS "${EXPECTED_OUTPUT_FILE}")
     message(FATAL_ERROR "Missing output expectation: ${EXPECTED_OUTPUT_FILE}")
+else()
+    file(READ "${EXPECTED_OUTPUT_FILE}" EXPECTED_OUTPUT)
 endif()
-file(READ "${EXPECTED_OUTPUT_FILE}" EXPECTED_OUTPUT)
 if(DEFINED COMPILE_ONLY)
     set(package_object "${OUTPUT}.o")
     execute_process(
@@ -216,7 +220,7 @@ if(DEFINED COMPILE_ONLY)
         message(FATAL_ERROR "Package object relink failed (${link_result}):\n${link_stderr}")
     endif()
     execute_process(
-        COMMAND "${OUTPUT}"
+        COMMAND "${OUTPUT}" ${run_arguments}
         RESULT_VARIABLE run_result
         OUTPUT_VARIABLE program_output
         ERROR_VARIABLE run_stderr
@@ -365,12 +369,27 @@ if(DEFINED REQUIRE_VIRTUAL_DISPATCH)
     endif()
 endif()
 
+set(run_arguments)
+if(DEFINED RUN_ARGUMENTS)
+    list(APPEND run_arguments ${RUN_ARGUMENTS})
+endif()
 execute_process(
-    COMMAND "${OUTPUT}"
+    COMMAND "${OUTPUT}" ${run_arguments}
     RESULT_VARIABLE run_result
     OUTPUT_VARIABLE program_output
     ERROR_VARIABLE run_stderr
 )
+if(DEFINED EXPECT_EXIT_CODE)
+    if(NOT run_result EQUAL EXPECT_EXIT_CODE)
+        message(FATAL_ERROR
+            "Expected compiled program to exit ${EXPECT_EXIT_CODE}, got ${run_result}:\n${run_stderr}")
+    endif()
+    if(NOT program_output STREQUAL EXPECTED_OUTPUT)
+        message(FATAL_ERROR
+            "Expected output '${EXPECTED_OUTPUT}', got '${program_output}'")
+    endif()
+    return()
+endif()
 if(NOT run_result EQUAL 0)
     if(DEFINED EXPECT_RUNTIME_FAILURE)
         if(DEFINED EXPECT_RUNTIME_DIAGNOSTIC AND

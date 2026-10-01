@@ -69,7 +69,7 @@ file(GLOB_RECURSE SIMP_STDLIB_SOURCES CONFIGURE_DEPENDS
 
 find_package(Threads REQUIRED)
 
-add_library(simp_runtime STATIC RuntimeGc.c RuntimeDemoShims.c RuntimeThreads.c)
+add_library(simp_runtime STATIC RuntimeGc.c RuntimeStdlib.c RuntimeDemoShims.c RuntimeThreads.c)
 target_link_libraries(simp_runtime PUBLIC simp_headers Threads::Threads)
 set_target_properties(simp_runtime PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${SIMP_STAGE_RUNTIME_DIRECTORY}"

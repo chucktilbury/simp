@@ -1,0 +1,5 @@
+[package]
+name = "system"
+version = "0.1.0"
+source = "system.simp"
+export = "namespace:System"

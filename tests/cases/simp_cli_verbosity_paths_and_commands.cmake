@@ -10,5 +10,5 @@ set(CASE_EXPECT_COMPILE_OUTPUT
     [==[\[paths\] runtime library: [^
 ]+/simp/libsimp_runtime\.a]==]
     [==[\[command\] '[^']+' '-Wno-override-module' [^
-]+/simp/libsimp_runtime\.a' '-o' ']==])
+]+/simp/libsimp_runtime\.a' '-lm' '-o' ']==])
 set(CASE_REJECT_COMPILE_OUTPUT [==[\[timing\]]==])

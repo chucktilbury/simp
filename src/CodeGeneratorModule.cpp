@@ -657,8 +657,9 @@ void CodeGenerator::emitMain(const Program& program) {
         std::to_string(program.location.column) + ")\n";
     emitStatements(program.statements);
     const auto body = instructions_;
-    instructions_ = debugAnnotate("define i32 @main()" + functionDebug + " {\nentry:\n"
+    instructions_ = debugAnnotate("define i32 @main(i32 %argc, ptr %argv)" + functionDebug + " {\nentry:\n"
                     "  call void @simp_runtime_thread_enter()\n" +
+                    "  call void @simp_runtime_init_args(i32 %argc, ptr %argv)\n" +
                     entryAllocas_ +
                     rootFrameInitialization() + functionPrologue_ + rootFramePush() + body +
                     "  call void @simp_trace_pop(ptr %simp.trace.frame)\n"
@@ -776,6 +777,7 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare void @simp_gc_end_destroy(ptr)\n"
            << "declare void @simp_runtime_thread_enter()\n"
            << "declare void @simp_runtime_thread_exit()\n"
+           << "declare void @simp_runtime_init_args(i32, ptr)\n"
            << "declare ptr @simp_gc_root(ptr)\n"
            << "declare i64 @simp_exception_frame_size()\n"
            << "declare void @simp_exception_frame_init(ptr)\n"

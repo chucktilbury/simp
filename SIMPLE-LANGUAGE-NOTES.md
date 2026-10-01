@@ -1393,6 +1393,40 @@ specified in "Package manifests, resolution, and native linking" above.
 Name mangling is deliberate (see "Name mangling (implemented)" below). SWIG
 may be considered where useful, but no particular binding generator is selected.
 
+### Bundled standard-library packages
+
+These packages are shipped in `stdlib/<name>/<version>/` and are imported by
+package name. An import alias qualifies the exported namespace; for example,
+`import system as Sys` makes `Sys.Process` available.
+
+- **`system`** exports `System`. `Process` provides `argc()` and `argv()` for
+  the command-line arguments, `arg(index)`, `exit(code)`, `abort()`,
+  `getEnv(name)`, and `setEnv(name, value)`. `File` is a stream handle, created
+  with `System.open(path, mode)` (or its constructor), with `read(size)`,
+  `readAll()`, `readLine()`, `readLines()`, `write(data)`, `writeLine(line)`,
+  `seek(offset, whence)`, `tell()`, `flush()`, `close()`, `isOpen()`, and
+  `eof()`. `FileSystem` provides `exists(path)`, `isFile(path)`, `isDir(path)`,
+  `fileSize(path)`, `remove(path)`, `rename(oldPath, newPath)`,
+  `copy(src, dest)`, `mkdir(path)`, `rmdir(path)`, `listDir(path)`,
+  `getCwd()`, `chDir(path)`, and `absolutePath(path)`. `System` is also a
+  convenience class forwarding `argc`, `argv`, `arg`, `exit`, and `abort`,
+  opening files, and exposing `exists` and `getEnv`.
+- **`math`** exports `Math`. Its `Math` class supplies the constants `pi()`,
+  `e()`, and `tau()`; `abs(x)`, `absInt(x)`, `min(a, b)`, `max(a, b)`,
+  `minInt(a, b)`, `maxInt(a, b)`, and `clamp(x, minVal, maxVal)`; `floor(x)`,
+  `ceil(x)`, `round(x)`, and `trunc(x)`; `sqrt(x)`, `cbrt(x)`, `pow(base, exp)`,
+  `exp(x)`, `log(x)`, `log10(x)`, and `log2(x)`; `sin(x)`, `cos(x)`, `tan(x)`,
+  `asin(x)`, `acos(x)`, `atan(x)`, `atan2(y, x)`, `sinh(x)`, `cosh(x)`, and
+  `tanh(x)`; and `degrees(radians)` and `radians(degrees)`.
+- **`networking`** exports `Networking`. `Socket` provides `connect(host,
+  port)`, `send(data)`, `sendString(data)`, `recv(maxBytes)`,
+  `recvString(maxBytes)`, `close()`, `isConnected()`, and
+  `setTimeout(milliseconds)`. `ServerSocket` provides `bind(port)`,
+  `bindAddress(host, port)`, `listen(backlog)`, `accept()`, `close()`,
+  `isBound()`, and `getPort()`. `Url(urlString)` parses a URL and exposes
+  `scheme()`, `host()`, `port()`, `path()`, `query()`, `fragment()`, and
+  `toString()`.
+
 Modules should feel callable like native Simple code. The current priority inventory is:
 
 1. Strings.

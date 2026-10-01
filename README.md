@@ -89,6 +89,36 @@ resolved executable, prefix, runtime, include, prelude, project module root
 (and where it came from), standard modules, compatibility roots, registry, and
 Clang, then exits. See `doc/simp.1` (installed as `simp(1)`).
 
+### Standard library packages
+
+The bundled packages are imported by package name and expose the indicated
+namespace. For example, `import system as Sys` makes the package's classes
+available as `Sys.Process`, `Sys.File`, and so on.
+
+- **`system`** exports namespace `System`: `Process` provides `argc`, `argv`,
+  `arg`, `exit`, `abort`, `getEnv`, and `setEnv`; `File` provides stream
+  operations (`read`, `readAll`, `readLine`, `readLines`, `write`, `writeLine`,
+  `seek`, `tell`, `flush`, `close`, `isOpen`, and `eof`). Open files with
+  `System.open(path, mode)` or construct a `File` directly. `FileSystem`
+  provides `exists`, `isFile`, `isDir`, `fileSize`, `remove`, `rename`, `copy`,
+  `mkdir`, `rmdir`, `listDir`, `getCwd`, `chDir`, and `absolutePath`.
+- **`math`** exports namespace `Math` and class `Math`: constants `pi`, `e`,
+  and `tau`; numeric helpers `abs`, `absInt`, `min`, `max`, `minInt`, `maxInt`,
+  and `clamp`; rounding functions `floor`, `ceil`, `round`, and `trunc`;
+  roots, powers, and logarithms `sqrt`, `cbrt`, `pow`, `exp`, `log`, `log10`,
+  and `log2`; trigonometric and hyperbolic functions `sin`, `cos`, `tan`,
+  `asin`, `acos`, `atan`, `atan2`, `sinh`, `cosh`, and `tanh`; and angle
+  conversions `degrees` and `radians`.
+- **`networking`** exports namespace `Networking`: `Socket` supports
+  `connect`, `send`, `sendString`, `recv`, `recvString`, `close`,
+  `isConnected`, and `setTimeout`; `ServerSocket` supports `bind`,
+  `bindAddress`, `listen`, `accept`, `close`, `isBound`, and `getPort`; `Url`
+  exposes parsed `scheme`, `host`, `port`, `path`, `query`, and `fragment`,
+  plus `toString`.
+
+See "Modules, packages, and priorities" in `SIMPLE-LANGUAGE-NOTES.md` for the
+package API reference and module packaging details.
+
 The repository uses one in-tree build directory: `build/`. `include`, `src`,
 and `tests` each have their own `CMakeLists.txt` and are integrated by the root
 project; standalone configuration is optional. The language prelude lives in

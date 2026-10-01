@@ -379,7 +379,7 @@ int buildExecutable(const BuildContext& context, const std::vector<std::string>&
     }
     for (const auto& library : packageLibraries) arguments.push_back("-l" + library);
     for (const auto& library : libraries) arguments.push_back("-l" + library);
-    arguments.insert(arguments.end(), {"-pthread", context.runtimeLibrary.string(),
+    arguments.insert(arguments.end(), {"-pthread", context.runtimeLibrary.string(), "-lm",
                                        "-o", outputPath});
     return runCompiler(context, arguments, "link the executable");
 }

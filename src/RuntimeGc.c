@@ -9,13 +9,22 @@
 #include "simp/RuntimeGc.h"
 
 #include <errno.h>
+#include <arpa/inet.h>
+#include <dirent.h>
+#include <math.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <pthread.h>
 #include <setjmp.h>
 #include <stdalign.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 typedef struct InlineCStringBuffer {
     struct InlineCStringBuffer *next;
@@ -228,7 +237,6 @@ static _Thread_local int collecting = 0;
 static _Thread_local int running_destructor = 0;
 static RetainedExceptionMessage *retained_exception_messages = NULL;
 static int retained_message_cleanup_registered = 0;
-
 static void free_trace_snapshot(SimpTraceSnapshot *trace) {
     free(trace);
 }
@@ -270,6 +278,23 @@ static void print_trace(const SimpTraceSnapshot *trace) {
         }
         fputc('\n', stderr);
     }
+}
+
+void simp_system_exit(void *self, int64_t code) {
+    (void)self;
+    exit((int)code);
+}
+
+void simp_system_abort(void *self) {
+    (void)self;
+    fputs("Simple abort: fatal error\n", stderr);
+    SimpTraceSnapshot *trace = capture_trace();
+    if (trace != NULL) {
+        fputs("Call stack:\n", stderr);
+        print_trace(trace);
+        free_trace_snapshot(trace);
+    }
+    abort();
 }
 
 /* ---- Threading support: a single global "interpreter lock" ----
