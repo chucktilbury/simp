@@ -146,7 +146,15 @@ inner variable do not change the outer one, and shadowing currently emits no
 warning. Redeclaring a name in the same scope is an error. The compiler
 diagnoses a read that may occur before initialization. Parameters and fields
 are introduced by their declarations; `for` loop variables exist only in the
-loop body. Assignments use `=` as a statement (`declaration`, `assignment`).
+loop body. Assignment operators are statements, not expressions. `=` assigns
+normally; `+=`, `-=`, `*=`, `/=`, and `%=` update an `int`, `unsigned`, or
+`float` variable or object field using the corresponding arithmetic operation.
+Both operands must have a matching arithmetic type, and `%=` is limited to
+`int` and `unsigned`. Collections, buffers, `any`, booleans, and object
+references do not support compound assignment. A compound assignment evaluates
+its target once; for a member target, its receiver is evaluated once. Integer
+overflow and integer division/remainder errors follow the corresponding
+arithmetic operators.
 
 ```simp
 // Complete program: an inner value shadows, rather than changes, the outer value.
@@ -189,8 +197,8 @@ Operators from lowest to highest precedence:
 
 Logical operators require booleans. Arithmetic and comparison support depend
 on operand types; unsupported combinations are rejected during semantic
-analysis. Assignment is not an expression, and there are no compound,
-bitwise, increment, or ternary operators.
+analysis. Assignment is not an expression. There are no bitwise, increment,
+or ternary operators.
 
 Double-quoted text can be formatted by calling the literal:
 `"value: {}"(value)`. Only `{}` placeholders are accepted, and their number

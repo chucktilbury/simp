@@ -94,8 +94,9 @@ Lexical details that affect parsing:
 - LF produces a `NEWLINE` token except while inside parentheses or square
   brackets. Newlines inside braces are not suppressed. Other whitespace is
   discarded. There is no indentation-based syntax.
-- `&` and `|` are legal only as `&&` and `||`. There are no increment,
-  compound-assignment, bitwise, or conditional (`?:`) operators.
+- `&` and `|` are legal only as `&&` and `||`. The scalar compound-assignment
+  operators are `+=`, `-=`, `*=`, `/=`, and `%=`. There are no increment,
+  bitwise, or conditional (`?:`) operators.
 - After `inline` and an optional capture list, the lexer consumes the next
   balanced-brace block as one opaque `INLINE_BODY` token. Braces inside C
   strings and C comments do not change its brace depth.
@@ -203,7 +204,8 @@ statement           ::= declaration
 
 declaration         ::= type, IDENT, [ "=", expression ], terminator
                       | type, IDENT, inline-c-statement ;
-assignment          ::= expression, "=", expression, terminator ;
+assignment          ::= expression, assignment-operator, expression, terminator ;
+assignment-operator ::= "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 method-call-statement
                     ::= expression, terminator ;
 print-statement     ::= "print", "(", [ expression ], ")", terminator ;

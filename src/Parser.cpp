@@ -385,10 +385,16 @@ Statement Parser::parseIdentifierStatement() {
         return parseDeclaration();
     }
     auto expression = parseExpression();
-    if (match(TokenType::Equal)) {
+    Token assignmentOperator;
+    if (check(TokenType::Equal) || check(TokenType::PlusEqual) ||
+        check(TokenType::MinusEqual) || check(TokenType::StarEqual) ||
+        check(TokenType::SlashEqual) || check(TokenType::PercentEqual)) {
+        assignmentOperator = tokens_[current_++];
         Statement statement;
         statement.kind = StatementKind::Assignment;
         statement.location = expression->location;
+        statement.assignmentOperator = assignmentOperator.text;
+        statement.assignmentOperatorLocation = assignmentOperator.location;
         statement.target = std::move(expression);
         statement.expressions.push_back(parseExpression());
         consumeStatementTerminator();

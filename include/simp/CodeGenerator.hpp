@@ -84,6 +84,9 @@ private:
     void emitLoopTransfer(bool isBreak, const SourceLocation& location);
     Value emitExpression(const Expression& expression, const std::string& expectedType = {});
     Value emitIntegerExpression(const Expression& expression);
+    Value emitArithmeticOperation(const std::string& operation,
+                                  const SourceLocation& location,
+                                  const Value& left, const Value& right);
     void emitArrayElementStore(const std::string& valuePointer, Value value,
                                const SourceLocation& location);
     void emitMapElementStore(const std::string& mapPointer, Value key, Value value,

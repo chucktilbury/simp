@@ -405,6 +405,73 @@ CodeGenerator::Value CodeGenerator::emitIntegerExpression(const Expression& expr
     return value;
 }
 
+CodeGenerator::Value CodeGenerator::emitArithmeticOperation(
+    const std::string& operation, const SourceLocation& location,
+    const Value& left, const Value& right) {
+    const auto result = newTemporary();
+    if (left.type == "float") {
+        const char* instruction = operation == "+" ? "fadd" :
+                                  operation == "-" ? "fsub" :
+                                  operation == "*" ? "fmul" :
+                                  operation == "/" ? "fdiv" : nullptr;
+        if (instruction == nullptr) {
+            unsupported(location, "floating-point remainder");
+        }
+        instructions_ += "  " + result + " = " + instruction + " double " +
+                         left.operand + ", " + right.operand + "\n";
+        return {"float", result};
+    }
+    const auto llvmIntegerType = "i64";
+    if (operation == "/" || operation == "%") {
+        const auto zero = newTemporary();
+        const auto failureLabel = freshLabel("division.zero");
+        const auto successLabel = freshLabel("division.ok");
+        instructions_ += "  " + zero + " = icmp eq " + llvmIntegerType + " " +
+                         right.operand + ", 0\n"
+                         "  br i1 " + zero + ", label %" + failureLabel +
+                         ", label %" + successLabel + "\n"
+                         + failureLabel + ":\n"
+                         "  call void @simp_exception_raise(ptr @.simp.division.message, i64 16, ptr " +
+                         internString(location.file) + ", i64 " +
+                         std::to_string(location.file.size()) + ", i64 " +
+                         std::to_string(location.line) + ", i64 " +
+                         std::to_string(location.column) + ")\n"
+                         "  unreachable\n"
+                         + successLabel + ":\n";
+        if (left.type == "int") {
+            const auto minimum = newTemporary();
+            const auto minusOne = newTemporary();
+            const auto overflow = newTemporary();
+            const auto overflowLabel = freshLabel("division.overflow");
+            const auto divisionLabel = freshLabel("division.valid");
+            instructions_ += "  " + minimum + " = icmp eq i64 " + left.operand +
+                             ", -9223372036854775808\n"
+                             "  " + minusOne + " = icmp eq i64 " + right.operand + ", -1\n"
+                             "  " + overflow + " = and i1 " + minimum + ", " + minusOne +
+                             "\n"
+                             "  br i1 " + overflow + ", label %" + overflowLabel +
+                             ", label %" + divisionLabel + "\n"
+                             + overflowLabel + ":\n"
+                             "  call void @simp_exception_raise(ptr @.simp.overflow.message, i64 16, ptr " +
+                             internString(location.file) + ", i64 " +
+                             std::to_string(location.file.size()) + ", i64 " +
+                             std::to_string(location.line) + ", i64 " +
+                             std::to_string(location.column) + ")\n"
+                             "  unreachable\n"
+                             + divisionLabel + ":\n";
+        }
+    }
+    const char* instruction = nullptr;
+    if (operation == "+") instruction = "add";
+    else if (operation == "-") instruction = "sub";
+    else if (operation == "*") instruction = "mul";
+    else if (operation == "/") instruction = left.type == "unsigned" ? "udiv" : "sdiv";
+    else if (operation == "%") instruction = left.type == "unsigned" ? "urem" : "srem";
+    instructions_ += "  " + result + " = " + instruction + " " + llvmIntegerType + " " +
+                     left.operand + ", " + right.operand + "\n";
+    return {left.type, result};
+}
+
 CodeGenerator::Value CodeGenerator::copyBufferValue(Value value,
                                                      const SourceLocation& location) {
     if (!isBufferType(value.type) || value.operand == "null") return value;
@@ -1430,72 +1497,11 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         }
         const auto right = emitExpression(*expression.right,
                                           left.type == "type" ? "type" : "");
-        const auto result = newTemporary();
         if (operation == "+" || operation == "-" || operation == "*" ||
             operation == "/" || operation == "%") {
-            if (left.type == "float") {
-                const char* instruction = operation == "+" ? "fadd" :
-                                          operation == "-" ? "fsub" :
-                                          operation == "*" ? "fmul" :
-                                          operation == "/" ? "fdiv" : nullptr;
-                if (instruction == nullptr) {
-                    unsupported(expression.location, "floating-point remainder");
-                }
-                instructions_ += "  " + result + " = " + instruction + " double " +
-                                 left.operand + ", " + right.operand + "\n";
-                return {"float", result};
-            }
-            const auto llvmIntegerType = "i64";
-            if ((operation == "/" || operation == "%")) {
-                const auto zero = newTemporary();
-                const auto failureLabel = freshLabel("division.zero");
-                const auto successLabel = freshLabel("division.ok");
-                instructions_ += "  " + zero + " = icmp eq " + llvmIntegerType + " " +
-                                 right.operand + ", 0\n"
-                                 "  br i1 " + zero + ", label %" + failureLabel +
-                                 ", label %" + successLabel + "\n"
-                                 + failureLabel + ":\n"
-                                 "  call void @simp_exception_raise(ptr @.simp.division.message, i64 16, ptr " +
-                                 internString(expression.location.file) + ", i64 " +
-                                 std::to_string(expression.location.file.size()) + ", i64 " +
-                                 std::to_string(expression.location.line) + ", i64 " +
-                                 std::to_string(expression.location.column) + ")\n"
-                                 "  unreachable\n"
-                                 + successLabel + ":\n";
-                if (left.type == "int") {
-                    const auto minimum = newTemporary();
-                    const auto minusOne = newTemporary();
-                    const auto overflow = newTemporary();
-                    const auto overflowLabel = freshLabel("division.overflow");
-                    const auto divisionLabel = freshLabel("division.valid");
-                    instructions_ += "  " + minimum + " = icmp eq i64 " + left.operand +
-                                     ", -9223372036854775808\n"
-                                     "  " + minusOne + " = icmp eq i64 " + right.operand +
-                                     ", -1\n"
-                                     "  " + overflow + " = and i1 " + minimum + ", " +
-                                     minusOne + "\n"
-                                     "  br i1 " + overflow + ", label %" + overflowLabel +
-                                     ", label %" + divisionLabel + "\n"
-                                     + overflowLabel + ":\n"
-                                     "  call void @simp_exception_raise(ptr @.simp.overflow.message, i64 16, ptr " +
-                                     internString(expression.location.file) + ", i64 " +
-                                     std::to_string(expression.location.file.size()) + ", i64 " +
-                                     std::to_string(expression.location.line) + ", i64 " +
-                                     std::to_string(expression.location.column) + ")\n"
-                                     "  unreachable\n"
-                                     + divisionLabel + ":\n";
-                }
-            }
-            const char* instruction = nullptr;
-            if (operation == "+") instruction = "add";
-            else if (operation == "-") instruction = "sub";
-            else if (operation == "*") instruction = "mul";
-            else if (operation == "/") instruction = left.type == "unsigned" ? "udiv" : "sdiv";
-            else if (operation == "%") instruction = left.type == "unsigned" ? "urem" : "srem";
-            instructions_ += "  " + result + " = " + instruction + " " + llvmIntegerType + " " +
-                             left.operand + ", " + right.operand + "\n";
-            return {left.type, result};
+            return emitArithmeticOperation(operation, expression.location, left, right);
         }
+        const auto result = newTemporary();
         if (operation == "==" || operation == "!=" || operation == "<" ||
             operation == "<=" || operation == ">" || operation == ">=") {
             if (left.type == "type" || right.type == "type") {
