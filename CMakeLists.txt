@@ -36,5 +36,5 @@ add_subdirectory(include)
 add_subdirectory(src)
 add_subdirectory(tests)
 
-install(FILES README.md SIMPLE-LANGUAGE-NOTES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+install(FILES README.md doc/SIMPLE-LANGUAGE-NOTES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(FILES doc/simp.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1")

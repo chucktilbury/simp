@@ -233,7 +233,7 @@ unary operators associate right-to-left.
 
 | Precedence | Operators / form | Associativity |
 |---:|---|---|
-| 1 | `or`, `||` | left |
+| 1 | `or`, `\|\|` | left |
 | 2 | `and`, `&&` | left |
 | 3 | `not`, `!` | right (prefix) |
 | 4 | `==`, `!=` | left |
