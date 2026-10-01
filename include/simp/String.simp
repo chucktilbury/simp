@@ -15,48 +15,21 @@ class String {
     unsigned toUnsigned()
     float toFloat()
 
-    unsigned byteAt(int index) {
-        raise(Exception("String.byteAt is not implemented"))
-    }
-    String slice(int first, int last) {
-        raise(Exception("String.slice is not implemented"))
-    }
-    void insert(int index, String other) {
-        raise(Exception("String.insert is not implemented"))
-    }
-    void removeRange(int first, int last) {
-        raise(Exception("String.removeRange is not implemented"))
-    }
-    void clear() {
-        raise(Exception("String.clear is not implemented"))
-    }
-    int find(String needle) {
-        raise(Exception("String.find is not implemented"))
-    }
-    bool contains(String needle) {
-        raise(Exception("String.contains is not implemented"))
-    }
-    bool startsWith(String prefix) {
-        raise(Exception("String.startsWith is not implemented"))
-    }
-    bool endsWith(String suffix) {
-        raise(Exception("String.endsWith is not implemented"))
-    }
-    array split(String separator) {
-        raise(Exception("String.split is not implemented"))
-    }
-    String replace(String target, String replacement) {
-        raise(Exception("String.replace is not implemented"))
-    }
-    String trim() {
-        raise(Exception("String.trim is not implemented"))
-    }
-    String toUpper() {
-        raise(Exception("String.toUpper is not implemented"))
-    }
-    String toLower() {
-        raise(Exception("String.toLower is not implemented"))
-    }
+    unsigned byteAt(int index)
+    String slice(int first, int last)
+    void insert(int index, String other)
+    void removeRange(int first, int last)
+    void clear()
+    int find(String needle)
+    bool contains(String needle)
+    bool startsWith(String prefix)
+    bool endsWith(String suffix)
+    array split(String separator)
+    String replace(String target, String replacement)
+    String trim()
+    String strip()
+    String toUpper()
+    String toLower()
 }
 
 void String.append(String other) from "simp_string_append"
@@ -64,3 +37,18 @@ bool String.equals(String other) from "simp_string_equals"
 int String.toInt() from "simp_string_method_to_int"
 unsigned String.toUnsigned() from "simp_string_method_to_unsigned"
 float String.toFloat() from "simp_string_method_to_float"
+unsigned String.byteAt(int index) from "simp_string_method_byte_at"
+String String.slice(int first, int last) from "simp_string_method_slice"
+void String.insert(int index, String other) from "simp_string_method_insert"
+void String.removeRange(int first, int last) from "simp_string_method_remove_range"
+void String.clear() from "simp_string_method_clear"
+int String.find(String needle) from "simp_string_method_find"
+bool String.contains(String needle) from "simp_string_method_contains"
+bool String.startsWith(String prefix) from "simp_string_method_starts_with"
+bool String.endsWith(String suffix) from "simp_string_method_ends_with"
+array String.split(String separator) from "simp_string_method_split"
+String String.replace(String target, String replacement) from "simp_string_method_replace"
+String String.trim() from "simp_string_method_trim"
+String String.strip() from "simp_string_method_trim"
+String String.toUpper() from "simp_string_method_to_upper"
+String String.toLower() from "simp_string_method_to_lower"

@@ -1410,6 +1410,43 @@ static int valid_utf8(const char *bytes, uint64_t length) {
     return 1;
 }
 
+static void raise_string_error(const char *message) {
+    simp_exception_raise(message, (uint64_t)strlen(message), native_file,
+                         sizeof(native_file) - 1, 0, 0);
+}
+
+static int utf8_boundary(const uint8_t *bytes, uint64_t length, uint64_t index) {
+    return index == length || (index < length && (bytes[index] & 0xc0) != 0x80);
+}
+
+static int64_t normalize_string_index(int32_t index, uint64_t length) {
+    int64_t normalized = index;
+    if (normalized < 0) normalized += (int64_t)length;
+    return normalized;
+}
+
+static int64_t normalize_string_bound(int32_t bound, uint64_t length) {
+    int64_t normalized = bound;
+    if (normalized < 0) normalized += (int64_t)length;
+    if (normalized < 0) return 0;
+    if ((uint64_t)normalized > length) return (int64_t)length;
+    return normalized;
+}
+
+static uint64_t find_bytes(const char *data, uint64_t data_length,
+                           const char *needle, uint64_t needle_length,
+                           uint64_t start) {
+    if (needle_length == 0) return start <= data_length ? start : UINT64_MAX;
+    if (needle_length > data_length || start > data_length - needle_length) {
+        return UINT64_MAX;
+    }
+    const uint64_t last = data_length - needle_length;
+    for (uint64_t index = start; index <= last; ++index) {
+        if (memcmp(data + index, needle, (size_t)needle_length) == 0) return index;
+    }
+    return UINT64_MAX;
+}
+
 void simp_string_bytes(void *object, const char **data, uint64_t *length) {
     if (data == NULL || length == NULL) abort();
     SimpBuffer *buffer = string_buffer(object);
@@ -1503,6 +1540,248 @@ double simp_string_method_to_float(void *receiver) {
     uint64_t length;
     simp_string_bytes(receiver, &data, &length);
     return simp_string_to_float(data, length, native_file, sizeof(native_file) - 1, 0, 0);
+}
+
+uint64_t simp_string_method_byte_at(void *receiver, int32_t index) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    const int64_t normalized = normalize_string_index(index, buffer->length);
+    if (normalized < 0 || (uint64_t)normalized >= buffer->length) {
+        raise_string_error("String byte index out of bounds");
+    }
+    return buffer->data[normalized];
+}
+
+void *simp_string_method_slice(void *receiver, int32_t first, int32_t last) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    const uint64_t start = (uint64_t)normalize_string_bound(first, buffer->length);
+    const uint64_t end = (uint64_t)normalize_string_bound(last, buffer->length);
+    if (!utf8_boundary(buffer->data, buffer->length, start) ||
+        !utf8_boundary(buffer->data, buffer->length, end)) {
+        raise_string_error("String range splits a UTF-8 character");
+    }
+    const uint64_t length = end > start ? end - start : 0;
+    return simp_string_new(&simp_string_class_meta,
+                           length == 0 ? NULL : (const char *)buffer->data + start,
+                           length);
+}
+
+void simp_string_method_insert(void *receiver, int32_t index, void *other) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    const int64_t normalized = normalize_string_index(index, buffer->length);
+    if (normalized < 0 || (uint64_t)normalized > buffer->length) {
+        raise_string_error("String insertion index out of bounds");
+    }
+    if (!utf8_boundary(buffer->data, buffer->length, (uint64_t)normalized)) {
+        raise_string_error("String insertion index splits a UTF-8 character");
+    }
+    const char *source;
+    uint64_t length;
+    simp_string_bytes(other, &source, &length);
+    if (length > (uint64_t)INT32_MAX - buffer->length) {
+        raise_string_error("String length out of bounds");
+    }
+    if (length == 0) return;
+    char *copy = (char *)malloc((size_t)length);
+    if (copy == NULL) abort();
+    memcpy(copy, source, (size_t)length);
+    const uint64_t offset = (uint64_t)normalized;
+    const uint64_t old_length = buffer->length;
+    buffer_reserve(buffer, old_length + length);
+    memmove(buffer->data + offset + length, buffer->data + offset,
+            (size_t)(old_length - offset));
+    memcpy(buffer->data + offset, copy, (size_t)length);
+    buffer->length = old_length + length;
+    free(copy);
+}
+
+void simp_string_method_remove_range(void *receiver, int32_t first, int32_t last) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    const uint64_t start = (uint64_t)normalize_string_bound(first, buffer->length);
+    const uint64_t end = (uint64_t)normalize_string_bound(last, buffer->length);
+    if (!utf8_boundary(buffer->data, buffer->length, start) ||
+        !utf8_boundary(buffer->data, buffer->length, end)) {
+        raise_string_error("String range splits a UTF-8 character");
+    }
+    if (end <= start) return;
+    memmove(buffer->data + start, buffer->data + end,
+            (size_t)(buffer->length - end));
+    buffer->length -= end - start;
+}
+
+void simp_string_method_clear(void *receiver) {
+    string_buffer(receiver)->length = 0;
+}
+
+int32_t simp_string_method_find(void *receiver, void *needle) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    const char *needle_data;
+    uint64_t needle_length;
+    simp_string_bytes(needle, &needle_data, &needle_length);
+    const uint64_t index = find_bytes((const char *)buffer->data, buffer->length,
+                                      needle_data, needle_length, 0);
+    return index == UINT64_MAX ? -1 : (int32_t)index;
+}
+
+int32_t simp_string_method_contains(void *receiver, void *needle) {
+    return simp_string_method_find(receiver, needle) >= 0;
+}
+
+int32_t simp_string_method_starts_with(void *receiver, void *prefix) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    const char *prefix_data;
+    uint64_t prefix_length;
+    simp_string_bytes(prefix, &prefix_data, &prefix_length);
+    return prefix_length <= buffer->length &&
+           (prefix_length == 0 ||
+            memcmp(buffer->data, prefix_data, (size_t)prefix_length) == 0);
+}
+
+int32_t simp_string_method_ends_with(void *receiver, void *suffix) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    const char *suffix_data;
+    uint64_t suffix_length;
+    simp_string_bytes(suffix, &suffix_data, &suffix_length);
+    return suffix_length <= buffer->length &&
+           (suffix_length == 0 ||
+            memcmp(buffer->data + buffer->length - suffix_length, suffix_data,
+                   (size_t)suffix_length) == 0);
+}
+
+void *simp_string_method_split(void *receiver, void *separator) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    const char *separator_data;
+    uint64_t separator_length;
+    simp_string_bytes(separator, &separator_data, &separator_length);
+    if (separator_length == 0) {
+        raise_string_error("String.split separator cannot be empty");
+    }
+    uint64_t count = 1;
+    for (uint64_t position = 0;;) {
+        const uint64_t found = find_bytes((const char *)buffer->data, buffer->length,
+                                          separator_data, separator_length, position);
+        if (found == UINT64_MAX) break;
+        ++count;
+        position = found + separator_length;
+    }
+    if (count > INT32_MAX) raise_string_error("String split result is too large");
+    SimpArray *result = (SimpArray *)simp_gc_alloc_array(count);
+    SimpRootFrame frame;
+    void *root = result;
+    void *slots[] = { &root };
+    simp_gc_push_or_abort(&frame, slots, 1);
+    uint64_t field = 0;
+    uint64_t start = 0;
+    for (;;) {
+        const uint64_t found = find_bytes((const char *)buffer->data, buffer->length,
+                                          separator_data, separator_length, start);
+        const uint64_t end = found == UINT64_MAX ? buffer->length : found;
+        const uint64_t length = end - start;
+        result->values[field++] = (SimpArrayValue){
+            SIMP_ARRAY_OBJECT, 0,
+            simp_string_new(&simp_string_class_meta,
+                            length == 0 ? NULL : (const char *)buffer->data + start,
+                            length),
+            0
+        };
+        if (found == UINT64_MAX) break;
+        start = found + separator_length;
+    }
+    simp_gc_pop_or_abort(&frame);
+    return result;
+}
+
+void *simp_string_method_replace(void *receiver, void *target, void *replacement) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    const char *target_data, *replacement_data;
+    uint64_t target_length, replacement_length;
+    simp_string_bytes(target, &target_data, &target_length);
+    simp_string_bytes(replacement, &replacement_data, &replacement_length);
+    if (target_length == 0) {
+        raise_string_error("String.replace target cannot be empty");
+    }
+    uint64_t matches = 0;
+    for (uint64_t position = 0;;) {
+        const uint64_t found = find_bytes((const char *)buffer->data, buffer->length,
+                                          target_data, target_length, position);
+        if (found == UINT64_MAX) break;
+        ++matches;
+        position = found + target_length;
+    }
+    uint64_t result_length = buffer->length;
+    if (replacement_length >= target_length) {
+        const uint64_t growth = replacement_length - target_length;
+        if (growth != 0 && matches > ((uint64_t)INT32_MAX - result_length) / growth) {
+            raise_string_error("String length out of bounds");
+        }
+        result_length += matches * growth;
+    } else {
+        result_length -= matches * (target_length - replacement_length);
+    }
+    char *output = result_length == 0 ? NULL : (char *)malloc((size_t)result_length);
+    if (result_length != 0 && output == NULL) abort();
+    uint64_t source_position = 0, output_position = 0;
+    for (;;) {
+        const uint64_t found = find_bytes((const char *)buffer->data, buffer->length,
+                                          target_data, target_length, source_position);
+        if (found == UINT64_MAX) break;
+        const uint64_t prefix_length = found - source_position;
+        if (prefix_length != 0) {
+            memcpy(output + output_position, buffer->data + source_position,
+                   (size_t)prefix_length);
+            output_position += prefix_length;
+        }
+        if (replacement_length != 0) {
+            memcpy(output + output_position, replacement_data, (size_t)replacement_length);
+            output_position += replacement_length;
+        }
+        source_position = found + target_length;
+    }
+    const uint64_t tail_length = buffer->length - source_position;
+    if (tail_length != 0) {
+        memcpy(output + output_position, buffer->data + source_position, (size_t)tail_length);
+        output_position += tail_length;
+    }
+    void *result = simp_string_new(&simp_string_class_meta, output, output_position);
+    free(output);
+    return result;
+}
+
+static int ascii_whitespace(uint8_t byte) {
+    return byte == ' ' || (byte >= '\t' && byte <= '\r');
+}
+
+void *simp_string_method_trim(void *receiver) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    uint64_t first = 0, last = buffer->length;
+    while (first < last && ascii_whitespace(buffer->data[first])) ++first;
+    while (last > first && ascii_whitespace(buffer->data[last - 1])) --last;
+    const uint64_t length = last - first;
+    return simp_string_new(&simp_string_class_meta,
+                           length == 0 ? NULL : (const char *)buffer->data + first,
+                           length);
+}
+
+static void *string_convert_ascii_case(void *receiver, int uppercase) {
+    SimpBuffer *buffer = string_buffer(receiver);
+    char *copy = buffer->length == 0 ? NULL : (char *)malloc((size_t)buffer->length);
+    if (buffer->length != 0 && copy == NULL) abort();
+    for (uint64_t index = 0; index < buffer->length; ++index) {
+        uint8_t byte = buffer->data[index];
+        if (uppercase && byte >= 'a' && byte <= 'z') byte -= 'a' - 'A';
+        if (!uppercase && byte >= 'A' && byte <= 'Z') byte += 'a' - 'A';
+        copy[index] = (char)byte;
+    }
+    void *result = simp_string_new(&simp_string_class_meta, copy, buffer->length);
+    free(copy);
+    return result;
+}
+
+void *simp_string_method_to_upper(void *receiver) {
+    return string_convert_ascii_case(receiver, 1);
+}
+
+void *simp_string_method_to_lower(void *receiver) {
+    return string_convert_ascii_case(receiver, 0);
 }
 
 void simp_string_format_append(void *object, uint64_t tag, int64_t integer,

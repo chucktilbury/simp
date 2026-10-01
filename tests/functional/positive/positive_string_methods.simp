@@ -1,0 +1,171 @@
+# Exercises String byte/range methods, search, splitting, replacement,
+# trimming, ASCII case conversion, UTF-8 boundary checks, and embedded NULs.
+start {
+    string text = "a,b,,c,"
+    print(text.byteAt(0))
+    print(text.byteAt(-1))
+    print(text.slice(2, 5))
+    print(text.slice(-4, -1))
+    print(text.find("b"))
+    print(text.find(""))
+    print(text.find("missing"))
+    print(text.contains(",,"))
+    print(text.contains("missing"))
+    print(text.startsWith("a,"))
+    print(text.startsWith(""))
+    print(text.endsWith(","))
+    print(text.endsWith(""))
+
+    array parts = text.split(",")
+    print(parts.length)
+    string part = parts[0]
+    print(part)
+    part = parts[1]
+    print(part)
+    part = parts[2]
+    print(part)
+    part = parts[3]
+    print(part)
+    part = parts[4]
+    print(part)
+    part = "".split(",")[0]
+    print(part)
+
+    print("aaaa".replace("aa", "b"))
+    print("abc".replace("z", ""))
+    print(" \t hello \r\n".trim())
+    print("  spaced  ".strip().equals("spaced"))
+    print("\nnewline\n".strip().equals("newline"))
+    print("\r\nwrapped\r\n".strip().equals("wrapped"))
+    print("\t\ttabbed\t".strip().equals("tabbed"))
+    print("inside \n stays".strip().equals("inside \n stays"))
+    print(" \t\n\r".strip().length)
+    print("".strip().length)
+    string stripSource = " \nkeep\r\n"
+    string stripped = stripSource.strip()
+    print(stripSource.equals(" \nkeep\r\n"))
+    print(stripped.equals("keep"))
+    print(stripped == stripSource)
+    string unchanged = "plain"
+    string unchangedStrip = unchanged.strip()
+    print(unchangedStrip == unchanged)
+    print("ab-é".toUpper())
+    print("AB-é".toLower())
+
+    string unicode = "Aé中Z"
+    print(unicode.length)
+    print(unicode.byteAt(-1))
+    print(unicode.byteAt(2))
+    print(unicode.find("中"))
+    print(unicode.slice(1, 3))
+    print(unicode.slice(-4, -1))
+    print(unicode.slice(-100, 100))
+    print(unicode.slice(3, 3).length)
+    print(unicode.toUpper())
+    string equalCopy = unicode.slice(0, unicode.length)
+    print(equalCopy == unicode)
+    print(equalCopy.equals(unicode))
+
+    string mutable = "abcd"
+    string alias = mutable
+    mutable.insert(-1, "XY")
+    print(alias)
+    mutable.insert(0, mutable)
+    print(mutable)
+    mutable.removeRange(0, 4)
+    print(alias)
+    mutable.clear()
+    print(mutable.length)
+    string selfInsert = "xy"
+    selfInsert.insert(1, selfInsert)
+    print(selfInsert)
+    string clamped = "abc".slice(-100, 100)
+    print(clamped)
+
+    string nul = "a"
+    inline (string nul) {
+        const char bytes[] = { 0, 'b' };
+        simp_string_append_bytes(*nul, bytes, 2);
+    }
+    print(nul.length)
+    print(nul.byteAt(1))
+    print(nul.byteAt(2))
+    string nulNeedle = ""
+    inline (string nulNeedle) {
+        const char byte[] = { 0 };
+        simp_string_append_bytes(*nulNeedle, byte, 1);
+    }
+    print(nul.find(nulNeedle))
+    print(nul.contains(nulNeedle))
+    string nulReplacement = nul.replace(nulNeedle, "X")
+    print(nulReplacement.length)
+    print(nulReplacement.byteAt(1))
+    print(nulReplacement.byteAt(2))
+
+    try {
+        unicode.byteAt(20)
+    } except() {
+        print("byte bounds")
+    }
+    try {
+        unicode.slice(2, 4)
+    } except() {
+        print("slice boundary")
+    }
+    try {
+        unicode.insert(2, "x")
+    } except() {
+        print("insert boundary")
+    }
+    try {
+        unicode.removeRange(2, 4)
+    } except() {
+        print("remove boundary")
+    }
+    try {
+        text.insert(20, "x")
+    } except() {
+        print("insert bounds")
+    }
+    try {
+        text.split("")
+    } except() {
+        print("empty separator")
+    }
+    try {
+        text.replace("", "x")
+    } except() {
+        print("empty target")
+    }
+    try {
+        text.find(null)
+    } except() {
+        print("null needle")
+    }
+    try {
+        text.startsWith(null)
+    } except() {
+        print("null prefix")
+    }
+    try {
+        text.endsWith(null)
+    } except() {
+        print("null suffix")
+    }
+    try {
+        text.split(null)
+    } except() {
+        print("null separator")
+    }
+    try {
+        text.replace("a", null)
+    } except() {
+        print("null replacement")
+    }
+    try {
+        string missing = null
+        missing.clear()
+    } except() {
+        print("null receiver")
+    }
+}
