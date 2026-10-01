@@ -32,6 +32,8 @@ typedef struct SimpSemaphoreObject {
     int64_t count;
 } SimpSemaphoreObject;
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 static void (*find_run_method(const SimpClassMeta *metadata))(void *) {
     if (metadata == NULL) return NULL;
     for (uint64_t index = 0; index < metadata->method_count; ++index) {
@@ -43,6 +45,7 @@ static void (*find_run_method(const SimpClassMeta *metadata))(void *) {
     }
     return NULL;
 }
+#pragma GCC diagnostic pop
 
 static void *simp_thread_trampoline(void *raw_args) {
     SimpThreadStartArgs *args = (SimpThreadStartArgs *)raw_args;
