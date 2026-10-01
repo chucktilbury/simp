@@ -62,9 +62,5 @@ start {
     string empty = null
     print(empty == null)
     print(type(empty))
-    try {
-        original.find("h")
-    } except() as error {
-        print(error)
-    }
+    print(original.find("h"))
 }

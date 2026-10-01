@@ -222,11 +222,13 @@ input and reports source-located lexer, parser, and semantic errors.
   `buffer _bytes`. Literals create objects without calling a public constructor.
   Assignment shares the object; `append(other)` mutates all aliases.
   `length` counts UTF-8 bytes, `equals(other)` compares bytes, and `==`/`!=`
-  compare object identity. `toInt()`, `toUnsigned()`, and `toFloat()` parse
-  checked numbers. The declared indexing/slicing and remaining text methods
-  are prototype stubs raising catchable "not implemented" errors; direct
-  string index syntax and code-point operations are deferred. Map keys copy
-  the bytes at insertion, so later mutation cannot change a stored key.
+  compare object identity. `byteAt`, `slice`, `insert`, `removeRange`, `clear`,
+  search, prefix/suffix, split, replace, trim/strip, and ASCII case conversion are
+  available as byte-based methods; invalid bounds and UTF-8-splitting ranges
+  raise catchable exceptions. Unicode case mapping, code-point operations,
+  and direct string index syntax are deferred. `toInt()`, `toUnsigned()`, and
+  `toFloat()` parse checked numbers. Map keys copy the bytes at insertion, so
+  later mutation cannot change a stored key.
 - Arrays (`array`, with `list` accepted as an alias keyword for the exact same
   type) are heterogeneous bags: a single literal such as
   `[1, "two", Node(3), null]` may freely mix ints, strings, class references,
@@ -481,8 +483,9 @@ nested reference tracing and construction-failure behavior, and check
 reverse-order destruction through secondary subobjects.
 
 The parser and semantic analyzer accept more syntax than the backend executes.
-String identity comparisons and reusable formatted expressions are supported;
-byte indexing and remaining text APIs are deferred or explicit stubs.
+String identity comparisons, reusable formatted expressions, and the documented
+byte-based String methods are supported; string index syntax and Unicode-aware
+text operations remain deferred.
 Exception handling uses direct LLVM `setjmp` calls
 paired with the C runtime's `longjmp`; generated frames snapshot and restore
 the precise GC root chain and explicitly running destructor chain before

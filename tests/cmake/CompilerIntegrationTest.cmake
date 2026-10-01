@@ -142,8 +142,8 @@ if(DEFINED REQUIRE_GC_ROOTS)
     list(LENGTH tagged_root_push_calls tagged_root_push_count)
     list(LENGTH root_pop_calls root_pop_count)
     math(EXPR root_push_count "${root_push_count} + ${tagged_root_push_count}")
-    # Prelude String has fourteen explicit, always-raising stub methods. Their
-    # frames are unwound by the exception runtime, not by a normal return.
+    # Generated exception raisers unwind their root frames rather than
+    # returning through the normal pop path.
     string(REGEX MATCHALL "call void @simp_exception_raise_object\\("
            root_unwind_calls "${ir_text}")
     list(LENGTH root_unwind_calls root_unwind_count)

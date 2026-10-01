@@ -627,8 +627,29 @@ statements.
   `.toInt()`, `.toUnsigned()`, and `.toFloat()` are checked conversions.
 - The class declares `byteAt`, `slice`, `insert`, `removeRange`, `clear`,
   `find`, `contains`, `startsWith`, `endsWith`, `split`, `replace`, `trim`,
-  `toUpper`, and `toLower`, but these currently raise catchable
-  "not implemented" exceptions. String indexing/slicing syntax and
+  `toUpper`, and `toLower`. Their indices and ranges are **byte offsets**:
+  `byteAt` accepts Python-style negative indices (`-1` is the last byte) and
+  returns the unsigned value of that byte, including a UTF-8 continuation
+  byte, and raises when the normalized index is out of bounds. `slice(first,last)` and
+  `removeRange(first,last)` use half-open `[first,last)` ranges; negative bounds
+  are offset from the byte length and bounds clamp to `[0,length]`, as in
+  positive-step Python slices. Every range endpoint and insertion position must
+  be a UTF-8 character boundary or the operation raises; inserted and appended
+  Strings therefore preserve valid UTF-8. `insert` accepts positions from
+  `-length` through `length`, and `removeRange` changes aliases in place.
+  `find` returns the first matching byte offset or `-1`; an empty needle is
+  found at zero. `contains` is based on `find`; empty prefixes/suffixes match.
+  `split` requires a nonempty separator, splits on non-overlapping byte
+  matches, and preserves empty leading, trailing, and adjacent fields.
+  `replace` requires a nonempty target and replaces non-overlapping matches
+  from left to right, returning a new String. `trim` and `strip` both return a
+  new String after removing only ASCII space, tab, line feed, vertical tab,
+  form feed, and carriage return at the edges; interior whitespace and
+  non-ASCII bytes are unchanged, and an empty or all-whitespace input returns
+  an empty String.
+  `toUpper` and `toLower` convert ASCII letters only; all non-ASCII UTF-8 bytes
+  are unchanged. Operations use explicit byte lengths, so embedded NUL bytes
+  remain ordinary String content. String indexing/slicing syntax and
   buffer-to-String conversion remain deferred.
 - Formatting `"{} {}"(left, right)` is an expression usable in declarations,
   calls, returns, arrays, and maps; arguments are evaluated once in source
@@ -637,10 +658,10 @@ statements.
   other class objects show `<object>`. `print` adds a newline.
 - Literal and formatted fragments are UTF-8 validated; runtime append
   validates supplied bytes and preserves valid UTF-8. No public byte
-  mutation or buffer-to-String conversion exists in this prototype.
+  raw-byte mutation or buffer-to-String conversion exists in this prototype.
   The native byte view is borrowed, not NUL-terminated, and invalidated by
   resize. `simp_string_cstr()` explicitly copies for inline-C callers.
-  Advanced Unicode operations are deferred.
+  Unicode case mapping and locale-sensitive trimming are not performed.
 
 ### String-to-number conversion (implemented)
 

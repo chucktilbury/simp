@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional String byte operations and UTF-8-safe methods",
+  "expected_diagnostic": "",
+  "enabled": true
+}
