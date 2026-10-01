@@ -24,12 +24,14 @@ and `//` start line comments; `/* ... */` comments can span lines but do not
 nestedly pair. A semicolon begins a comment rather than separating statements.
 See `NEWLINE`, `COMMENT`, and `terminator`.
 
-Integer literals are decimal signed `int` values by default; `u` or `U`
-selects an unsigned literal. Float literals accept decimal points and
-exponents. Signs are unary operators. Double-quoted and single-quoted strings
-are UTF-8 and cannot span physical lines. Double quotes support `\e` (byte
-`0x1b`, ESC), `\n`, `\r`, `\t`, `\\`, and `\"`; single quotes do not interpret
-escapes. See `INTEGER`, `UNSIGNED_INT`, `FLOAT`, `STRING`, and `ESCAPE`.
+Integer literals are decimal signed 64-bit `int` values by default; `u` or `U`
+selects an unsigned 64-bit literal. The signed range is
+-9,223,372,036,854,775,808 through 9,223,372,036,854,775,807; literals outside
+the applicable range are rejected. Signs are unary operators. Float literals
+accept decimal points and exponents. Double-quoted and single-quoted strings
+are UTF-8 and cannot span physical lines. Double quotes support `\n`, `\r`,
+`\t`, `\\`, and `\"`; single quotes do not interpret escapes. See `INTEGER`,
+`UNSIGNED_INT`, `FLOAT`, `STRING`, and `ESCAPE`.
 
 ```simp
 // Complete program: literal spellings and a formatted string.
@@ -63,7 +65,7 @@ The built-in types are:
 
 | Type | Values and behavior |
 |---|---|
-| `int` | Signed 32-bit integer. |
+| `int` | Signed 64-bit integer. |
 | `unsigned` | Unsigned 64-bit integer. |
 | `float` | IEEE double-precision floating-point value. Literal parsing rejects non-finite/out-of-range values. |
 | `bool` | `true` or `false`. Conditions must have this type; there is no general truthiness conversion. |
@@ -87,9 +89,14 @@ the runtime checks the contained value. Explicit numeric casts use
 `int(expr)`, `unsigned(expr)`, or `float(expr)`. Implicit numeric conversions
 are not general-purpose; overload resolution allows a plain integer literal
 to match an `unsigned` parameter, while `u` literals are unsigned directly.
+Integer-to-float casts round to the nearest representable double when needed.
+Float-to-integer casts truncate toward zero; NaN and values outside the
+target range raise a catchable `integer overflow` exception. Signed
+`int` division or remainder with the minimum value and `-1` likewise raises
+`integer overflow`.
 String-to-number conversion is provided by the instance methods
 `value.toInt()`, `value.toUnsigned()`, and `value.toFloat()` and can raise on
-invalid input.
+invalid input or an integer value outside the target type's range.
 See `primary` and `postfix`.
 
 `null` is a universal null value and can initialize nullable locals, including
@@ -528,7 +535,7 @@ String System.lastError() from "simp_system_last_error"
 
 The external symbol must be linkable by Clang and use the runtime's expected
 ABI. Primitive parameters/results use the corresponding C/LLVM scalar
-representation (`int` is 32-bit, `bool` is 1-bit in IR, `float` is double,
+representation (`int` is signed 64-bit, `bool` is 1-bit in IR, `float` is double,
 `unsigned` is 64-bit); strings, arrays, maps, buffers, handles, and class
 references are pointer-based. `void` is allowed only as a method result.
 Declarations and definitions must have matching names, parameter types, and

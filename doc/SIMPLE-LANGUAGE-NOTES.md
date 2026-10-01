@@ -26,7 +26,7 @@ The language is intended to have full object-oriented programming support. Broad
   dynamic representation that is not available as a declared type; `any`
   remains a reserved keyword to produce a clear diagnostic. `bool` is distinct
   from `int`; it is
-  stored as an LLVM `i1`. `int` is signed 32-bit, `unsigned` is unsigned
+  stored as an LLVM `i1`. `int` is signed 64-bit, `unsigned` is unsigned
   64-bit, and `float` denotes an IEEE 754 double-precision value and is stored
   as an LLVM `double`.
 - Boolean literals are the reserved, case-insensitive keywords `true` and
@@ -134,9 +134,12 @@ The language is intended to have full object-oriented programming support. Broad
 - A class-to-`int` cast that is incompatible by type is a syntax error.
 - An explicit class conversion routine may be called when a conversion is intentionally provided.
 - **Explicit scalar casts (implemented):** `float(x)` converts an `int` or
-  `unsigned` operand to `float` (always exact widening); `int(x)` and
-  `unsigned(x)` convert a `float` operand to that type, truncating toward
-  zero (same as C: `int(-3.99)` is `-3`). The cast syntax reuses the
+  `unsigned` operand to a double-precision `float` (rounding when the
+  integer is not exactly representable); `int(x)` and `unsigned(x)` convert
+  an in-range `float` operand to that type, truncating toward zero
+  (`int(-3.99)` is `-3`). NaN and out-of-range inputs raise a catchable
+  `integer overflow` exception. Signed minimum divided by or taken modulo
+  `-1` raises the same exception. The cast syntax reuses the
   existing type-name-as-call convention already used for `buffer(len)`.
   No other scalar cast pairs are supported (for example there is no
   `int(bool)`, `bool(int)`, or direct `int(unsigned)`/`unsigned(int)`
@@ -673,7 +676,7 @@ statements.
 - `s.toInt()` -> `int`: optional leading `+`/`-`, digit-only body, no
   whitespace tolerance, the entire string must be consumed. Raises a
   catchable exception on any non-digit content or on overflowing the
-  32-bit `int` range.
+  signed 64-bit `int` range.
 - `s.toUnsigned()` -> `unsigned`: optional leading `+` only (a leading `-`
   raises rather than being silently accepted or wrapped), otherwise the
   same digit-only, whole-string-consumed rule. Raises on overflowing the
@@ -875,7 +878,7 @@ or shrinks in place, and `values.append(value)` adds one heterogeneous element;
 both return `void`; append accepts supported element values, including an
 internal dynamic value from a collection read. New slots hold `null` (a null
 class-reference tagged value); removed slots release their references for collection. Length must be
-a nonnegative `int` and cannot grow beyond the signed 32-bit range; invalid
+a nonnegative `int` and cannot grow beyond the signed 64-bit range; invalid
 sizes raise source-located exceptions. Array assignment aliases the same
 mutable storage, including changes to its length, while slices remain shallow
 copies. The GC-managed array header remains stable as its separately allocated
@@ -1345,7 +1348,7 @@ return(h)
   local is uninitialized (`null`) for the duration of the C block, exactly
   as an ordinary declaration without an initializer would be.
 - Captured locals are passed by address so C writes are visible to the Simple
-  code after the block. The generated shim parameters are `int *` for `int`,
+  code after the block. The generated shim parameters are `int64_t *` for `int`,
   `_Bool *` for `bool`, `double *` for `float`, `uint64_t *` for `unsigned`,
   `SimpBuffer **` for `buffer`, and `void **` for `strg`, `array`, `map`,
   `handle`, and class references. Thus, for example, C reads or updates `n` through `*n`; a
@@ -1450,7 +1453,7 @@ strg Foo.echo(strg value) from "c_foo_echo"
   mention `from` or any external-specific syntax. The implicit receiver is
   passed to C as the first argument (`void *receiver`), followed by explicit
   parameters. C code may ignore it or use it as an opaque reference.
-- The prototype ABI uses `int` as C `int` (`i32`), `bool` as
+- The prototype ABI uses `int` as C `int64_t` (`i64`), `bool` as
   `_Bool` (`i1`), `float` as `double`, and `unsigned` as `uint64_t` (`i64`);
   `String`/`strg`, `array`, `map`, and class references are opaque pointers,
   and `void` is supported for returns. This replaces the old two-word

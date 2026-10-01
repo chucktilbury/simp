@@ -448,7 +448,7 @@ void SemanticAnalyzer::analyze(Program& program) {
     };
     std::unordered_map<std::string, std::string> externalSymbolSignatures;
     const auto abiCategory = [](const std::string& type) {
-        if (type == "int") return std::string("i32");
+        if (type == "int") return std::string("i64");
         if (type == "bool") return std::string("i1");
         if (type == "float") return std::string("double");
         if (type == "unsigned") return std::string("i64");

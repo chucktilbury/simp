@@ -142,7 +142,7 @@ std::string CodeGenerator::freshLabel(const std::string& prefix) {
 }
 
 std::string CodeGenerator::llvmType(const std::string& type) const {
-    if (type == "int") return "i32";
+    if (type == "int") return "i64";
     if (type == "bool") return "i1";
     if (type == "float") return "double";
     if (type == "unsigned") return "i64";
@@ -432,12 +432,15 @@ CodeGenerator::Value CodeGenerator::buildDynamicValue(Value value,
     instructions_ += "  " + tag + " = insertvalue %SimpleArrayValue zeroinitializer, i64 " +
                      valueTag + ", 0\n";
     std::string stored = tag;
-    if (value.type == "int" || value.type == "bool") {
+    if (value.type == "int") {
+        const auto withInteger = newTemporary();
+        instructions_ += "  " + withInteger + " = insertvalue %SimpleArrayValue " + stored +
+                         ", i64 " + value.operand + ", 1\n";
+        stored = withInteger;
+    } else if (value.type == "bool") {
         const auto extended = newTemporary();
         const auto withInteger = newTemporary();
-        instructions_ += "  " + extended + " = " +
-                         (value.type == "int" ? "sext i32 " : "zext i1 ") +
-                         value.operand + " to i64\n"
+        instructions_ += "  " + extended + " = zext i1 " + value.operand + " to i64\n"
                          "  " + withInteger + " = insertvalue %SimpleArrayValue " + stored +
                          ", i64 " + extended + ", 1\n";
         stored = withInteger;
@@ -500,14 +503,12 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
         instructions_ += "  " + stored + " = extractvalue %SimpleArrayValue " + value.operand +
                          ", 1\n";
         const auto result = newTemporary();
-        if (expectedType == "int") {
-            instructions_ += "  " + result + " = trunc i64 " + stored + " to i32\n";
+        if (expectedType == "int" || expectedType == "unsigned") {
+            instructions_ += "  " + result + " = add i64 " + stored + ", 0\n";
         } else if (expectedType == "bool") {
             instructions_ += "  " + result + " = trunc i64 " + stored + " to i1\n";
         } else if (expectedType == "float") {
             instructions_ += "  " + result + " = bitcast i64 " + stored + " to double\n";
-        } else {
-            instructions_ += "  " + result + " = add i64 " + stored + ", 0\n";
         }
         return {expectedType, result};
     }
@@ -816,7 +817,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              " = getelementptr inbounds %SimpleArray, ptr " + receiver.operand +
                              ", i32 0, i32 1\n"
                              "  " + length + " = load i64, ptr " + lengthAddress + "\n"
-                             "  " + result + " = trunc i64 " + length + " to i32\n";
+                             "  " + result + " = add i64 " + length + ", 0\n";
             return {"int", result};
         }
         if (!qualified && isMapType(receiver.type)) {
@@ -832,7 +833,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              " = getelementptr inbounds %SimpleMap, ptr " + receiver.operand +
                              ", i32 0, i32 1\n"
                              "  " + length + " = load i64, ptr " + lengthAddress + "\n"
-                             "  " + result + " = trunc i64 " + length + " to i32\n";
+                             "  " + result + " = add i64 " + length + ", 0\n";
             return {"int", result};
         }
         if (!qualified && isStringType(receiver.type) && expression.value == "length") {
@@ -842,7 +843,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             std::string length;
             emitStringBytesAccess(receiver, expression.location, data, length);
             const auto result = newTemporary();
-            instructions_ += "  " + result + " = trunc i64 " + length + " to i32\n";
+            instructions_ += "  " + result + " = add i64 " + length + ", 0\n";
             return {"int", result};
         }
         if (!qualified && isBufferType(receiver.type)) {
@@ -858,7 +859,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                              " = getelementptr inbounds %SimpleBuffer, ptr " + receiver.operand +
                              ", i32 0, i32 1\n"
                              "  " + length + " = load i64, ptr " + lengthAddress + "\n"
-                             "  " + result + " = trunc i64 " + length + " to i32\n";
+                             "  " + result + " = add i64 " + length + ", 0\n";
             return {"int", result};
         }
         const auto object = qualified ? emitExpression(*root) : receiver;
@@ -893,7 +894,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         if (isArrayType(collection.type)) {
             const auto index = emitIntegerExpression(*expression.arguments.front());
             instructions_ += "  " + valuePointer + " = call ptr @simp_array_index(ptr " +
-                             collection.operand + ", i32 " + index.operand + ", ptr " + file +
+                             collection.operand + ", i64 " + index.operand + ", ptr " + file +
                              ", i64 " +
                              std::to_string(expression.location.file.size()) + ", i64 " +
                              std::to_string(expression.location.line) + ", i64 " +
@@ -904,7 +905,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             const auto index = emitIntegerExpression(*expression.arguments.front());
             const auto result = newTemporary();
             instructions_ += "  " + result + " = call i64 @simp_buffer_get(ptr " +
-                             collection.operand + ", i32 " + index.operand + ", ptr " + file +
+                             collection.operand + ", i64 " + index.operand + ", ptr " + file +
                              ", i64 " +
                              std::to_string(expression.location.file.size()) + ", i64 " +
                              std::to_string(expression.location.line) + ", i64 " +
@@ -947,12 +948,12 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                   : isMapType(collection.type) ? "simp_map_slice_ex"
                                                                : "simp_array_slice_ex";
         instructions_ += "  " + result + " = call ptr @" + function + "(ptr " + collection.operand +
-                         ", i32 " + start.operand + ", i32 " + end.operand;
+                         ", i64 " + start.operand + ", i64 " + end.operand;
         if (isBufferType(collection.type) || isMapType(collection.type)) {
             instructions_ += ", i32 " + std::string(expression.sliceHasStart ? "1" : "0") +
                              ", i32 " + (expression.sliceHasEnd ? "1" : "0");
         } else {
-            instructions_ += ", i32 " + step.operand + ", i32 " +
+            instructions_ += ", i64 " + step.operand + ", i32 " +
                              std::string(expression.sliceHasStart ? "1" : "0") + ", i32 " +
                              (expression.sliceHasEnd ? "1" : "0");
         }
@@ -966,7 +967,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto length = emitIntegerExpression(*expression.arguments.front());
         const auto file = internString(expression.location.file);
         const auto result = newTemporary();
-        instructions_ += "  " + result + " = call ptr @simp_buffer_new(i32 " + length.operand +
+        instructions_ += "  " + result + " = call ptr @simp_buffer_new(i64 " + length.operand +
                          ", ptr " + file + ", i64 " +
                          std::to_string(expression.location.file.size()) + ", i64 " +
                          std::to_string(expression.location.line) + ", i64 " +
@@ -1080,7 +1081,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                   std::to_string(target.location.column) + ")\n";
             if (target.value == "resize") {
                 instructions_ += "  call void @simp_array_resize(ptr " + receiver.operand +
-                                 ", i32 " + argument.operand + position;
+                                 ", i64 " + argument.operand + position;
             } else {
                 const auto dynamic =
                     buildDynamicValue(argument, expression.arguments.front()->location);
@@ -1109,7 +1110,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             const auto function = target.value == "contains"
                                       ? "simp_map_contains"
                                       : "simp_map_remove";
-            instructions_ += "  " + result + " = call i32 @" + function + "(ptr " +
+            instructions_ += "  " + result + " = call i64 @" + function + "(ptr " +
                              receiver.operand + ", ptr " + keyData + ", i64 " + keyLength +
                              ", ptr " + file + ", i64 " +
                              std::to_string(target.location.file.size()) + ", i64 " +
@@ -1127,20 +1128,14 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             if (target.value == "resize") {
                 const auto length = emitIntegerExpression(*expression.arguments.front());
                 instructions_ += "  call void @simp_buffer_resize(ptr " + receiver.operand +
-                                 ", i32 " + length.operand + common;
+                                 ", i64 " + length.operand + common;
             } else if (target.value == "clear") {
                 instructions_ += "  call void @simp_buffer_clear(ptr " + receiver.operand +
                                  common;
             } else if (target.value == "append") {
                 const auto value = emitExpression(*expression.arguments.front());
-                std::string valueOperand = value.operand;
-                if (value.type == "int") {
-                    valueOperand = newTemporary();
-                    instructions_ += "  " + valueOperand + " = zext i32 " + value.operand +
-                                     " to i64\n";
-                }
                 instructions_ += "  call void @simp_buffer_append(ptr " + receiver.operand +
-                                 ", i64 " + valueOperand + common;
+                                 ", i64 " + value.operand + common;
             } else {
                 throw DiagnosticError(target.location, "unknown buffer operation");
             }
@@ -1251,13 +1246,33 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto& target = expression.value;
         const auto result = newTemporary();
         if (target == "float" && operand.type == "int") {
-            instructions_ += "  " + result + " = sitofp i32 " + operand.operand + " to double\n";
+            instructions_ += "  " + result + " = sitofp i64 " + operand.operand + " to double\n";
         } else if (target == "float" && operand.type == "unsigned") {
             instructions_ += "  " + result + " = uitofp i64 " + operand.operand + " to double\n";
-        } else if (target == "int" && operand.type == "float") {
-            instructions_ += "  " + result + " = fptosi double " + operand.operand + " to i32\n";
-        } else if (target == "unsigned" && operand.type == "float") {
-            instructions_ += "  " + result + " = fptoui double " + operand.operand + " to i64\n";
+        } else if (operand.type == "float" &&
+                   (target == "int" || target == "unsigned")) {
+            const auto lower = newTemporary();
+            const auto upper = newTemporary();
+            const auto valid = newTemporary();
+            const auto validLabel = freshLabel("cast.valid");
+            const auto invalidLabel = freshLabel("cast.invalid");
+            instructions_ += "  " + lower + " = fcmp oge double " + operand.operand +
+                             (target == "int" ? ", -9223372036854775808.0\n" : ", 0.0\n") +
+                             "  " + upper + " = fcmp olt double " + operand.operand +
+                             (target == "int" ? ", 9223372036854775808.0\n" :
+                                                ", 18446744073709551616.0\n") +
+                             "  " + valid + " = and i1 " + lower + ", " + upper + "\n"
+                             "  br i1 " + valid + ", label %" + validLabel + ", label %" +
+                             invalidLabel + "\n" + invalidLabel + ":\n"
+                             "  call void @simp_exception_raise(ptr @.simp.overflow.message, i64 16, ptr " +
+                             internString(expression.location.file) + ", i64 " +
+                             std::to_string(expression.location.file.size()) + ", i64 " +
+                             std::to_string(expression.location.line) + ", i64 " +
+                             std::to_string(expression.location.column) + ")\n"
+                             "  unreachable\n" + validLabel + ":\n";
+            instructions_ += "  " + result + (target == "int" ? " = fptosi double " :
+                                               " = fptoui double ") +
+                             operand.operand + " to i64\n";
         } else {
             unsupported(expression.location,
                        "cast '" + operand.type + "' to '" + target + "'");
@@ -1325,6 +1340,12 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         return {"bool", result};
     }
     case ExpressionKind::Unary: {
+        if (expression.value == "-" && expression.left &&
+            expression.left->kind == ExpressionKind::Integer &&
+            expression.left->value.substr(
+                expression.left->value.find_first_not_of('0')) == "9223372036854775808") {
+            return {"int", "-9223372036854775808"};
+        }
         const auto operand = emitExpression(*expression.left);
         if (expression.value == "+") return operand;
         const auto result = newTemporary();
@@ -1332,7 +1353,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             if (operand.type == "float") {
                 instructions_ += "  " + result + " = fneg double " + operand.operand + "\n";
             } else {
-                instructions_ += "  " + result + " = sub i32 0, " + operand.operand + "\n";
+                instructions_ += "  " + result + " = sub i64 0, " + operand.operand + "\n";
             }
         } else if (expression.value == "!") {
             instructions_ += "  " + result + " = xor i1 " + operand.operand + ", true\n";
@@ -1390,7 +1411,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                  left.operand + ", " + right.operand + "\n";
                 return {"float", result};
             }
-            const auto llvmIntegerType = left.type == "unsigned" ? "i64" : "i32";
+            const auto llvmIntegerType = "i64";
             if ((operation == "/" || operation == "%")) {
                 const auto zero = newTemporary();
                 const auto failureLabel = freshLabel("division.zero");
@@ -1407,6 +1428,29 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                  std::to_string(expression.location.column) + ")\n"
                                  "  unreachable\n"
                                  + successLabel + ":\n";
+                if (left.type == "int") {
+                    const auto minimum = newTemporary();
+                    const auto minusOne = newTemporary();
+                    const auto overflow = newTemporary();
+                    const auto overflowLabel = freshLabel("division.overflow");
+                    const auto divisionLabel = freshLabel("division.valid");
+                    instructions_ += "  " + minimum + " = icmp eq i64 " + left.operand +
+                                     ", -9223372036854775808\n"
+                                     "  " + minusOne + " = icmp eq i64 " + right.operand +
+                                     ", -1\n"
+                                     "  " + overflow + " = and i1 " + minimum + ", " +
+                                     minusOne + "\n"
+                                     "  br i1 " + overflow + ", label %" + overflowLabel +
+                                     ", label %" + divisionLabel + "\n"
+                                     + overflowLabel + ":\n"
+                                     "  call void @simp_exception_raise(ptr @.simp.overflow.message, i64 16, ptr " +
+                                     internString(expression.location.file) + ", i64 " +
+                                     std::to_string(expression.location.file.size()) + ", i64 " +
+                                     std::to_string(expression.location.line) + ", i64 " +
+                                     std::to_string(expression.location.column) + ")\n"
+                                     "  unreachable\n"
+                                     + divisionLabel + ":\n";
+                }
             }
             const char* instruction = nullptr;
             if (operation == "+") instruction = "add";

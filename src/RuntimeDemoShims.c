@@ -16,7 +16,7 @@
 typedef struct SimpDemoNative {
     const SimpClassMeta *metadata;
     void *owner;
-    int32_t marker;
+    int64_t marker;
 } SimpDemoNative;
 
 static int demo_handle_resource;
@@ -31,22 +31,22 @@ static void require_demo_native_receiver(void *receiver) {
     }
 }
 
-int32_t simp_method_demo_abs(void *receiver, int32_t value) {
+int64_t simp_method_demo_abs(void *receiver, int64_t value) {
     require_demo_native_receiver(receiver);
-    return abs(value);
+    return value == INT64_MIN ? INT64_MAX : (value < 0 ? -value : value);
 }
 
-void simp_method_demo_ignore(void *receiver, int32_t value) {
+void simp_method_demo_ignore(void *receiver, int64_t value) {
     require_demo_native_receiver(receiver);
     (void)value;
 }
 
-int32_t simp_method_demo_string_length(void *receiver, void *text) {
+int64_t simp_method_demo_string_length(void *receiver, void *text) {
     require_demo_native_receiver(receiver);
     const char *data;
     uint64_t length;
     simp_string_bytes(text, &data, &length);
-    return (int32_t)length;
+    return (int64_t)length;
 }
 
 void *simp_method_demo_string_identity(void *receiver, void *text) {
@@ -59,7 +59,7 @@ void *simp_method_demo_identity(void *receiver, void *object) {
     return object;
 }
 
-int32_t simp_method_demo_exception_identity(void *receiver, void *left, void *right) {
+int64_t simp_method_demo_exception_identity(void *receiver, void *left, void *right) {
     if (receiver == NULL) abort();
     return left == right;
 }

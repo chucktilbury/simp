@@ -56,7 +56,7 @@ void simp_thread_join(void *receiver, void *worker);
 
 /* A plain counting semaphore. `initial_count` must be >= 0 (aborts
  * otherwise). Returns an opaque handle; `receiver` is unused. */
-void *simp_semaphore_create(void *receiver, int32_t initial_count);
+void *simp_semaphore_create(void *receiver, int64_t initial_count);
 void simp_semaphore_wait(void *receiver, void *semaphore);
 void simp_semaphore_signal(void *receiver, void *semaphore);
 void simp_semaphore_release(void *receiver, void *semaphore);

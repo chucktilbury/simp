@@ -21,12 +21,12 @@
  * with the expected marker value before doing any work. This ensures the
  * end-to-end test fails if a generated call omits or misorders the implicit
  * receiver argument. */
-int32_t simp_method_demo_abs(void *receiver, int32_t value);
-void simp_method_demo_ignore(void *receiver, int32_t value);
-int32_t simp_method_demo_string_length(void *receiver, void *text);
+int64_t simp_method_demo_abs(void *receiver, int64_t value);
+void simp_method_demo_ignore(void *receiver, int64_t value);
+int64_t simp_method_demo_string_length(void *receiver, void *text);
 void *simp_method_demo_string_identity(void *receiver, void *text);
 void *simp_method_demo_identity(void *receiver, void *object);
-int32_t simp_method_demo_exception_identity(void *receiver, void *left, void *right);
+int64_t simp_method_demo_exception_identity(void *receiver, void *left, void *right);
 void *simp_method_demo_handle_create(void *receiver);
 void simp_method_demo_handle_consume(void *receiver, void *handle);
 void *simp_method_demo_handle_identity(void *receiver, void *handle);

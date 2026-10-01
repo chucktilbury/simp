@@ -1,6 +1,5 @@
-# Exercises explicit scalar casts: int/unsigned -> float always widens
-# exactly, and float -> int/unsigned narrows by truncating toward zero,
-# the same model C uses for these conversions. Casts are written using
+# Exercises explicit scalar casts: int/unsigned -> float converts to double,
+# and in-range float -> int/unsigned truncates toward zero. Casts are written using
 # the target type name as a call, e.g. float(x), matching the existing
 # buffer(len) constructor-call convention.
 start {

@@ -93,7 +93,7 @@ void CodeGenerator::emitPrintValue(const Value& value, const SourceLocation& loc
         return;
     }
     if (value.type == "int") {
-        instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i32 " +
+        instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i64 " +
                          value.operand + ")\n";
     } else if (value.type == "unsigned") {
         instructions_ += "  call i32 (ptr, ...) @printf(ptr @.simp.unsigned.format, i64 " +
@@ -180,11 +180,9 @@ void CodeGenerator::emitPrintDynamicValue(const Value& value,
                      " ]\n";
     instructions_ += intLabel + ":\n";
     const auto stored = newTemporary();
-    const auto truncated = newTemporary();
     instructions_ += "  " + stored + " = extractvalue %SimpleArrayValue " + value.operand +
                      ", 1\n"
-                     "  " + truncated + " = trunc i64 " + stored + " to i32\n"
-                     "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i32 " + truncated +
+                     "  call i32 (ptr, ...) @printf(ptr @.simp.int.format, i64 " + stored +
                      ")\n"
                      "  br label %" + endLabel + "\n";
     instructions_ += boolLabel + ":\n";

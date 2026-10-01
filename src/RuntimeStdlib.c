@@ -78,10 +78,11 @@ static void *new_array(void) {
 }
 
 static void append_array_object(SimpArray *array, void *object) {
-    if (array == NULL || array->length >= INT32_MAX) abort();
+    if (array == NULL || array->length >= (uint64_t)INT64_MAX) abort();
     if (array->length == array->capacity) {
-        uint64_t capacity = array->capacity == 0 ? 1 : array->capacity * 2;
-        if (capacity > INT32_MAX) capacity = INT32_MAX;
+        uint64_t capacity = array->capacity == 0 ? 1 :
+            array->capacity > (uint64_t)INT64_MAX / 2
+                ? (uint64_t)INT64_MAX : array->capacity * 2;
         if (capacity > SIZE_MAX / sizeof(*array->values)) abort();
         SimpArrayValue *values = (SimpArrayValue *)realloc(
             array->values, (size_t)capacity * sizeof(*array->values));
@@ -93,7 +94,7 @@ static void append_array_object(SimpArray *array, void *object) {
         (SimpArrayValue){SIMP_ARRAY_OBJECT, 0, object, 0};
 }
 
-int32_t simp_system_argc(void *self) {
+int64_t simp_system_argc(void *self) {
     (void)self;
     return process_argc;
 }
@@ -105,7 +106,7 @@ void *simp_system_argv(void *self) {
     SimpRootFrame frame;
     void *slots[] = {&root};
     simp_gc_push_or_abort(&frame, slots, 1);
-    for (int32_t index = 0; index < process_argc; ++index) {
+    for (int64_t index = 0; index < process_argc; ++index) {
         const char *argument = process_argv == NULL || process_argv[index] == NULL
                                    ? ""
                                    : process_argv[index];
@@ -116,7 +117,7 @@ void *simp_system_argv(void *self) {
     return root;
 }
 
-void *simp_system_arg(void *self, int32_t index) {
+void *simp_system_arg(void *self, int64_t index) {
     (void)self;
     if (index < 0 || index >= process_argc || process_argv == NULL ||
         process_argv[index] == NULL) {
@@ -194,17 +195,21 @@ int32_t simp_fs_is_dir(void *self, void *path) {
     return result;
 }
 
-int32_t simp_fs_file_size(void *self, void *path) {
+int64_t simp_fs_file_size(void *self, void *path) {
     (void)self;
     char *name = copy_string_bytes(path);
     if (name == NULL) return -1;
     struct stat info;
     const int status = stat(name, &info);
-    const int32_t result = status == 0 && S_ISREG(info.st_mode)
-                               ? (info.st_size > INT32_MAX ? INT32_MAX
-                                                           : (int32_t)info.st_size)
-                               : -1;
-    if (status == 0 && S_ISREG(info.st_mode) && info.st_size > INT32_MAX)
+    const uintmax_t native_size = status == 0 && S_ISREG(info.st_mode) &&
+                                  info.st_size >= 0
+                                      ? (uintmax_t)info.st_size : 0;
+    const int64_t result = status == 0 && S_ISREG(info.st_mode) &&
+                           info.st_size >= 0 &&
+                           native_size <= (uintmax_t)INT64_MAX
+                               ? (int64_t)native_size : -1;
+    if (status == 0 && S_ISREG(info.st_mode) && info.st_size >= 0 &&
+        native_size > (uintmax_t)INT64_MAX)
         simp_runtime_set_error(EOVERFLOW);
     else if (result >= 0) simp_runtime_clear_error();
     else simp_runtime_set_error(status != 0 ? errno : EINVAL);
@@ -413,7 +418,7 @@ void *simp_file_open(void *self, void *path, void *mode) {
     return file;
 }
 
-void *simp_file_read(void *self, void *handle, int32_t size) {
+void *simp_file_read(void *self, void *handle, int64_t size) {
     (void)self;
     if (handle == NULL || size < 0) {
         simp_runtime_set_error(handle == NULL ? EBADF : EINVAL);
@@ -421,6 +426,10 @@ void *simp_file_read(void *self, void *handle, int32_t size) {
     }
     if (size == 0) {
         simp_runtime_clear_error();
+        return simple_string(NULL, 0);
+    }
+    if ((uint64_t)size > SIZE_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
         return simple_string(NULL, 0);
     }
     char *bytes = (char *)malloc((size_t)size);
@@ -444,7 +453,8 @@ static void *read_all(FILE *file) {
     for (;;) {
         const size_t count = fread(chunk, 1, sizeof(chunk), file);
         if (count != 0) {
-            if (count > (size_t)INT32_MAX - length) {
+            if (length > (size_t)INT64_MAX ||
+                count > (size_t)INT64_MAX - length) {
                 free(bytes);
                 simp_runtime_set_error(EOVERFLOW);
                 return simple_string(NULL, 0);
@@ -452,8 +462,8 @@ static void *read_all(FILE *file) {
             const size_t required = length + count;
             if (required > capacity) {
                 size_t grown = capacity == 0 ? sizeof(chunk) : capacity;
-                while (grown < required) grown = grown > (size_t)INT32_MAX / 2
-                                                     ? (size_t)INT32_MAX
+                while (grown < required) grown = grown > (size_t)INT64_MAX / 2
+                                                     ? (size_t)INT64_MAX
                                                      : grown * 2;
                 char *grown_bytes = (char *)realloc(bytes, grown);
                 if (grown_bytes == NULL) {
@@ -499,10 +509,14 @@ static int read_line_bytes(FILE *file, char **line, size_t *length) {
     int character;
     while ((character = fgetc(file)) != EOF) {
         if (character == '\n') break;
-        if (used == (size_t)INT32_MAX) break;
+        if (used == (size_t)INT64_MAX) {
+            errno = EOVERFLOW;
+            free(bytes);
+            return 0;
+        }
         if (used == capacity) {
-            const size_t grown = capacity > (size_t)INT32_MAX / 2
-                                     ? (size_t)INT32_MAX
+            const size_t grown = capacity > (size_t)INT64_MAX / 2
+                                     ? (size_t)INT64_MAX
                                      : capacity * 2;
             char *grown_bytes = (char *)realloc(bytes, grown);
             if (grown_bytes == NULL) {
@@ -534,7 +548,7 @@ void *simp_file_read_line(void *self, void *handle) {
     char *line;
     size_t length;
     if (!read_line_bytes((FILE *)handle, &line, &length)) {
-        if (ferror((FILE *)handle) || errno == ENOMEM)
+        if (ferror((FILE *)handle) || errno == ENOMEM || errno == EOVERFLOW)
             simp_runtime_set_error(errno == 0 ? EIO : errno);
         else simp_runtime_clear_error();
         return simple_string(NULL, 0);
@@ -560,7 +574,7 @@ void *simp_file_read_lines(void *self, void *handle) {
             free(line);
             append_array_object((SimpArray *)root, value);
         }
-        if (ferror((FILE *)handle) || errno == ENOMEM)
+        if (ferror((FILE *)handle) || errno == ENOMEM || errno == EOVERFLOW)
             simp_runtime_set_error(errno == 0 ? EIO : errno);
         else simp_runtime_clear_error();
     } else {
@@ -570,7 +584,7 @@ void *simp_file_read_lines(void *self, void *handle) {
     return root;
 }
 
-int32_t simp_file_write(void *self, void *handle, void *data) {
+int64_t simp_file_write(void *self, void *handle, void *data) {
     (void)self;
     if (handle == NULL || data == NULL) {
         simp_runtime_set_error(EINVAL);
@@ -582,10 +596,10 @@ int32_t simp_file_write(void *self, void *handle, void *data) {
     const size_t written = fwrite(bytes, 1, (size_t)length, (FILE *)handle);
     if (written != length) simp_runtime_set_error(errno == 0 ? EIO : errno);
     else simp_runtime_clear_error();
-    return written > INT32_MAX ? INT32_MAX : (int32_t)written;
+    return written > (size_t)INT64_MAX ? INT64_MAX : (int64_t)written;
 }
 
-int32_t simp_file_write_line(void *self, void *handle, void *line) {
+int64_t simp_file_write_line(void *self, void *handle, void *line) {
     (void)self;
     if (handle == NULL || line == NULL) {
         simp_runtime_set_error(EINVAL);
@@ -597,29 +611,39 @@ int32_t simp_file_write_line(void *self, void *handle, void *line) {
     const size_t written = fwrite(bytes, 1, (size_t)length, (FILE *)handle);
     if (written != length) {
         simp_runtime_set_error(errno == 0 ? EIO : errno);
-        return written > INT32_MAX ? INT32_MAX : (int32_t)written;
+        return written > (size_t)INT64_MAX ? INT64_MAX : (int64_t)written;
     }
     const int newline = fputc('\n', (FILE *)handle);
-    if (newline == EOF) simp_runtime_set_error(errno == 0 ? EIO : errno);
-    else simp_runtime_clear_error();
-    return newline == EOF || written >= INT32_MAX
-               ? (written > INT32_MAX ? INT32_MAX : (int32_t)written)
-               : (int32_t)written + 1;
+    if (newline == EOF) {
+        simp_runtime_set_error(errno == 0 ? EIO : errno);
+        return written > (size_t)INT64_MAX ? INT64_MAX : (int64_t)written;
+    }
+    if (written >= (size_t)INT64_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
+        return INT64_MAX;
+    }
+    simp_runtime_clear_error();
+    return (int64_t)written + 1;
 }
 
-int32_t simp_file_seek(void *self, void *handle, int32_t offset, int32_t whence) {
+int64_t simp_file_seek(void *self, void *handle, int64_t offset, int64_t whence) {
     (void)self;
     if (handle == NULL) {
         simp_runtime_set_error(EBADF);
         return -1;
     }
-    const int result = fseek((FILE *)handle, (long)offset, whence);
+    if (offset < (int64_t)LONG_MIN || offset > (int64_t)LONG_MAX ||
+        whence < INT_MIN || whence > INT_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
+        return -1;
+    }
+    const int result = fseek((FILE *)handle, (long)offset, (int)whence);
     if (result != 0) simp_runtime_set_error(errno);
     else simp_runtime_clear_error();
     return result;
 }
 
-int32_t simp_file_tell(void *self, void *handle) {
+int64_t simp_file_tell(void *self, void *handle) {
     (void)self;
     if (handle == NULL) {
         simp_runtime_set_error(EBADF);
@@ -628,7 +652,7 @@ int32_t simp_file_tell(void *self, void *handle) {
     const long position = ftell((FILE *)handle);
     if (position < 0) simp_runtime_set_error(errno);
     else simp_runtime_clear_error();
-    return position < 0 ? -1 : position > INT32_MAX ? INT32_MAX : (int32_t)position;
+    return position;
 }
 
 void simp_file_flush(void *self, void *handle) {
@@ -656,14 +680,14 @@ int32_t simp_file_eof(void *self, void *handle) {
 }
 
 double simp_math_abs(void *self, double x) { (void)self; return fabs(x); }
-int32_t simp_math_abs_int(void *self, int32_t x) {
+int64_t simp_math_abs_int(void *self, int64_t x) {
     (void)self;
-    return x == INT32_MIN ? INT32_MAX : (x < 0 ? -x : x);
+    return x == INT64_MIN ? INT64_MAX : (x < 0 ? -x : x);
 }
 double simp_math_min(void *self, double a, double b) { (void)self; return fmin(a, b); }
 double simp_math_max(void *self, double a, double b) { (void)self; return fmax(a, b); }
-int32_t simp_math_min_int(void *self, int32_t a, int32_t b) { (void)self; return a < b ? a : b; }
-int32_t simp_math_max_int(void *self, int32_t a, int32_t b) { (void)self; return a > b ? a : b; }
+int64_t simp_math_min_int(void *self, int64_t a, int64_t b) { (void)self; return a < b ? a : b; }
+int64_t simp_math_max_int(void *self, int64_t a, int64_t b) { (void)self; return a > b ? a : b; }
 double simp_math_clamp(void *self, double x, double min_value, double max_value) {
     (void)self;
     if (min_value > max_value) {
@@ -703,31 +727,56 @@ double simp_math_sinh(void *self, double x) { (void)self; return sinh(x); }
 double simp_math_cosh(void *self, double x) { (void)self; return cosh(x); }
 double simp_math_tanh(void *self, double x) { (void)self; return tanh(x); }
 
-static int socket_fd(int32_t fd) { return fd; }
+static int socket_fd(int64_t fd) {
+    if (fd < 0) {
+        errno = EBADF;
+        simp_runtime_set_error(errno);
+        return -1;
+    }
+    if (fd > INT_MAX) {
+        errno = EOVERFLOW;
+        simp_runtime_set_error(errno);
+        return -1;
+    }
+    return (int)fd;
+}
 
-static int32_t native_send(int fd, const void *bytes, size_t length) {
+static int64_t native_send(int fd, const void *bytes, size_t length) {
+    if (length > (size_t)SSIZE_MAX || (uintmax_t)length > (uintmax_t)INT64_MAX) {
+        errno = EOVERFLOW;
+        simp_runtime_set_error(errno);
+        return -1;
+    }
 #ifdef MSG_NOSIGNAL
     const ssize_t result = send(fd, bytes, length, MSG_NOSIGNAL);
 #else
     const ssize_t result = send(fd, bytes, length, 0);
 #endif
-    return result < 0 ? -1 : result > INT32_MAX ? INT32_MAX : (int32_t)result;
+    if (result < 0) simp_runtime_set_error(errno);
+    else simp_runtime_clear_error();
+    return (int64_t)result;
 }
 
-int32_t simp_net_socket_create(void *self) {
+int64_t simp_net_socket_create(void *self) {
     (void)self;
-    return socket(AF_INET, SOCK_STREAM, 0);
+    const int descriptor = socket(AF_INET, SOCK_STREAM, 0);
+    if (descriptor < 0) simp_runtime_set_error(errno);
+    else simp_runtime_clear_error();
+    return descriptor;
 }
 
-int32_t simp_net_socket_connect(void *self, int32_t fd, void *host, int32_t port) {
+int32_t simp_net_socket_connect(void *self, int64_t fd, void *host, int64_t port) {
     (void)self;
+    const int descriptor = socket_fd(fd);
+    if (descriptor < 0) return 0;
     char *hostname = copy_string_bytes(host);
     if (hostname == NULL || port < 0 || port > 65535) {
+        if (hostname != NULL) simp_runtime_set_error(EINVAL);
         free(hostname);
         return 0;
     }
     char service[6];
-    (void)snprintf(service, sizeof(service), "%d", port);
+    (void)snprintf(service, sizeof(service), "%d", (int)port);
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
@@ -735,45 +784,83 @@ int32_t simp_net_socket_connect(void *self, int32_t fd, void *host, int32_t port
     struct addrinfo *addresses = NULL;
     const int lookup = getaddrinfo(hostname, service, &hints, &addresses);
     free(hostname);
-    if (lookup != 0) return 0;
+    if (lookup != 0) {
+        simp_runtime_set_error(EINVAL);
+        return 0;
+    }
     int connected = 0;
     for (struct addrinfo *address = addresses; address != NULL; address = address->ai_next) {
-        if (connect(socket_fd(fd), address->ai_addr, address->ai_addrlen) == 0) {
+        if (connect(descriptor, address->ai_addr, address->ai_addrlen) == 0) {
             connected = 1;
             break;
         }
     }
+    const int saved_error = errno;
     freeaddrinfo(addresses);
+    if (connected) simp_runtime_clear_error();
+    else simp_runtime_set_error(saved_error == 0 ? EIO : saved_error);
     return connected;
 }
 
-int32_t simp_net_socket_send(void *self, int32_t fd, void *buffer) {
+int64_t simp_net_socket_send(void *self, int64_t fd, void *buffer) {
     (void)self;
-    if (buffer == NULL) return -1;
+    const int descriptor = socket_fd(fd);
+    if (descriptor < 0) return -1;
+    if (buffer == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return -1;
+    }
     const SimpBuffer *data = (const SimpBuffer *)buffer;
-    return native_send(socket_fd(fd), data->data, (size_t)data->length);
+    if (data->length > SIZE_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
+        return -1;
+    }
+    return native_send(descriptor, data->data, (size_t)data->length);
 }
 
-int32_t simp_net_socket_send_string(void *self, int32_t fd, void *text) {
+int64_t simp_net_socket_send_string(void *self, int64_t fd, void *text) {
     (void)self;
-    if (text == NULL) return -1;
+    const int descriptor = socket_fd(fd);
+    if (descriptor < 0) return -1;
+    if (text == NULL) {
+        simp_runtime_set_error(EINVAL);
+        return -1;
+    }
     const char *bytes;
     uint64_t length;
     simp_string_bytes(text, &bytes, &length);
-    return native_send(socket_fd(fd), bytes, (size_t)length);
+    if (length > SIZE_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
+        return -1;
+    }
+    return native_send(descriptor, bytes, (size_t)length);
 }
 
-void *simp_net_socket_recv(void *self, int32_t fd, int32_t max_bytes) {
+void *simp_net_socket_recv(void *self, int64_t fd, int64_t max_bytes) {
     (void)self;
-    if (max_bytes < 0 || max_bytes > INT32_MAX) return NULL;
+    const int descriptor = socket_fd(fd);
+    if (descriptor < 0) return NULL;
+    if (max_bytes < 0) {
+        simp_runtime_set_error(EINVAL);
+        return NULL;
+    }
+    if ((uint64_t)max_bytes > SIZE_MAX || max_bytes > SSIZE_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
+        return NULL;
+    }
     char *bytes = max_bytes == 0 ? NULL : (char *)malloc((size_t)max_bytes);
-    if (max_bytes != 0 && bytes == NULL) return NULL;
-    const ssize_t received = recv(socket_fd(fd), bytes, (size_t)max_bytes, 0);
+    if (max_bytes != 0 && bytes == NULL) {
+        simp_runtime_set_error(ENOMEM);
+        return NULL;
+    }
+    const ssize_t received = recv(descriptor, bytes, (size_t)max_bytes, 0);
     if (received < 0) {
+        simp_runtime_set_error(errno);
         free(bytes);
         return NULL;
     }
-    void *result = simp_buffer_new((int32_t)received, stdlib_native_file,
+    simp_runtime_clear_error();
+    void *result = simp_buffer_new((int64_t)received, stdlib_native_file,
                                    sizeof(stdlib_native_file) - 1, 0, 0);
     SimpBuffer *buffer = (SimpBuffer *)result;
     if (received != 0) memcpy(buffer->data, bytes, (size_t)received);
@@ -781,44 +868,76 @@ void *simp_net_socket_recv(void *self, int32_t fd, int32_t max_bytes) {
     return result;
 }
 
-void *simp_net_socket_recv_string(void *self, int32_t fd, int32_t max_bytes) {
+void *simp_net_socket_recv_string(void *self, int64_t fd, int64_t max_bytes) {
     (void)self;
-    if (max_bytes < 0) return simple_string(NULL, 0);
+    const int descriptor = socket_fd(fd);
+    if (descriptor < 0) return simple_string(NULL, 0);
+    if (max_bytes < 0) {
+        simp_runtime_set_error(EINVAL);
+        return simple_string(NULL, 0);
+    }
+    if ((uint64_t)max_bytes > SIZE_MAX || max_bytes > SSIZE_MAX) {
+        simp_runtime_set_error(EOVERFLOW);
+        return simple_string(NULL, 0);
+    }
     char *bytes = max_bytes == 0 ? NULL : (char *)malloc((size_t)max_bytes);
-    if (max_bytes != 0 && bytes == NULL) return simple_string(NULL, 0);
-    const ssize_t received = recv(socket_fd(fd), bytes, (size_t)max_bytes, 0);
+    if (max_bytes != 0 && bytes == NULL) {
+        simp_runtime_set_error(ENOMEM);
+        return simple_string(NULL, 0);
+    }
+    const ssize_t received = recv(descriptor, bytes, (size_t)max_bytes, 0);
     if (received < 0) {
+        simp_runtime_set_error(errno);
         free(bytes);
         return simple_string(NULL, 0);
     }
+    simp_runtime_clear_error();
     void *result = simple_string(bytes, (uint64_t)received);
     free(bytes);
     return result;
 }
 
-void simp_net_socket_close(void *self, int32_t fd) {
+void simp_net_socket_close(void *self, int64_t fd) {
     (void)self;
-    if (fd >= 0) (void)close(socket_fd(fd));
+    const int descriptor = socket_fd(fd);
+    if (descriptor >= 0) {
+        if (close(descriptor) != 0) simp_runtime_set_error(errno);
+        else simp_runtime_clear_error();
+    }
 }
 
-void simp_net_socket_set_timeout(void *self, int32_t fd, int32_t milliseconds) {
+void simp_net_socket_set_timeout(void *self, int64_t fd, int64_t milliseconds) {
     (void)self;
-    if (fd < 0 || milliseconds < 0) return;
+    const int descriptor = socket_fd(fd);
+    if (descriptor < 0) return;
+    if (milliseconds < 0) {
+        simp_runtime_set_error(EINVAL);
+        return;
+    }
     struct timeval timeout;
-    timeout.tv_sec = milliseconds / 1000;
-    timeout.tv_usec = (milliseconds % 1000) * 1000;
-    (void)setsockopt(socket_fd(fd), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    const int64_t seconds = milliseconds / 1000;
+    timeout.tv_sec = (time_t)seconds;
+    if ((int64_t)timeout.tv_sec != seconds) {
+        simp_runtime_set_error(EOVERFLOW);
+        return;
+    }
+    timeout.tv_usec = (suseconds_t)((milliseconds % 1000) * 1000);
+    if (setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0)
+        simp_runtime_set_error(errno);
+    else simp_runtime_clear_error();
 }
 
-int32_t simp_net_server_bind(void *self, void *host, int32_t port, int32_t backlog) {
+int64_t simp_net_server_bind(void *self, void *host, int64_t port, int64_t backlog) {
     (void)self;
     char *hostname = copy_string_bytes(host);
-    if (hostname == NULL || port < 0 || port > 65535 || backlog < 0) {
+    if (hostname == NULL || port < 0 || port > 65535 || backlog < 0 ||
+        backlog > INT_MAX) {
+        if (hostname != NULL) simp_runtime_set_error(EINVAL);
         free(hostname);
         return -1;
     }
     char service[6];
-    (void)snprintf(service, sizeof(service), "%d", port);
+    (void)snprintf(service, sizeof(service), "%d", (int)port);
     struct addrinfo hints;
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = AF_INET;
@@ -828,7 +947,10 @@ int32_t simp_net_server_bind(void *self, void *host, int32_t port, int32_t backl
     const int lookup = getaddrinfo(hostname[0] == '\0' ? NULL : hostname,
                                    service, &hints, &addresses);
     free(hostname);
-    if (lookup != 0) return -1;
+    if (lookup != 0) {
+        simp_runtime_set_error(EINVAL);
+        return -1;
+    }
     int server_fd = -1;
     for (struct addrinfo *address = addresses; address != NULL; address = address->ai_next) {
         const int candidate = socket(address->ai_family, address->ai_socktype,
@@ -837,34 +959,53 @@ int32_t simp_net_server_bind(void *self, void *host, int32_t port, int32_t backl
         int reuse = 1;
         (void)setsockopt(candidate, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
         if (bind(candidate, address->ai_addr, address->ai_addrlen) == 0 &&
-            listen(candidate, backlog > 0 ? backlog : 16) == 0) {
+            listen(candidate, backlog > 0 ? (int)backlog : 16) == 0) {
             server_fd = candidate;
             break;
         }
         (void)close(candidate);
     }
+    const int saved_error = errno;
     freeaddrinfo(addresses);
+    if (server_fd < 0) simp_runtime_set_error(saved_error == 0 ? EIO : saved_error);
+    else simp_runtime_clear_error();
     return server_fd;
 }
 
-int32_t simp_net_server_accept(void *self, int32_t server_fd) {
+int64_t simp_net_server_accept(void *self, int64_t server_fd) {
     (void)self;
-    return accept(socket_fd(server_fd), NULL, NULL);
+    const int descriptor = socket_fd(server_fd);
+    if (descriptor < 0) return -1;
+    const int accepted = accept(descriptor, NULL, NULL);
+    if (accepted < 0) simp_runtime_set_error(errno);
+    else simp_runtime_clear_error();
+    return accepted;
 }
 
-int32_t simp_net_server_listen(void *self, int32_t server_fd, int32_t backlog) {
+int32_t simp_net_server_listen(void *self, int64_t server_fd, int64_t backlog) {
     (void)self;
-    if (server_fd < 0 || backlog < 0) return 0;
-    return listen(socket_fd(server_fd), backlog > 0 ? backlog : 16) == 0;
-}
-
-int32_t simp_net_server_port(void *self, int32_t server_fd) {
-    (void)self;
-    struct sockaddr_in address;
-    socklen_t length = sizeof(address);
-    if (server_fd < 0 ||
-        getsockname(socket_fd(server_fd), (struct sockaddr *)&address, &length) != 0) {
+    const int descriptor = socket_fd(server_fd);
+    if (descriptor < 0) return 0;
+    if (backlog < 0 || backlog > INT_MAX) {
+        simp_runtime_set_error(EINVAL);
         return 0;
     }
+    const int result = listen(descriptor, backlog > 0 ? (int)backlog : 16) == 0;
+    if (result) simp_runtime_clear_error();
+    else simp_runtime_set_error(errno);
+    return result;
+}
+
+int64_t simp_net_server_port(void *self, int64_t server_fd) {
+    (void)self;
+    const int descriptor = socket_fd(server_fd);
+    if (descriptor < 0) return 0;
+    struct sockaddr_in address;
+    socklen_t length = sizeof(address);
+    if (getsockname(descriptor, (struct sockaddr *)&address, &length) != 0) {
+        simp_runtime_set_error(errno);
+        return 0;
+    }
+    simp_runtime_clear_error();
     return ntohs(address.sin_port);
 }
