@@ -57,7 +57,7 @@ const TestGroupRegistration registration{2, {
                               "if condition must have type bool");
          }},
         {"string ordering rejected", [] {
-             expectDiagnostic("start {\n string a = \"a\"\n print(a < \"a\")\n}",
+             expectDiagnostic("start {\n strg a = \"a\"\n print(a < \"a\")\n}",
                               "requires matching int, float, or unsigned operands");
          }},
         {"integer condition rejected", [] {

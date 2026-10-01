@@ -7,8 +7,8 @@ class Native {
     }
 
     int absolute(int value)
-    int stringLength(string text)
-    string stringIdentity(string text)
+    int stringLength(strg text)
+    strg stringIdentity(strg text)
     array identityArray(array items)
     map identityMap(map items)
     Counter identityCounter(Counter value)
@@ -30,8 +30,8 @@ class Counter {
 }
 
 int Native.absolute(int value) from "simp_method_demo_abs"
-int Native.stringLength(string text) from "simp_method_demo_string_length"
-string Native.stringIdentity(string text) from "simp_method_demo_string_identity"
+int Native.stringLength(strg text) from "simp_method_demo_string_length"
+strg Native.stringIdentity(strg text) from "simp_method_demo_string_identity"
 array Native.identityArray(array items) from "simp_method_demo_identity"
 map Native.identityMap(map items) from "simp_method_demo_identity"
 Counter Native.identityCounter(Counter value) from "simp_method_demo_identity"

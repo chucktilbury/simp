@@ -12,7 +12,7 @@ class Child : Base {
         super.Base()
     }
 
-    string value(int input) {
+    strg value(int input) {
         return "wrong"
     }
 }

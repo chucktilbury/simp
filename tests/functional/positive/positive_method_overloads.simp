@@ -19,7 +19,7 @@ class Formatter {
         return 2
     }
 
-    int describe(string value) {
+    int describe(strg value) {
         return 3
     }
 

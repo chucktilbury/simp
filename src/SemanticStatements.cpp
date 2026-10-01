@@ -224,7 +224,7 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
                    types.front() != "String" && types.front() != "any" &&
                    types.front() != "type") {
             throw DiagnosticError(statement.location,
-                                  "print supports int, bool, float, unsigned, string, collection "
+                                  "print supports int, bool, float, unsigned, strg, collection "
                                   "element values, or 'type' values only");
         }
         return;
@@ -487,7 +487,7 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
                 classes_.find(capture.type) == classes_.end()) {
                 throw DiagnosticError(capture.location,
                                       "inline capture type must be int, bool, float, unsigned, "
-                                      "string, array, map, buffer, handle, or a declared class type");
+                                      "strg, array, map, buffer, handle, or a declared class type");
             }
         }
         std::unordered_set<std::string> captureNames;

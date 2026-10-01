@@ -33,7 +33,7 @@ const TestGroupRegistration registration{4, {
              expectValid("start {\n"
                          "  array bag = [1, \"two\"]\n"
                          "  int extracted = bag[0]\n"
-                         "  string second = bag[1]\n"
+                         "  strg second = bag[1]\n"
                          "  print(extracted)\n"
                          "  print(second)\n"
                          "}");
@@ -51,7 +51,7 @@ const TestGroupRegistration registration{4, {
                               "expected identifier (keywords are reserved)");
          }},
         {"legacy 'string[]' array syntax is rejected", [] {
-             expectDiagnostic("start {\n  string[] values = [\"a\"]\n}",
+             expectDiagnostic("start {\n  strg[] values = [\"a\"]\n}",
                               "expected identifier (keywords are reserved)");
          }},
         {"legacy 'Class[]' array syntax is rejected", [] {
@@ -90,12 +90,12 @@ const TestGroupRegistration registration{4, {
                          "}");
          }},
         {"map indexing accepts string expressions", [] {
-             expectValid("start {\n map values = {}\n string key = \"x\"\n"
-                         " string value = values[key]\n}");
+             expectValid("start {\n map values = {}\n strg key = \"x\"\n"
+                         " strg value = values[key]\n}");
          }},
         {"map literal keys must be string literals", [] {
              expectDiagnostic("start { map values = {1: \"value\"} }",
-                              "map keys must have type string");
+                              "map keys must have type strg");
          }},
         {"map length is read-only", [] {
              expectDiagnostic("start {\n map values = {}\n values.length = 1\n}",
@@ -154,12 +154,12 @@ const TestGroupRegistration registration{4, {
         {"map removal rejects a non-string key", [] {
              expectDiagnostic("start {\n map values = {}\n"
                               " int removed = values.remove(1)\n}",
-                              "map key must have type string");
+                              "map key must have type strg");
          }},
         {"map removal rejects incorrect arity", [] {
              expectDiagnostic("start {\n map values = {}\n"
                               " int removed = values.remove()\n}",
-                              "map 'remove' expects one string key");
+                              "map 'remove' expects one strg key");
          }},
         {"map slice bounds require integers", [] {
              expectDiagnostic("start {\n map values = {}\n"
@@ -169,7 +169,7 @@ const TestGroupRegistration registration{4, {
          {"map contains and collection iteration are accepted", [] {
               expectValid("start {\n"
                           "  map values = {\"one\": 1}\n"
-                          "  string key = \"one\"\n"
+                          "  strg key = \"one\"\n"
                           "  int present = values.contains(key)\n"
                           "  for (name, value in values) { print(name) }\n"
                           "  array items = [1, \"two\"]\n"
@@ -191,7 +191,7 @@ const TestGroupRegistration registration{4, {
          {"map keys must be statically typed strings", [] {
                expectDiagnostic("start {\n map values = {}\n array keys = [\"x\"]\n"
                                 " map value = values[keys[0]]\n}",
-                               "map keys must have type string");
+                               "map keys must have type strg");
          }}
 }};
 

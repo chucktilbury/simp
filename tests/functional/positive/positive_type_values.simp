@@ -26,7 +26,7 @@ start {
     bool boolean = true
     float real = 2.5
     unsigned count = 5u
-    string text = "text"
+    strg text = "text"
     array sequence = [1]
     map dictionary = {"key": 1}
     buffer bytes = buffer(1)
@@ -54,7 +54,7 @@ start {
     print(type(boolean) == bool)
     print(type(real) == float)
     print(type(count) == unsigned)
-    print(type(text) == string)
+    print(type(text) == strg)
     print(type(sequence) == list)
     print(type(dictionary) == dict)
     print(type(bytes) == buffer)
@@ -71,7 +71,7 @@ start {
     print(type(dynamicValues[1]) == bool)
     print(type(dynamicValues[2]) == float)
     print(type(dynamicValues[3]) == unsigned)
-    print(type(dynamicValues[4]) == string)
+    print(type(dynamicValues[4]) == strg)
     print(type(dynamicValues[5]) == array)
     print(type(dynamicValues[6]) == map)
     print(type(dynamicValues[7]) == buffer)

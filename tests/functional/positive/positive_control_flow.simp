@@ -1,7 +1,7 @@
 # Verifies case-insensitive keywords, conditional branches, formatted strings, and while-loop execution.
 START {
     int count = 3
-    string label = "count: {}"
+    strg label = "count: {}"
     IF (count >= 2) {
         print(label)
     } ELSE {

@@ -21,7 +21,7 @@ class Pick {
         print("two")
     }
 
-    Pick(string value) {
+    Pick(strg value) {
         print("string")
     }
 
@@ -55,7 +55,7 @@ class Base {
         print("base int")
     }
 
-    Base(string value) {
+    Base(strg value) {
         print("base string")
     }
 }
@@ -71,13 +71,13 @@ class VirtualRoot {
         print("virtual int")
     }
 
-    VirtualRoot(string value) {
+    VirtualRoot(strg value) {
         print("virtual string")
     }
 }
 
 class VirtualChild : virtual VirtualRoot {
-    VirtualChild(string value) {
+    VirtualChild(strg value) {
         super.virtual VirtualRoot(value)
     }
 }

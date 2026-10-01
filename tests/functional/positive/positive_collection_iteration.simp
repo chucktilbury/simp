@@ -10,7 +10,7 @@ class Node {
 }
 
 start {
-    string selected = "dynamic"
+    strg selected = "dynamic"
     map table = {"first": Node(10), selected: Node(20), "third": Node(30)}
     print(table.length)
     print(table.contains(selected))

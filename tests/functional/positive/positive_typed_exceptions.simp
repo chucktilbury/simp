@@ -1,24 +1,24 @@
 # Exercises typed subclass matching, mismatch propagation, runtime errors, and rethrow.
 class DomainError : Exception {
   int code
-  DomainError(string text, int value) {
+  DomainError(strg text, int value) {
     super.Exception(text)
     code = value
   }
 }
 class SpecificError : DomainError {
-  SpecificError(string text, int value) {
+  SpecificError(strg text, int value) {
     super.DomainError(text, value)
   }
 }
 class OtherError : Exception {
-  OtherError(string text) {
+  OtherError(strg text) {
     super.Exception(text)
   }
 }
 namespace errors {
   class QualifiedError : Exception {
-    QualifiedError(string text) {
+    QualifiedError(strg text) {
       super.Exception(text)
     }
   }

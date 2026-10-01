@@ -1,5 +1,5 @@
 # Rejects non-boolean operands to keyword and symbolic logical operators.
 start {
-    string value = "not an integer"
+    strg value = "not an integer"
     bool invalid = value and true
 }

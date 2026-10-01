@@ -40,6 +40,14 @@ const TestGroupRegistration registration{1, {
                          tokens[4].text == "create",
                      "create should be lexed as an identifier");
          }},
+        {"strg is the primitive string type and string remains an identifier", [] {
+             expectValid("class string { string() {} }\n"
+                         "class Text { strg echo(strg value) { return value } }\n"
+                         "start {\n strg text = Text().echo(\"value\")\n"
+                         " int string = 1\n string custom = string()\n print(string)\n}");
+             expectDiagnostic("start {\n string text = \"value\"\n}",
+                              "unknown type or class 'string'");
+         }},
         {"class-name constructor syntax", [] {
              const auto program = parse(
                  "class Box { Box() {} }\nstart { Box box = Box() }");
@@ -108,7 +116,7 @@ const TestGroupRegistration registration{1, {
         {"raise, catch-all, and finally syntax", [] {
              const auto program = parse(
                  "class Failure : Exception {\n"
-                 "  Failure(string text) { super.Exception(text) }\n"
+                 "  Failure(strg text) { super.Exception(text) }\n"
                  "}\n"
                  "start {\n"
                  "  try { raise(Failure(\"failure\")) } except() { print(\"caught\") } "
@@ -133,8 +141,8 @@ const TestGroupRegistration registration{1, {
          }},
         {"try supports ordered typed exception clauses", [] {
              const auto program = parse(
-                 "class Parent : Exception { Parent(string text) { super.Exception(text) } }\n"
-                 "class Child : Parent { Child(string text) { super.Parent(text) } }\n"
+                 "class Parent : Exception { Parent(strg text) { super.Exception(text) } }\n"
+                 "class Child : Parent { Child(strg text) { super.Parent(text) } }\n"
                  "start {\n"
                  " try { raise(Child(\"message\")) }\n"
                  " except(Parent) as parent { print(parent.message) }\n"
@@ -162,8 +170,8 @@ const TestGroupRegistration registration{1, {
          }},
         {"subclass exception clause after base is unreachable", [] {
              expectDiagnostic(
-                 "class Parent : Exception { Parent(string text) { super.Exception(text) } }\n"
-                 "class Child : Parent { Child(string text) { super.Parent(text) } }\n"
+                 "class Parent : Exception { Parent(strg text) { super.Exception(text) } }\n"
+                 "class Child : Parent { Child(strg text) { super.Parent(text) } }\n"
                  "start {\n try { print(1) }\n"
                  " except(Parent) { print(2) }\n"
                  " except(Child) { print(3) }\n}",
@@ -195,7 +203,7 @@ const TestGroupRegistration registration{1, {
         {"except accepts qualified class paths", [] {
              const auto program = parse(
                  "namespace errors {\n"
-                 " class Failure : Exception { Failure(string text) { super.Exception(text) } }\n"
+                 " class Failure : Exception { Failure(strg text) { super.Exception(text) } }\n"
                  "}\n"
                  "start { try { raise(errors.Failure(\"message\")) } "
                  "except(errors.Failure) as caught { print(caught.message) } }\n");

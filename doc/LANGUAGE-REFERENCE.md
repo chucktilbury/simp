@@ -13,9 +13,10 @@ library package APIs are intentionally covered separately in
 
 Identifiers start with an ASCII letter or `_` and continue with letters,
 digits, or `_`. Keywords are case-insensitive; identifiers are case-sensitive.
-The exact identifier `String` names the built-in string class, while `string`
-is the lowercase spelling of its type. `array`/`list` and `map`/`dict` are
-synonyms. See `IDENT`, `primitive-type`, and the lexical grammar.
+The exact identifier `String` names the built-in string class, while `strg` is
+the primitive type keyword for string values. Lowercase `string` is an ordinary
+identifier. `array`/`list` and `map`/`dict` are synonyms. See `IDENT`,
+`primitive-type`, and the lexical grammar.
 
 Statements normally end at a newline. Braces delimit blocks; indentation is
 for readability only. Newlines inside `()` and `[]` are ignored. `;`, `#`,
@@ -66,7 +67,7 @@ The built-in types are:
 | `unsigned` | Unsigned 64-bit integer. |
 | `float` | IEEE double-precision floating-point value. Literal parsing rejects non-finite/out-of-range values. |
 | `bool` | `true` or `false`. Conditions must have this type; there is no general truthiness conversion. |
-| `String` / `string` | Managed UTF-8 string object. `string` is normalized to the `String` class type. |
+| `String` / `strg` | Managed UTF-8 string object. `strg` names the existing `String` class type. |
 | `array` / `list` | Ordered, dynamically sized, heterogeneous collection. |
 | `map` / `dict` | String-keyed collection with dynamically typed values. |
 | `buffer` | Mutable sequence of bytes. |
@@ -434,7 +435,7 @@ type-specific operators. Array slices return a copy and can include a step:
 
 Map literals use `{ key: value, ... }`. Keys must be strings; values may be
 supported scalar/reference/collection types and are read as `any`. Maps
-support `length`, `contains(string)`, `remove(string)`, string-key indexing,
+support `length`, `contains(strg)`, `remove(strg)`, string-key indexing,
 and slicing. Map slice bounds are integer positions in iteration order;
 stepped map slices are not supported. See `array-literal`, `map-literal`,
 `index-or-slice-suffix`, `foreach-statement`, and [STDLIB.md](STDLIB.md).

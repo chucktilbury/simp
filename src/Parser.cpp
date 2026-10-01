@@ -50,7 +50,7 @@ bool Parser::startsOutOfLineDefinition() const {
     case TokenType::Bool:
     case TokenType::FloatType:
     case TokenType::Unsigned:
-    case TokenType::StringType:
+    case TokenType::StrgType:
     case TokenType::ArrayType:
     case TokenType::MapType:
     case TokenType::BufferType:
@@ -274,7 +274,7 @@ Statement Parser::parseStatement() {
     }
     if (check(TokenType::Int) || check(TokenType::Bool) ||
         check(TokenType::FloatType) || check(TokenType::Unsigned) ||
-        check(TokenType::StringType) || check(TokenType::ArrayType) ||
+        check(TokenType::StrgType) || check(TokenType::ArrayType) ||
         check(TokenType::MapType) || check(TokenType::BufferType) ||
         check(TokenType::HandleType) || check(TokenType::AnyType) ||
         check(TokenType::TypeType) || check(TokenType::Void)) {
@@ -698,7 +698,7 @@ std::string Parser::parseTypeTestName() {
     if (match(TokenType::Unsigned)) return "unsigned";
     if (match(TokenType::FloatType)) return "float";
     if (match(TokenType::Bool)) return "bool";
-    if (match(TokenType::StringType)) return "string";
+    if (match(TokenType::StrgType)) return "String";
     if (match(TokenType::ArrayType)) return "array";
     if (match(TokenType::MapType)) return "map";
     if (match(TokenType::BufferType)) return "buffer";
@@ -783,9 +783,9 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         ++current_;
         return parseTypeName(token, "unsigned");
     }
-    if (check(TokenType::StringType)) {
+    if (check(TokenType::StrgType)) {
         ++current_;
-        return parseTypeName(token, "string");
+        return parseTypeName(token, "String");
     }
     if (check(TokenType::ArrayType)) {
         ++current_;

@@ -15,13 +15,15 @@ using namespace simp_test;
 
 const TestGroupRegistration registration{0, {
         {"lexer keywords and strings", [] {
-             simp::Lexer lexer("StArT {\n INT n = 12\n string s = \"a\\n\"\n}", "lexer.simp");
+             simp::Lexer lexer("StArT {\n INT n = 12\n StRg s = \"a\\n\"\n}", "lexer.simp");
              const auto tokens = lexer.tokenize();
              require(tokens[0].type == simp::TokenType::Start, "START keyword not recognized");
              require(tokens[3].type == simp::TokenType::Int, "INT keyword not recognized");
              require(tokens[5].type == simp::TokenType::Equal, "assignment token missing");
              require(tokens[6].type == simp::TokenType::Integer && tokens[6].text == "12",
                      "integer token incorrect");
+             require(tokens[8].type == simp::TokenType::StrgType,
+                     "STRG type keyword not recognized");
              require(tokens[11].type == simp::TokenType::String &&
                          tokens[11].text == "a\n" && tokens[11].formattedString,
                      "escaped formatted string incorrect");
@@ -75,6 +77,13 @@ const TestGroupRegistration registration{0, {
         {"reserved keywords", [] {
              expectDiagnostic("start {\n int While = 0\n}", "keywords are reserved");
          }},
+         {"old string spelling is an identifier", [] {
+              simp::Lexer lexer("start { int string = 1 }", "string-identifier.simp");
+              const auto tokens = lexer.tokenize();
+              require(tokens[3].type == simp::TokenType::Identifier &&
+                          tokens[3].text == "string",
+                      "lowercase string was treated as a keyword");
+          }},
         {"scalar keywords and literals", [] {
              simp::Lexer lexer("start { bool ready = true float value = 3.14 "
                                "unsigned count = 42u }", "scalar.simp");

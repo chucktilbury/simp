@@ -190,10 +190,6 @@ void SemanticAnalyzer::normalizeType(
         type == "any" || type == "type" || type == "void") {
         return;
     }
-    if (type == "string") {
-        type = "String";
-        return;
-    }
     if (type.find('.') == std::string::npos &&
         !hasNamespaceOrClass(type, namespacePath)) {
         throw DiagnosticError(location, "unknown type or class '" + type + "'");
@@ -203,15 +199,10 @@ void SemanticAnalyzer::normalizeType(
 
 void SemanticAnalyzer::normalizeExpression(
     Expression& expression, const std::vector<std::string>& namespacePath) {
-    if ((expression.kind == ExpressionKind::TypeTest ||
-         expression.kind == ExpressionKind::TypeName) &&
-        expression.value == "string") {
-        expression.value = "String";
-    }
     if (expression.kind == ExpressionKind::TypeTest &&
         expression.value != "int" && expression.value != "bool" &&
         expression.value != "float" && expression.value != "unsigned" &&
-        expression.value != "string" && expression.value != "array" &&
+        expression.value != "array" &&
         expression.value != "map" && expression.value != "buffer" &&
         expression.value != "handle" && expression.value != "any" &&
         expression.value != "type" &&
@@ -227,7 +218,7 @@ void SemanticAnalyzer::normalizeExpression(
     if (expression.kind == ExpressionKind::TypeName &&
         expression.value != "int" && expression.value != "bool" &&
         expression.value != "float" && expression.value != "unsigned" &&
-        expression.value != "string" && expression.value != "array" &&
+        expression.value != "array" &&
         expression.value != "map" && expression.value != "buffer" &&
         expression.value != "handle" && expression.value != "any" &&
         expression.value != "type") {
@@ -711,7 +702,7 @@ void SemanticAnalyzer::validateType(const std::string& type, const SourceLocatio
             "into a concrete type");
     }
     if (type == "int" || type == "bool" || type == "float" || type == "unsigned" ||
-        type == "string" || type == "array" || type == "map" ||
+        type == "array" || type == "map" ||
         type == "buffer" || type == "handle" || type == "type" ||
         (allowVoid && type == "void")) {
         return;

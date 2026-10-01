@@ -1,5 +1,5 @@
 class Text {
-    string wrap(string value) {
+    strg wrap(strg value) {
         return "[{}]"(value)
     }
 }
@@ -19,7 +19,7 @@ class Order {
 }
 
 start {
-    string original = "hi"
+    strg original = "hi"
     String alias = original
     print(original == alias)
     alias.append("!")
@@ -28,9 +28,9 @@ start {
     print(original.equals("hi!"))
     print(original == "hi!")
     print(original is String)
-    print(original is string)
+    print(original is strg)
     print(type(original) == String)
-    print(type(original) == string)
+    print(type(original) == strg)
     ExtendedString derived = ExtendedString()
     print(derived is String)
     String base = derived
@@ -38,20 +38,20 @@ start {
     derived.append("x")
     print(base)
 
-    string formatted = "value {} {}"(42, true)
+    strg formatted = "value {} {}"(42, true)
     print(formatted)
     Order order = Order()
-    string ordered = "{} {}"(order.next(), order.next())
+    strg ordered = "{} {}"(order.next(), order.next())
     print(ordered)
     print(order.count)
     print(Text().wrap(original))
     array values = ["array {}"(original)]
-    string item = values[0]
+    strg item = values[0]
     print(item)
     map formattedKey = {"key {}"(1): 7}
     print(formattedKey["key 1"])
     map lookup = {"key": 1}
-    string key = "key"
+    strg key = "key"
     lookup[key] = 5
     key.append("!")
     print(lookup["key"])
@@ -59,7 +59,7 @@ start {
     print("9".toInt())
     print("11".toUnsigned())
     print("1.5".toFloat())
-    string empty = null
+    strg empty = null
     print(empty == null)
     print(type(empty))
     print(original.find("h"))

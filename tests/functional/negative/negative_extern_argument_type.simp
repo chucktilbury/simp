@@ -6,6 +6,6 @@ class Native {
 int Native.absolute(int value) from "simp_method_demo_abs"
 
 start {
-    string text = "not an integer"
+    strg text = "not an integer"
     print(Native().absolute(text))
 }

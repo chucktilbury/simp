@@ -22,7 +22,7 @@ The language is intended to have full object-oriented programming support. Broad
 - Types are explicit; Simple does not infer variable types.
 - A variable's type is fixed after declaration. The language is strongly typed.
 - The required scalar types are `bool`, `int`, `unsigned`, and `float`, alongside
-  `string`, `array`, and `map`. Collection reads use an internal tagged
+  `strg`, `array`, and `map`. Collection reads use an internal tagged
   dynamic representation that is not available as a declared type; `any`
   remains a reserved keyword to produce a clear diagnostic. `bool` is distinct
   from `int`; it is
@@ -59,7 +59,7 @@ The language is intended to have full object-oriented programming support. Broad
   type. Integer division and remainder are signed for `int` and unsigned for
   `unsigned`. Remainder on `float` is not supported.
 - The boolean type-test operator `expr is TypeName` recognizes the built-in
-  types `int`, `unsigned`, `float`, `bool`, `string`, `array`/`list`,
+  types `int`, `unsigned`, `float`, `bool`, `strg`, `array`/`list`,
   `map`/`dict`, `buffer`, and `handle`, plus class names including qualified
   names. For a class target, the runtime class or any subclass matches. On an
   `any` operand it tests the dynamic tag; a null value matches no type.
@@ -101,10 +101,10 @@ The language is intended to have full object-oriented programming support. Broad
   simpler, C-pointer-like model.
 - **Implemented, with a documented scope boundary for scalar locals.**
   `null` is now accepted at declaration/assignment for every type,
-  including the scalars (`int`, `unsigned`, `float`, `bool`) and `string`,
+  including the scalars (`int`, `unsigned`, `float`, `bool`) and `strg`,
   in addition to the reference types (`class`, `array`, `map`, `buffer`,
   `handle`, `any`) that already supported it. `x == null` / `x != null`
-  work for every type. Printing a null value of any type — scalar, string,
+  work for every type. Printing a null value of any type — scalar, `strg`,
   or `any` — prints `(null)`, matching the confirmed model.
   - **Scalar representation:** a *local* scalar variable that can hold
     `null` carries a companion hidden `i1` flag alongside its raw payload.
@@ -123,7 +123,7 @@ The language is intended to have full object-oriented programming support. Broad
     require a much larger ABI change (boxing/tagging scalars everywhere,
     akin to the `any` representation) and was deliberately out of scope for
     this pass.
-  - **String representation:** `string` aliases the `String` class. A null
+  - **String representation:** `strg` aliases the `String` class. A null
     string is a null object reference, which prints as `(null)`.
   - **Bug fixed alongside this work:** `array`/`map` `.length` access
     previously performed a raw, unchecked dereference of the receiver with
@@ -206,7 +206,7 @@ mangling but in a much simpler, readable form.
   `tests/functional/positive/positive_namespace_collisions.simp`). A method
   that takes no parameters has no `$` suffix at all.
 - **Parameter type codes** are one character per scalar or built-in type:
-  `i` int, `u` unsigned, `f` float, `b` bool, `s` string, `y` internal dynamic
+  `i` int, `u` unsigned, `f` float, `b` bool, `s` strg, `y` internal dynamic
   value (not usable in a declared parameter),
   `a` array/list, `m` map/dict, `B` buffer, `h` handle. A class-typed
   parameter is encoded `C<length><name>`, length-prefixed so a dotted
@@ -520,7 +520,7 @@ Exception handling supports constructed exception objects and typed filters:
 
 ```simple
 class NetworkError : Exception {
-    NetworkError(string message) {
+    NetworkError(strg message) {
         super.Exception(message)
     }
 }
@@ -534,8 +534,8 @@ try {
 }
 ```
 
-`Exception` is a built-in base class with a public `string message` field and
-an `Exception(string message)` constructor. User-defined exception classes
+`Exception` is a built-in base class with a public `strg message` field and
+an `Exception(strg message)` constructor. User-defined exception classes
 derive from it and initialize it with `super.Exception(message)`. `raise(expr)`
 requires `expr` to be a constructor call for a concrete `Exception` subclass;
 strings, `null`, existing variables, and unrelated classes are rejected.
@@ -544,7 +544,7 @@ class paths such as `except(errors.NetworkError)`. Each catches that type and
 its subclasses; on a mismatch, dispatch checks the next clause.
 An optional final `except()` catches anything not matched earlier. A typed
 clause may use `as name` to bind a read-only `Exception` reference, while
-`except() as name` binds the message as a read-only `string`. Catch-all clauses
+`except() as name` binds the message as a read-only `strg`. Catch-all clauses
 must be last, duplicate catch-alls are rejected, and a subclass filter after
 an earlier matching base-class filter is diagnosed as unreachable.
 An empty `raise()` rethrows the current exception from an enclosing `except`
@@ -618,7 +618,7 @@ statements.
   "value: {}"(x)
   ```
 
-- `string` aliases the real, inheritable prelude class `String`
+- `strg` aliases the real, inheritable prelude class `String`
   (`prelude/String.simp`). Literals and formatted expressions create
   fresh objects; assignments and arguments share object identity.
   `==`/`!=` compare identity, while `.equals(other)` compares exact bytes.
@@ -706,7 +706,7 @@ subclassing, only a small fixed set of compiler-built-in operations.
   must be `int` or `unsigned` (see element typing below).
 - Element access: `b[i]` reads and `b[i] = value` writes a single element.
   A value of type other than `int` or `unsigned` (for example `bool`,
-  `float`, `string`) assigned to a buffer element is a **compile-time
+  `float`, `strg`) assigned to a buffer element is a **compile-time
   (syntax) error**. A well-typed `int` or `unsigned` write is never
   rejected at either compile time or runtime: the element is a byte, so an
   assigned `int`/`unsigned` value is **truncated
@@ -731,7 +731,7 @@ subclassing, only a small fixed set of compiler-built-in operations.
 - No comparisons (`==`, `<`, and so on) are defined for `buffer`; a `buffer`
   cannot appear as an operand in any operator expression at all (not just
   comparisons) — the same restriction now applies to `handle` and to
-  `string`. Passing a `buffer` as a call argument, storing it in a
+  `strg`. Passing a `buffer` as a call argument, storing it in a
   field/variable/collection, indexing it, or invoking its built-in
   operations above are not "expressions" in this restricted sense; using it
   with `+`, `==`, `<`, and so on is.
@@ -762,7 +762,7 @@ subclassing, only a small fixed set of compiler-built-in operations.
   untyped reference and never inspect, trace, copy, index, or compare its
   contents. It has no built-in operations at all — not even `.length`.
 - A `handle` cannot appear as an operand in any operator expression, the
-  same restriction as `buffer` and `string`.
+  same restriction as `buffer` and `strg`.
 - **Confirmed:** since `handle` has no literal syntax and no built-in
   constructor, a `handle` value can only be produced by native code: either
   a native-bound (`from "<symbol>"` C) method that returns one, or an
@@ -810,7 +810,7 @@ begin, following the precedent set by `array`/`map`/class references:
 - **`null`:** both `buffer` and `handle` variables may hold `null` and be
   compared against `null` with `==`/`!=`; this is not a general operator
   expression exception, it is the same null-check every reference type
-  (`array`, `map`, class, `string`) already supports today.
+  (`array`, `map`, class, `strg`) already supports today.
 
 #### Equality and comparison for strings (confirmed)
 
@@ -826,7 +826,7 @@ assignment still copies, while `String` assignment aliases its object.
 - Arrays support slices.
 - Slices copy rather than creating a view.
 - Out-of-bounds access raises an exception; if it is unhandled, execution aborts.
-- Dictionary keys must have statically known type `string`; string variables and
+- Dictionary keys must have statically known type `strg`; string variables and
   other string-valued expressions are valid, while numbers and `any` values are
   not accepted without a dynamic type check or typed extraction.
 - Map keys compare by exact UTF-8 bytes, case-sensitively and without Unicode normalization.
@@ -878,7 +878,7 @@ mutable storage, including changes to its length, while slices remain shallow
 copies. The GC-managed array header remains stable as its separately allocated
 element buffer grows. Out-of-range indices raise catchable, source-located
 exceptions; slice bounds normalize and clamp as described above. The internal
-dynamic representation holds an `int`, `bool`, `float`, `unsigned`, `string`,
+dynamic representation holds an `int`, `bool`, `float`, `unsigned`, `strg`,
 class reference, array reference, map reference, buffer, handle, or `null`.
 Typed extraction is runtime-checked and raises on a tag or exact-class mismatch;
 there is no covariant/polymorphic downcast support. Nested arrays and
@@ -930,7 +930,7 @@ continues to use string keys. Step slices are supported only for arrays.
 Array iteration uses `for (value in array)` and binds each element as an
 internal dynamic value in increasing index order. Map iteration accepts
 `for (value in map)` for value-only binding or `for (key, value in map)` for
-both a `string` key and an internal dynamic value. These bindings follow the
+both a `strg` key and an internal dynamic value. These bindings follow the
 same restrictions as collection reads. Both forms iterate over a shallow snapshot of entries and values
 taken when the loop starts. Mutations to the original collection during the
 loop—including inserting, deleting, or replacing entries/elements—do not
@@ -1311,7 +1311,7 @@ inline {
     /* C code */
 }
 
-inline (int n, string msg) {
+inline (int n, strg msg) {
     printf("%s: %d\n", simp_string_cstr(msg), *n);
 }
 
@@ -1325,7 +1325,7 @@ return(h)
   `inline ( <type> <name> [, <type> <name> ...] ) { <C source> }`. These are
   statements, not top-level declarations; they may appear wherever an
   ordinary statement may appear inside a function body. The capture list is
-  optional. Capture types are `int`, `bool`, `float`, `unsigned`, `string`,
+  optional. Capture types are `int`, `bool`, `float`, `unsigned`, `strg`,
   `array`, `map`, `buffer`, `handle`, or a declared class type; `void` and
   `any` are not capture types. Every
   listed type must exactly match an enclosing Simple local or parameter.
@@ -1344,7 +1344,7 @@ return(h)
 - Captured locals are passed by address so C writes are visible to the Simple
   code after the block. The generated shim parameters are `int *` for `int`,
   `_Bool *` for `bool`, `double *` for `float`, `uint64_t *` for `unsigned`,
-  `SimpBuffer **` for `buffer`, and `void **` for `string`, `array`, `map`,
+  `SimpBuffer **` for `buffer`, and `void **` for `strg`, `array`, `map`,
   `handle`, and class references. Thus, for example, C reads or updates `n` through `*n`; a
   reference capture's `void **` addresses the Simple reference slot — for
   `handle`, C assigns whatever opaque pointer value it holds (a `FILE *`, a
@@ -1421,14 +1421,14 @@ Simple body outside the class or a C symbol binding in place of that body:
 ```simple
 class Foo {
     int compute(int x)
-    string echo(string value)
+    strg echo(strg value)
 }
 
 int Foo.compute(int x) {
     return x * 2
 }
 
-string Foo.echo(string value) from "c_foo_echo"
+strg Foo.echo(strg value) from "c_foo_echo"
 ```
 
 - In-class bodyless methods are declarations, not definitions. Each must
@@ -1449,7 +1449,7 @@ string Foo.echo(string value) from "c_foo_echo"
   parameters. C code may ignore it or use it as an opaque reference.
 - The prototype ABI uses `int` as C `int` (`i32`), `bool` as
   `_Bool` (`i1`), `float` as `double`, and `unsigned` as `uint64_t` (`i64`);
-  `String`/`string`, `array`, `map`, and class references are opaque pointers,
+  `String`/`strg`, `array`, `map`, and class references are opaque pointers,
   and `void` is supported for returns. This replaces the old two-word
   `SimpString` native ABI. Use `simp_string_bytes()` to borrow explicit-length,
   non-NUL-terminated bytes; do not retain the view across buffer resize.
@@ -1611,7 +1611,7 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   symbolic forms `&&`, `||`, `!`.
 - `bool`, `float` (an alias for `double`-precision IEEE 754), and `unsigned`
   are required scalar types with full static type checking, alongside the
-  existing `int`, `string`, `array`, `map`, and `any`.
+  existing `int`, `strg`, `array`, `map`, and `any`.
 - Float literals follow `strtod()`'s decimal-constant lexical shape,
   including leading-dot (`.5`) and trailing-dot (`5.`) forms; a bare digit
   sequence with no point or exponent remains `int`.
@@ -1624,14 +1624,14 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - Variadic methods are not supported: every method has a fixed parameter
   count and fixed parameter types, whether Simple-implemented or
   native-bound.
-- `string`/`String` length is measured in bytes, not Unicode code points,
+- `strg`/`String` length is measured in bytes, not Unicode code points,
   matching `buffer`'s confirmed byte-oriented `length`/indexing/slicing.
 - The `u`/`U` unsigned-literal suffix stays required in a plain
   `int`-inferred context, but is optional wherever the context already
   expects `unsigned` (declaration initializers, assignments, call
   arguments, returns): a bare digit sequence there is itself an unsigned
   literal, not an `int` needing conversion. This is implemented.
-- `string`/`String` has identity `==`/`!=`, not ordering operators;
+- `strg`/`String` has identity `==`/`!=`, not ordering operators;
   `.equals(other)` tests exact UTF-8 content.
 - GC collection timing/cadence is explicitly not guaranteed (the prototype's
   every-allocation cadence is an implementation detail, not a language
@@ -1652,7 +1652,7 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   `.append` and array-style slicing; assigning a `buffer` copies it.
   `handle` is fully opaque with no built-in operations at all. Neither
 - `buffer` nor `handle` may appear as an operand in an operator expression;
-  `string` instead follows class-reference equality rules.
+  `strg` instead follows class-reference equality rules.
 - `handle` is a valid `inline` C capture type, including the sugared
   `handle x inline { ... }` declare-and-capture form (see "Inline C and
   LLVM/backend direction"); this is the confirmed way native code assigns a
@@ -1662,7 +1662,7 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   `inline (<type> <name>, ...) { ... }` (plus the `<type> <name> inline
   { ... }` declare-and-capture sugar) compile to a generated C shim per the
   "Inline C and LLVM/backend direction" section, built and linked through
-  the existing C toolchain step. Captured managed references (`string`,
+  the existing C toolchain step. Captured managed references (`strg`,
   `array`, `map`, `handle`, class types) are passed as rooted addresses;
   the wrapper roots the implicit receiver and managed parameters for the
   duration of the call, matching native-bound methods.
@@ -1704,7 +1704,7 @@ next things to resolve, roughly in priority order:
 2. **Resolved and implemented:** `null` is a universal value (see
    "Nullability model (confirmed)" above) — assignable to any type
    including scalars, with no flow-sensitive null analysis. Scalars,
-   `string`, `array`, and `map` now all support `null`, with printing,
+   `strg`, `array`, and `map` now all support `null`, with printing,
    `==`/`!=`, and (for scalar locals) a documented decay-at-boundary rule.
    See the "Implemented, with a documented scope boundary for scalar
    locals" bullet above for the exact scope.

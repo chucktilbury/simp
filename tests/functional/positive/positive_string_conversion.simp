@@ -5,62 +5,62 @@
 # empty string), a negative sign rejected by toUnsigned, and a null
 # receiver raising instead of crashing.
 start {
-    string a = "42"
-    string b = "-17"
-    string c = "3.14"
-    string d = "255"
+    strg a = "42"
+    strg b = "-17"
+    strg c = "3.14"
+    strg d = "255"
 
     print(a.toInt())
     print(b.toInt())
     print(d.toUnsigned())
     print(c.toFloat())
 
-    string plus = "+5"
+    strg plus = "+5"
     print(plus.toInt())
 
-    string sci = "1.5e2"
+    strg sci = "1.5e2"
     print(sci.toFloat())
 
-    string maxUnsigned = "18446744073709551615"
+    strg maxUnsigned = "18446744073709551615"
     print(maxUnsigned.toUnsigned())
 
     try {
-        string bad = "abc"
+        strg bad = "abc"
         print(bad.toInt())
     } except() as e {
         print(e)
     }
 
     try {
-        string trailing = "12x"
+        strg trailing = "12x"
         print(trailing.toInt())
     } except() as e {
         print(e)
     }
 
     try {
-        string empty = ""
+        strg empty = ""
         print(empty.toInt())
     } except() as e {
         print(e)
     }
 
     try {
-        string overflow = "99999999999"
+        strg overflow = "99999999999"
         print(overflow.toInt())
     } except() as e {
         print(e)
     }
 
     try {
-        string negative = "-5"
+        strg negative = "-5"
         print(negative.toUnsigned())
     } except() as e {
         print(e)
     }
 
     try {
-        string n = null
+        strg n = null
         print(n.toInt())
     } except() as e {
         print("null reference")

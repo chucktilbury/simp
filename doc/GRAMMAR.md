@@ -12,7 +12,8 @@ Comments in the productions are explanatory, not grammar terminals.
 The lexer recognizes ASCII identifiers and keywords, UTF-8 string contents,
 and the tokens listed here. Keywords are case-insensitive except that the
 exact spelling `String` is an identifier (the prelude class); keyword-like
-spellings such as `STRING` are still the lowercase `string` type token.
+spellings such as `STRG` are still the `strg` type token. Lowercase `string`
+is an ordinary identifier.
 
 ```ebnf
 LETTER          ::= "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I"
@@ -55,7 +56,7 @@ OPERATOR        ::= "+" | "-" | "*" | "/" | "%" | "!" | "&&" | "||"
                   | "=" | "==" | "!=" | "<" | "<=" | ">" | ">=" ;
 ```
 
-The reserved words are `start`, `int`, `bool`, `float`, `unsigned`, `string`,
+The reserved words are `start`, `int`, `bool`, `float`, `unsigned`, `strg`,
 `array`/`list`, `map`/`dict`, `buffer`, `handle`, `any`, `type`, `class`,
 `namespace`, `include`, `inline`, `import`, `as`, `public`, `protected`,
 `private`, `virtual`, `super`, `null`, `true`, `false`, `return`, `void`,
@@ -151,7 +152,7 @@ return-type         ::= type | "void" ;
 parameter-list      ::= "(", [ parameter, { ",", parameter } ], ")" ;
 parameter           ::= type, IDENT ;
 type                ::= primitive-type | QUALIFIED_IDENT ;
-primitive-type      ::= "int" | "bool" | "float" | "unsigned" | "string"
+primitive-type      ::= "int" | "bool" | "float" | "unsigned" | "strg"
                       | "array" | "list" | "map" | "dict" | "buffer"
                       | "handle" | "any" | "type" ;
 
@@ -285,7 +286,7 @@ primary             ::= INTEGER | UNSIGNED_INT | FLOAT | STRING
 array-literal       ::= "[", [ argument-list ], "]" ;
 map-literal         ::= "{", [ map-entry, { ",", map-entry } ], "}" ;
 map-entry           ::= expression, ":", expression ;
-type-value          ::= "bool" | "string" | "array" | "list" | "map" | "dict"
+type-value          ::= "bool" | "strg" | "array" | "list" | "map" | "dict"
                       | "handle" | "any"
                       | "int" | "unsigned" | "float"  (* only when not followed by "(" *)
                       | "buffer"                      (* only when not followed by "(" *) ;
@@ -340,10 +341,9 @@ No positive-fixture syntax or parser routine was left unmapped. The
 
 ## Notes and known irregularities
 
-- Keywords are case-folded, but ordinary identifiers are case-sensitive;
-  `String` is specially reserved as an identifier while the lowercase
-  `string` spelling is a type keyword. This makes casing significant in an
-  unusual way.
+- Keywords are case-folded, but ordinary identifiers are case-sensitive.
+  `String` is an identifier naming the prelude class, `strg` is the primitive
+  string type keyword, and lowercase `string` is an ordinary identifier.
 - `list` and `array` share a token, as do `dict` and `map`; their distinction
   is lost at parse time.
 - Newline suppression tracks both `()` and `[]` with one nesting counter. A

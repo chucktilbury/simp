@@ -15,7 +15,7 @@ ClassDeclaration makeBuiltinExceptionClass() {
     declaration.builtin = true;
     declaration.location = {"<builtin>", 1, 1};
     declaration.fields.push_back(
-        {"string", "message", declaration.location, AccessLevel::Public});
+        {"String", "message", declaration.location, AccessLevel::Public});
     declaration.fields.push_back(
         {"bool", "runtime_owns_message", declaration.location, AccessLevel::Private});
 
@@ -24,7 +24,7 @@ ClassDeclaration makeBuiltinExceptionClass() {
     constructor.returnType = "void";
     constructor.location = declaration.location;
     constructor.constructor = true;
-    constructor.parameters.push_back({"string", "text", declaration.location});
+    constructor.parameters.push_back({"String", "text", declaration.location});
 
     Statement assignment;
     assignment.kind = StatementKind::Assignment;

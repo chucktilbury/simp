@@ -171,7 +171,7 @@ std::string Parser::parseType(bool allowVoid) {
     else if (match(TokenType::Bool)) type = "bool";
     else if (match(TokenType::FloatType)) type = "float";
     else if (match(TokenType::Unsigned)) type = "unsigned";
-    else if (match(TokenType::StringType)) type = "string";
+    else if (match(TokenType::StrgType)) type = "String";
     else if (match(TokenType::ArrayType)) type = "array";
     else if (match(TokenType::MapType)) type = "map";
     else if (match(TokenType::BufferType)) type = "buffer";
@@ -213,7 +213,7 @@ MethodDeclaration Parser::parseMethod(const Token& typeOrName, const Token& meth
                          typeOrName.type == TokenType::Bool ? "bool" :
                          typeOrName.type == TokenType::FloatType ? "float" :
                          typeOrName.type == TokenType::Unsigned ? "unsigned" :
-                         typeOrName.type == TokenType::StringType ? "string" :
+                         typeOrName.type == TokenType::StrgType ? "String" :
                          typeOrName.type == TokenType::Void ? "void" : typeOrName.text);
     method.location = typeOrName.location;
     method.constructor = constructor;

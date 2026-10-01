@@ -443,14 +443,14 @@ bool SemanticAnalyzer::isAssignable(const std::string& target,
     // reads; it may hold primitive values and managed references.
     if (target == "any") {
         return source == "int" || source == "bool" || source == "float" ||
-               source == "unsigned" || source == "string" || source == "null" ||
+               source == "unsigned" || source == "String" || source == "null" ||
                source == "array" || source == "map" || source == "buffer" ||
                source == "handle" || source == "type" ||
                classes_.find(source) != classes_.end();
     }
     if (source == "any") {
         return target == "int" || target == "bool" || target == "float" ||
-               target == "unsigned" || target == "string" || target == "map" ||
+               target == "unsigned" || target == "String" || target == "map" ||
                target == "array" || target == "buffer" || target == "handle" ||
                classes_.find(target) != classes_.end();
     }
@@ -461,7 +461,7 @@ bool SemanticAnalyzer::isAssignable(const std::string& target,
         // SIMPLE-LANGUAGE-NOTES.md); other scalar contexts (fields, array/map
         // elements, function arguments/returns) are unaffected by this and
         // continue to use the plain unboxed representation.
-        return target == "buffer" || target == "handle" || target == "string" ||
+        return target == "buffer" || target == "handle" || target == "String" ||
                target == "array" || target == "map" || target == "int" ||
                target == "unsigned" || target == "float" || target == "bool" ||
                target == "type" || classes_.find(target) != classes_.end();

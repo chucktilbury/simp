@@ -37,7 +37,7 @@ const TestGroupRegistration registration{3, {
              expectDiagnostic(
                  "class Native {\n  int absolute(int value)\n}\n"
                  "int Native.absolute(int value) from \"simp_method_demo_abs\"\n"
-                 "start {\n  string text = \"x\"\n  print(Native().absolute(text))\n}",
+                 "start {\n  strg text = \"x\"\n  print(Native().absolute(text))\n}",
                  "method argument type does not match parameter 'value'");
          }},
         {"external method rejects 'any' parameters", [] {
@@ -64,7 +64,7 @@ const TestGroupRegistration registration{3, {
         {"out-of-line method signature must match its declaration", [] {
              expectDiagnostic(
                  "class Native {\n  int absolute(int value)\n}\n"
-                 "string Native.absolute(string value) from \"symbol\"\n"
+                 "strg Native.absolute(strg value) from \"symbol\"\n"
                  "start {\n  print(1)\n}",
                  "out-of-line definition signature does not match declaration");
          }},
@@ -93,10 +93,10 @@ const TestGroupRegistration registration{3, {
              expectDiagnostic(
                  "class Native {\n"
                  "  int integerValue(int value)\n"
-                 "  string stringValue(string value)\n"
+                 "  strg stringValue(strg value)\n"
                  "}\n"
                  "int Native.integerValue(int value) from \"same_symbol\"\n"
-                 "string Native.stringValue(string value) from \"same_symbol\"\n"
+                 "strg Native.stringValue(strg value) from \"same_symbol\"\n"
                  "start {\n  print(1)\n}",
                  "is reused with an incompatible method signature");
          }},

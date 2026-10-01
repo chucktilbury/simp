@@ -246,14 +246,16 @@ support for the generated executable, not an IDE integration.
 - `include "path"` textually includes a source file at its top-level directive.
   Relative paths are resolved from the including file, and each canonical file
   is included at most once per compilation unit. Include depth is limited to 16.
-- Reserved keywords are case-insensitive: `start`, `int`, `string`, `if`,
+- Reserved keywords are case-insensitive: `start`, `int`, `strg`, `if`,
   `else`, `while`, `print`, `class`, `super`, `null`, `return`, `void`,
   `raise`, `try`, `except`, `finally`, `for`, `in`, `public`, `protected`,
   `private`, `virtual`, `from`, `map`, `dict`, `namespace`, `include`,
   `import`, `as`, `is`, `type`, and `any`.
   `dict` is an alias for the `map` type.
   Every capitalization is reserved.
-- `int`, `string`, class-reference, `array`, and `map`/`dict` declarations
+- Use `strg` for the managed string type; lowercase `string` is no longer
+  reserved and may be used as an identifier.
+- `int`, `strg`, class-reference, `array`, and `map`/`dict` declarations
   (with optional initializer), assignment, `print`, `return`, and
   `super.Base(...)` statements end at a
   newline or closing brace. Newlines inside parentheses and square brackets
@@ -286,7 +288,7 @@ support for the generated executable, not an IDE integration.
   class and its subclasses, and dispatch continues to the next clause on a
   mismatch. Qualified filters such as `except(errors.MyError)` are supported.
   A final `except()` catches any remaining exception. `except() as message`
-  binds a catch-all message as a read-only `string`; `except(MyError) as error`
+  binds a catch-all message as a read-only `strg`; `except(MyError) as error`
   binds the caught object as a read-only `Exception` reference,
   exposing its inherited `message` field. Catch-all clauses must be last,
   and a subclass clause following a matching base-class clause is rejected as
@@ -307,7 +309,7 @@ support for the generated executable, not an IDE integration.
   followed by a newline; collection values are rendered by runtime tag (see
   below).
 - Basic formatting uses a double-quoted literal followed by an expression list:
-  `string result = "value: {}"(value)`. The result is a reusable `String`
+  `strg result = "value: {}"(value)`. The result is a reusable `String`
   expression, including in returns, arguments, arrays, maps, and `print`.
   Each `{}` substitutes one supported scalar, `String`, type, or internal
   dynamic value; class references without string conversion show `<object>`.
@@ -316,7 +318,7 @@ support for the generated executable, not an IDE integration.
 - Single-quoted strings are raw literals: they have no escapes and cannot be
   used with formatting arguments. Double-quoted strings support `\\`, `\"`,
   `\n`, `\r`, and `\t`; their source bytes must be valid UTF-8.
-- `string` is an alias for the prelude `String` class, with a private GC-managed
+- `strg` is an alias for the prelude `String` class, with a private GC-managed
   `buffer _bytes`. Literals create objects without calling a public constructor.
   Assignment shares the object; `append(other)` mutates all aliases.
   `length` counts UTF-8 bytes, `equals(other)` compares bytes, and `==`/`!=`
@@ -333,7 +335,7 @@ support for the generated executable, not an IDE integration.
   arrays, maps, and `null` in one collection; an empty literal `[]` is always
   allowed. Nested arrays and collections are traced by the GC.
   Reading an element with `values[index]` yields an internal dynamic value —
-  it does not statically know whether that slot holds an `int`, a `string`, a
+  it does not statically know whether that slot holds an `int`, a `strg`, a
   class reference, or a map reference. Dynamic values are not a declared
   type: they can be tested with `is`/`type`, compared with `null`, printed,
   stored in collections, or extracted into a concretely typed variable, field,
@@ -355,7 +357,7 @@ support for the generated executable, not an IDE integration.
   raise catchable runtime exceptions with source locations.
 - Array iteration visits elements in index order and binds each element as an
   internal dynamic value; map iteration binds an internal dynamic value alone
-  or a string key and dynamic value in insertion order. The binding follows
+  or a `strg` key and dynamic value in insertion order. The binding follows
   the same use restrictions as an indexed collection read. Both forms snapshot
   their entries (including
   values) at loop start: insertion, removal, or replacement during the loop
@@ -374,9 +376,9 @@ support for the generated executable, not an IDE integration.
   from `any` are runtime-checked. Maps can contain nested maps and arrays, and
   arrays can contain nested arrays. Exact UTF-8 byte hashing provides expected
   constant-time lookup while a separate insertion-order sequence keeps
-  iteration deterministic. Keys must have statically known type `string`; an
+  iteration deterministic. Keys must have statically known type `strg`; an
   `any` value is not accepted as a key without first testing or extracting it
-  to `string`. `values.remove(key)` returns `1` when an entry was removed and
+  to `strg`. `values.remove(key)` returns `1` when an entry was removed and
   `0` when it was absent; removing a key preserves the order of other entries,
   and reinserting it appends it. `values[start:end]` makes an independent
   shallow map copy from the half-open insertion-order range `[start, end)`;
@@ -413,12 +415,12 @@ support for the generated executable, not an IDE integration.
   double-quoted escapes (`\\`, `\"`, `\n`, `\r`,
   `\t`) are accepted. Single-quoted strings have no escape processing.
 - Semantic analysis resolves lexical local names, rejects use before
-  initialization and undeclared identifiers, checks `int`/`string`
+  initialization and undeclared identifiers, checks `int`/`strg`
   initialization and assignment types, validates integer literal range, and
   requires integer conditions. Definite initialization across `if` branches
   and loops is conservative.
 - A small class subset is supported: top-level `class` declarations with
-  `int`, `string`, `array`, `map`, or class-reference fields; class-named constructors
+  `int`, `strg`, `array`, `map`, or class-reference fields; class-named constructors
   overloaded by parameter types;
   typed methods; `Class(args)` construction/allocation; nullable class-reference
   variables; field access/assignment; method calls; and direct `return`
@@ -625,14 +627,14 @@ syntax.
 ```simple
 class Native {
     int absolute(int value)
-    int stringLength(string text)
-    string stringIdentity(string text)
+    int stringLength(strg text)
+    strg stringIdentity(strg text)
     array identityArray(array items)
 }
 
 int Native.absolute(int value) from "simp_method_demo_abs"
-int Native.stringLength(string text) from "simp_method_demo_string_length"
-string Native.stringIdentity(string text) from "simp_method_demo_string_identity"
+int Native.stringLength(strg text) from "simp_method_demo_string_length"
+strg Native.stringIdentity(strg text) from "simp_method_demo_string_identity"
 array Native.identityArray(array items) from "simp_method_demo_identity"
 
 class Doubler {
@@ -673,7 +675,7 @@ start {
   compiler emits an ordinary Simple method/dispatch entry as a wrapper around
   the external symbol; the wrapper passes the implicit receiver pointer as
   the **first C ABI argument**, followed by explicit parameters.
-- ABI mapping: `int` is C `int` (`i32`); `String`/`string`, `array`, `map`,
+- ABI mapping: `int` is C `int` (`i32`); `String`/`strg`, `array`, `map`,
   and other class references are single opaque pointers; `void` is C `void`.
   This **breaks the earlier `SimpString {data,length}` native ABI**: C code
   must use `simp_string_bytes(object, &data, &length)` to borrow non-NUL-
@@ -691,7 +693,7 @@ start {
   for its own temporary references.
 - A missing `<symbol>` is diagnosed by the linker at link time, not by
   semantic analysis. `tests/functional/positive/positive_extern_functions.simp`
-  exercises `from` bindings for integer, string argument/return, array, and
+  exercises `from` bindings for integer, strg argument/return, array, and
   class-reference values; its bundled C shims include a call to libc `abs()`.
 - Compiled imports use `import <package-or-module> as <symbol>`. Packages live
   at `<search-root>/<name>/<version>/simp-package.toml`; their Simple source,

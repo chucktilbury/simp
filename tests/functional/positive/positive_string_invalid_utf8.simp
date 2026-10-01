@@ -1,7 +1,7 @@
 start {
-    string value = "valid"
+    strg value = "valid"
     try {
-        inline (string value) {
+        inline (strg value) {
             const char invalid[] = { (char)0xc0 };
             simp_string_append_bytes(*value, invalid, 1);
         }

@@ -200,7 +200,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
     case ExpressionKind::TypeName: {
         const auto& target = expression.value;
         const bool known = target == "int" || target == "bool" || target == "float" ||
-                           target == "unsigned" || target == "string" ||
+                           target == "unsigned" || target == "String" ||
                            target == "array" || target == "map" || target == "buffer" ||
                            target == "handle" || target == "any" || target == "type" ||
                            classes_.find(target) != classes_.end();
@@ -299,7 +299,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 if (expression.value == "contains" || expression.value == "remove") {
                     throw DiagnosticError(expression.location,
                                           "map '" + expression.value +
-                                              "' must be called with a string key");
+                                              "' must be called with a strg key");
                 }
                 throw DiagnosticError(expression.location,
                                       "maps support only the read-only 'length' member and "
@@ -352,7 +352,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             const auto actualType = analyzeExpression(*element);
             const bool validElement = actualType == "int" || actualType == "bool" ||
                                       actualType == "float" || actualType == "unsigned" ||
-                                      actualType == "string" ||
+                                      actualType == "String" ||
                                       actualType == "null" || actualType == "any" ||
                                       isMapType(actualType) || isArrayType(actualType) ||
                                       isBufferType(actualType) ||
@@ -360,7 +360,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                       classes_.find(actualType) != classes_.end();
             if (!validElement) {
                 throw DiagnosticError(element->location,
-                                      "array elements must be scalar, string, a class reference, "
+                                      "array elements must be scalar, strg, a class reference, "
                                   "an array, a map, a buffer, a handle, null, or 'any'; found " +
                                       actualType);
             }
@@ -372,19 +372,19 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             auto& key = *expression.arguments[index];
             if (analyzeExpression(key) != "String") {
                 throw DiagnosticError(key.location,
-                                      "map keys must have type string");
+                                      "map keys must have type strg");
             }
             const auto valueType = analyzeExpression(*expression.arguments[index + 1]);
             const bool validValue = valueType == "int" || valueType == "bool" ||
                                     valueType == "float" || valueType == "unsigned" ||
-                                    valueType == "string" ||
+                                    valueType == "String" ||
                                     valueType == "null" || valueType == "any" ||
                                     valueType == "array" || valueType == "map" ||
                                     valueType == "buffer" || valueType == "handle" ||
                                     classes_.find(valueType) != classes_.end();
             if (!validValue) {
                 throw DiagnosticError(expression.arguments[index + 1]->location,
-                                      "map values must be scalar, string, a collection, a class "
+                                      "map values must be scalar, strg, a collection, a class "
                                       "reference, a buffer, a handle, null, or 'any'; found " +
                                           valueType);
             }
@@ -442,7 +442,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             auto& key = *expression.arguments.front();
             if (analyzeExpression(key) != "String") {
                 throw DiagnosticError(key.location,
-                                      "map keys must have type string");
+                                      "map keys must have type strg");
             }
             return "any";
         }
@@ -658,11 +658,11 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 if (expression.arguments.size() != 1) {
                     throw DiagnosticError(expression.location,
                                           "map '" + target.value +
-                                              "' expects one string key");
+                                              "' expects one strg key");
                 }
                 if (analyzeExpression(*expression.arguments.front()) != "String") {
                     throw DiagnosticError(expression.arguments.front()->location,
-                                          "map key must have type string");
+                                          "map key must have type strg");
                 }
                 return "int";
             }
@@ -838,7 +838,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         const bool knownTarget = target == "int" || target == "bool" ||
                                  target == "float" || target == "unsigned" ||
-                                 target == "string" || target == "array" ||
+                                 target == "String" || target == "array" ||
                                  target == "map" || target == "buffer" ||
                                  target == "handle" || target == "type" ||
                                  classes_.find(target) != classes_.end();
@@ -849,7 +849,7 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         const bool knownOperand = operand == "null" || operand == "any" ||
                                   operand == "int" || operand == "bool" ||
                                   operand == "float" || operand == "unsigned" ||
-                                  operand == "string" || operand == "array" ||
+                                  operand == "String" || operand == "array" ||
                                   operand == "map" || operand == "buffer" ||
                                   operand == "handle" || operand == "type" ||
                                   classes_.find(operand) != classes_.end();
@@ -908,10 +908,10 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             // reference types, plus scalars now that they may hold null as
             // locals) may be compared against the null literal with `==`/
             // `!=`. This is not a general operator-expression exception for
-            // buffer/handle/string; it is the same null-check every
+            // buffer/handle/String; it is the same null-check every
             // null-capable type supports.
             const auto isNullComparable = [this](const std::string& type) {
-                return type == "any" || type == "buffer" || type == "handle" || type == "string" ||
+                return type == "any" || type == "buffer" || type == "handle" || type == "String" ||
                        type == "array" || type == "map" || type == "int" ||
                        type == "bool" || type == "float" || type == "unsigned" ||
                        classes_.find(type) != classes_.end();
@@ -1019,7 +1019,7 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
             auto& key = *expression.arguments.front();
             if (analyzeExpression(key) != "String") {
                 throw DiagnosticError(key.location,
-                                      "map keys must have type string");
+                                      "map keys must have type strg");
             }
             return "any";
         }

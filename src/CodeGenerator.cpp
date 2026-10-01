@@ -47,10 +47,9 @@ bool CodeGenerator::isBufferType(const std::string& type) const {
     return type == "buffer";
 }
 
-// 'string' is the pre-migration spelling of the canonical 'String' class and
-// may still reach the backend from raw (un-analyzed) syntax trees.
+// `strg` is lowered to the prelude `String` class before reaching the backend.
 bool CodeGenerator::isStringType(const std::string& type) const {
-    return type == "String" || type == "string";
+    return type == "String";
 }
 
 bool CodeGenerator::isNullableScalarType(const std::string& type) const {
@@ -147,7 +146,7 @@ std::string CodeGenerator::llvmType(const std::string& type) const {
     if (type == "bool") return "i1";
     if (type == "float") return "double";
     if (type == "unsigned") return "i64";
-    if (type == "string") return "ptr";
+    if (type == "String") return "ptr";
     if (type == "any") return "%SimpleArrayValue";
     if (type == "type") return "%SimpleString";
     if (type == "void") return "void";

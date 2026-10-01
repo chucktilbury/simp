@@ -57,7 +57,7 @@ std::string CodeGenerator::debugType(const std::string& type) {
                        debugQuote(type) + ", size: " +
                        (type == "any" ? "256" : "128") + ")");
     } else {
-        const auto name = type == "string" ? "String" : type;
+        const auto& name = type;
         const auto structure = debugNode("!DICompositeType(tag: DW_TAG_structure_type, name: " +
                                           debugQuote(name) + ", flags: DIFlagFwdDecl)");
         id = debugNode("!DIDerivedType(tag: DW_TAG_pointer_type, baseType: " + structure +

@@ -1,13 +1,13 @@
 class OutOfLine {
     OutOfLine(int value)
-    OutOfLine(string value)
+    OutOfLine(strg value)
 }
 
 OutOfLine OutOfLine.OutOfLine(int value) {
     print("out int")
 }
 
-OutOfLine OutOfLine.OutOfLine(string value) {
+OutOfLine OutOfLine.OutOfLine(strg value) {
     print("out string")
 }
 

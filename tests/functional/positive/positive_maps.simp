@@ -25,7 +25,7 @@ start {
     print(table.length)
     print(table["number"])
     int number = table["number"]
-    string text = table["text"]
+    strg text = table["text"]
     print(number)
     print(text)
 

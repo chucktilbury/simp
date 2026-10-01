@@ -1,8 +1,8 @@
 # Passes both integer and string values into one inline C block and prints them together.
 start {
     int count = 42
-    string message = "answer"
-    inline (int count, string message) {
+    strg message = "answer"
+    inline (int count, strg message) {
         printf("%s: %d\n", simp_string_cstr(message), *count);
     }
 }

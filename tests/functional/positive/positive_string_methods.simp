@@ -1,7 +1,7 @@
 # Exercises String byte/range methods, search, splitting, replacement,
 # trimming, ASCII case conversion, UTF-8 boundary checks, and embedded NULs.
 start {
-    string text = "a,b,,c,"
+    strg text = "a,b,,c,"
     print(text.byteAt(0))
     print(text.byteAt(-1))
     print(text.slice(2, 5))
@@ -18,7 +18,7 @@ start {
 
     array parts = text.split(",")
     print(parts.length)
-    string part = parts[0]
+    strg part = parts[0]
     print(part)
     part = parts[1]
     print(part)
@@ -41,18 +41,18 @@ start {
     print("inside \n stays".strip().equals("inside \n stays"))
     print(" \t\n\r".strip().length)
     print("".strip().length)
-    string stripSource = " \nkeep\r\n"
-    string stripped = stripSource.strip()
+    strg stripSource = " \nkeep\r\n"
+    strg stripped = stripSource.strip()
     print(stripSource.equals(" \nkeep\r\n"))
     print(stripped.equals("keep"))
     print(stripped == stripSource)
-    string unchanged = "plain"
-    string unchangedStrip = unchanged.strip()
+    strg unchanged = "plain"
+    strg unchangedStrip = unchanged.strip()
     print(unchangedStrip == unchanged)
     print("ab-é".toUpper())
     print("AB-é".toLower())
 
-    string unicode = "Aé中Z"
+    strg unicode = "Aé中Z"
     print(unicode.length)
     print(unicode.byteAt(-1))
     print(unicode.byteAt(2))
@@ -62,12 +62,12 @@ start {
     print(unicode.slice(-100, 100))
     print(unicode.slice(3, 3).length)
     print(unicode.toUpper())
-    string equalCopy = unicode.slice(0, unicode.length)
+    strg equalCopy = unicode.slice(0, unicode.length)
     print(equalCopy == unicode)
     print(equalCopy.equals(unicode))
 
-    string mutable = "abcd"
-    string alias = mutable
+    strg mutable = "abcd"
+    strg alias = mutable
     mutable.insert(-1, "XY")
     print(alias)
     mutable.insert(0, mutable)
@@ -76,28 +76,28 @@ start {
     print(alias)
     mutable.clear()
     print(mutable.length)
-    string selfInsert = "xy"
+    strg selfInsert = "xy"
     selfInsert.insert(1, selfInsert)
     print(selfInsert)
-    string clamped = "abc".slice(-100, 100)
+    strg clamped = "abc".slice(-100, 100)
     print(clamped)
 
-    string nul = "a"
-    inline (string nul) {
+    strg nul = "a"
+    inline (strg nul) {
         const char bytes[] = { 0, 'b' };
         simp_string_append_bytes(*nul, bytes, 2);
     }
     print(nul.length)
     print(nul.byteAt(1))
     print(nul.byteAt(2))
-    string nulNeedle = ""
-    inline (string nulNeedle) {
+    strg nulNeedle = ""
+    inline (strg nulNeedle) {
         const char byte[] = { 0 };
         simp_string_append_bytes(*nulNeedle, byte, 1);
     }
     print(nul.find(nulNeedle))
     print(nul.contains(nulNeedle))
-    string nulReplacement = nul.replace(nulNeedle, "X")
+    strg nulReplacement = nul.replace(nulNeedle, "X")
     print(nulReplacement.length)
     print(nulReplacement.byteAt(1))
     print(nulReplacement.byteAt(2))
@@ -163,7 +163,7 @@ start {
         print("null replacement")
     }
     try {
-        string missing = null
+        strg missing = null
         missing.clear()
     } except() {
         print("null receiver")

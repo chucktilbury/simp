@@ -87,7 +87,7 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::Bool: return "'bool'";
     case TokenType::FloatType: return "'float'";
     case TokenType::Unsigned: return "'unsigned'";
-    case TokenType::StringType: return "'string'";
+    case TokenType::StrgType: return "'strg'";
     case TokenType::ArrayType: return "'array'";
     case TokenType::MapType: return "'map'";
     case TokenType::BufferType: return "'buffer'";
@@ -286,7 +286,7 @@ Token Lexer::scanIdentifierOrInteger() {
     for (char value : text) {
         normalized.push_back(lowerAscii(value));
     }
-    // The built-in class name is distinct from the lowercase `string` alias.
+    // The built-in class name remains distinct from primitive type keywords.
     if (text == "String") {
         return makeToken(TokenType::Identifier, std::move(text), location);
     }
@@ -294,7 +294,7 @@ Token Lexer::scanIdentifierOrInteger() {
         {"start", TokenType::Start}, {"int", TokenType::Int},
         {"bool", TokenType::Bool}, {"float", TokenType::FloatType},
         {"unsigned", TokenType::Unsigned},
-        {"string", TokenType::StringType},
+        {"strg", TokenType::StrgType},
         {"array", TokenType::ArrayType}, {"list", TokenType::ArrayType},
         {"map", TokenType::MapType}, {"dict", TokenType::MapType},
         {"buffer", TokenType::BufferType}, {"handle", TokenType::HandleType},

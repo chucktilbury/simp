@@ -30,7 +30,7 @@ start {
     bool nullBool = null
     print(nullBool)
 
-    string nullString = null
+    strg nullString = null
     print(nullString)
     print(nullString == null)
 

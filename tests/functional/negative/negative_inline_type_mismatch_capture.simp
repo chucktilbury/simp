@@ -1,6 +1,6 @@
 # Rejects declaring a string variable as an int capture in inline C.
 start {
-    string value = "text"
+    strg value = "text"
     inline (int value) {
         (void)value;
     }

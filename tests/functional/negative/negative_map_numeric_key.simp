@@ -1,5 +1,5 @@
 # Rejects indexing a map with an integer key rather than a string.
 start {
     map values = {}
-    string value = values[0]
+    strg value = values[0]
 }

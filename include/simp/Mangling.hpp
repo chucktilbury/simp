@@ -28,7 +28,6 @@ inline std::string mangleTypeCode(const std::string& type) {
     if (type == "unsigned") return "u";
     if (type == "float") return "f";
     if (type == "bool") return "b";
-    if (type == "string") return "s";
     if (type == "any") return "y";
     if (type == "void") return "v";
     if (type == "array" || type == "list") return "a";

@@ -2,7 +2,7 @@ namespace Network {
     namespace Http {
         class Client {
             Client() {}
-            string get(string path) {
+            strg get(strg path) {
                 return path
             }
         }

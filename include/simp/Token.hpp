@@ -23,7 +23,7 @@ enum class TokenType {
     Bool,
     FloatType,
     Unsigned,
-    StringType,
+    StrgType,
     ArrayType,
     MapType,
     BufferType,

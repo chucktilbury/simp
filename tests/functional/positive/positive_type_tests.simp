@@ -30,8 +30,8 @@ start {
 
     map values = {"integer": 42, "text": "hello", "real": 3.5, "dictionary": {"key": 1}, "sequence": [1, 2], "object": leaf, "nothing": null, "flag": true, "count": 5u}
     print(values["integer"] is int)
-    print(values["integer"] is string)
-    print(values["text"] is string)
+    print(values["integer"] is strg)
+    print(values["text"] is strg)
     print(values["text"] is float)
     print(values["real"] is float)
     print(values["dictionary"] is map)
@@ -46,14 +46,14 @@ start {
     print(values["flag"] is bool)
     print(values["count"] is unsigned)
     print(values["nothing"] is int)
-    print(values["nothing"] is string)
+    print(values["nothing"] is strg)
     print(values["nothing"] is Root)
 
     Root emptyObject = null
-    string emptyText = null
+    strg emptyText = null
     array emptyArray = null
     print(emptyObject is Root)
-    print(emptyText is string)
+    print(emptyText is strg)
     print(emptyArray is array)
     int emptyInteger = null
     print(emptyInteger is int)
