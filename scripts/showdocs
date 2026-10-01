@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+make docs
+firefox $_PROJECT_LOC/docs/out/html/index.html
