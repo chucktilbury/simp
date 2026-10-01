@@ -51,6 +51,15 @@ source or build paths:
 | Standard modules | `share/simp/modules/` | `${CMAKE_INSTALL_DATADIR}/simp/modules/` |
 | Documentation | — | `${CMAKE_INSTALL_DOCDIR}`, `${CMAKE_INSTALL_MANDIR}/man1/simp.1` |
 
+In the repository source tree, the String prelude lives in `prelude/String.simp`
+and standard-library modules originate under `stdlib/`
+(`stdlib/<name>/<version>/simp-package.toml`), while `include/` contains only
+C runtime headers and C++ compiler headers. `stdlib/` is deliberately named
+differently from `modules/` so that compiling a `.simp` file at the repository
+root does not treat the standard library as the project module root
+(`<project-root>/modules`). CMake stages `prelude/` into `share/simp/prelude/`
+and `stdlib/` into `share/simp/modules/`.
+
 The front-end archive used by the test executables is `lib/libsimp_frontend.a`.
 The runtime lives in a `simp` subdirectory of the library directory so that a
 future shared runtime can sit beside the archive without colliding with system
@@ -82,9 +91,10 @@ Clang, then exits. See `doc/simp.1` (installed as `simp(1)`).
 
 The repository uses one in-tree build directory: `build/`. `include`, `src`,
 and `tests` each have their own `CMakeLists.txt` and are integrated by the root
-project; standalone configuration is optional. To configure a component
-without creating another build directory in the repository, use a temporary
-directory outside it, for example:
+project; standalone configuration is optional. The language prelude lives in
+`prelude/` and standard library packages live under `stdlib/`. To configure a
+component without creating another build directory in the repository, use a
+temporary directory outside it, for example:
 
 ```sh
 cmake -S src -B /tmp/simp-compiler-build

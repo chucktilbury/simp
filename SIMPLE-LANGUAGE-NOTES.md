@@ -619,7 +619,7 @@ statements.
   ```
 
 - `string` aliases the real, inheritable prelude class `String`
-  (`include/simp/String.simp`). Literals and formatted expressions create
+  (`prelude/String.simp`). Literals and formatted expressions create
   fresh objects; assignments and arguments share object identity.
   `==`/`!=` compare identity, while `.equals(other)` compares exact bytes.
 - A private `buffer _bytes` owns UTF-8 bytes; `length` reads its byte count.
@@ -1510,6 +1510,13 @@ build stages the same shape in the source tree. `SIMP_RUNTIME_DIR`,
 `SIMP_INCLUDE_DIR`, `SIMP_PRELUDE_DIR`, and `SIMP_STDLIB_MODULE_DIR` override
 individual resources, `SIMP_HOME` overrides the prefix, and `CC` overrides the
 Clang driver. `simp --print-paths` reports the resolved locations.
+In the repository source tree, the String prelude lives in `prelude/String.simp`
+and standard-library modules originate under `stdlib/`
+(`stdlib/<name>/<version>/simp-package.toml`), while `include/` contains only
+C runtime headers and C++ compiler headers. `stdlib/` is deliberately named
+differently from `modules/` so compiling a `.simp` source at the repo root does
+not treat it as the project module root. CMake stages `prelude/` into
+`share/simp/prelude/` and `stdlib/` into `share/simp/modules/`.
 
 The eventual ecosystem should include a usable package manager and an IDE.
 The compiler supports `-g` for DWARF source-line and local-variable debugging
