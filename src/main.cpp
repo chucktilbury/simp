@@ -9,10 +9,13 @@
 #include "simp/Diagnostic.hpp"
 #include "simp/ModuleRegistry.hpp"
 #include "simp/Parser.hpp"
+#include "simp/PathResolution.hpp"
 #include "simp/SemanticAnalyzer.hpp"
 #include "simp/SourceLoader.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <chrono>
 #include <cstdlib>
 #include <charconv>
 #include <filesystem>
@@ -20,7 +23,8 @@
 #include <iomanip>
 #include <iostream>
 #include <iterator>
-#include <set>
+#include <optional>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
@@ -51,12 +55,16 @@ simp::CommandLine makeCommandLine() {
               simp::CommandLineAction::Help);
     addSwitch(commandLine, 'V', "version", "version", "Show the program version",
               simp::CommandLineAction::Version);
-    addSwitch(commandLine, 'v', "verbose", "verbose", "Display debugging information");
-    addSwitch(commandLine, '\0', "trace-parser", "trace-parser",
-              "Trace parser activity");
-    addSwitch(commandLine, '\0', "dump-ast", "dump-ast", "Print the parsed AST");
-    addSwitch(commandLine, '\0', "dump-symbols", "dump-symbols",
-              "Print the semantic symbol table");
+    simp::CommandLineOption verboseCount;
+    verboseCount.shortName = 'v';
+    verboseCount.name = "verbose";
+    verboseCount.description =
+        "Increase verbosity: -v phases, -vv resolved paths and clang commands, "
+        "-vvv timings";
+    verboseCount.valueType = simp::CommandLineValueType::Counter;
+    commandLine.addOption(std::move(verboseCount));
+    addSwitch(commandLine, '\0', "print-paths", "print-paths",
+              "Print resolved compiler resource and module paths, then exit");
     addSwitch(commandLine, '\0', "check-only", "check-only",
               "Run parsing and semantic checks without code generation");
     addSwitch(commandLine, 'c', "compile-only", "compile-only",
@@ -73,10 +81,19 @@ simp::CommandLine makeCommandLine() {
     paths.list = true;
     commandLine.addOption(std::move(paths));
 
+    simp::CommandLineOption moduleDirectory;
+    moduleDirectory.shortName = 'M';
+    moduleDirectory.longName = "module-dir";
+    moduleDirectory.name = "module-dir";
+    moduleDirectory.description =
+        "Use DIR as the project module root (default: <project-root>/modules)";
+    moduleDirectory.valueType = simp::CommandLineValueType::String;
+    commandLine.addOption(std::move(moduleDirectory));
+
     simp::CommandLineOption packagePaths;
     packagePaths.longName = "package-path";
     packagePaths.name = "package-path";
-    packagePaths.description = "Add a package search root";
+    packagePaths.description = "Deprecated: add a compatibility package search root";
     packagePaths.valueType = simp::CommandLineValueType::String;
     packagePaths.list = true;
     commandLine.addOption(std::move(packagePaths));
@@ -85,17 +102,18 @@ simp::CommandLine makeCommandLine() {
     traces.shortName = 't';
     traces.longName = "trace";
     traces.name = "trace";
-    traces.description = "Trace parser, scanner, AST, or symbols";
+    traces.description =
+        "Trace scanner, parser, ast, or symbols (comma-separated, repeatable)";
     traces.valueType = simp::CommandLineValueType::String;
     traces.list = true;
+    traces.listSeparator = ',';
     commandLine.addOption(std::move(traces));
 
     simp::CommandLineOption verbosity;
     verbosity.longName = "verbosity";
     verbosity.name = "verbosity";
-    verbosity.description = "Set diagnostic verbosity level";
+    verbosity.description = "Set the verbosity level N (0-3); same as N repetitions of -v";
     verbosity.valueType = simp::CommandLineValueType::Number;
-    verbosity.defaultValue = "0";
     commandLine.addOption(std::move(verbosity));
 
     simp::CommandLineOption includeDepth;
@@ -140,7 +158,7 @@ simp::CommandLine makeCommandLine() {
     commandLine.addOption(std::move(libraries));
 
     commandLine.addPositional(
-        {"input", "SIMP source or object file to compile or link", true, true});
+        {"input", "SIMP source or object file to compile or link", false, true});
     return commandLine;
 }
 
@@ -197,20 +215,117 @@ std::string defaultExecutablePath(const std::string& inputPath) {
     return (std::filesystem::path(".") / name).string();
 }
 
-std::string compilerExecutable() {
-    const auto* configuredCompiler = std::getenv("CC");
-    return configuredCompiler != nullptr && configuredCompiler[0] != '\0'
-               ? configuredCompiler
-               : SIMP_CLANG_EXECUTABLE;
+constexpr std::size_t maximumVerbosity = 3;
+constexpr std::size_t phaseVerbosity = 1;
+constexpr std::size_t pathVerbosity = 2;
+constexpr std::size_t timingVerbosity = 3;
+
+simp::ResolvedPath compilerExecutable() {
+    if (const auto configuredCompiler = simp::processEnvironment("CC")) {
+        return {*configuredCompiler, "CC"};
+    }
+    std::error_code error;
+    if (std::filesystem::is_regular_file(SIMP_CLANG_EXECUTABLE, error)) {
+        return {SIMP_CLANG_EXECUTABLE, "configured at build time"};
+    }
+    return {"clang", "PATH lookup; configured " SIMP_CLANG_EXECUTABLE " is missing"};
 }
 
-int runCompiler(const std::vector<std::string>& arguments,
+struct BuildContext {
+    std::filesystem::path compiler;
+    std::filesystem::path includeDirectory;
+    std::filesystem::path runtimeLibrary;
+    std::size_t verbosity = 0;
+};
+
+class PhaseTimer {
+public:
+    PhaseTimer(std::size_t verbosity, std::string phase)
+        : verbosity_(verbosity), phase_(std::move(phase)),
+          start_(std::chrono::steady_clock::now()) {
+        if (verbosity_ >= phaseVerbosity) std::cerr << "[verbose] " << phase_ << '\n';
+    }
+
+    ~PhaseTimer() {
+        if (verbosity_ < timingVerbosity) return;
+        const auto elapsed = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - start_);
+        std::cerr << "[timing] " << phase_ << ": " << std::fixed << std::setprecision(3)
+                  << elapsed.count() << " ms\n";
+    }
+
+    PhaseTimer(const PhaseTimer&) = delete;
+    PhaseTimer& operator=(const PhaseTimer&) = delete;
+
+private:
+    std::size_t verbosity_;
+    std::string phase_;
+    std::chrono::steady_clock::time_point start_;
+};
+
+std::string describePath(const std::filesystem::path& path) {
+    std::error_code error;
+    return path.string() + (std::filesystem::exists(path, error) ? "" : " [not found]");
+}
+
+std::string describePath(const simp::ResolvedPath& path) {
+    return describePath(path.path) + " (" + path.origin + ")";
+}
+
+void writeResolvedPaths(std::ostream& output, const std::string& prefix,
+                        const simp::ResourcePaths& resources,
+                        const simp::ModuleSearchPaths& modules) {
+    output << prefix << "executable: "
+           << (resources.executable ? resources.executable->string()
+                                    : std::string("<unknown>"))
+           << '\n';
+    output << prefix << "prefix: "
+           << (resources.prefix ? describePath(*resources.prefix)
+                                : std::string("<unknown>"))
+           << '\n';
+    output << prefix << "runtime directory: " << describePath(resources.runtimeDirectory)
+           << '\n';
+    output << prefix << "runtime library: " << describePath(resources.runtimeLibrary)
+           << '\n';
+    output << prefix << "include directory: " << describePath(resources.includeDirectory)
+           << '\n';
+    output << prefix << "prelude directory: " << describePath(resources.preludeDirectory)
+           << '\n';
+    output << prefix << "prelude source: " << describePath(resources.preludeSource) << '\n';
+    output << prefix << "project root: " << describePath(modules.projectRoot) << '\n';
+    output << prefix << "project module root: " << describePath(modules.projectModuleRoot)
+           << '\n';
+    output << prefix << "standard modules: " << describePath(modules.standardModuleRoot)
+           << '\n';
+    if (modules.compatibilityRoots.empty()) {
+        output << prefix << "compatibility package roots: <none>\n";
+    }
+    for (const auto& root : modules.compatibilityRoots) {
+        output << prefix << "compatibility package root: " << describePath(root) << '\n';
+    }
+    output << prefix << "module registry: " << describePath(modules.registry) << '\n';
+    const auto compiler = compilerExecutable();
+    output << prefix << "clang: " << compiler.path.string() << " (" << compiler.origin
+           << ")\n";
+}
+
+void requireResource(const std::filesystem::path& path, const std::string& description,
+                     const std::string& overrideVariable) {
+    std::error_code error;
+    if (!std::filesystem::exists(path, error)) {
+        throw std::runtime_error(description + " not found: " + path.string() + "; set " +
+                                 overrideVariable + " or SIMP_HOME, or run --print-paths");
+    }
+}
+
+int runCompiler(const BuildContext& context, const std::vector<std::string>& arguments,
                 const std::string& operation) {
-    std::string command = shellQuote(compilerExecutable());
+    std::string command = shellQuote(context.compiler.string());
     for (const auto& argument : arguments) command += " " + shellQuote(argument);
+    if (context.verbosity >= pathVerbosity) std::cerr << "[command] " << command << '\n';
     const int status = std::system(command.c_str());
     if (status == -1) {
-        std::cerr << "simp: could not start compiler " << compilerExecutable() << '\n';
+        std::cerr << "simp: could not start compiler " << context.compiler.string() << '\n';
         return 1;
     }
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
@@ -234,7 +349,7 @@ void ensureOutputDirectory(const std::string& outputPath) {
     }
 }
 
-int buildExecutable(const std::vector<std::string>& irPaths,
+int buildExecutable(const BuildContext& context, const std::vector<std::string>& irPaths,
                     const std::vector<std::string>& objectPaths,
                     const std::string& inlineShimPath,
                     const std::vector<std::string>& packageLibraryPaths,
@@ -252,7 +367,7 @@ int buildExecutable(const std::vector<std::string>& irPaths,
         arguments.insert(arguments.end(), {"-x", "none", objectPath});
     }
     if (!inlineShimPath.empty()) {
-        arguments.insert(arguments.end(), {"-I", SIMP_RUNTIME_INCLUDE_DIRECTORY,
+        arguments.insert(arguments.end(), {"-I", context.includeDirectory.string(),
                                            "-x", "c", inlineShimPath});
     }
     arguments.insert(arguments.end(), {"-x", "none"});
@@ -264,9 +379,9 @@ int buildExecutable(const std::vector<std::string>& irPaths,
     }
     for (const auto& library : packageLibraries) arguments.push_back("-l" + library);
     for (const auto& library : libraries) arguments.push_back("-l" + library);
-    arguments.insert(arguments.end(), {"-pthread", SIMP_GC_RUNTIME_LIBRARY,
+    arguments.insert(arguments.end(), {"-pthread", context.runtimeLibrary.string(),
                                        "-o", outputPath});
-    return runCompiler(arguments, "link the executable");
+    return runCompiler(context, arguments, "link the executable");
 }
 
 struct LinkInputs {
@@ -344,55 +459,7 @@ LinkInputs readLinkSidecars(const std::vector<std::string>& objectPaths) {
     return inputs;
 }
 
-std::vector<std::filesystem::path> splitSearchPathList(const std::string& value) {
-    std::vector<std::filesystem::path> paths;
-#ifdef _WIN32
-    constexpr char separator = ';';
-#else
-    constexpr char separator = ':';
-#endif
-    std::size_t start = 0;
-    while (start <= value.size()) {
-        const auto end = value.find(separator, start);
-        const auto entry = value.substr(
-            start, end == std::string::npos ? std::string::npos : end - start);
-        if (!entry.empty()) paths.emplace_back(entry);
-        if (end == std::string::npos) break;
-        start = end + 1;
-    }
-    return paths;
-}
-
-std::vector<std::filesystem::path> packageSearchRoots(
-    const std::vector<std::string>& commandLinePaths) {
-    std::vector<std::filesystem::path> roots;
-    for (const auto& path : commandLinePaths) roots.emplace_back(path);
-    if (const auto* environment = std::getenv("SIMP_PACKAGE_PATH")) {
-        const auto environmentPaths = splitSearchPathList(environment);
-        roots.insert(roots.end(), environmentPaths.begin(), environmentPaths.end());
-    }
-    roots.emplace_back(std::filesystem::current_path() / ".simp" / "packages");
-    const auto* xdgDataHome = std::getenv("XDG_DATA_HOME");
-    const auto* home = std::getenv("HOME");
-    if (xdgDataHome != nullptr && *xdgDataHome != '\0') {
-        roots.emplace_back(std::filesystem::path(xdgDataHome) / "simp" / "packages");
-    } else if (home != nullptr && *home != '\0') {
-        roots.emplace_back(std::filesystem::path(home) / ".local" / "share" /
-                           "simp" / "packages");
-    }
-#ifdef SIMP_PACKAGE_DIRECTORY
-    roots.emplace_back(SIMP_PACKAGE_DIRECTORY);
-#endif
-    std::vector<std::filesystem::path> unique;
-    std::set<std::string> seen;
-    for (const auto& root : roots) {
-        const auto normalized = std::filesystem::absolute(root).lexically_normal();
-        if (seen.insert(normalized.string()).second) unique.push_back(normalized);
-    }
-    return unique;
-}
-
-int buildObject(const std::vector<std::string>& irPaths,
+int buildObject(const BuildContext& context, const std::vector<std::string>& irPaths,
                 const std::string& inlineShimPath,
                 const std::string& outputPath,
                 std::vector<std::string>& temporaryPaths, bool debug) {
@@ -404,24 +471,24 @@ int buildObject(const std::vector<std::string>& irPaths,
         std::vector<std::string> arguments{
             "-Wno-override-module", "-x", "ir", irPaths[index], "-c", "-o", objectPath};
         if (debug) arguments.push_back("-g");
-        if (runCompiler(arguments, "compile LLVM IR to an object") != 0) return 1;
+        if (runCompiler(context, arguments, "compile LLVM IR to an object") != 0) return 1;
         objectPaths.push_back(objectPath);
     }
     if (!inlineShimPath.empty()) {
         const auto shimObjectPath = temporaryPath(outputPath, "shim");
         temporaryPaths.push_back(shimObjectPath);
         std::vector<std::string> arguments{
-            "-I", SIMP_RUNTIME_INCLUDE_DIRECTORY, "-x", "c", inlineShimPath,
+            "-I", context.includeDirectory.string(), "-x", "c", inlineShimPath,
             "-c", "-o", shimObjectPath};
         if (debug) arguments.push_back("-g");
-        if (runCompiler(arguments, "compile an inline C shim") != 0) return 1;
+        if (runCompiler(context, arguments, "compile an inline C shim") != 0) return 1;
         objectPaths.push_back(shimObjectPath);
     }
     std::vector<std::string> arguments{"-r"};
     if (debug) arguments.push_back("-g");
     arguments.insert(arguments.end(), objectPaths.begin(), objectPaths.end());
     arguments.insert(arguments.end(), {"-o", outputPath});
-    return runCompiler(arguments, "combine relocatable objects");
+    return runCompiler(context, arguments, "combine relocatable objects");
 }
 
 bool samePath(const std::string& left, const std::string& right) {
@@ -456,26 +523,50 @@ int main(int argc, char** argv) {
         return 0;
     }
 
-    const bool traceParser = commandLine.switchValue("trace-parser") ||
-                            commandLine.contains("trace", "parser");
-    const bool traceScanner = commandLine.contains("trace", "scanner");
-    const bool traceAst = commandLine.contains("trace", "AST") ||
-                          commandLine.contains("trace", "ast");
-    const bool traceSymbols = commandLine.contains("trace", "symbols");
-    const bool dump = commandLine.switchValue("dump-ast") || traceAst;
-    const bool dumpSymbols = commandLine.switchValue("dump-symbols") || traceSymbols;
+    bool traceParser = false;
+    bool traceScanner = false;
+    bool dump = false;
+    bool dumpSymbols = false;
+    for (const auto& target : commandLine.values("trace")) {
+        std::string normalized = target;
+        std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                       [](unsigned char character) {
+                           return static_cast<char>(std::tolower(character));
+                       });
+        if (normalized == "parser") traceParser = true;
+        else if (normalized == "scanner") traceScanner = true;
+        else if (normalized == "ast") dump = true;
+        else if (normalized == "symbols") dumpSymbols = true;
+        else {
+            std::cerr << "simp: unsupported trace target: " << target
+                      << " (expected scanner, parser, ast, or symbols)\n"
+                      << commandLine.helpText();
+            return 2;
+        }
+    }
     const bool checkOnly = commandLine.switchValue("check-only");
     const bool compileOnly = commandLine.switchValue("compile-only");
     const bool debug = commandLine.switchValue("debug");
-    std::size_t verbosity = 0;
-    try {
-        verbosity = parseNonNegativeInteger(
-            *commandLine.value("verbosity"), "--verbosity");
-    } catch (const std::invalid_argument& error) {
-        std::cerr << "simp: " << error.what() << '\n' << commandLine.helpText();
+    const bool printPaths = commandLine.switchValue("print-paths");
+    std::size_t verbosity = commandLine.count("verbose");
+    if (const auto verbosityValue = commandLine.value("verbosity")) {
+        if (verbosity != 0) {
+            std::cerr << "simp: -v and --verbosity cannot be used together\n";
+            return 2;
+        }
+        try {
+            verbosity = parseNonNegativeInteger(*verbosityValue, "--verbosity");
+        } catch (const std::invalid_argument& error) {
+            std::cerr << "simp: " << error.what() << '\n' << commandLine.helpText();
+            return 2;
+        }
+    }
+    if (verbosity > maximumVerbosity) {
+        std::cerr << "simp: verbosity level " << verbosity << " exceeds the maximum of "
+                  << maximumVerbosity << '\n';
         return 2;
     }
-    const bool verbose = commandLine.switchValue("verbose") || verbosity > 0;
+    const bool verbose = verbosity >= phaseVerbosity;
     std::size_t maximumIncludeDepth = 0;
     try {
         maximumIncludeDepth = parseNonNegativeInteger(
@@ -485,6 +576,10 @@ int main(int argc, char** argv) {
         return 2;
     }
     const auto& positionalValues = commandLine.positionalValues();
+    if (positionalValues.empty() && !printPaths) {
+        std::cerr << "simp: required argument not found: input\n" << commandLine.helpText();
+        return 2;
+    }
     const auto requestedOutput = commandLine.value("output").value_or("");
     const auto irOutput = commandLine.value("emit-llvm").value_or("");
     std::vector<std::string> sourcePaths;
@@ -549,17 +644,45 @@ int main(int argc, char** argv) {
     for (const auto& path : commandLine.values("path")) {
         includeSearchPaths.emplace_back(path);
     }
-    for (const auto& target : commandLine.values("trace")) {
-        if (target != "parser" && target != "scanner" && target != "AST" &&
-            target != "ast" && target != "symbols") {
-            std::cerr << "simp: unsupported trace target: " << target << '\n'
-                      << commandLine.helpText();
-            return 2;
-        }
+
+    simp::ResourcePaths resources;
+    simp::ModuleSearchPaths moduleSearchPaths;
+    try {
+        resources = simp::resolveResourcePaths(
+            simp::currentExecutablePath(argc > 0 ? argv[0] : ""),
+            simp::configuredInstallLayout(), simp::processEnvironment);
+        simp::ModuleSearchRequest moduleRequest;
+        moduleRequest.moduleDirectoryOption = commandLine.value("module-dir");
+        moduleRequest.packagePathOptions = commandLine.values("package-path");
+        moduleRequest.sourcePaths = sourcePaths;
+        moduleRequest.currentDirectory = std::filesystem::current_path();
+        moduleSearchPaths = simp::resolveModuleSearchPaths(moduleRequest, resources,
+                                                           simp::processEnvironment);
+    } catch (const std::exception& error) {
+        std::cerr << "simp: " << error.what() << '\n';
+        return 1;
     }
+    if (printPaths) {
+        writeResolvedPaths(std::cout, "", resources, moduleSearchPaths);
+        return 0;
+    }
+    if (verbosity >= pathVerbosity) {
+        writeResolvedPaths(std::cerr, "[paths] ", resources, moduleSearchPaths);
+    }
+    for (const auto& warning : moduleSearchPaths.deprecationWarnings) {
+        std::cerr << "simp: warning: " << warning << '\n';
+    }
+    BuildContext buildContext;
+    buildContext.compiler = compilerExecutable().path;
+    buildContext.includeDirectory = resources.includeDirectory.path;
+    buildContext.runtimeLibrary = resources.runtimeLibrary;
+    buildContext.verbosity = verbosity;
 
     std::vector<std::string> temporaryPaths;
     try {
+        simp::validateModuleSearchPaths(moduleSearchPaths);
+        std::optional<PhaseTimer> frontendTimer;
+        frontendTimer.emplace(verbosity, "parse source inputs");
         simp::Program program;
         for (const auto& inputPath : sourcePaths) {
             std::ifstream input(inputPath, std::ios::binary);
@@ -617,17 +740,19 @@ int main(int argc, char** argv) {
                 {sourcePaths.front(), 1, 1},
                 "input files must contain exactly one top-level 'start' block");
         }
-        const auto* configuredRegistry = std::getenv("SIMP_MODULE_REGISTRY");
-        const auto registryPath = configuredRegistry == nullptr
-                                      ? std::filesystem::current_path() / "simp-modules.tsv"
-                                      : std::filesystem::path(configuredRegistry);
+        frontendTimer.emplace(verbosity, "load imported modules");
         simp::ModuleLoadOptions moduleOptions;
-        moduleOptions.registryPath = registryPath;
-        moduleOptions.packageSearchRoots =
-            packageSearchRoots(commandLine.values("package-path"));
+        moduleOptions.packageSearchRoots = moduleSearchPaths.packageRoots();
+        moduleOptions.registry = moduleSearchPaths.registry;
         const auto moduleLoad = simp::loadImportedModules(program, moduleOptions);
+        for (const auto& warning : moduleLoad.warnings) {
+            std::cerr << "simp: warning: " << warning << '\n';
+        }
+        frontendTimer.emplace(verbosity, "semantic analysis");
         simp::SemanticAnalyzer semanticAnalyzer;
+        semanticAnalyzer.setPreludeSource(resources.preludeSource);
         semanticAnalyzer.analyze(program);
+        frontendTimer.reset();
         if (dump) {
             simp::dumpAst(program, std::cout);
         }
@@ -672,6 +797,8 @@ int main(int argc, char** argv) {
                 throw std::invalid_argument("-o must not overwrite an input file");
             }
         }
+        std::optional<PhaseTimer> backendTimer;
+        backendTimer.emplace(verbosity, "generate LLVM IR");
         simp::CodeGenerator codeGenerator(SIMP_TARGET_TRIPLE, debug);
         std::unordered_map<std::string, std::string> inlineShims;
         std::vector<std::string> irPaths;
@@ -719,9 +846,19 @@ int main(int argc, char** argv) {
         for (const auto& library : moduleLoad.libraries) {
             appendUnique(packageInputs.libraries, library);
         }
+        if (!inlineShimPath.empty()) {
+            requireResource(buildContext.includeDirectory / "simp" / "RuntimeGc.h",
+                            "runtime header", "SIMP_INCLUDE_DIR");
+        }
+        if (!compileOnly) {
+            requireResource(buildContext.runtimeLibrary, "runtime library",
+                            "SIMP_RUNTIME_DIR");
+        }
+        backendTimer.emplace(verbosity, compileOnly ? "compile object with clang"
+                                                    : "compile and link with clang");
         int buildResult = 0;
         if (compileOnly) {
-            buildResult = buildObject(irPaths, inlineShimPath, outputPath, temporaryPaths, debug);
+            buildResult = buildObject(buildContext, irPaths, inlineShimPath, outputPath, temporaryPaths, debug);
             if (buildResult == 0) writeLinkSidecar(outputPath, packageInputs);
         } else {
             const auto sidecarInputs = readLinkSidecars(objectPaths);
@@ -732,9 +869,10 @@ int main(int argc, char** argv) {
                 appendUnique(packageInputs.libraries, library);
             }
             buildResult = buildExecutable(
-                irPaths, objectPaths, inlineShimPath, packageInputs.libraryPaths,
+                buildContext, irPaths, objectPaths, inlineShimPath, packageInputs.libraryPaths,
                 packageInputs.libraries, libraryPaths, libraries, outputPath, debug);
         }
+        backendTimer.reset();
         for (const auto& temporary : temporaryPaths) {
             std::error_code ignored;
             std::filesystem::remove(temporary, ignored);

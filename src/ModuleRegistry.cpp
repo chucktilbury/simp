@@ -25,6 +25,7 @@ struct RegistryEntry {
     std::vector<std::string> dependencyVersions;
     std::string exportKind;
     std::string exportName;
+    bool fromLegacyRegistry = false;
 };
 
 using Registry = std::unordered_map<std::string, RegistryEntry>;
@@ -76,6 +77,7 @@ Registry readRegistry(const std::filesystem::path& path) {
                                      "module, source, version, dependencies, export-kind, export-name");
         }
         RegistryEntry entry;
+        entry.fromLegacyRegistry = true;
         entry.name = columns[0];
         entry.sourcePath = columns[1];
         if (entry.sourcePath.is_relative()) entry.sourcePath = path.parent_path() / entry.sourcePath;
@@ -102,6 +104,27 @@ Registry readRegistry(const std::filesystem::path& path) {
     return registry;
 }
 
+std::string describeSearchedPath(const ResolvedPath& path, bool directory) {
+    std::error_code error;
+    const bool present = directory ? std::filesystem::is_directory(path.path, error)
+                                   : std::filesystem::is_regular_file(path.path, error);
+    return "  " + path.path.string() + (present ? "" : " [not found]") + " (" +
+           path.origin + ")";
+}
+
+std::string missingModuleMessage(const std::string& moduleName,
+                                 const ModuleLoadOptions& options) {
+    std::string message = "module '" + moduleName +
+                           "' is not registered in any module root or module registry; "
+                           "expected <module-root>/" +
+                           moduleName + "/<version>/simp-package.toml\nsearched module roots:";
+    for (const auto& root : options.packageSearchRoots) {
+        message += "\n" + describeSearchedPath(root, true);
+    }
+    message += "\nsearched module registry:\n" + describeSearchedPath(options.registry, false);
+    return message;
+}
+
 struct ModuleSource {
     LoadedModule info;
     Program program;
@@ -116,8 +139,12 @@ ModuleLoadResult loadImportedModules(Program& program,
     std::vector<std::string> rootNames;
     rootNames.reserve(program.imports.size());
     for (const auto& import : program.imports) rootNames.push_back(import.moduleName);
-    auto packages = resolvePackages(rootNames, options.packageSearchRoots);
-    auto registry = readRegistry(options.registryPath);
+    std::vector<std::filesystem::path> searchRoots;
+    searchRoots.reserve(options.packageSearchRoots.size());
+    for (const auto& root : options.packageSearchRoots) searchRoots.push_back(root.path);
+    auto packages = resolvePackages(rootNames, searchRoots);
+    auto registry = readRegistry(options.registry.path);
+    ModuleLoadResult result;
     const auto addPackageEntries = [&registry](const PackageResolution& resolution) {
         for (const auto& [name, package] : resolution.packages) {
             RegistryEntry entry;
@@ -156,8 +183,7 @@ ModuleLoadResult loadImportedModules(Program& program,
             }
         }
         if (packages.packages.find(import.moduleName) == packages.packages.end()) {
-            const auto additional = resolvePackages({import.moduleName},
-                                                     options.packageSearchRoots);
+            const auto additional = resolvePackages({import.moduleName}, searchRoots);
             for (const auto& [name, package] : additional.packages) {
                 const auto existing = packages.packages.find(name);
                 if (existing != packages.packages.end() &&
@@ -184,9 +210,7 @@ ModuleLoadResult loadImportedModules(Program& program,
         const auto entry = registry.find(import.moduleName);
         if (entry == registry.end()) {
             throw DiagnosticError(import.location,
-                                  "module '" + import.moduleName +
-                                      "' is not registered in '" +
-                                      options.registryPath.string() + "'");
+                                  missingModuleMessage(import.moduleName, options));
         }
         const auto entryData = entry->second;
         auto found = modules.find(import.moduleName);
@@ -252,6 +276,13 @@ ModuleLoadResult loadImportedModules(Program& program,
             for (auto& definition : module.program.outOfLineMethods) {
                 definition.moduleName = import.moduleName;
             }
+            if (entryData.fromLegacyRegistry) {
+                result.warnings.push_back(
+                    "module '" + import.moduleName +
+                    "' was resolved through the deprecated module registry '" +
+                    options.registry.path.string() + "'; publish it as <module-root>/" +
+                    import.moduleName + "/" + entryData.version + "/simp-package.toml");
+            }
             modules.emplace(import.moduleName, std::move(module));
             for (auto& nestedImport : modules.at(import.moduleName).program.imports) {
                 self(self, nestedImport, import.moduleName);
@@ -265,7 +296,6 @@ ModuleLoadResult loadImportedModules(Program& program,
 
     for (auto& import : program.imports) load(load, import, {});
 
-    ModuleLoadResult result;
     auto& loaded = result.modules;
     loaded.reserve(order.size());
     for (const auto& name : order) {

@@ -548,6 +548,7 @@ private:
         if (found != candidates_.end()) return found->second;
         std::vector<PackageManifest> candidates;
         for (const auto& root : roots_) {
+            const auto rootCandidateStart = candidates.size();
             const auto packageDirectory = root / name;
             std::error_code error;
             if (!std::filesystem::is_directory(packageDirectory, error)) continue;
@@ -586,6 +587,7 @@ private:
                                          packageDirectory.string() + ": " +
                                          error.message());
             }
+            if (candidates.size() != rootCandidateStart) break;
         }
         std::stable_sort(candidates.begin(), candidates.end(),
                          [](const PackageManifest& left,

@@ -1106,7 +1106,8 @@ interchangeable.
   strings. Unknown keys/tables, duplicate keys/tables, invalid versions,
   missing sources, and missing declared library directories are errors.
 - Package versions use SemVer 2.0.0. A direct import with no source-level
-  version constraint selects the highest installed stable version. Exact
+  version constraint selects the highest stable version in the first module
+  root containing that package. Exact
   dependency pins constrain that package name across the whole compilation;
   a unique dependency pin selects that version even if an unpinned direct
   import also names the package. Different exact pins for one package name,
@@ -1114,13 +1115,26 @@ interchangeable.
   dependency cycles are errors. Repeated imports with different aliases and
   repeated identical package dependencies are tolerated and resolved once.
   There is no range solver, lockfile, or native-library ABI/version probing.
-- Package search roots are checked in this order: repeated
-  `--package-path DIR` values, left to right; `SIMP_PACKAGE_PATH` entries
-  separated by the host path-list separator; `<current-directory>/.simp/packages`;
-  `$XDG_DATA_HOME/simp/packages` (or `~/.local/share/simp/packages`); and the
-  installed `<prefix>/share/simp/packages` root. For the same exact package
-  version, identical manifest metadata is tolerated; differing manifests are
-  diagnosed as ambiguous. Higher roots win for identical candidates.
+- Package module roots are checked in this order:
+  1. The canonical project module root, chosen as `-M DIR`/`--module-dir DIR`,
+     else `SIMP_MODULE_DIR`, else `<project-root>/modules`. The project root is
+     the absolute parent directory of the first `.simp` source input (the
+     current directory when no source is given). An explicitly selected root
+     that does not exist is an error; a missing default root is skipped.
+  2. The compiler's standard modules, `<prefix>/share/simp/modules`
+     (overridable with `SIMP_STDLIB_MODULE_DIR` or `SIMP_HOME`).
+  3. Deprecated compatibility roots: repeated `--package-path DIR` values, left
+     to right, then `SIMP_PACKAGE_PATH` entries separated by `:`. Each source
+     produces a deprecation warning only when it is used.
+  The former implicit `./.simp/packages`, `$XDG_DATA_HOME/simp/packages`, and
+  `~/.local/share/simp/packages` roots are no longer searched. Roots are
+  normalized and deduplicated. The first root containing a package shadows
+  lower-priority roots, and version selection occurs only within that root.
+  A missing-module diagnostic lists every normalized root and registry
+  searched, with `[not found]` marking absent paths.
+- A project-level manifest that names the project root and its module
+  directory is deferred. Until it exists the project root is derived from the
+  first source input as described above.
 - `[link].libraries` contains library names without a `-l` prefix, and
   `[link].library-paths` provides package-relative directories. The compiler
   translates these to `-lNAME` and `-L DIR` arguments for its existing Clang
@@ -1137,8 +1151,10 @@ interchangeable.
   later through `simp program.o -o program` reads the adjacent sidecar;
   ordinary objects without one still use explicit `-L`/`-l` options. Keep the
   sidecar with the object when moving it.
-- `simp-modules.tsv` remains a compatibility catalog for un-packaged modules
-  and existing tests. Its six-column format and `SIMP_MODULE_REGISTRY`
+- `simp-modules.tsv` remains the final, deprecated compatibility catalog for
+  un-packaged modules and existing tests; it is consulted only after every
+  module root, and a warning is printed whenever an import resolves through
+  it. Its six-column format and `SIMP_MODULE_REGISTRY`
   override are unchanged, and its historical version/dependency fields
   remain unenforced metadata. Package manifests are the package source of
   truth; the flat registry is not generated or rewritten by package loading.
@@ -1479,8 +1495,21 @@ options, and `-g` DWARF debug information for generated executables. The
 broader CLI should continue toward:
 
 - A unified include/import search-path interface.
-- A verbosity system that controls diagnostic and debug output, including
-  parser tracing, AST tracing or dumping, and symbol-table dumping.
+- Further verbosity refinements. Today one verbosity level is set with
+  repeatable `-v` (or `--verbosity=N`, at most 3): level 1 reports phases,
+  level 2 resolved resource paths and exact Clang commands, level 3 timings.
+  Tracing is selected separately with `-t`/`--trace` targets `scanner`,
+  `parser`, `ast` (AST dump), and `symbols` (symbol-table dump), which are
+  case-insensitive and may be comma-separated or repeated.
+
+The compiler is relocatable. It locates its runtime archive
+(`<prefix>/lib/simp`), runtime C headers (`<prefix>/include/simp`), String
+prelude (`<prefix>/share/simp/prelude`), and standard modules
+(`<prefix>/share/simp/modules`) relative to its own executable; the developer
+build stages the same shape in the source tree. `SIMP_RUNTIME_DIR`,
+`SIMP_INCLUDE_DIR`, `SIMP_PRELUDE_DIR`, and `SIMP_STDLIB_MODULE_DIR` override
+individual resources, `SIMP_HOME` overrides the prefix, and `CC` overrides the
+Clang driver. `simp --print-paths` reports the resolved locations.
 
 The eventual ecosystem should include a usable package manager and an IDE.
 The compiler supports `-g` for DWARF source-line and local-variable debugging

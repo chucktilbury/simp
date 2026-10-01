@@ -8,7 +8,12 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
-# Root builds place runtime targets in the source-tree bin directory.
+include(GNUInstallDirs)
+
+# Root builds stage a developer prefix in the source tree: <source>/bin/simp
+# finds its runtime, headers, prelude, and standard modules in sibling
+# directories with the same relative shape as an installed prefix.
+set(SIMP_STAGE_PREFIX "${CMAKE_SOURCE_DIR}")
 set(SIMP_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
 set(SIMP_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
 
@@ -30,3 +35,6 @@ enable_testing()
 add_subdirectory(include)
 add_subdirectory(src)
 add_subdirectory(tests)
+
+install(FILES README.md SIMPLE-LANGUAGE-NOTES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+install(FILES doc/simp.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1")

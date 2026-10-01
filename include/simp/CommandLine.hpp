@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -11,7 +12,7 @@
 
 namespace simp {
 
-enum class CommandLineValueType { Switch, String, Number };
+enum class CommandLineValueType { Switch, Counter, String, Number };
 enum class CommandLineAction { None, Help, Version };
 
 struct CommandLineOption {
@@ -21,6 +22,7 @@ struct CommandLineOption {
     std::string description;
     CommandLineValueType valueType = CommandLineValueType::Switch;
     bool list = false;
+    char listSeparator = ':';
     bool required = false;
     std::optional<std::string> defaultValue;
     CommandLineAction action = CommandLineAction::None;
@@ -43,6 +45,7 @@ public:
 
     bool wasProvided(const std::string& name) const;
     bool switchValue(const std::string& name) const;
+    std::size_t count(const std::string& name) const;
     std::optional<std::string> value(const std::string& name) const;
     const std::vector<std::string>& values(const std::string& name) const;
     bool contains(const std::string& name, const std::string& item) const;
@@ -66,6 +69,7 @@ private:
     std::optional<CommandLinePositional> positional_;
     std::unordered_map<std::string, std::vector<std::string>> values_;
     std::unordered_map<std::string, bool> provided_;
+    std::unordered_map<std::string, std::size_t> counts_;
     std::vector<std::string> positionalValues_;
     CommandLineAction action_ = CommandLineAction::None;
 };

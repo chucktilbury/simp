@@ -8,7 +8,9 @@
 #include "simp/Ast.hpp"
 
 #include <cstddef>
+#include <filesystem>
 #include <iosfwd>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -28,6 +30,8 @@ class SemanticAnalyzer {
 public:
     void analyze(Program& program);
     void dumpSymbolTable(std::ostream& output) const;
+    /// Overrides the String prelude source; defaults to the resolved resource path.
+    void setPreludeSource(std::filesystem::path path);
 
 private:
     using Scope = std::unordered_map<std::string, std::size_t>;
@@ -111,6 +115,7 @@ private:
     std::string currentModule_;
     std::size_t loopDepth_ = 0;
     std::size_t exceptionHandlerDepth_ = 0;
+    std::optional<std::filesystem::path> preludeSource_;
     std::unordered_map<std::string,
         std::unordered_map<std::string, ImportBinding>> importAliases_;
 };

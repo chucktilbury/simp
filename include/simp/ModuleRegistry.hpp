@@ -1,6 +1,7 @@
 #pragma once
 
 #include "simp/Ast.hpp"
+#include "simp/PathResolution.hpp"
 
 #include <filesystem>
 #include <string>
@@ -9,8 +10,10 @@
 namespace simp {
 
 struct ModuleLoadOptions {
-    std::filesystem::path registryPath;
-    std::vector<std::filesystem::path> packageSearchRoots;
+    /// Package manifest roots in search order.
+    std::vector<ResolvedPath> packageSearchRoots;
+    /// Deprecated tab-separated registry consulted after all manifest roots.
+    ResolvedPath registry;
 };
 
 struct LoadedModule {
@@ -24,6 +27,7 @@ struct ModuleLoadResult {
     std::vector<LoadedModule> modules;
     std::vector<std::filesystem::path> libraryPaths;
     std::vector<std::string> libraries;
+    std::vector<std::string> warnings;
 };
 
 ModuleLoadResult loadImportedModules(Program& program,

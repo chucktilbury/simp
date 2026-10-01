@@ -10,11 +10,11 @@
 namespace simp {
 namespace {
 
-std::vector<std::string> splitListValue(const std::string& value) {
+std::vector<std::string> splitListValue(const std::string& value, char separatorCharacter) {
     std::vector<std::string> result;
     std::size_t start = 0;
     while (start <= value.size()) {
-        const auto separator = value.find(':', start);
+        const auto separator = value.find(separatorCharacter, start);
         const auto end = separator == std::string::npos ? value.size() : separator;
         result.push_back(value.substr(start, end - start));
         if (separator == std::string::npos || separator + 1 == value.size()) break;
@@ -34,8 +34,13 @@ void CommandLine::addOption(CommandLineOption option) {
     if (option.name.empty() || (option.longName.empty() && option.shortName == '\0')) {
         throw std::invalid_argument("command-line options need a value name and an option name");
     }
-    if (option.valueType == CommandLineValueType::Switch && option.list) {
+    const bool takesValue = option.valueType == CommandLineValueType::String ||
+                            option.valueType == CommandLineValueType::Number;
+    if (!takesValue && option.list) {
         throw std::invalid_argument("switch options cannot accept list values");
+    }
+    if (option.list && option.listSeparator == '\0') {
+        throw std::invalid_argument("list options need a list separator");
     }
     const auto duplicateName =
         std::find_if(options_.begin(), options_.end(), [&option](const auto& current) {
@@ -79,7 +84,8 @@ void CommandLine::recordValue(const CommandLineOption& option, const std::string
                               bool provided) {
     auto& destination = values_[option.name];
     if (!option.list) destination.clear();
-    auto items = option.list ? splitListValue(value) : std::vector<std::string>{value};
+    auto items = option.list ? splitListValue(value, option.listSeparator)
+                             : std::vector<std::string>{value};
     if (option.valueType == CommandLineValueType::Number) {
         for (const auto& item : items) {
             std::int64_t number = 0;
@@ -115,6 +121,7 @@ void CommandLine::recordPositional(const std::string& value) {
 void CommandLine::parse(const std::vector<std::string>& arguments) {
     values_.clear();
     provided_.clear();
+    counts_.clear();
     positionalValues_.clear();
     action_ = CommandLineAction::None;
     for (const auto& option : options_) {
@@ -145,6 +152,18 @@ void CommandLine::parse(const std::vector<std::string>& arguments) {
                                             " does not accept an argument");
             }
             provided_[option.name] = true;
+            return false;
+        }
+        if (option.valueType == CommandLineValueType::Counter) {
+            if (attached) {
+                const auto displayName = option.longName.empty()
+                                             ? std::string("-") + option.shortName
+                                             : "--" + option.longName;
+                throw std::invalid_argument("option " + displayName +
+                                            " does not accept an argument");
+            }
+            provided_[option.name] = true;
+            ++counts_[option.name];
             return false;
         }
         std::string argument;
@@ -201,9 +220,16 @@ void CommandLine::parse(const std::vector<std::string>& arguments) {
                     throw std::invalid_argument(std::string("unknown option: -") +
                                                 argument[offset]);
                 }
-                if (option->valueType == CommandLineValueType::Switch &&
+                if ((option->valueType == CommandLineValueType::Switch ||
+                     option->valueType == CommandLineValueType::Counter) &&
                     option->action == CommandLineAction::None) {
-                    if (processOption(*option, std::nullopt, index, arguments)) return;
+                    const bool attachedValue =
+                        offset + 1 < argument.size() && argument[offset + 1] == '=';
+                    const std::optional<std::string> attached =
+                        attachedValue ? std::optional<std::string>(argument.substr(offset + 2))
+                                      : std::nullopt;
+                    if (processOption(*option, attached, index, arguments)) return;
+                    if (attachedValue) break;
                     continue;
                 }
 
@@ -245,6 +271,11 @@ bool CommandLine::wasProvided(const std::string& name) const {
 
 bool CommandLine::switchValue(const std::string& name) const {
     return wasProvided(name);
+}
+
+std::size_t CommandLine::count(const std::string& name) const {
+    const auto found = counts_.find(name);
+    return found == counts_.end() ? 0 : found->second;
 }
 
 std::optional<std::string> CommandLine::value(const std::string& name) const {
@@ -293,11 +324,13 @@ std::string CommandLine::helpText() const {
             else output << "  ";
             output << "--" << option.longName;
         }
-        if (option.valueType != CommandLineValueType::Switch &&
+        if ((option.valueType == CommandLineValueType::String ||
+             option.valueType == CommandLineValueType::Number) &&
             option.action == CommandLineAction::None) {
             output << (option.list ? " <value>..." : " <value>");
         }
         output << "\t" << option.description;
+        if (option.valueType == CommandLineValueType::Counter) output << " (repeatable)";
         if (option.defaultValue) output << " (default: " << *option.defaultValue << ')';
         if (option.required) output << " (required)";
         output << '\n';

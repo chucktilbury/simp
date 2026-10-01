@@ -1,0 +1,5 @@
+set(CASE_NAME simp_cli_verbosity_long_form)
+set(CASE_FIXTURE positive_integer_output.simp)
+set(CASE_NO_RUN [==[ON]==])
+set(CASE_ARGUMENTS --verbosity=3 --check-only)
+set(CASE_EXPECT_COMPILE_OUTPUT [==[\[timing\] parse source inputs: [0-9.]+ ms]==])

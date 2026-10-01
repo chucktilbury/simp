@@ -9,6 +9,8 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(CMAKE_C_STANDARD_REQUIRED ON)
     set(CMAKE_C_EXTENSIONS OFF)
     enable_testing()
+    include(GNUInstallDirs)
+    set(SIMP_STAGE_PREFIX "${CMAKE_CURRENT_BINARY_DIR}")
     set(SIMP_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
     set(SIMP_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib")
     find_program(SIMP_CLANG_EXECUTABLE NAMES clang)
@@ -103,7 +105,7 @@ add_test(NAME simp_default_output_uses_working_directory
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DefaultOutputDirectoryTest.cmake"
 )
 add_test(NAME simp_cli_accepts_program
-    COMMAND $<TARGET_FILE:simp> "${CMAKE_CURRENT_SOURCE_DIR}/functional/positive/positive_control_flow.simp" --check-only --dump-ast
+    COMMAND $<TARGET_FILE:simp> "${CMAKE_CURRENT_SOURCE_DIR}/functional/positive/positive_control_flow.simp" --check-only -t ast
 )
 add_test(NAME simp_cli_include_search_path
     COMMAND "${CMAKE_COMMAND}"
@@ -153,11 +155,17 @@ foreach(case_file IN LISTS case_files)
     unset(CASE_REQUIRE_GC_ROOTS)
     unset(CASE_REQUIRE_VIRTUAL_DISPATCH)
     unset(CASE_MODULE_REGISTRY)
-    unset(CASE_PACKAGE_PATH)
-    unset(CASE_PACKAGE_FIXTURE)
+    unset(CASE_MODULE_ROOT)
+    unset(CASE_MODULE_ROOT_SOURCE)
+    unset(CASE_MODULE_ROOT_MISSING)
+    unset(CASE_MODULE_DECOY)
     unset(CASE_PACKAGE_NATIVE_SOURCE)
     unset(CASE_PACKAGE_NATIVE_LIBRARY)
-    unset(CASE_PACKAGE_ENVIRONMENT)
+    unset(CASE_ARGUMENTS)
+    unset(CASE_NO_SOURCE)
+    unset(CASE_NO_RUN)
+    unset(CASE_EXPECT_COMPILE_OUTPUT)
+    unset(CASE_REJECT_COMPILE_OUTPUT)
     unset(CASE_COMPILE_ONLY)
     unset(CASE_DEBUG_INFO)
     unset(CASE_DEBUG_LINE)
@@ -184,20 +192,37 @@ foreach(case_file IN LISTS case_files)
         "-DSOURCE=${source}"
         "-DOUTPUT=${CMAKE_CURRENT_BINARY_DIR}/${CASE_NAME}"
     )
-    if(DEFINED CASE_PACKAGE_PATH)
-        list(APPEND case_arguments "-DPACKAGE_SEARCH_ROOT=${CASE_PACKAGE_PATH}")
+    if(CASE_MODULE_REGISTRY)
+        list(APPEND case_arguments
+            "-DMODULE_REGISTRY=${CMAKE_CURRENT_SOURCE_DIR}/functional/modules/simp-modules.tsv")
     endif()
-    if(DEFINED CASE_PACKAGE_FIXTURE)
-        list(APPEND case_arguments "-DPACKAGE_FIXTURE=${CASE_PACKAGE_FIXTURE}")
-    endif()
+    foreach(path_setting IN ITEMS MODULE_ROOT MODULE_DECOY)
+        if(DEFINED CASE_${path_setting})
+            get_filename_component(case_path "${CASE_${path_setting}}" ABSOLUTE
+                BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/functional/modules")
+            if(NOT IS_DIRECTORY "${case_path}")
+                message(FATAL_ERROR "Missing module fixture for ${case_file}: ${case_path}")
+            endif()
+            list(APPEND case_arguments "-D${path_setting}=${case_path}")
+        endif()
+    endforeach()
+    # List-valued settings keep their separators when forwarded to the driver.
+    foreach(list_setting IN ITEMS ARGUMENTS EXPECT_COMPILE_OUTPUT REJECT_COMPILE_OUTPUT)
+        if(DEFINED CASE_${list_setting})
+            string(REPLACE ";" "\\;" escaped_list "${CASE_${list_setting}}")
+            list(APPEND case_arguments "-D${list_setting}=${escaped_list}")
+        endif()
+    endforeach()
+    foreach(flag_setting IN ITEMS MODULE_ROOT_SOURCE MODULE_ROOT_MISSING NO_SOURCE NO_RUN)
+        if(DEFINED CASE_${flag_setting})
+            list(APPEND case_arguments "-D${flag_setting}=${CASE_${flag_setting}}")
+        endif()
+    endforeach()
     if(DEFINED CASE_PACKAGE_NATIVE_SOURCE)
         list(APPEND case_arguments "-DPACKAGE_NATIVE_SOURCE=${CASE_PACKAGE_NATIVE_SOURCE}")
     endif()
     if(DEFINED CASE_PACKAGE_NATIVE_LIBRARY)
         list(APPEND case_arguments "-DPACKAGE_NATIVE_LIBRARY=${CASE_PACKAGE_NATIVE_LIBRARY}")
-    endif()
-    if(CASE_PACKAGE_ENVIRONMENT)
-        list(APPEND case_arguments "-DPACKAGE_ENVIRONMENT=${CASE_PACKAGE_ENVIRONMENT}")
     endif()
     if(CASE_COMPILE_ONLY)
         list(APPEND case_arguments "-DCOMPILE_ONLY=${CASE_COMPILE_ONLY}")
@@ -214,7 +239,7 @@ foreach(case_file IN LISTS case_files)
     if(DEFINED CASE_EXPECTED_DIAGNOSTIC)
         string(REPLACE ";" "\\;" escaped_diagnostic "${CASE_EXPECTED_DIAGNOSTIC}")
         list(APPEND case_arguments "-DEXPECTED_DIAGNOSTIC=${escaped_diagnostic}")
-    else()
+    elseif(NOT CASE_NO_RUN)
         if(NOT DEFINED CASE_EXPECTED_OUTPUT_FILE)
             message(FATAL_ERROR "Missing output expectation: ${case_file}")
         endif()
@@ -232,13 +257,44 @@ foreach(case_file IN LISTS case_files)
     add_test(NAME "${CASE_NAME}"
         COMMAND "${CMAKE_COMMAND}" ${case_arguments}
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompilerIntegrationTest.cmake")
-    if(CASE_MODULE_REGISTRY)
-        set_tests_properties("${CASE_NAME}" PROPERTIES
-            ENVIRONMENT "SIMP_MODULE_REGISTRY=${CMAKE_CURRENT_SOURCE_DIR}/functional/modules/simp-modules.tsv")
-    endif()
 endforeach()
 
 add_test(NAME simp_include_max_depth_flag
     COMMAND "$<TARGET_FILE:simp>" --check-only --max-include-depth 17
         "${CMAKE_CURRENT_SOURCE_DIR}/functional/negative/negative_include_max_depth.simp"
 )
+
+# Install cases need the complete project build, so standalone tests builds skip them.
+if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    file(GLOB install_case_files CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/install/*.cmake")
+    foreach(install_case_file IN LISTS install_case_files)
+        unset(INSTALL_CASE_NAME)
+        unset(INSTALL_CASE_FIXTURE)
+        unset(INSTALL_CASE_MODULE_FIXTURE)
+        unset(INSTALL_CASE_EXPECTED_OUTPUT_FILE)
+        include("${install_case_file}")
+        foreach(required IN ITEMS NAME FIXTURE MODULE_FIXTURE EXPECTED_OUTPUT_FILE)
+            if(NOT DEFINED INSTALL_CASE_${required})
+                message(FATAL_ERROR
+                    "Incomplete install case ${install_case_file}: INSTALL_CASE_${required}")
+            endif()
+        endforeach()
+        add_test(NAME "${INSTALL_CASE_NAME}"
+            COMMAND "${CMAKE_COMMAND}"
+                "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
+                "-DSOURCE_DIR=${CMAKE_SOURCE_DIR}"
+                "-DFIXTURE=${INSTALL_CASE_FIXTURE}"
+                "-DMODULE_FIXTURE=${INSTALL_CASE_MODULE_FIXTURE}"
+                "-DEXPECTED_OUTPUT_FILE=${INSTALL_CASE_EXPECTED_OUTPUT_FILE}"
+                "-DBINDIR=${CMAKE_INSTALL_BINDIR}"
+                "-DLIBDIR=${CMAKE_INSTALL_LIBDIR}"
+                "-DINCLUDEDIR=${CMAKE_INSTALL_INCLUDEDIR}"
+                "-DDATADIR=${CMAKE_INSTALL_DATADIR}"
+                "-DDOCDIR=${CMAKE_INSTALL_DOCDIR}"
+                "-DMANDIR=${CMAKE_INSTALL_MANDIR}"
+                "-DRUNTIME_LIBRARY_NAME=$<TARGET_FILE_NAME:simp_runtime>"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallLayoutTest.cmake"
+        )
+    endforeach()
+endif()

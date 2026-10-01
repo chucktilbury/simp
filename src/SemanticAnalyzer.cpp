@@ -9,13 +9,16 @@
 #include "simp/Diagnostic.hpp"
 #include "simp/Lexer.hpp"
 #include "simp/Parser.hpp"
+#include "simp/PathResolution.hpp"
 
 #include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <ostream>
+#include <stdexcept>
 #include <unordered_set>
+#include <utility>
 
 namespace simp {
 namespace {
@@ -266,6 +269,10 @@ void SemanticAnalyzer::normalizeStatements(
     }
 }
 
+void SemanticAnalyzer::setPreludeSource(std::filesystem::path path) {
+    preludeSource_ = std::move(path);
+}
+
 void SemanticAnalyzer::analyze(Program& program) {
     program.classes.erase(
         std::remove_if(program.classes.begin(), program.classes.end(),
@@ -275,13 +282,25 @@ void SemanticAnalyzer::analyze(Program& program) {
         program.classes.end());
     program.classes.insert(program.classes.begin(), makeBuiltinExceptionClass());
     {
-        std::ifstream source(SIMP_PRELUDE_SOURCE);
+        std::filesystem::path preludePath;
+        try {
+            preludePath = preludeSource_ ? *preludeSource_
+                                         : processResourcePaths().preludeSource;
+        } catch (const std::runtime_error& error) {
+            throw DiagnosticError({"<prelude>", 1, 1},
+                                  std::string("cannot locate String prelude: ") +
+                                      error.what());
+        }
+        std::ifstream source(preludePath);
         if (!source) {
-            throw DiagnosticError({"<prelude>", 1, 1}, "cannot load String prelude");
+            throw DiagnosticError({"<prelude>", 1, 1},
+                                  "cannot load String prelude from '" +
+                                      preludePath.string() +
+                                      "'; set SIMP_PRELUDE_DIR or SIMP_HOME");
         }
         const std::string text{std::istreambuf_iterator<char>(source),
                                std::istreambuf_iterator<char>()};
-        Parser parser(Lexer(text, SIMP_PRELUDE_SOURCE).tokenize());
+        Parser parser(Lexer(text, preludePath.string()).tokenize());
         auto prelude = parser.parseProgram(false);
         program.classes.insert(program.classes.begin() + 1,
                                std::make_move_iterator(prelude.classes.begin()),

@@ -37,9 +37,48 @@ ctest --test-dir build --output-on-failure
   --emit-llvm build/positive_integer_output.ll -o bin/positive_integer_output
 ```
 
-The root build writes executables to project-root `bin/` and static, shared, or
-module libraries to project-root `lib/`. On Linux the archives are
-`lib/libsimp_frontend.a` and `lib/libsimp_runtime.a`.
+The root build writes executables to project-root `bin/` and stages the
+compiler's resources beside it in the same relative shape as an installation,
+so `./bin/simp` runs straight from the source tree without any compiled-in
+source or build paths:
+
+| Resource | Staged (root build) | Installed (`GNUInstallDirs`) |
+| --- | --- | --- |
+| Compiler | `bin/simp` | `${CMAKE_INSTALL_BINDIR}/simp` |
+| Runtime archive | `lib/simp/libsimp_runtime.a` | `${CMAKE_INSTALL_LIBDIR}/simp/libsimp_runtime.a` |
+| Runtime C headers | `include/simp/Runtime*.h` | `${CMAKE_INSTALL_INCLUDEDIR}/simp/` |
+| String prelude | `share/simp/prelude/String.simp` | `${CMAKE_INSTALL_DATADIR}/simp/prelude/` |
+| Standard modules | `share/simp/modules/` | `${CMAKE_INSTALL_DATADIR}/simp/modules/` |
+| Documentation | — | `${CMAKE_INSTALL_DOCDIR}`, `${CMAKE_INSTALL_MANDIR}/man1/simp.1` |
+
+The front-end archive used by the test executables is `lib/libsimp_frontend.a`.
+The runtime lives in a `simp` subdirectory of the library directory so that a
+future shared runtime can sit beside the archive without colliding with system
+libraries; headers and data likewise use a `simp` subdirectory so they never
+shadow other packages. `share/` and `lib/` in the source tree are build
+artifacts (ignored by git).
+
+### Installing
+
+```sh
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr/local
+cmake --build build
+cmake --install build                       # or: DESTDIR=/tmp/stage cmake --install build
+```
+
+Install rules use `GNUInstallDirs` and honour `DESTDIR`. The install
+directories must stay inside `CMAKE_INSTALL_PREFIX` (configuration fails
+otherwise) because the compiler is relocatable: it finds the running
+executable (`/proc/self/exe` on Linux, the `KERN_PROC_PATHNAME` sysctl on
+FreeBSD/DragonFly/NetBSD, otherwise `argv[0]` or a `PATH` search), strips the
+binary directory to obtain the prefix, and derives every resource from it. An
+installed tree can therefore be moved as a unit. Resolution order for each
+resource is its specific variable (`SIMP_RUNTIME_DIR`, `SIMP_INCLUDE_DIR`,
+`SIMP_PRELUDE_DIR`, `SIMP_STDLIB_MODULE_DIR`), then `SIMP_HOME` treated as the
+prefix, then the executable-relative prefix. `simp --print-paths` prints the
+resolved executable, prefix, runtime, include, prelude, project module root
+(and where it came from), standard modules, compatibility roots, registry, and
+Clang, then exits. See `doc/simp.1` (installed as `simp(1)`).
 
 The repository uses one in-tree build directory: `build/`. `include`, `src`,
 and `tests` each have their own `CMakeLists.txt` and are integrated by the root
@@ -70,7 +109,19 @@ exact output (including the final newline); for a rejected program, set
 Optional case flags include `CASE_REQUIRE_GC_ROOTS`,
 `CASE_REQUIRE_VIRTUAL_DISPATCH`, `CASE_EXPECT_WARNING`,
 `CASE_EXPECT_RUNTIME_FAILURE`, `CASE_EXPECT_RUNTIME_DIAGNOSTIC`, and
-`CASE_MODULE_REGISTRY`. See an existing case file for the relevant pattern.
+`CASE_MODULE_REGISTRY`. Module cases set `CASE_MODULE_ROOT` (a directory under
+`tests/functional/modules/` copied into a private module root) and
+`CASE_MODULE_ROOT_SOURCE` (`cli` for `-M`, the default; `env`, `default`,
+`stdlib`, or the deprecated `package-path`/`package-env`);
+`CASE_MODULE_ROOT_MISSING` leaves the selected root absent and
+`CASE_MODULE_DECOY` copies a fixture into every lower-precedence root to prove
+it is ignored. `CASE_ARGUMENTS` adds compiler arguments, `CASE_NO_RUN` only
+runs the compiler, `CASE_NO_SOURCE` omits the source input, and
+`CASE_EXPECT_COMPILE_OUTPUT`/`CASE_REJECT_COMPILE_OUTPUT` list regexes over the
+compiler's output. Expectations may use the `<MODULE_ROOT>`, `<PROJECT_DIR>`,
+and `<WORK_DIR>` placeholders. Every case runs in its own work directory with
+the `SIMP_*` path variables cleared. See an existing case file for the
+relevant pattern.
 `CASE_DEBUG_INFO` adds a `-g` case that verifies its IR and executable DWARF
 data, then checks a debugger breakpoint and local when GDB or LLDB is
 installed. Reconfigure to discover newly added cases; no central test list
@@ -85,10 +136,17 @@ these groups. CLI integration fixtures live under `tests/functional/cli/`,
 and their specialized shared runners accept a `CASE` selector so each
 scenario has an independent CTest result.
 
-Options include `--verbose` (`-v`), `--verbosity N`, `--trace-parser`,
-`--trace parser:scanner:AST:symbols` (trace selected compiler stages),
-`--dump-ast`, `--dump-symbols`, and `--check-only` (run parsing and semantic
-checks without code generation). `--path DIR` (`-p`) adds one or more
+`-v` raises verbosity and may be repeated or grouped: `-v` reports compiler
+phases, `-vv` also prints every resolved path and the exact Clang commands,
+and `-vvv` adds per-phase timings (all on stderr). `--verbosity=N` sets the
+same level directly; levels above 3, and combining it with `-v`, are rejected.
+`-t`/`--trace` selects `scanner`, `parser`, `ast`, or `symbols` tracing;
+targets are case-insensitive and may be comma-separated or repeated
+(`-t parser,symbols -t ast`). The `ast` and `symbols` targets print the parsed
+AST and the semantic symbol table to stdout. `--check-only` runs parsing and
+semantic checks without code generation. The former `--verbose`,
+`--trace-parser`, `--dump-ast`, and `--dump-symbols` options have been removed.
+`--path DIR` (`-p`) adds one or more
 directories, including colon-separated lists, to the textual-include search
 path; includes still prefer the directory of the including source. Use
 `--max-include-depth N` to set the maximum nested textual include depth
@@ -130,7 +188,7 @@ archive, for example:
 
 ```sh
 clang -Wno-override-module -x ir build/program.ll -x none \
-  lib/libsimp_runtime.a -o bin/program
+  lib/simp/libsimp_runtime.a -o bin/program
 ```
 The compiler expands top-level textual includes independently for each source
 input and reports source-located lexer, parser, and semantic errors.
@@ -464,8 +522,8 @@ support for the generated executable, not an IDE integration.
   syntax are unsupported.
 
 The parser is recursive descent and produces an AST that can be dumped with
-`--dump-ast`. Lexer, parser, and CLI diagnostics include file, line, and column.
-Parser tracing is available with `--trace-parser`; `--dump-symbols` displays
+`-t ast`. Lexer, parser, and CLI diagnostics include file, line, and column.
+Parser tracing is available with `-t parser`; `-t symbols` displays
 the declarations and initialization state seen by semantic analysis.
 
 ## Executable backend subset
@@ -643,8 +701,8 @@ start {
   method out of line with `from "c_symbol"`; the C shim receives the opaque
   Simple receiver as its first argument. Build the shim/archive separately
   into `sqlite/1.0.0/lib/` (and install upstream native dependencies using the
-  platform's normal build tools). Put the package under `.simp/packages/` or
-  pass its parent with `--package-path`:
+  platform's normal build tools). Put the package under the project module
+  root (`<project-root>/modules/`) or pass another root with `-M`:
 
   ```c
   int simp_sqlite_version(void *receiver) {
@@ -656,7 +714,7 @@ start {
   ```sh
   clang -c sqlite/1.0.0/native/sqlite_shim.c -o build/sqlite_shim.o
   ar rcs sqlite/1.0.0/lib/libsimp_sqlite.a build/sqlite_shim.o
-  ./bin/simp --package-path ./packages app.simp -o bin/app
+  ./bin/simp -M ./packages app.simp -o bin/app
   ```
 
   A consumer writes `import sqlite as DB` and calls the imported class or
@@ -664,8 +722,9 @@ start {
   during linking. This keeps the language-facing API in Simple while leaving
   native library construction to the package author.
 
-  Package versions use SemVer; direct imports select the highest installed
-  stable version, and dependencies use exact `=VERSION` pins. The resolver
+  Package versions use SemVer; direct imports select the highest stable
+  version in the first module root containing that package, and dependencies
+  use exact `=VERSION` pins. The resolver
   detects conflicting pins and dependency cycles. It adds package libraries
   and search   directories to the existing Clang link step; conflicting package-local
   search locations for the same native library name are diagnosed. The
@@ -673,19 +732,38 @@ start {
   shims and libraries separately. Package source methods still use the existing
   `from "c_symbol"` binding and ordinary Simple method calls.
 
-  Search roots, from highest to lowest priority, are repeated
-  `--package-path DIR` values, `SIMP_PACKAGE_PATH`, `./.simp/packages`,
-  `$XDG_DATA_HOME/simp/packages` (or `~/.local/share/simp/packages`), and the
-  installed `<prefix>/share/simp/packages` standard-package root. `-c`
+  Packages live at `<module-root>/<name>/<version>/simp-package.toml`. The
+  module roots searched are, in order:
+
+  1. The canonical project module root: `-M DIR`/`--module-dir DIR`, else
+     `SIMP_MODULE_DIR`, else `<project-root>/modules`. The project root is
+     currently the directory containing the first `.simp` input (the current
+     directory when there is none). An explicitly selected root that does not
+     exist is an error; a missing default root is simply skipped.
+  2. The standard modules shipped with the compiler
+     (`${CMAKE_INSTALL_DATADIR}/simp/modules`, overridable with
+     `SIMP_STDLIB_MODULE_DIR`).
+  3. Deprecated compatibility roots: `--package-path DIR` values, then
+     `SIMP_PACKAGE_PATH`. Each prints a deprecation warning when used. The
+     former implicit `./.simp/packages` and XDG/home roots are no longer
+     searched.
+
+  The first root containing a package shadows lower-priority roots; version
+  selection occurs only among that root's installed versions. `-c`
   writes adjacent `.simp-link` metadata (package linker inputs, or an empty
   sidecar for package-free objects); `simp program.o -o program` reads it
-  automatically. The installed standard root is reserved for the planned
-  `sys`, JSON, regex, datetime, networking, and SQLite packages.
+  automatically. The standard module directory is reserved for the planned
+  `sys`, JSON, regex, datetime, networking, and SQLite packages. A project
+  manifest that declares the project root and its module directory is
+  deferred; until then the first source's directory serves as the project
+  root.
 
-  The legacy six-column `simp-modules.tsv` catalog and
-  `SIMP_MODULE_REGISTRY` override remain supported for existing modules and
-  tests. Package manifests are preferred when the same import name is present;
-  otherwise imports can still resolve through the legacy registry. The legacy
+  The legacy six-column `simp-modules.tsv` catalog (`./simp-modules.tsv`, or
+  `SIMP_MODULE_REGISTRY`) remains the final compatibility fallback; a warning
+  is printed whenever an import is resolved through it. Package manifests are
+  preferred when the same import name is present. When an import cannot be
+  resolved, the diagnostic lists every normalized module root and registry
+  path searched, marking missing ones `[not found]`. The legacy
   registry's version/dependency fields remain metadata only. Imported
   declarations remain available only through aliases: a namespace alias can
   qualify nested types (`Net.Http.Client().get("/")`), while a class alias is

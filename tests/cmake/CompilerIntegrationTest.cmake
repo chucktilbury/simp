@@ -2,22 +2,120 @@ if(NOT DEFINED COMPILER OR NOT DEFINED SOURCE OR NOT DEFINED OUTPUT)
     message(FATAL_ERROR "COMPILER, SOURCE, and OUTPUT are required")
 endif()
 
-set(package_arguments)
-set(package_command "${COMPILER}")
-if(DEFINED PACKAGE_FIXTURE)
-    set(package_search_root "${OUTPUT}.packages")
-    file(MAKE_DIRECTORY "${package_search_root}")
-    file(COPY "${PACKAGE_FIXTURE}/" DESTINATION "${package_search_root}")
-    set(PACKAGE_SEARCH_ROOT "${package_search_root}")
+# Every case runs in its own work directory with the compiler's path
+# environment cleared, so only the case's own module configuration is seen.
+set(work_directory "${OUTPUT}.work")
+set(project_directory "${work_directory}/project")
+file(REMOVE_RECURSE "${work_directory}")
+file(MAKE_DIRECTORY "${project_directory}")
+set(compiler_environment
+    --unset=SIMP_MODULE_DIR --unset=SIMP_PACKAGE_PATH --unset=SIMP_MODULE_REGISTRY
+    --unset=SIMP_HOME --unset=SIMP_RUNTIME_DIR --unset=SIMP_INCLUDE_DIR
+    --unset=SIMP_PRELUDE_DIR --unset=SIMP_STDLIB_MODULE_DIR)
+if(DEFINED MODULE_REGISTRY)
+    list(APPEND compiler_environment "SIMP_MODULE_REGISTRY=${MODULE_REGISTRY}")
 endif()
-if(DEFINED PACKAGE_SEARCH_ROOT)
-    if(DEFINED PACKAGE_ENVIRONMENT)
-        set(package_command "${CMAKE_COMMAND}" -E env
-            "SIMP_PACKAGE_PATH=${PACKAGE_SEARCH_ROOT}" "${COMPILER}")
-    else()
+set(package_arguments)
+if(DEFINED MODULE_ROOT OR DEFINED MODULE_ROOT_SOURCE)
+    if(NOT DEFINED MODULE_ROOT_SOURCE)
+        set(MODULE_ROOT_SOURCE cli)
+    endif()
+    # Module-root cases compile a copy of the fixture so the project root
+    # (the parent of the first source input) is private to the case.
+    get_filename_component(source_name "${SOURCE}" NAME)
+    file(COPY "${SOURCE}" DESTINATION "${project_directory}")
+    set(SOURCE "${project_directory}/${source_name}")
+    set(default_module_root "${project_directory}/modules")
+    set(environment_module_root "${work_directory}/env-modules")
+    if(MODULE_ROOT_SOURCE STREQUAL "cli")
+        set(PACKAGE_SEARCH_ROOT "${work_directory}/cli-modules")
+        list(APPEND package_arguments -M "${PACKAGE_SEARCH_ROOT}")
+        set(decoy_roots "${environment_module_root}" "${default_module_root}")
+        if(DEFINED MODULE_DECOY)
+            list(APPEND compiler_environment "SIMP_MODULE_DIR=${environment_module_root}")
+        endif()
+    elseif(MODULE_ROOT_SOURCE STREQUAL "env")
+        set(PACKAGE_SEARCH_ROOT "${environment_module_root}")
+        list(APPEND compiler_environment "SIMP_MODULE_DIR=${PACKAGE_SEARCH_ROOT}")
+        set(decoy_roots "${default_module_root}")
+    elseif(MODULE_ROOT_SOURCE STREQUAL "default")
+        set(PACKAGE_SEARCH_ROOT "${default_module_root}")
+        set(decoy_roots)
+    elseif(MODULE_ROOT_SOURCE STREQUAL "package-path")
+        set(PACKAGE_SEARCH_ROOT "${work_directory}/compat-modules")
         list(APPEND package_arguments --package-path "${PACKAGE_SEARCH_ROOT}")
+        set(decoy_roots)
+    elseif(MODULE_ROOT_SOURCE STREQUAL "package-env")
+        set(PACKAGE_SEARCH_ROOT "${work_directory}/compat-modules")
+        list(APPEND compiler_environment "SIMP_PACKAGE_PATH=${PACKAGE_SEARCH_ROOT}")
+        set(decoy_roots)
+    elseif(MODULE_ROOT_SOURCE STREQUAL "stdlib")
+        set(PACKAGE_SEARCH_ROOT "${work_directory}/stdlib-modules")
+        list(APPEND compiler_environment "SIMP_STDLIB_MODULE_DIR=${PACKAGE_SEARCH_ROOT}")
+        set(decoy_roots)
+    else()
+        message(FATAL_ERROR "Unsupported MODULE_ROOT_SOURCE: ${MODULE_ROOT_SOURCE}")
+    endif()
+    if(NOT MODULE_ROOT_MISSING)
+        file(MAKE_DIRECTORY "${PACKAGE_SEARCH_ROOT}")
+        if(DEFINED MODULE_ROOT)
+            file(COPY "${MODULE_ROOT}/" DESTINATION "${PACKAGE_SEARCH_ROOT}")
+        endif()
+    endif()
+    if(DEFINED MODULE_DECOY)
+        if(NOT decoy_roots)
+            message(FATAL_ERROR "MODULE_DECOY needs a lower-precedence module root")
+        endif()
+        set(stdlib_decoy_root "${work_directory}/stdlib-decoy")
+        list(APPEND decoy_roots "${stdlib_decoy_root}")
+        list(APPEND compiler_environment "SIMP_STDLIB_MODULE_DIR=${stdlib_decoy_root}")
+        foreach(decoy_root IN LISTS decoy_roots)
+            file(MAKE_DIRECTORY "${decoy_root}")
+            file(COPY "${MODULE_DECOY}/" DESTINATION "${decoy_root}")
+        endforeach()
     endif()
 endif()
+if(DEFINED ARGUMENTS)
+    list(APPEND package_arguments ${ARGUMENTS})
+endif()
+set(package_command "${CMAKE_COMMAND}" -E env ${compiler_environment} "${COMPILER}")
+set(source_arguments "${SOURCE}")
+if(NO_SOURCE)
+    set(source_arguments)
+endif()
+
+# Expectations may name case paths with <MODULE_ROOT>, <PROJECT_DIR>, and
+# <WORK_DIR>; the substituted paths are regex-escaped.
+function(expand_case_pattern output pattern)
+    set(expanded "${pattern}")
+    foreach(placeholder_pair IN ITEMS
+            "MODULE_ROOT|${PACKAGE_SEARCH_ROOT}" "PROJECT_DIR|${project_directory}"
+            "WORK_DIR|${work_directory}")
+        string(FIND "${placeholder_pair}" "|" separator)
+        string(SUBSTRING "${placeholder_pair}" 0 ${separator} placeholder)
+        math(EXPR value_start "${separator} + 1")
+        string(SUBSTRING "${placeholder_pair}" ${value_start} -1 value)
+        string(REGEX REPLACE "([][+.*()^$?|\\\\{}])" "\\\\\\1" escaped "${value}")
+        string(REPLACE "<${placeholder}>" "${escaped}" expanded "${expanded}")
+    endforeach()
+    set(${output} "${expanded}" PARENT_SCOPE)
+endfunction()
+
+function(check_compile_output text)
+    foreach(expected IN LISTS EXPECT_COMPILE_OUTPUT)
+        expand_case_pattern(expected_pattern "${expected}")
+        if(NOT text MATCHES "${expected_pattern}")
+            message(FATAL_ERROR "Expected compiler output '${expected_pattern}', got:\n${text}")
+        endif()
+    endforeach()
+    foreach(rejected IN LISTS REJECT_COMPILE_OUTPUT)
+        expand_case_pattern(rejected_pattern "${rejected}")
+        if(text MATCHES "${rejected_pattern}")
+            message(FATAL_ERROR "Unexpected compiler output '${rejected_pattern}' in:\n${text}")
+        endif()
+    endforeach()
+endfunction()
+
 if(DEFINED PACKAGE_NATIVE_SOURCE)
     if(NOT DEFINED CLANG OR NOT DEFINED AR OR NOT DEFINED PACKAGE_NATIVE_LIBRARY)
         message(FATAL_ERROR "Package native builds require CLANG, AR, and a library name")
@@ -52,7 +150,8 @@ endif()
 
 if(DEFINED EXPECTED_DIAGNOSTIC)
     execute_process(
-        COMMAND ${package_command} ${package_arguments} "${SOURCE}" -o "${OUTPUT}"
+        COMMAND ${package_command} ${package_arguments} ${source_arguments} -o "${OUTPUT}"
+        WORKING_DIRECTORY "${work_directory}"
         RESULT_VARIABLE result
         OUTPUT_VARIABLE stdout
         ERROR_VARIABLE stderr
@@ -60,9 +159,26 @@ if(DEFINED EXPECTED_DIAGNOSTIC)
     if(result EQUAL 0)
         message(FATAL_ERROR "Expected compilation to fail, but it succeeded")
     endif()
-    if(NOT stderr MATCHES "${EXPECTED_DIAGNOSTIC}")
-        message(FATAL_ERROR "Expected diagnostic '${EXPECTED_DIAGNOSTIC}', got:\n${stderr}")
+    expand_case_pattern(expected_diagnostic "${EXPECTED_DIAGNOSTIC}")
+    if(NOT stderr MATCHES "${expected_diagnostic}")
+        message(FATAL_ERROR "Expected diagnostic '${expected_diagnostic}', got:\n${stderr}")
     endif()
+    check_compile_output("${stdout}${stderr}")
+    return()
+endif()
+
+if(NO_RUN)
+    execute_process(
+        COMMAND ${package_command} ${package_arguments} ${source_arguments}
+        WORKING_DIRECTORY "${work_directory}"
+        RESULT_VARIABLE result
+        OUTPUT_VARIABLE stdout
+        ERROR_VARIABLE stderr
+    )
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "Compiler invocation failed (${result}):\n${stdout}${stderr}")
+    endif()
+    check_compile_output("${stdout}${stderr}")
     return()
 endif()
 
@@ -77,6 +193,7 @@ if(DEFINED COMPILE_ONLY)
     set(package_object "${OUTPUT}.o")
     execute_process(
         COMMAND ${package_command} ${package_arguments} -c "${SOURCE}" -o "${package_object}"
+        WORKING_DIRECTORY "${work_directory}"
         RESULT_VARIABLE compile_result
         OUTPUT_VARIABLE compile_stdout
         ERROR_VARIABLE compile_stderr
@@ -84,11 +201,13 @@ if(DEFINED COMPILE_ONLY)
     if(NOT compile_result EQUAL 0)
         message(FATAL_ERROR "Package compile-only failed (${compile_result}):\n${compile_stderr}")
     endif()
+    check_compile_output("${compile_stdout}${compile_stderr}")
     if(NOT EXISTS "${package_object}.simp-link")
         message(FATAL_ERROR "Package compile-only did not write its link sidecar")
     endif()
     execute_process(
         COMMAND ${package_command} "${package_object}" -o "${OUTPUT}"
+        WORKING_DIRECTORY "${work_directory}"
         RESULT_VARIABLE link_result
         OUTPUT_VARIABLE link_stdout
         ERROR_VARIABLE link_stderr
@@ -114,6 +233,7 @@ if(DEBUG_INFO)
 endif()
 execute_process(
     COMMAND ${package_command} ${package_arguments} ${debug_arguments} "${SOURCE}" -o "${OUTPUT}" --emit-llvm "${IR_OUTPUT}"
+    WORKING_DIRECTORY "${work_directory}"
     RESULT_VARIABLE compile_result
     OUTPUT_VARIABLE compile_stdout
     ERROR_VARIABLE compile_stderr
@@ -124,6 +244,7 @@ endif()
 if(DEFINED EXPECT_WARNING AND NOT compile_stderr MATCHES "${EXPECT_WARNING}")
     message(FATAL_ERROR "Expected compiler warning '${EXPECT_WARNING}', got:\n${compile_stderr}")
 endif()
+check_compile_output("${compile_stdout}${compile_stderr}")
 if(NOT EXISTS "${IR_OUTPUT}")
     message(FATAL_ERROR "Compiler did not write requested LLVM IR: ${IR_OUTPUT}")
 endif()

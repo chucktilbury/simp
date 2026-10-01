@@ -1,0 +1,196 @@
+.TH SIMP 1 "2026" "simp 0.0.1" "User Commands"
+.SH NAME
+simp \- compiler for the Simple programming language
+.SH SYNOPSIS
+.B simp
+[\fIoptions\fR] \fIinput\fR...
+.br
+.B simp
+\-\-print\-paths [\fB\-M\fR \fIdir\fR] [\fIinput\fR...]
+.SH DESCRIPTION
+.B simp
+compiles Simple source files
+.RI ( .simp )
+to LLVM IR and invokes
+.BR clang (1)
+to produce an executable, or a relocatable object with
+.BR \-c .
+Object inputs
+.RI ( .o ,
+.IR .obj )
+are linked with the generated code. Exactly one source input must contain the
+top\-level
+.B start
+block when an executable is produced.
+.PP
+The compiler is relocatable: it locates its runtime library, runtime headers,
+String prelude, and standard modules relative to its own executable, so an
+installed tree may be moved as a unit.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Print option help and exit.
+.TP
+.BR \-V ", " \-\-version
+Print the compiler version and exit.
+.TP
+.B \-v
+Increase verbosity; may be repeated or grouped
+.RB ( \-vv ,
+.BR \-vvv ).
+Level 1 reports compiler phases, level 2 also prints every resolved path and
+the exact
+.B clang
+commands, and level 3 adds per\-phase timings. All verbose output goes to
+standard error.
+.TP
+.BI \-\-verbosity= N
+Set the verbosity level directly (0 to 3). It cannot be combined with
+.BR \-v .
+Levels above 3 are rejected.
+.TP
+.BR \-t ", " \-\-trace =\fItarget\fR[,\fItarget\fR...]
+Trace compiler internals. Targets are
+.BR scanner ,
+.BR parser ,
+.BR ast ,
+and
+.BR symbols ;
+they are case\-insensitive and may be given as a comma\-separated list or by
+repeating the option. Scanner and parser traces go to standard error; the AST
+and symbol table are printed to standard output.
+.TP
+.B \-\-print\-paths
+Print the resolved executable, prefix, runtime directory and library, include
+directory, prelude, project root, project module root and its source, standard
+module directory, deprecated compatibility roots, module registry, and the
+.B clang
+executable, then exit successfully. No input is required.
+.TP
+.B \-\-check\-only
+Parse and check the source inputs without generating code.
+.TP
+.BR \-c ", " \-\-compile\-only
+Compile the source inputs to one relocatable object without linking.
+.TP
+.BR \-g ", " \-\-debug
+Emit DWARF debug information.
+.TP
+.BR \-o ", " \-\-output " \fIfile\fR"
+Write the executable or object to
+.IR file .
+.TP
+.BI \-\-emit\-llvm " file"
+Also save the generated LLVM IR to
+.IR file .
+.TP
+.BR \-p ", " \-\-path " \fIdir\fR[:\fIdir\fR...]"
+Add directories to the textual include search path.
+.TP
+.BI \-\-max\-include\-depth " n"
+Limit nested textual includes (default 16).
+.TP
+.BR \-M ", " \-\-module\-dir " \fIdir\fR"
+Use
+.I dir
+as the project module root. The directory must exist.
+.TP
+.BI \-\-package\-path " dir\fR[:\fIdir\fR...]"
+Deprecated. Add compatibility package roots searched after the project and
+standard module roots. A warning is printed when used.
+.TP
+.BR \-L ", " \-\-library\-path " \fIdir\fR"
+Add a linker search directory.
+.TP
+.BR \-l ", " \-\-library " \fIname\fR"
+Link with library
+.IR name .
+.SH MODULES
+An
+.B import
+resolves a package from
+.IR root / name / version /simp\-package.toml .
+Module roots are searched in this order:
+.IP 1. 4
+The project module root:
+.B \-M
+if given, otherwise
+.BR SIMP_MODULE_DIR ,
+otherwise
+.IR project\-root /modules ,
+where the project root is the directory containing the first source input (or
+the current directory when there is no source input). A missing default root
+is not an error.
+.IP 2. 4
+The standard module directory shipped with the compiler.
+.IP 3. 4
+Deprecated compatibility roots from
+.B \-\-package\-path
+and then
+.BR SIMP_PACKAGE_PATH .
+.IP 4. 4
+The deprecated tab\-separated registry
+.RB ( SIMP_MODULE_REGISTRY ,
+default
+.IR ./simp\-modules.tsv ).
+A warning is printed whenever a module is resolved through it. Package
+manifests take precedence over registry entries.
+.PP
+The first module root containing a package shadows lower\-priority roots. The
+highest stable version is selected only from the versions in that root.
+.PP
+When a module cannot be found, the diagnostic lists every module root and
+registry searched.
+.SH ENVIRONMENT
+.TP
+.B SIMP_MODULE_DIR
+Project module root when
+.B \-M
+is not given.
+.TP
+.B SIMP_HOME
+Installation prefix used instead of the executable location.
+.TP
+.BR SIMP_RUNTIME_DIR ", " SIMP_INCLUDE_DIR ", " SIMP_PRELUDE_DIR ", " SIMP_STDLIB_MODULE_DIR
+Override individual resource directories; each takes precedence over
+.BR SIMP_HOME .
+.TP
+.B CC
+C compiler driver used instead of the configured
+.BR clang .
+.TP
+.BR SIMP_PACKAGE_PATH ", " SIMP_MODULE_REGISTRY
+Deprecated compatibility module sources; see
+.BR MODULES .
+.SH FILES
+Paths are relative to the installation prefix (the parent of the
+.I bin
+directory holding
+.BR simp ).
+.TP
+.I bin/simp
+The compiler.
+.TP
+.I lib/simp/libsimp_runtime.a
+The garbage\-collected runtime linked into every executable.
+.TP
+.I include/simp/
+Runtime C headers used by inline C shims.
+.TP
+.I share/simp/prelude/String.simp
+The String prelude.
+.TP
+.I share/simp/modules/
+Standard modules.
+.SH EXIT STATUS
+0 on success (including \-\-help, \-\-version, and \-\-print\-paths);
+non\-zero on failure. Invalid command lines and unreadable inputs exit with 2.
+.SH EXAMPLES
+.nf
+simp hello.simp
+simp \-vv \-M ./deps app/main.simp \-o app
+simp \-t parser,symbols \-\-check\-only main.simp
+simp \-\-print\-paths
+.fi
+.SH SEE ALSO
+.BR clang (1)

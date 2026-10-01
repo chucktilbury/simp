@@ -123,6 +123,47 @@ void testInvalidArguments() {
                   "requires a number");
 }
 
+void testCountersAndListSeparators() {
+    simp::CommandLine commandLine("test", "test options", "1.2");
+    simp::CommandLineOption verbose;
+    verbose.shortName = 'v';
+    verbose.name = "verbose";
+    verbose.valueType = simp::CommandLineValueType::Counter;
+    commandLine.addOption(verbose);
+    simp::CommandLineOption quiet;
+    quiet.shortName = 'q';
+    quiet.name = "quiet";
+    commandLine.addOption(quiet);
+    simp::CommandLineOption trace;
+    trace.shortName = 't';
+    trace.longName = "trace";
+    trace.name = "trace";
+    trace.valueType = simp::CommandLineValueType::String;
+    trace.list = true;
+    trace.listSeparator = ',';
+    commandLine.addOption(trace);
+
+    commandLine.parse({"-vv", "-qv", "-t", "a,b", "--trace=c:d", "-te"});
+    require(commandLine.count("verbose") == 3,
+            "counted switches should count grouped and repeated occurrences");
+    require(commandLine.switchValue("quiet"), "counters should combine with switches");
+    require(commandLine.values("trace") == std::vector<std::string>{"a", "b", "c:d", "e"},
+            "list options should split only on their own separator");
+    require(commandLine.helpText().find("(repeatable)") != std::string::npos,
+            "help should mark counted switches as repeatable");
+    commandLine.parse({});
+    require(commandLine.count("verbose") == 0, "counts should reset between parses");
+    expectFailure([&] { commandLine.parse({"-v=2"}); }, "does not accept an argument");
+
+    simp::CommandLine invalid("test", "test options", "1.2");
+    simp::CommandLineOption listCounter;
+    listCounter.shortName = 'c';
+    listCounter.name = "count";
+    listCounter.valueType = simp::CommandLineValueType::Counter;
+    listCounter.list = true;
+    expectFailure([&] { invalid.addOption(listCounter); }, "list");
+}
+
 } // namespace
 
 int main() {
@@ -130,6 +171,7 @@ int main() {
         {"short groups, attached values, and lists", testShortGroupsAttachedValuesAndLists},
         {"defaults and actions", testDefaultsAndActions},
         {"invalid arguments", testInvalidArguments},
+        {"counters and list separators", testCountersAndListSeparators},
     };
     for (const auto& test : tests) {
         try {
