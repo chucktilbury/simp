@@ -1,29 +1,37 @@
 # Standard library reference
 
-Standard packages are imported by package name. The alias qualifies the
-package's exported namespace:
+Standard packages are imported by package name. The alias itself names the
+package namespace; use the exported classes directly beneath it. For example,
+`import system as Sys` makes `Sys.Process` and `Sys.System` the class names
+(not `Sys.System.Process`):
 
-```simple
+```simp
 import system as Sys
 import math as MathLib
 
-Sys.Process.exit(0)
-MathLib.Math.sqrt(9.0)
+start {
+    MathLib.Math math = MathLib.Math()
+    print(math.sqrt(9.0) == 3.0)
+    Sys.Process().exit(0)
+}
 ```
 
 The shipped package sources live in `stdlib/<package>/<version>/`; this
 reference describes the current packages at version `0.1.0`. Error-message
-examples below refer to `System.lastError()`, which returns the current
-thread's most recent native error as a string (or an empty string when no
-error is recorded). It is not a numeric error-code API.
+examples below refer to `System.lastError()`, which returns the current thread's most recent native
+error as a string (or an empty string when no error is recorded). It is not a
+numeric error-code API. `lastError()` is an instance method; with the `Sys`
+alias, call it as `Sys.System().lastError()`.
 
 ## `system`
 
-Import with `import system as Sys`; the exported namespace is `System`.
+Import with `import system as Sys`; the alias names the package namespace, so
+the exported classes are available directly as `Sys.Process`, `Sys.File`,
+`Sys.FileSystem`, `Sys.StandardIO`, and `Sys.System`.
 
-`System.Process` provides command-line and environment access:
+`Sys.Process` provides command-line and environment access:
 
-```simple
+```text
 int argc()
 array argv()
 String arg(int index)
@@ -39,10 +47,10 @@ String mode)`, and `bool exists(String path)`. An invalid `arg` index and an
 unset environment variable produce an empty string. `setEnv` reports success
 as a boolean and records native failures in `lastError()`.
 
-`System.File` can be constructed with `File(String path, String mode)` or
-obtained from `System.open`. Its methods are:
+`Sys.File` can be constructed with `File(String path, String mode)` or
+obtained from `Sys.System().open`. Its methods are:
 
-```simple
+```text
 String path()
 String mode()
 bool isOpen()
@@ -69,9 +77,9 @@ for `writeLine` when successful); failed writes may return a partial count.
 position, capped at the `int` range, or `-1`. `File` records whether the
 initial open succeeded; close it explicitly.
 
-`System.FileSystem` provides:
+`Sys.FileSystem` provides:
 
-```simple
+```text
 bool exists(String path)
 bool isFile(String path)
 bool isDir(String path)
@@ -102,9 +110,9 @@ calls clear it. `absolutePath` resolves an existing path with `realpath`.
 a file with mode `0600` and closes its descriptor before returning the path;
 `tempDir` creates a temporary directory.
 
-`System.StandardIO`, obtained with `System.io()`, has these methods:
+`Sys.StandardIO`, obtained with `Sys.System().io()`, has these methods:
 
-```simple
+```text
 String read(int size)
 String readLine()
 int write(String text)
@@ -123,18 +131,21 @@ target stderr. Byte writes accept buffers. Write methods return bytes written
 and can return partial counts or `-1`. Failed reads return an empty string and
 set `lastError()`.
 
-```simple
+```simp
 import system as Sys
-Sys.StandardIO io = Sys.System().io()
-io.writeLine("hello")
+
+start {
+    Sys.StandardIO io = Sys.System().io()
+    io.writeLine("hello")
+}
 ```
 
 ## `math`
 
-Import with `import math as M`; the package exports class `Math` in namespace
-`Math`.
+Import with `import math as M`; the alias names the package namespace and its
+exported class is available directly as `M.Math`.
 
-```simple
+```text
 float pi()
 float e()
 float tau()
@@ -175,18 +186,25 @@ functions use radians. The constants are returned by `pi()`, `e()`, and
 `tau()`. Numeric results follow the native C math-library behavior; this
 package does not report math-domain conditions through `System.lastError()`.
 
-```simple
+```simp
 import math as M
-float root = M.Math.sqrt(9.0)
+
+start {
+    M.Math math = M.Math()
+    float root = math.sqrt(9.0)
+    print(root == 3.0)
+}
 ```
 
 ## `networking`
 
-Import with `import networking as Net`; the namespace is `Networking`.
+Import with `import networking as Net`; the alias names the package namespace,
+so its classes are available directly as `Net.Socket`, `Net.ServerSocket`, and
+`Net.Url`.
 
-`Networking.Socket` methods:
+`Net.Socket` methods:
 
-```simple
+```text
 Socket()
 Socket(int fd)
 bool connect(String host, int port)
@@ -208,9 +226,9 @@ failure. A negative `maxBytes` likewise returns null/empty. `connect` returns
 `false` on failure. `setTimeout` sets the receive timeout (and has no return
 value); negative timeout values are ignored. `close` releases the descriptor.
 
-`Networking.ServerSocket` methods:
+`Net.ServerSocket` methods:
 
-```simple
+```text
 ServerSocket()
 bool bind(int port)
 bool bindAddress(String host, int port)
@@ -227,9 +245,9 @@ connected state is false if accepting failed. `getPort` returns zero when the
 native lookup fails. Socket and DNS failures use the methods' return sentinels;
 `System.lastError()` is not a reliable networking error channel.
 
-`Networking.Url` parses a string in its constructor and exposes:
+`Net.Url` parses a string in its constructor and exposes:
 
-```simple
+```text
 Url(String urlString)
 String scheme()
 String host()
@@ -244,17 +262,21 @@ It retains the original string for `toString`; absent path defaults to `/`,
 and `http`/`https` URLs without an explicit port default to 80/443. This is a
 small parser, not a URL validator.
 
-```simple
+```simp
 import networking as Net
-Net.Networking.Url address = Net.Networking.Url("https://example.test/path")
+
+start {
+    Net.Url address = Net.Url("https://example.test/path")
+    print(address.scheme().equals("https"))
+}
 ```
 
 ## `time`
 
-Import with `import time as T`; the package exports `Clock` in namespace
-`Time`.
+Import with `import time as T`; the alias names the package namespace, making
+the exported class directly available as `T.Clock`.
 
-```simple
+```text
 unsigned epochSeconds()
 unsigned epochMilliseconds()
 unsigned monotonicMilliseconds()
@@ -267,17 +289,23 @@ and releases the runtime lock while waiting. Clock failures return zero;
 sleep returns `false` on overflow or system failure. These failures are
 reported through `System.lastError()`.
 
-```simple
+```simp
 import time as T
-unsigned start = T.Time.Clock().monotonicMilliseconds()
+
+start {
+    T.Clock clock = T.Clock()
+    unsigned before = clock.monotonicMilliseconds()
+    print(clock.epochSeconds() > 0u)
+    print(clock.monotonicMilliseconds() >= before)
+}
 ```
 
 ## `process`
 
-Import with `import process as P`; the exported class is `Process` in namespace
-`Process`.
+Import with `import process as P`; the alias names the package namespace, so
+the exported class is available directly as `P.Process`.
 
-```simple
+```text
 Process(String executable, array arguments)
 bool started()
 bool wait()
@@ -301,22 +329,24 @@ Output access before waiting returns an empty string and sets an error.
 Explicitly call `close()` for each successful start; it waits/reaps an
 unwaited child and releases captured data and descriptors.
 
-```simple
+```simp
 import process as P
-P.Process child = P.Process("echo", ["hello"])
-if (child.started()) {
-    child.wait()
-    String output = child.stdout()
+
+start {
+    P.Process child = P.Process("/usr/bin/printf", ["hello"])
+    print(child.started())
+    print(child.wait())
+    print(child.stdout().equals("hello"))
     child.close()
 }
 ```
 
 ## `terminal`
 
-Import with `import terminal as Term`; the exported class is `Terminal` in
-namespace `Terminal`.
+Import with `import terminal as Term`; the alias names the package namespace,
+so the exported class is available directly as `Term.Terminal`.
 
-```simple
+```text
 bool isInteractive()
 bool isOutputInteractive()
 int columns()
@@ -330,17 +360,21 @@ be read. Color support requires stdout to be a terminal, `TERM` to be set and
 not `dumb`, and `NO_COLOR` to be unset. These probes do not change terminal
 mode and do not report errors through `System.lastError()`.
 
-```simple
+```simp
 import terminal as Term
-bool interactive = Term.Terminal().isInteractive()
+
+start {
+    Term.Terminal terminal = Term.Terminal()
+    print(terminal.isInteractive() == false)
+}
 ```
 
 ## `random`
 
-Import with `import random as R`; the package exports `SecureRandom` in
-namespace `Random`.
+Import with `import random as R`; the alias names the package namespace, so the
+exported class is available directly as `R.SecureRandom`.
 
-```simple
+```text
 buffer bytes(int size)
 bool fill(buffer target)
 ```
@@ -352,17 +386,24 @@ or null for a negative size or allocation/source failure; `fill` returns
 false for an invalid buffer or source failure. Failures set
 `System.lastError()`; success clears it.
 
-```simple
+```simp
 import random as R
-buffer nonce = R.Random.SecureRandom().bytes(16)
+
+start {
+    R.SecureRandom random = R.SecureRandom()
+    buffer nonce = random.bytes(16)
+    print(nonce != null)
+    print(nonce.length == 16)
+}
 ```
 
 ## `synchronization`
 
-Import with `import synchronization as Sync`; the package exports
-`Mutex`, `Condition`, and `Semaphore` in namespace `Synchronization`.
+Import with `import synchronization as Sync`; the alias names the package
+namespace, so its classes are available directly as `Sync.Mutex`,
+`Sync.Condition`, and `Sync.Semaphore`.
 
-```simple
+```text
 Mutex()
 handle nativeHandle()
 bool lock()
@@ -412,10 +453,13 @@ The mutex and condition operations above expose native error messages through
 object usable when they report `EBUSY`; close each primitive only after all
 users have stopped.
 
-```simple
+```simp
 import synchronization as Sync
-Sync.Synchronization.Mutex lock = Sync.Synchronization.Mutex()
-lock.lock()
-lock.unlock()
-lock.close()
+
+start {
+    Sync.Mutex lock = Sync.Mutex()
+    print(lock.lock())
+    print(lock.unlock())
+    print(lock.close())
+}
 ```
