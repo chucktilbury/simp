@@ -24,20 +24,24 @@ and `//` start line comments; `/* ... */` comments can span lines but do not
 nestedly pair. A semicolon begins a comment rather than separating statements.
 See `NEWLINE`, `COMMENT`, and `terminator`.
 
-Integer literals are decimal signed 64-bit `int` values by default; `u` or `U`
-selects an unsigned 64-bit literal. The signed range is
+Integer literals may be decimal or hexadecimal (`0x`/`0X` followed by
+case-insensitive digits `0`-`9` and `a`-`f`). Unsuffixed literals are signed
+64-bit `int` values by default; a trailing `u` or `U` selects an unsigned
+64-bit literal. The signed range is
 -9,223,372,036,854,775,808 through 9,223,372,036,854,775,807; literals outside
-the applicable range are rejected. Signs are unary operators. Float literals
-accept decimal points and exponents. Double-quoted and single-quoted strings
-are UTF-8 and cannot span physical lines. Double quotes support `\n`, `\r`,
+the applicable range are rejected. Signs are unary operators, so
+`-0x8000000000000000` is the signed minimum, but its positive magnitude is
+out of range for `int`. Float literals accept decimal points and exponents.
+Double-quoted and single-quoted strings are UTF-8 and cannot span physical
+lines. Double quotes support `\n`, `\r`,
 `\t`, `\\`, and `\"`; single quotes do not interpret escapes. See `INTEGER`,
 `UNSIGNED_INT`, `FLOAT`, `STRING`, and `ESCAPE`.
 
 ```simp
 // Complete program: literal spellings and a formatted string.
 start {
-    int count = 12
-    unsigned total = 12u
+    int count = 0x12
+    unsigned total = 0x12u
     float ratio = .5
     print("count={}, total={}, ratio={}"(count, total, ratio))
 }
@@ -99,7 +103,8 @@ supported concrete local types; the runtime checks the contained value.
 Explicit numeric casts use
 `int(expr)`, `unsigned(expr)`, or `float(expr)`. Implicit numeric conversions
 are not general-purpose; overload resolution allows a plain integer literal
-to match an `unsigned` parameter, while `u` literals are unsigned directly.
+(decimal or hexadecimal) to match an `unsigned` parameter, while `u` literals
+are unsigned directly.
 Integer-to-float casts round to the nearest representable double when needed.
 Float-to-integer casts truncate toward zero; NaN and values outside the
 target range raise a catchable `integer overflow` exception. Signed

@@ -38,14 +38,19 @@ bool isDynamicValueType(const std::string& type) {
     return type == "any";
 }
 
+bool parseIntegerMagnitude(const std::string& literal, std::uint64_t& value) {
+    const bool hexadecimal = literal.size() >= 2 && literal[0] == '0' &&
+                             (literal[1] == 'x' || literal[1] == 'X');
+    const auto* begin = literal.data() + (hexadecimal ? 2 : 0);
+    const auto* end = literal.data() + literal.size();
+    const auto parsed = std::from_chars(begin, end, value, hexadecimal ? 16 : 10);
+    return parsed.ec == std::errc{} && parsed.ptr == end;
+}
+
 bool isMinimumIntegerMagnitude(const Expression& expression) {
     if (expression.kind != ExpressionKind::Integer) return false;
     std::uint64_t magnitude = 0;
-    const auto parsed = std::from_chars(expression.value.data(),
-                                        expression.value.data() + expression.value.size(),
-                                        magnitude);
-    return parsed.ec == std::errc{} &&
-           parsed.ptr == expression.value.data() + expression.value.size() &&
+    return parseIntegerMagnitude(expression.value, magnitude) &&
            magnitude == (std::uint64_t{1} << 63);
 }
 
@@ -56,11 +61,14 @@ bool constantInteger(const Expression& expression, std::int64_t& value) {
         return true;
     }
     if (expression.kind == ExpressionKind::Integer) {
-        const auto parsed = std::from_chars(expression.value.data(),
-                                             expression.value.data() + expression.value.size(),
-                                             value);
-        return parsed.ec == std::errc{} &&
-               parsed.ptr == expression.value.data() + expression.value.size();
+        std::uint64_t magnitude = 0;
+        if (!parseIntegerMagnitude(expression.value, magnitude) ||
+            magnitude > static_cast<std::uint64_t>(
+                            std::numeric_limits<std::int64_t>::max())) {
+            return false;
+        }
+        value = static_cast<std::int64_t>(magnitude);
+        return true;
     }
     if (expression.kind == ExpressionKind::Unary && expression.left != nullptr) {
         if (!constantInteger(*expression.left, value)) return false;
@@ -149,24 +157,22 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                                 const std::string& expectedType) {
     switch (expression.kind) {
     case ExpressionKind::Integer: {
-        const auto* begin = expression.value.data();
-        const auto* end = begin + expression.value.size();
         // A plain, unsuffixed integer literal is also a valid unsigned
         // literal when the surrounding context expects `unsigned` (the `u`
         // suffix remains required everywhere else, including plain `int`
         // contexts and `any`).
+        std::uint64_t magnitude = 0;
+        if (!parseIntegerMagnitude(expression.value, magnitude)) {
+            throw DiagnosticError(expression.location,
+                                  expectedType == "unsigned"
+                                      ? "integer literal is outside the unsigned 64-bit range"
+                                      : "integer literal is outside the signed 64-bit range");
+        }
         if (expectedType == "unsigned") {
-            std::uint64_t unsignedValue = 0;
-            const auto parsedUnsigned = std::from_chars(begin, end, unsignedValue);
-            if (parsedUnsigned.ec != std::errc{} || parsedUnsigned.ptr != end) {
-                throw DiagnosticError(expression.location,
-                                      "integer literal is outside the unsigned 64-bit range");
-            }
             return "unsigned";
         }
-        std::int64_t value = 0;
-        const auto parsed = std::from_chars(begin, end, value);
-        if (parsed.ec != std::errc{} || parsed.ptr != end) {
+        if (magnitude > static_cast<std::uint64_t>(
+                            std::numeric_limits<std::int64_t>::max())) {
             throw DiagnosticError(expression.location,
                                   "integer literal is outside the signed 64-bit range");
         }
@@ -175,10 +181,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
     case ExpressionKind::Unsigned: {
         const auto length = expression.value.size() - 1;
         std::uint64_t value = 0;
-        const auto parsed = std::from_chars(expression.value.data(),
-                                            expression.value.data() + length, value);
-        if (length == 0 || parsed.ec != std::errc{} ||
-            parsed.ptr != expression.value.data() + length) {
+        if (length == 0 ||
+            !parseIntegerMagnitude(expression.value.substr(0, length), value)) {
             throw DiagnosticError(expression.location,
                                   "unsigned literal is outside the 64-bit range");
         }

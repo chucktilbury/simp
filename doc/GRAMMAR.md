@@ -28,7 +28,11 @@ IDENT_PART      ::= IDENT_START | DIGIT ;
 IDENT           ::= IDENT_START, { IDENT_PART } ;
 QUALIFIED_IDENT ::= IDENT, { ".", IDENT } ;
 
-INTEGER         ::= DIGIT, { DIGIT } ;
+DECIMAL_INTEGER ::= DIGIT, { DIGIT } ;
+HEX_DIGIT       ::= DIGIT | "a" | "b" | "c" | "d" | "e" | "f"
+                  | "A" | "B" | "C" | "D" | "E" | "F" ;
+HEX_INTEGER     ::= ("0x" | "0X"), HEX_DIGIT, { HEX_DIGIT } ;
+INTEGER         ::= DECIMAL_INTEGER | HEX_INTEGER ;
 UNSIGNED_INT    ::= INTEGER, ("u" | "U") ;
 EXPONENT        ::= ("e" | "E"), [ "+" | "-" ], DIGIT, { DIGIT } ;
 FLOAT           ::= DIGIT, { DIGIT }, ".", { DIGIT }, [ EXPONENT ]
@@ -63,12 +67,19 @@ The reserved words are `start`, `int`, `bool`, `float`, `unsigned`, `strg`,
 `if`, `else`, `while`, `do`, `for`, `in`, `is`, `break`, `continue`, `and`,
 `or`, `not`, `print`, `raise`, `try`, `except`, `finally`, and `from`.
 
+Unsuffixed decimal and hexadecimal integer literals have type `int`; a trailing
+`u` or `U` gives either spelling type `unsigned`. Hexadecimal digits are
+case-insensitive. Signs are unary operators: `-0x8000000000000000` is the
+signed minimum, while the corresponding positive literal is outside the
+signed range. Literal magnitudes must fit the selected signed or unsigned
+64-bit range.
+
 Lexical details that affect parsing:
 
-- A leading `+` or `-` is an operator, not part of a number. Decimal integer
-  literals have no radix prefix or separators. Unsuffixed integer values are
-  signed 64-bit; `u`/`U` marks an unsigned 64-bit literal. Values outside the
-  selected type's range are rejected. Floats accept leading-dot (`.5`),
+- A leading `+` or `-` is an operator, not part of a number. Unsuffixed
+  decimal and hexadecimal integer values are signed 64-bit; `u`/`U` marks an
+  unsigned 64-bit literal. Values outside the selected type's range are
+  rejected. Floats accept leading-dot (`.5`),
   trailing-dot (`5.`), and exponent forms (`1e3`, `1.0E-3`); an exponent must
   contain digits.
 - Only double-quoted strings interpret escapes, and only `\n`, `\r`, `\t`,

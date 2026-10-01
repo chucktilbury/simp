@@ -7,7 +7,9 @@
 
 #include <algorithm>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -111,6 +113,83 @@ const TestGroupRegistration registration{0, {
              }
              require(foundTrue && foundFloat && foundUnsigned,
                      "boolean, float, or unsigned literal token missing");
+         }},
+        {"hexadecimal integer spellings", [] {
+             simp::Lexer lexer("start { int a = 0x1234 int b = 0XAbCd "
+                               "unsigned c = 0xFFu unsigned d = 0XfFU }",
+                               "hexadecimal.simp");
+             const auto tokens = lexer.tokenize();
+             std::vector<std::pair<simp::TokenType, std::string>> literals;
+             for (const auto& token : tokens) {
+                 if (token.type == simp::TokenType::Integer ||
+                     token.type == simp::TokenType::UnsignedInteger) {
+                     literals.emplace_back(token.type, token.text);
+                 }
+             }
+             require(literals.size() == 4, "hexadecimal integer tokens missing");
+             require(literals[0].first == simp::TokenType::Integer &&
+                         literals[0].second == "0x1234" &&
+                         literals[1].first == simp::TokenType::Integer &&
+                         literals[1].second == "0XAbCd" &&
+                         literals[2].first == simp::TokenType::UnsignedInteger &&
+                         literals[2].second == "0xFFu" &&
+                         literals[3].first == simp::TokenType::UnsignedInteger &&
+                         literals[3].second == "0XfFU",
+                     "hexadecimal literal spelling or suffix was changed");
+         }},
+        {"malformed hexadecimal literals are source-located", [] {
+             for (const auto& literal : {"0x", "0x1g", "0x1ufoo"}) {
+                 try {
+                     simp::Lexer lexer("start {\n int value = " + std::string(literal) +
+                                           "\n}",
+                                       "malformed-hex.simp");
+                     lexer.tokenize();
+                 } catch (const simp::DiagnosticError& error) {
+                     require(std::string(error.what()).find(
+                                 "malformed hexadecimal integer literal") !=
+                                 std::string::npos,
+                             "malformed hex diagnostic message incorrect");
+                     require(error.location().file == "malformed-hex.simp" &&
+                                 error.location().line == 2 &&
+                                 error.location().column == 14,
+                             "malformed hex diagnostic has incorrect source location");
+                     continue;
+                 }
+                 throw std::runtime_error("malformed hexadecimal literal was accepted");
+             }
+         }},
+        {"hexadecimal integer range and unary minimum", [] {
+             expectValid("start {\n"
+                         " int maximum = 0x7FFFFFFFFFFFFFFF\n"
+                         " int minimum = -0x8000000000000000\n"
+                         " unsigned maximumUnsigned = 0xFFFFFFFFFFFFFFFFu\n"
+                         " unsigned contextualUnsigned = 0xFFFFFFFFFFFFFFFF\n"
+                         "}\n");
+             const auto checkLocation = [](const std::string& source,
+                                           const std::string& message) {
+                 try {
+                     parse(source, "hex-range.simp");
+                 } catch (const simp::DiagnosticError& error) {
+                     require(std::string(error.what()).find(message) != std::string::npos,
+                             "hex range diagnostic message incorrect");
+                     require(error.location().file == "hex-range.simp" &&
+                                 error.location().line == 2,
+                             "hex range diagnostic has incorrect source location");
+                     return;
+                 }
+                 throw std::runtime_error("out-of-range hexadecimal literal was accepted");
+             };
+             checkLocation("start {\n int value = 0x8000000000000000\n}\n",
+                           "integer literal is outside the signed 64-bit range");
+             checkLocation("start {\n unsigned value = 0x10000000000000000u\n}\n",
+                           "unsigned literal is outside the 64-bit range");
+             checkLocation("start {\n int value = -0x8000000000000001\n}\n",
+                           "integer literal is outside the signed 64-bit range");
+             expectDiagnostic("start {\n"
+                              " array values = [1, 2]\n"
+                              " array invalid = values[::0x0]\n"
+                              "}\n",
+                              "array slice step cannot be zero");
          }},
         {"import keyword is case-insensitive and reserved", [] {
              simp::Lexer lexer("IMPORT network AS Net\nstart {}", "import-keyword.simp");
