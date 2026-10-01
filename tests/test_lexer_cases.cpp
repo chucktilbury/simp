@@ -186,10 +186,10 @@ const TestGroupRegistration registration{0, {
              checkLocation("start {\n int value = -0x8000000000000001\n}\n",
                            "integer literal is outside the signed 64-bit range");
              expectDiagnostic("start {\n"
-                              " array values = [1, 2]\n"
-                              " array invalid = values[::0x0]\n"
+                              " list values = [1, 2]\n"
+                              " list invalid = values[::0x0]\n"
                               "}\n",
-                              "array slice step cannot be zero");
+                              "list slice step cannot be zero");
          }},
         {"import keyword is case-insensitive and reserved", [] {
              simp::Lexer lexer("IMPORT network AS Net\nstart {}", "import-keyword.simp");
