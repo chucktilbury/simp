@@ -86,8 +86,9 @@ the runtime checks the contained value. Explicit numeric casts use
 `int(expr)`, `unsigned(expr)`, or `float(expr)`. Implicit numeric conversions
 are not general-purpose; overload resolution allows a plain integer literal
 to match an `unsigned` parameter, while `u` literals are unsigned directly.
-String-to-number conversion is provided by `String.toInt()`,
-`String.toUnsigned()`, and `String.toFloat()` and can raise on invalid input.
+String-to-number conversion is provided by the instance methods
+`value.toInt()`, `value.toUnsigned()`, and `value.toFloat()` and can raise on
+invalid input.
 See `primary` and `postfix`.
 
 `null` is a universal null value and can initialize nullable locals, including
@@ -303,7 +304,12 @@ start {
 ## Imports, packages, and textual inclusion
 
 `import Name as Alias` resolves a module or package through the module
-registry and makes its exported namespace available through the alias.
+registry and makes its exported namespace itself available through the alias:
+the alias replaces the package's namespace prefix. For example,
+`import time as T` exposes `Clock` as `T.Clock`, not `T.Time.Clock`.
+Standard-library classes are instance-based: construct the class before
+calling an instance method, as in `Sys.Process().exit(0)`, rather than using
+a static-style call such as `Sys.Process.exit(0)`.
 Imports are top-level only and imported module source cannot define `start`.
 Package manifests and package APIs are documented in [STDLIB.md](STDLIB.md).
 See `import-declaration` and `module`.
@@ -316,9 +322,11 @@ includes do not create an isolated module namespace. See
 `include-directive` and the source-loader notes in [GRAMMAR.md](GRAMMAR.md).
 
 ```simp
-// Fragment (requires an installed/bundled `system` package):
+// Complete program (requires an installed/bundled `system` package).
 import system as Sys
-// Use exported declarations through the package namespace, e.g. Sys.Process.
+start {
+    Sys.Process().exit(0)
+}
 ```
 
 ```simp
