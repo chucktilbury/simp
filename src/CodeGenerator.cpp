@@ -32,8 +32,8 @@ std::string llvmDoubleConstant(const std::string& literal) {
 
 } // namespace
 
-CodeGenerator::CodeGenerator(std::string targetTriple)
-    : targetTriple_(std::move(targetTriple)) {}
+CodeGenerator::CodeGenerator(std::string targetTriple, bool debug)
+    : targetTriple_(std::move(targetTriple)), debug_(debug) {}
 
 bool CodeGenerator::isArrayType(const std::string& type) const {
     return type == "array";
@@ -614,6 +614,21 @@ void CodeGenerator::emitRootFramePop() {
 
 CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
                                                    const std::string& expectedType) {
+    struct DebugExpressionScope {
+        std::string& instructions;
+        std::string& current;
+        std::string previous;
+        ~DebugExpressionScope() {
+            if (!previous.empty()) {
+                instructions += "; simp.debug.location " + previous + "\n";
+                current = previous;
+            }
+        }
+    } debugScope{instructions_, debugCurrentLocation_, debug_ ? debugCurrentLocation_ : ""};
+    if (debug_) {
+        debugCurrentLocation_ = debugLocation(expression.location);
+        instructions_ += "; simp.debug.location " + debugCurrentLocation_ + "\n";
+    }
     switch (expression.kind) {
     case ExpressionKind::Integer:
         if (expectedType == "unsigned") {

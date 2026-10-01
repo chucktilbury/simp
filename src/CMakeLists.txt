@@ -45,6 +45,7 @@ add_library(simp_frontend
     Ast.cpp
     CommandLine.cpp
     CodeGenerator.cpp
+    CodeGeneratorDebug.cpp
     CodeGeneratorDispatch.cpp
     CodeGeneratorExceptions.cpp
     CodeGeneratorLayout.cpp

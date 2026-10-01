@@ -79,7 +79,17 @@ void CodeGenerator::emitInlineC(const Statement& statement) {
 
 void CodeGenerator::emitStatements(const std::vector<Statement>& statements) {
     for (const auto& statement : statements) {
-        if (!blockTerminated_) emitStatement(statement);
+        if (blockTerminated_) continue;
+        if (debug_) {
+            const auto previous = debugCurrentLocation_;
+            debugCurrentLocation_ = debugLocation(statement.location);
+            instructions_ += "; simp.debug.location " + debugCurrentLocation_ + "\n";
+            emitStatement(statement);
+            instructions_ += "; simp.debug.location " + previous + "\n";
+            debugCurrentLocation_ = previous;
+        } else {
+            emitStatement(statement);
+        }
     }
 }
 
@@ -131,6 +141,8 @@ void CodeGenerator::emitStatement(const Statement& statement) {
         entryAllocas_ += "  " + pointer + " = alloca " + llvmType(statement.declaredType) + "\n";
         if (nullableScalar) entryAllocas_ += "  " + flagPointer + " = alloca i1\n";
         registerRootSlot(pointer, statement.declaredType);
+        instructions_ += debugDeclaration(statement.name, statement.declaredType, pointer,
+                                          statement.location);
         if (!statement.expressions.empty()) {
             auto value = emitExpression(*statement.expressions.front(), statement.declaredType);
             auto converted = convertObjectValue(value, statement.declaredType,
@@ -429,11 +441,15 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                                    Binding{"String", keySlot, {}, false});
             entryAllocas_ += "  " + keySlot + " = alloca ptr\n";
             registerRootSlot(keySlot, "String");
+            instructions_ += debugDeclaration(statement.keyName, "String", keySlot,
+                                              statement.location);
         }
         const auto valueSlot = "%v" + std::to_string(nextVariable_++);
         scopes_.back().emplace(statement.name, Binding{"any", valueSlot, {}, false});
         entryAllocas_ += "  " + valueSlot + " = alloca %SimpleArrayValue\n";
         registerRootSlot(valueSlot, "any");
+        instructions_ += debugDeclaration(statement.name, "any", valueSlot,
+                                          statement.location);
 
         const auto conditionLabel = freshLabel("foreach.cond");
         const auto bodyLabel = freshLabel("foreach.body");

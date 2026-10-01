@@ -1453,14 +1453,21 @@ compiler implementation; Simple's runtime and native-module ABI should remain
 C-compatible where appropriate.
 
 The compiler already supports multiple input files, compile/link operations,
-external `-L`/`-l` libraries, an include search path, and verbosity/tracing
-options. The broader CLI should continue toward:
+external `-L`/`-l` libraries, an include search path, verbosity/tracing
+options, and `-g` DWARF debug information for generated executables. The
+broader CLI should continue toward:
 
 - A unified include/import search-path interface.
 - A verbosity system that controls diagnostic and debug output, including
   parser tracing, AST tracing or dumping, and symbol-table dumping.
 
-The eventual ecosystem should include a usable package manager, an IDE, and a debugger integration that wraps LLDB and/or GDB.
+The eventual ecosystem should include a usable package manager and an IDE.
+The compiler supports `-g` for DWARF source-line and local-variable debugging
+of generated executables with ordinary GDB or LLDB; an IDE-specific debugger
+integration is not provided. Debuggers can show source lines and locals when
+DWARF locations are available, but all values are not guaranteed to be
+inspectable, and class fields are not necessarily shown as source-level
+members.
 
 ### Tests and examples
 
@@ -1615,7 +1622,8 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - The full set of future standard/external modules.
 - Library search paths, `any` values across the native boundary, and ABI
   support beyond x86-64 SysV.
-- Package-manager, IDE, and LLDB/GDB integration details.
+- Package-manager and IDE integration details; generated executables can
+  already be debugged directly with GDB or LLDB using `-g`.
 - Remaining `String` byte indexing/slicing, text methods, and
   buffer-to-String validation/conversion APIs (see "Strings" above).
 

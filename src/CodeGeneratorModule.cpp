@@ -261,6 +261,10 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
     const auto frameName = method.constructor
                                ? owner.name + ".constructor"
                                : owner.name + "." + method.name;
+    const auto symbol = symbolOverride.empty() ? methodSymbol(owner.name, method)
+                                               : symbolOverride;
+    const auto functionDebug = debugBeginFunction(method.location, frameName, symbol,
+                                                  method.returnType);
     const auto frameNameGlobal = internString(frameName);
     const auto frameFileGlobal = method.location.file.empty()
                                      ? std::string("null")
@@ -271,6 +275,7 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
         ", i64 " + std::to_string(method.location.file.size()) + ", i64 " +
         std::to_string(method.location.line) + ", i64 " +
         std::to_string(method.location.column) + ")\n";
+    unsigned argumentIndex = method.constructor ? 3 : 2;
     for (const auto& parameter : method.parameters) {
         const auto argument = "%arg." + parameter.name;
         signature += ", " + llvmType(parameter.type) + " " + argument;
@@ -281,9 +286,9 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
         registerRootSlot(pointer, parameter.type);
         functionPrologue_ += "  store " + llvmType(parameter.type) + " " + argument +
                              ", ptr " + pointer + "\n";
+        functionPrologue_ += debugDeclaration(parameter.name, parameter.type, pointer,
+                                               parameter.location, argumentIndex++);
     }
-    const auto symbol = symbolOverride.empty() ? methodSymbol(owner.name, method)
-                                               : symbolOverride;
     const auto returnType = llvmType(method.returnType);
     if (method.constructor) {
         const auto virtualBases = virtualBaseNames(owner);
@@ -365,9 +370,10 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
         instructions_ += "  ret void\n";
     }
     const auto body = instructions_;
-    instructions_ = "define " + returnType + " " + symbol + "(" + signature +
-                    ") {\nentry:\n" + entryAllocas_ + rootFrameInitialization() +
-                    functionPrologue_ + rootFramePush() + body + "}\n\n";
+    instructions_ = debugAnnotate("define " + returnType + " " + symbol + "(" + signature +
+                    ")" + functionDebug + " {\nentry:\n" + entryAllocas_ +
+                    rootFrameInitialization() + functionPrologue_ + rootFramePush() +
+                    body + "}\n\n", method.location);
     currentClass_ = nullptr;
     currentFieldClass_ = nullptr;
     currentMethod_ = nullptr;
@@ -637,6 +643,7 @@ void CodeGenerator::emitMain(const Program& program) {
     nextExceptionFrame_ = 0;
     nextLabel_ = 0;
     blockTerminated_ = false;
+    const auto functionDebug = debugBeginFunction(program.location, "start", "@main", "int");
     entryAllocas_ += "  %simp.trace.frame = alloca %SimpTraceFrame\n";
     const auto startNameGlobal = internString("start");
     const auto startFileGlobal = program.location.file.empty()
@@ -650,14 +657,14 @@ void CodeGenerator::emitMain(const Program& program) {
         std::to_string(program.location.column) + ")\n";
     emitStatements(program.statements);
     const auto body = instructions_;
-    instructions_ = "define i32 @main() {\nentry:\n"
+    instructions_ = debugAnnotate("define i32 @main()" + functionDebug + " {\nentry:\n"
                     "  call void @simp_runtime_thread_enter()\n" +
                     entryAllocas_ +
                     rootFrameInitialization() + functionPrologue_ + rootFramePush() + body +
                     "  call void @simp_trace_pop(ptr %simp.trace.frame)\n"
                     "  call void @simp_gc_pop_or_abort(ptr %simp.root.frame)\n"
                     "  call void @simp_runtime_thread_exit()\n"
-                    "  ret i32 0\n}\n";
+                    "  ret i32 0\n}\n", program.location);
 }
 
 std::string CodeGenerator::generate(const Program& program,
@@ -674,6 +681,13 @@ std::string CodeGenerator::generate(const Program& program,
     inlineShims_.clear();
     instructions_.clear();
     nextString_ = 0;
+    debugNodes_.clear();
+    debugFiles_.clear();
+    debugTypes_.clear();
+    debugScopes_.clear();
+    debugLocations_.clear();
+    nextDebugNode_ = 0;
+    debugMetadata(program.location);
     std::unordered_set<std::string> declaredExternalSymbols;
     for (const auto& definition : program.outOfLineMethods) {
         methodDefinitions_.emplace(
@@ -798,6 +812,14 @@ std::string CodeGenerator::generate(const Program& program,
            << "}\n\n"
            << "attributes #0 = { returns_twice }\n\n"
            << methods << main;
+    if (debug_) {
+        const auto debugVersion = debugNode("!{i32 2, !\"Debug Info Version\", i32 3}");
+        const auto dwarfVersion = debugNode("!{i32 2, !\"Dwarf Version\", i32 4}");
+        module << "\ndeclare void @llvm.dbg.declare(metadata, metadata, metadata)\n"
+               << "!llvm.dbg.cu = !{" << debugUnit_ << "}\n"
+               << "!llvm.module.flags = !{" << debugVersion << ", " << dwarfVersion << "}\n"
+               << debugNodes_;
+    }
     return module.str();
 }
 

@@ -61,6 +61,8 @@ simp::CommandLine makeCommandLine() {
               "Run parsing and semantic checks without code generation");
     addSwitch(commandLine, 'c', "compile-only", "compile-only",
               "Compile source inputs to one relocatable object without linking");
+    addSwitch(commandLine, 'g', "debug", "debug",
+              "Emit DWARF source-level debug information");
 
     simp::CommandLineOption paths;
     paths.shortName = 'p';
@@ -239,9 +241,10 @@ int buildExecutable(const std::vector<std::string>& irPaths,
                     const std::vector<std::string>& packageLibraries,
                     const std::vector<std::string>& libraryPaths,
                     const std::vector<std::string>& libraries,
-                    const std::string& outputPath) {
+                    const std::string& outputPath, bool debug) {
     ensureOutputDirectory(outputPath);
     std::vector<std::string> arguments{"-Wno-override-module"};
+    if (debug) arguments.push_back("-g");
     for (const auto& irPath : irPaths) {
         arguments.insert(arguments.end(), {"-x", "ir", irPath});
     }
@@ -392,27 +395,30 @@ std::vector<std::filesystem::path> packageSearchRoots(
 int buildObject(const std::vector<std::string>& irPaths,
                 const std::string& inlineShimPath,
                 const std::string& outputPath,
-                std::vector<std::string>& temporaryPaths) {
+                std::vector<std::string>& temporaryPaths, bool debug) {
     ensureOutputDirectory(outputPath);
     std::vector<std::string> objectPaths;
     for (std::size_t index = 0; index < irPaths.size(); ++index) {
         const auto objectPath = temporaryPath(outputPath, "ir." + std::to_string(index));
         temporaryPaths.push_back(objectPath);
-        const std::vector<std::string> arguments{
+        std::vector<std::string> arguments{
             "-Wno-override-module", "-x", "ir", irPaths[index], "-c", "-o", objectPath};
+        if (debug) arguments.push_back("-g");
         if (runCompiler(arguments, "compile LLVM IR to an object") != 0) return 1;
         objectPaths.push_back(objectPath);
     }
     if (!inlineShimPath.empty()) {
         const auto shimObjectPath = temporaryPath(outputPath, "shim");
         temporaryPaths.push_back(shimObjectPath);
-        const std::vector<std::string> arguments{
+        std::vector<std::string> arguments{
             "-I", SIMP_RUNTIME_INCLUDE_DIRECTORY, "-x", "c", inlineShimPath,
             "-c", "-o", shimObjectPath};
+        if (debug) arguments.push_back("-g");
         if (runCompiler(arguments, "compile an inline C shim") != 0) return 1;
         objectPaths.push_back(shimObjectPath);
     }
     std::vector<std::string> arguments{"-r"};
+    if (debug) arguments.push_back("-g");
     arguments.insert(arguments.end(), objectPaths.begin(), objectPaths.end());
     arguments.insert(arguments.end(), {"-o", outputPath});
     return runCompiler(arguments, "combine relocatable objects");
@@ -460,6 +466,7 @@ int main(int argc, char** argv) {
     const bool dumpSymbols = commandLine.switchValue("dump-symbols") || traceSymbols;
     const bool checkOnly = commandLine.switchValue("check-only");
     const bool compileOnly = commandLine.switchValue("compile-only");
+    const bool debug = commandLine.switchValue("debug");
     std::size_t verbosity = 0;
     try {
         verbosity = parseNonNegativeInteger(
@@ -665,7 +672,7 @@ int main(int argc, char** argv) {
                 throw std::invalid_argument("-o must not overwrite an input file");
             }
         }
-        simp::CodeGenerator codeGenerator(SIMP_TARGET_TRIPLE);
+        simp::CodeGenerator codeGenerator(SIMP_TARGET_TRIPLE, debug);
         std::unordered_map<std::string, std::string> inlineShims;
         std::vector<std::string> irPaths;
         if (!sourcePaths.empty()) {
@@ -681,7 +688,7 @@ int main(int argc, char** argv) {
             writeFile(irPath, ir);
             irPaths.push_back(irPath);
             for (const auto& module : moduleLoad.modules) {
-                simp::CodeGenerator moduleGenerator(SIMP_TARGET_TRIPLE);
+                simp::CodeGenerator moduleGenerator(SIMP_TARGET_TRIPLE, debug);
                 const auto moduleIr = moduleGenerator.generate(program, module.name);
                 for (const auto& shim : moduleGenerator.inlineShims()) {
                     inlineShims.emplace(shim.first, shim.second);
@@ -714,7 +721,7 @@ int main(int argc, char** argv) {
         }
         int buildResult = 0;
         if (compileOnly) {
-            buildResult = buildObject(irPaths, inlineShimPath, outputPath, temporaryPaths);
+            buildResult = buildObject(irPaths, inlineShimPath, outputPath, temporaryPaths, debug);
             if (buildResult == 0) writeLinkSidecar(outputPath, packageInputs);
         } else {
             const auto sidecarInputs = readLinkSidecars(objectPaths);
@@ -726,7 +733,7 @@ int main(int argc, char** argv) {
             }
             buildResult = buildExecutable(
                 irPaths, objectPaths, inlineShimPath, packageInputs.libraryPaths,
-                packageInputs.libraries, libraryPaths, libraries, outputPath);
+                packageInputs.libraries, libraryPaths, libraries, outputPath, debug);
         }
         for (const auto& temporary : temporaryPaths) {
             std::error_code ignored;

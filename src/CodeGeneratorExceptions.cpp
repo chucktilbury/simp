@@ -141,6 +141,8 @@ void CodeGenerator::emitTry(const Statement& statement) {
                 scopes_.back().emplace(
                     handler.name,
                     Binding{"String", caughtBindingSlot, {}, false, true});
+                instructions_ += debugDeclaration(handler.name, "String", caughtBindingSlot,
+                                                  handler.location);
             } else {
                 const auto exceptionBase = newTemporary();
                 instructions_ += "  " + exceptionBase +
@@ -153,6 +155,8 @@ void CodeGenerator::emitTry(const Statement& statement) {
                 scopes_.back().emplace(
                     handler.name,
                     Binding{"Exception", caughtBindingSlot, {}, false, true});
+                instructions_ += debugDeclaration(handler.name, "Exception",
+                                                  caughtBindingSlot, handler.location);
             }
         } else {
             scopes_.emplace_back();

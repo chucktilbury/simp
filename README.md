@@ -67,11 +67,14 @@ then add a case file setting `CASE_NAME` (the CTest name) and `CASE_FIXTURE`
 `CASE_EXPECTED_OUTPUT_FILE` to a neighboring `.stdout` file containing the
 exact output (including the final newline); for a rejected program, set
 `CASE_EXPECTED_DIAGNOSTIC` to the expected diagnostic regex instead.
-Optional case flags include `CASE_REQUIRE_GC_ROOTS`, `CASE_REQUIRE_VIRTUAL_DISPATCH`,
-`CASE_EXPECT_WARNING`, `CASE_EXPECT_RUNTIME_FAILURE`,
-`CASE_EXPECT_RUNTIME_DIAGNOSTIC`, and `CASE_MODULE_REGISTRY`. See an existing
-case file for the relevant pattern. Reconfigure to discover newly added cases;
-no central test list needs editing.
+Optional case flags include `CASE_REQUIRE_GC_ROOTS`,
+`CASE_REQUIRE_VIRTUAL_DISPATCH`, `CASE_EXPECT_WARNING`,
+`CASE_EXPECT_RUNTIME_FAILURE`, `CASE_EXPECT_RUNTIME_DIAGNOSTIC`, and
+`CASE_MODULE_REGISTRY`. See an existing case file for the relevant pattern.
+`CASE_DEBUG_INFO` adds a `-g` case that verifies its IR and executable DWARF
+data, then checks a debugger breakpoint and local when GDB or LLDB is
+installed. Reconfigure to discover newly added cases; no central test list
+needs editing.
 
 For parser/semantic functional checks in `simp_tests`, put a
 `<fixture>.simp.json` file next to the `.simp` source with `friendly_name`,
@@ -92,13 +95,14 @@ path; includes still prefer the directory of the including source. Use
 (default: 16). `--help` (`-h`) prints the registered options, and `--version`
 (`-V`) prints the compiler version. LLVM IR is compiled to a native executable
 by the installed Clang driver; `--emit-llvm FILE` additionally saves the
-combined program IR. Pass any number of `.simp` sources and `.o`/`.obj` files;
-all Simple sources are analyzed together, so declarations and reopened
-namespaces can be shared across those files. Exactly one source in the set
-must contain `start`. Duplicate declarations (including symbols and namespace
-conflicts) are diagnosed by the compiler. Imports in those sources share the
-compilation-unit alias scope; module namespaces remain separate from local
-namespaces.
+combined program IR. Pass `-g` to include DWARF debug information in the
+generated executable and emitted IR. Pass any number of `.simp` sources and
+`.o`/`.obj` files; all Simple sources are analyzed together, so declarations
+and reopened namespaces can be shared across those files. Exactly one source
+in the set must contain `start`. Duplicate declarations (including symbols
+and namespace conflicts) are diagnosed by the compiler. Imports in those
+sources share the compilation-unit alias scope; module namespaces remain
+separate from local namespaces.
 
 Executables default to `./<first-source-basename>` (or `./a.out` for object-only
 links); `-o FILE` selects another path. `-c` compiles the supplied Simple
@@ -130,6 +134,25 @@ clang -Wno-override-module -x ir build/program.ll -x none \
 ```
 The compiler expands top-level textual includes independently for each source
 input and reports source-located lexer, parser, and semantic errors.
+
+### Debugging
+
+Compile with `-g` and use the generated executable directly with GDB or LLDB:
+
+```sh
+./bin/simp -g tests/functional/positive/positive_debug_info.simp \
+  -o build/positive_debug_info
+gdb -q build/positive_debug_info
+# or: lldb build/positive_debug_info
+```
+
+The debug information maps generated machine instructions back to Simple
+source lines and can expose in-scope Simple local variables when their
+locations are available. Debugger visibility is not guaranteed for every
+value or every point in a program: compiler-generated temporaries and
+optimized-out or out-of-scope locals are not inspectable, and class fields
+are not necessarily shown as source-level members. This is standard debugger
+support for the generated executable, not an IDE integration.
 
 ## Implemented subset
 
@@ -677,7 +700,7 @@ checking and name-resolution rules, OOP beyond the supported single- and
 multiple-inheritance slices (including access to protected
 base members from further-derived classes), production GC features, package
 build scripts, version ranges/lockfiles, platform-specific native-link rules,
-inline C, GTK, package manager, IDE, and debugger remain deferred. Collection
-deletion remains unimplemented. Namespace, include, compiled source-module
+inline C, GTK, package manager, and IDE remain deferred. Collection deletion
+remains unimplemented. Namespace, include, compiled source-module
 imports, package resolution, and package-native linking are implemented; other
 design-note proposals may still be unsupported.

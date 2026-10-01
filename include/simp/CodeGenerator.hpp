@@ -19,7 +19,7 @@ namespace simp {
 
 class CodeGenerator {
 public:
-    explicit CodeGenerator(std::string targetTriple);
+    explicit CodeGenerator(std::string targetTriple, bool debug = false);
     std::string generate(const Program& program,
                          const std::string& moduleName = {});
     const std::unordered_map<std::string, std::string>& inlineShims() const noexcept;
@@ -62,6 +62,19 @@ private:
 
     void emitClassTypesAndMetadata(const Program& program);
     void emitClassMethods(const Program& program);
+    std::string debugBeginFunction(const SourceLocation& location,
+                                   const std::string& name, const std::string& symbol,
+                                   const std::string& returnType);
+    std::string debugDeclaration(const std::string& name, const std::string& type,
+                                 const std::string& pointer,
+                                 const SourceLocation& location, unsigned argument = 0);
+    std::string debugLocation(const SourceLocation& location);
+    std::string debugAnnotate(const std::string& body, const SourceLocation& fallback);
+    void debugMetadata(const SourceLocation& source);
+    std::string debugFile(const std::string& path);
+    std::string debugType(const std::string& type);
+    std::string debugNode(const std::string& contents);
+    static std::string debugQuote(const std::string& value);
     void emitMethod(const ClassDeclaration& owner, const MethodDeclaration& method,
                     const std::string& symbolOverride = {});
     void emitMain(const Program& program);
@@ -195,6 +208,16 @@ private:
     std::size_t nextString_ = 0;
     bool blockTerminated_ = false;
     std::string generatingModule_;
+    bool debug_ = false;
+    std::string debugNodes_;
+    std::unordered_map<std::string, std::string> debugFiles_;
+    std::unordered_map<std::string, std::string> debugTypes_;
+    std::unordered_map<std::string, std::string> debugScopes_;
+    std::unordered_map<std::string, std::string> debugLocations_;
+    std::string debugUnit_;
+    std::string debugSubprogram_;
+    std::string debugCurrentLocation_;
+    std::size_t nextDebugNode_ = 0;
 };
 
 } // namespace simp

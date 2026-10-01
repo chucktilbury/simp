@@ -108,8 +108,12 @@ if(DEFINED COMPILE_ONLY)
     endif()
     return()
 endif()
+set(debug_arguments)
+if(DEBUG_INFO)
+    list(APPEND debug_arguments -g)
+endif()
 execute_process(
-    COMMAND ${package_command} ${package_arguments} "${SOURCE}" -o "${OUTPUT}" --emit-llvm "${IR_OUTPUT}"
+    COMMAND ${package_command} ${package_arguments} ${debug_arguments} "${SOURCE}" -o "${OUTPUT}" --emit-llvm "${IR_OUTPUT}"
     RESULT_VARIABLE compile_result
     OUTPUT_VARIABLE compile_stdout
     ERROR_VARIABLE compile_stderr
@@ -126,6 +130,84 @@ endif()
 file(READ "${IR_OUTPUT}" ir_text)
 if(NOT ir_text MATCHES "define i32 @main")
     message(FATAL_ERROR "Emitted LLVM IR does not define main")
+endif()
+if(DEBUG_INFO)
+    if(NOT DEFINED DEBUG_LINE OR NOT DEFINED DEBUG_LOCAL)
+        message(FATAL_ERROR "Debug-info cases must define DEBUG_LINE and DEBUG_LOCAL")
+    endif()
+    get_filename_component(debug_fixture_name "${SOURCE}" NAME)
+    if(NOT ir_text MATCHES "!DICompileUnit")
+        message(FATAL_ERROR "Generated LLVM IR contains no DWARF compile-unit metadata")
+    endif()
+
+    find_program(OPT_EXECUTABLE NAMES opt-22 opt)
+    if(NOT OPT_EXECUTABLE)
+        message(FATAL_ERROR "The -g integration test requires LLVM opt to verify emitted IR")
+    endif()
+    execute_process(
+        COMMAND "${OPT_EXECUTABLE}" -passes=verify -disable-output "${IR_OUTPUT}"
+        RESULT_VARIABLE verify_result
+        OUTPUT_VARIABLE verify_stdout
+        ERROR_VARIABLE verify_stderr
+    )
+    if(NOT verify_result EQUAL 0)
+        message(FATAL_ERROR "LLVM IR verification failed:\n${verify_stderr}")
+    endif()
+
+    find_program(DWARFDUMP_EXECUTABLE NAMES llvm-dwarfdump-22 llvm-dwarfdump)
+    if(NOT DWARFDUMP_EXECUTABLE)
+        message(FATAL_ERROR "The -g integration test requires llvm-dwarfdump")
+    endif()
+    execute_process(
+        COMMAND "${DWARFDUMP_EXECUTABLE}" --debug-line "${OUTPUT}"
+        RESULT_VARIABLE dwarfdump_result
+        OUTPUT_VARIABLE dwarfdump_stdout
+        ERROR_VARIABLE dwarfdump_stderr
+    )
+    string(FIND "${dwarfdump_stdout}" "${debug_fixture_name}" debug_line_file_position)
+    if(NOT dwarfdump_result EQUAL 0 OR debug_line_file_position LESS 0)
+        message(FATAL_ERROR
+            "Executable has no DWARF line table for the Simple fixture:\n${dwarfdump_stdout}\n${dwarfdump_stderr}")
+    endif()
+
+    find_program(DEBUGGER_EXECUTABLE NAMES gdb lldb)
+    if(NOT DEBUGGER_EXECUTABLE)
+        message(STATUS "Skipping optional debugger breakpoint/local check: neither gdb nor lldb is installed")
+    else()
+        get_filename_component(debugger_name "${DEBUGGER_EXECUTABLE}" NAME)
+        if(debugger_name MATCHES "^gdb")
+            execute_process(
+                COMMAND "${DEBUGGER_EXECUTABLE}" --batch --quiet --nx
+                    -ex "set pagination off"
+                    -ex "break ${SOURCE}:${DEBUG_LINE}"
+                    -ex run
+                    -ex "info locals"
+                    "${OUTPUT}"
+                RESULT_VARIABLE debugger_result
+                OUTPUT_VARIABLE debugger_stdout
+                ERROR_VARIABLE debugger_stderr
+            )
+        else()
+            execute_process(
+                COMMAND "${DEBUGGER_EXECUTABLE}" --batch
+                    -o "breakpoint set --file ${debug_fixture_name} --line ${DEBUG_LINE}"
+                    -o run
+                    -o "frame variable ${DEBUG_LOCAL}"
+                    "${OUTPUT}"
+                RESULT_VARIABLE debugger_result
+                OUTPUT_VARIABLE debugger_stdout
+                ERROR_VARIABLE debugger_stderr
+            )
+        endif()
+        string(FIND "${debugger_stdout}" "${debug_fixture_name}" debugger_file_position)
+        string(FIND "${debugger_stdout}" "${DEBUG_LOCAL}" debugger_local_position)
+        string(FIND "${debugger_stdout}" "42" debugger_value_position)
+        if(NOT debugger_result EQUAL 0 OR debugger_file_position LESS 0 OR
+           debugger_local_position LESS 0 OR debugger_value_position LESS 0)
+            message(FATAL_ERROR
+                "${debugger_name} could not stop at the Simple source line and show its local:\n${debugger_stdout}\n${debugger_stderr}")
+        endif()
+    endif()
 endif()
 if(DEFINED REQUIRE_GC_ROOTS)
     foreach(required_gc_symbol IN ITEMS
