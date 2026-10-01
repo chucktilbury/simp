@@ -8,6 +8,7 @@
 #include "simp/Diagnostic.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
 #include <cstring>
 #include <iomanip>
@@ -18,6 +19,39 @@
 namespace simp {
 
 namespace {
+
+bool parseHexadecimalMagnitude(const std::string& literal, std::uint64_t& value) {
+    if (literal.size() < 3 || literal[0] != '0' ||
+        (literal[1] != 'x' && literal[1] != 'X')) {
+        return false;
+    }
+    const auto* begin = literal.data() + 2;
+    const auto* end = literal.data() + literal.size();
+    const auto parsed = std::from_chars(begin, end, value, 16);
+    return parsed.ec == std::errc{} && parsed.ptr == end;
+}
+
+std::string llvmIntegerConstant(const std::string& literal) {
+    std::uint64_t value = 0;
+    if (parseHexadecimalMagnitude(literal, value)) {
+        return std::to_string(value);
+    }
+    return literal;
+}
+
+bool isMinimumIntegerMagnitude(const Expression& expression) {
+    if (expression.kind != ExpressionKind::Integer) return false;
+    std::uint64_t magnitude = 0;
+    const auto& literal = expression.value;
+    const auto* begin = literal.data();
+    const auto* end = begin + literal.size();
+    const bool hexadecimal = literal.size() >= 2 && literal[0] == '0' &&
+                              (literal[1] == 'x' || literal[1] == 'X');
+    if (hexadecimal) begin += 2;
+    const auto parsed = std::from_chars(begin, end, magnitude, hexadecimal ? 16 : 10);
+    return parsed.ec == std::errc{} && parsed.ptr == end &&
+           magnitude == (std::uint64_t{1} << 63);
+}
 
 std::string llvmDoubleConstant(const std::string& literal) {
     const auto value = std::stod(literal);
@@ -633,11 +667,12 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
     switch (expression.kind) {
     case ExpressionKind::Integer:
         if (expectedType == "unsigned") {
-            return {"unsigned", expression.value};
+            return {"unsigned", llvmIntegerConstant(expression.value)};
         }
-        return {"int", expression.value};
+        return {"int", llvmIntegerConstant(expression.value)};
     case ExpressionKind::Unsigned:
-        return {"unsigned", expression.value.substr(0, expression.value.size() - 1)};
+        return {"unsigned",
+                llvmIntegerConstant(expression.value.substr(0, expression.value.size() - 1))};
     case ExpressionKind::Float:
         return {"float", llvmDoubleConstant(expression.value)};
     case ExpressionKind::Boolean:
@@ -1342,9 +1377,7 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
     }
     case ExpressionKind::Unary: {
         if (expression.value == "-" && expression.left &&
-            expression.left->kind == ExpressionKind::Integer &&
-            expression.left->value.substr(
-                expression.left->value.find_first_not_of('0')) == "9223372036854775808") {
+            isMinimumIntegerMagnitude(*expression.left)) {
             return {"int", "-9223372036854775808"};
         }
         const auto operand = emitExpression(*expression.left);

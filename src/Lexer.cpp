@@ -245,12 +245,36 @@ Token Lexer::scanIdentifierOrInteger() {
     std::string text;
     if (integer) {
         bool floating = leadingDot;
+        const bool hexadecimal = !leadingDot && peek() == '0' &&
+                                 (peek(1) == 'x' || peek(1) == 'X');
         if (leadingDot) {
             /* strtod-style leading-dot float, e.g. ".5"; the caller only
              * enters this branch on '.' when the next character is a
              * digit, so a digit sequence is guaranteed here. */
             text.push_back(advance());
             while (peek() >= '0' && peek() <= '9') text.push_back(advance());
+        } else if (hexadecimal) {
+            text.push_back(advance());
+            text.push_back(advance());
+            const auto digitStart = text.size();
+            while ((peek() >= '0' && peek() <= '9') ||
+                   (peek() >= 'a' && peek() <= 'f') ||
+                   (peek() >= 'A' && peek() <= 'F')) {
+                text.push_back(advance());
+            }
+            if (text.size() == digitStart) {
+                throw DiagnosticError(location, "malformed hexadecimal integer literal");
+            }
+            if (peek() == 'u' || peek() == 'U') {
+                text.push_back(advance());
+            }
+            if (isIdentifierPart(peek())) {
+                while (isIdentifierPart(peek())) text.push_back(advance());
+                throw DiagnosticError(location, "malformed hexadecimal integer literal");
+            }
+            const bool unsignedSuffix = text.back() == 'u' || text.back() == 'U';
+            return makeToken(unsignedSuffix ? TokenType::UnsignedInteger : TokenType::Integer,
+                             std::move(text), location);
         } else {
             while (peek() >= '0' && peek() <= '9') text.push_back(advance());
         }
