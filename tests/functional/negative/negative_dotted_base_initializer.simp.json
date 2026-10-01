@@ -1,0 +1,5 @@
+{
+  "friendly_name": "dotted base initializer syntax rejected",
+  "expected_diagnostic": "base class name after super",
+  "enabled": true
+}
