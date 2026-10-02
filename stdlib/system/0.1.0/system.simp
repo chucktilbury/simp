@@ -136,6 +136,10 @@ namespace System {
         String tempDir()
     }
 
+    class Glob {
+        list glob(String pattern)
+    }
+
     class System {
         int argc() {
             return Process().argc()
@@ -224,6 +228,8 @@ namespace System {
     String FileSystem.extension(String path) from "simp_path_extension"
     String FileSystem.tempFile() from "simp_fs_temp_file"
     String FileSystem.tempDir() from "simp_fs_temp_dir"
+
+    list Glob.glob(String pattern) from "simp_glob_glob"
 
     void System.exit(int code) from "simp_system_exit"
     void System.abort() from "simp_system_abort"

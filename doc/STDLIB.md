@@ -32,7 +32,7 @@ describes their C/LLVM ABI representations.
 
 Import with `import system as Sys`; the alias names the package namespace, so
 the exported classes are available directly as `Sys.Process`, `Sys.File`,
-`Sys.FileSystem`, `Sys.StandardIO`, and `Sys.System`.
+`Sys.FileSystem`, `Sys.Glob`, `Sys.StandardIO`, and `Sys.System`.
 
 `Sys.Process` provides command-line and environment access:
 
@@ -114,6 +114,20 @@ calls clear it. `absolutePath` resolves an existing path with `realpath`.
 `normalize` is lexical and does not resolve symbolic links. `tempFile` creates
 a file with mode `0600` and closes its descriptor before returning the path;
 `tempDir` creates a temporary directory.
+
+`Sys.Glob` expands POSIX filename patterns without changing the current
+directory:
+
+```text
+list glob(String pattern)
+```
+
+The supported pattern syntax includes `*`, `?`, and bracket expressions
+(`[...]`). Results are matching paths in POSIX glob's default sorted order;
+relative patterns produce relative paths. A pattern with no matches returns an
+empty list and clears `lastError()`. Invalid string arguments and filesystem
+errors reported during globbing return an empty list and set `lastError()`.
+Recursive `**` and brace expansion are not provided.
 
 `Sys.StandardIO`, obtained with `Sys.System().io()`, has these methods:
 

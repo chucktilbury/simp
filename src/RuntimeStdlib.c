@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <dirent.h>
 #include <errno.h>
+#include <glob.h>
 #include <limits.h>
 #include <math.h>
 #include <netdb.h>
@@ -92,6 +93,56 @@ static void append_array_object(SimpArray *array, void *object) {
     }
     array->values[array->length++] =
         (SimpArrayValue){SIMP_ARRAY_OBJECT, 0, object, 0};
+}
+
+static _Thread_local int glob_callback_error_number;
+
+static int glob_error(const char *path, int error_number) {
+    (void)path;
+    glob_callback_error_number = error_number != 0 ? error_number : EIO;
+    return 1;
+}
+
+void *simp_glob_glob(void *self, void *pattern) {
+    (void)self;
+    char *name = copy_string_bytes(pattern);
+    SimpArray *array = (SimpArray *)new_array();
+    void *root = array;
+    SimpRootFrame frame;
+    void *slots[] = {&root};
+    simp_gc_push_or_abort(&frame, slots, 1);
+    if (name == NULL) {
+        simp_gc_pop_or_abort(&frame);
+        return root;
+    }
+
+    glob_t matches = {0};
+    glob_callback_error_number = 0;
+    errno = 0;
+    const int result = glob(name, GLOB_ERR, glob_error, &matches);
+    const int saved_error = errno;
+    free(name);
+    if (result == 0) {
+        for (size_t index = 0; index < matches.gl_pathc; ++index) {
+            void *value = simple_string_from_cstr(matches.gl_pathv[index]);
+            append_array_object((SimpArray *)root, value);
+        }
+        simp_runtime_clear_error();
+    } else if (result == GLOB_NOMATCH) {
+        simp_runtime_clear_error();
+    } else if (result == GLOB_NOSPACE) {
+        simp_runtime_set_error(ENOMEM);
+    } else if (result == GLOB_ABORTED) {
+        const int error_number = glob_callback_error_number != 0
+                                     ? glob_callback_error_number
+                                     : saved_error;
+        simp_runtime_set_error(error_number == 0 ? EIO : error_number);
+    } else {
+        simp_runtime_set_error(EIO);
+    }
+    globfree(&matches);
+    simp_gc_pop_or_abort(&frame);
+    return root;
 }
 
 int64_t simp_system_argc(void *self) {
