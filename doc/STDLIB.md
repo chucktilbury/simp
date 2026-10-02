@@ -482,3 +482,73 @@ start {
     print(lock.close())
 }
 ```
+
+## Native implementation helpers
+
+The package namespaces also expose `Runtime` classes used by the wrappers
+above. Their methods are public in the shipped Simple sources, but are
+low-level implementation details; prefer the wrapper APIs, and do not rely on
+these bindings remaining stable.
+
+`Sys.Runtime` file operations:
+
+```text
+handle fileOpen(String path, String mode)
+String fileRead(handle fp, int size)
+String fileReadAll(handle fp)
+String fileReadLine(handle fp)
+list fileReadLines(handle fp)
+int fileWrite(handle fp, String data)
+int fileWriteLine(handle fp, String line)
+int fileSeek(handle fp, int offset, int whence)
+int fileTell(handle fp)
+void fileFlush(handle fp)
+void fileClose(handle fp)
+bool fileEof(handle fp)
+```
+
+`Net.Runtime` socket and server operations:
+
+```text
+int socketCreate()
+bool socketConnect(int fd, String host, int port)
+int socketSend(int fd, buffer data)
+int socketSendString(int fd, String data)
+buffer socketRecv(int fd, int maxBytes)
+String socketRecvString(int fd, int maxBytes)
+void socketClose(int fd)
+void socketSetTimeout(int fd, int milliseconds)
+int serverBind(String host, int port, int backlog)
+int serverAccept(int fd)
+int serverPort(int fd)
+bool serverListen(int fd, int backlog)
+```
+
+`P.Runtime` process operations:
+
+```text
+handle spawn(String executable, list arguments)
+bool wait(handle process)
+int exitCode(handle process)
+String stdout(handle process)
+String stderr(handle process)
+void close(handle process)
+```
+
+`Sync.Runtime` synchronization operations:
+
+```text
+handle mutexCreate()
+bool mutexLock(handle mutex)
+bool mutexUnlock(handle mutex)
+bool mutexRelease(handle mutex)
+handle conditionCreate()
+bool conditionWait(handle condition, handle mutex)
+bool conditionSignal(handle condition)
+bool conditionBroadcast(handle condition)
+bool conditionRelease(handle condition)
+handle semaphoreCreate(int initialCount)
+void semaphoreWait(handle semaphore)
+void semaphoreSignal(handle semaphore)
+void semaphoreRelease(handle semaphore)
+```

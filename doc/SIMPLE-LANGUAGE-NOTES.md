@@ -39,7 +39,10 @@ The language is intended to have full object-oriented programming support. Broad
   it (`5.`), and an optional decimal exponent on any of those forms (`1e10`,
   `1.5e-3`, `.5e2`, `5.e2`). Hexadecimal float literals and `inf`/`nan`
   spellings, which `strtod()` also accepts at runtime, are not part of the
-  literal grammar. The `u`/`U` suffix (`42u`) remains the required spelling
+  literal grammar. Integer literals may be decimal or hexadecimal (`0x` or
+  `0X`) with case-insensitive hex digits; an optional `u`/`U` suffix selects
+  `unsigned`. Literal magnitudes are checked against the signed or unsigned
+  64-bit range. The `u`/`U` suffix (`42u`) remains the required spelling
   of an unsigned literal in a plain `int`-inferred context; it is optional
   wherever the surrounding context already expects `unsigned` (declaration
   initializers, assignments, constructor/method call arguments, and return
@@ -57,7 +60,11 @@ The language is intended to have full object-oriented programming support. Broad
   references are rejected. Any class reference may still be compared with
   `null`. Comparisons produce `bool`; numeric arithmetic produces the operand
   type. Integer division and remainder are signed for `int` and unsigned for
-  `unsigned`. Remainder on `float` is not supported.
+  `unsigned`. Remainder on `float` is not supported. Scalar compound
+  assignments `+=`, `-=`, `*=`, `/=`, and `%=` are supported for `int`,
+  `unsigned`, and `float` locals and fields; both operands must match, and
+  `%=` is limited to `int` and `unsigned`. A compound-assignment target and,
+  for fields, its receiver are evaluated once.
 - The boolean type-test operator `expr is TypeName` recognizes the built-in
   types `int`, `unsigned`, `float`, `bool`, `strg`, `list`, `dict`, `buffer`,
   and `handle`, plus class names including qualified
@@ -74,8 +81,8 @@ The language is intended to have full object-oriented programming support. Broad
   comparisons are rejected. Type variables and fields are assignable, and
   printing a type value prints its name.
 - There are no implicit conversions between `int`, `unsigned`, `float`, and
-  `bool`. No explicit scalar-cast syntax is currently implemented; code must
-  use values already of the required type.
+  `bool`. Explicit scalar casts are limited to `int`/`unsigned` to `float` and
+  `float` to `int`/`unsigned`; see the implemented cast rules below.
 - Printing supports all four scalar types: booleans display as `true` or
   `false`, floats use `printf`'s `%.15g` format, and unsigned integers display
   as unsigned decimal values. Formatted print placeholders accept these scalar
@@ -131,7 +138,6 @@ The language is intended to have full object-oriented programming support. Broad
     null-check was added before `.length` so it raises the same runtime
     exception as any other member access on a null reference, instead of
     crashing.
-- A class-to-`int` cast that is incompatible by type is a syntax error.
 - An explicit class conversion routine may be called when a conversion is intentionally provided.
 - **Explicit scalar casts (implemented):** `float(x)` converts an `int` or
   `unsigned` operand to a double-precision `float` (rounding when the
@@ -150,10 +156,11 @@ The language is intended to have full object-oriented programming support. Broad
   exception.
 - String-to-number conversion uses ordinary native-bound `String` methods:
   `toInt()`, `toFloat()`, and `toUnsigned()`.
-- The compiler should reject conversions that are provably invalid and use runtime type-compatibility checks when compatibility cannot be determined statically.
-- Class member initializers are restricted to compile-time constants.
+- Invalid explicit casts are rejected during semantic analysis; dynamically
+  tagged collection values are checked when extracted into a concrete type.
 
-The exact syntax and complete rules for nullability and conversion remain part of the language work; the points above describe the intended behavior, not an already-final grammar.
+For the normative syntax and current behavior, see the
+[language reference](LANGUAGE-REFERENCE.md) and [grammar](GRAMMAR.md).
 
 ### Objects, classes, and inheritance
 
@@ -326,16 +333,18 @@ a metadata pointer in the header. Generated code registers
 stack root frames around each function; descriptors identify only object
 reference slots, including object locals, parameters, `this`, and
 object-valued temporaries. Class metadata includes generated offsets for
-reference fields, which the collector follows. The single-threaded runtime
-collects before each object allocation and never scans arbitrary stack words.
+reference fields, which the collector follows. Simple execution is serialized
+by the runtime's global lock; collection occurs before each object allocation
+and never scans arbitrary stack words.
 Frames stay active across all control-flow paths and are popped on every
 generated return.
 
 This is a safety-oriented prototype, not a production-validated memory
 manager. Root descriptors include all object-typed slots for a function's
-whole lifetime, so stale values can delay reclamation until return. There are
-only the limited finalizer support described below, no weak references, threads, concurrent/incremental collection,
-or configurable thresholds. Runtime tests cover root-frame lifecycle errors,
+whole lifetime, so stale values can delay reclamation until return. There is only the limited finalizer support described below, no weak
+references, concurrent/incremental collection, or configurable thresholds.
+Simple threads share the runtime lock rather than executing Simple code in
+parallel. Runtime tests cover root-frame lifecycle errors,
 reachable-object survival through reference fields, and unreachable-object
 reclamation; an executable stress case performs repeated allocations through
 linked objects and nested constructor arguments. Inheritance tests force
@@ -985,7 +994,8 @@ interchangeable.
 - An include path that is absolute is resolved directly. A relative path is
   resolved first relative to the directory of the file containing that
   directive, then through configured include-search directories in order.
-  The exact CLI for configuring search directories is deferred.
+  Search directories are configured with `-p`/`--path`; see
+  [simp(1)](simp.1) for the compiler options.
 - Inclusion is once per compilation unit, keyed by the canonical resolved
   absolute file path. The root source file is marked included initially.
   Re-including a file already encountered is a no-op; this also terminates
@@ -1219,8 +1229,9 @@ for normal and exceptional control flow, including exceptions raised in an
 `except` body. Active Simple frames are tracked with stack-allocated records;
 when an exception is raised, the runtime snapshots those records before
 `longjmp` can invalidate them. This avoids per-call heap allocation, with
-trace-copy allocation only on the exceptional path. This is a single-threaded
-host-ABI mechanism, not LLVM landing-pad or cross-platform exception support.
+trace-copy allocation only on the exceptional path. This host-ABI mechanism
+uses C `setjmp`/`longjmp`, not LLVM landing pads or a cross-platform exception
+ABI. Generated Simple code is serialized by the runtime's global lock.
 Exceptions escaping GC finalizers and recovery from collector invariant
 failures remain unsupported. Catch-all message bindings retain a copy until
 process exit.
@@ -1576,12 +1587,10 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 ### Confirmed or currently agreed direction
 
 - **Nullability model:** `null` is a universal value assignable to any
-  type, including scalars, with no flow-sensitive null analysis; reading,
-  printing, and comparing null-holding values is unrestricted (prints as
-  `(null)`), and only member access/method calls/indexing on a null
-  reference raises a runtime exception. Giving scalars an actual
-  null-capable representation and fixing the `any` null-print text to
-  `(null)` are the remaining implementation follow-ups, deferred for now.
+  type, including scalars, with no flow-sensitive null analysis; printing and
+  comparing null-holding values is supported, and dereferencing a null
+  reference raises a runtime exception. Scalar locals track null explicitly;
+  the ABI/storage-boundary behavior is described above.
 - The language is named Simple and targets a C/C++/Python synthesis.
 - Explicit, fixed, strongly typed variables are required.
 - Compile-time diagnostics are preferred, with specified warnings and runtime checks where needed.
@@ -1652,8 +1661,8 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   (`s.toInt()`, `s.toUnsigned()`, `s.toFloat()`), not general cast syntax
   or an implicit conversion (see "String-to-number conversion
   (implemented)" under "Strings" below for exact semantics).
-- `String` byte indexing/slicing syntax is deferred in this prototype;
-  `byteAt`/`slice` currently raise explicit not-implemented exceptions.
+- Direct `String` indexing/slicing syntax is deferred; the documented
+  byte-oriented `byteAt` and `slice` methods are implemented.
 - `buffer` and `handle` are confirmed new built-in reference types (see
   "`buffer` and `handle` types" under "Strings" above): both are
   primitive-like (not classes, no user methods, no subclassing). `buffer`
@@ -1684,7 +1693,8 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 
 ### Open or explicitly deferred
 
-- The complete grammar and how it is reconciled with the examples and priorities.
+- Language-design proposals beyond the currently implemented grammar and their
+  reconciliation with the examples and priorities.
 - Advanced Unicode semantics beyond current UTF-8 support.
 - Prebuilt module binary formats, package version ranges and lockfiles,
   platform-specific native-link clauses, and automated package build/install
@@ -1695,8 +1705,8 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   support beyond x86-64 SysV.
 - Package-manager and IDE integration details; generated executables can
   already be debugged directly with GDB or LLDB using `-g`.
-- Remaining `String` byte indexing/slicing, text methods, and
-  buffer-to-String validation/conversion APIs (see "Strings" above).
+- Direct `String` indexing/slicing syntax and buffer-to-String
+  validation/conversion APIs (see "Strings" above).
 
 ### Suggested priority for the remaining open language/syntax decisions
 
@@ -1717,7 +1727,10 @@ next things to resolve, roughly in priority order:
    `==`/`!=`, and (for scalar locals) a documented decay-at-boundary rule.
    See the "Implemented, with a documented scope boundary for scalar
    locals" bullet above for the exact scope.
-3. Complete the stubbed `String` byte and text operations while preserving
-   UTF-8 validity.
+3. Decide whether to add direct `String` indexing/slicing syntax; the current
+   method API remains byte-oriented and preserves UTF-8 validity.
 
-Until these questions are resolved through examples and a runnable prototype, this document should be read as a design record and project guide rather than as a final language specification. A comprehensive, implementation-tracking language specification (covering everything actually built, not just agreed direction) is a planned future deliverable, separate from this design-record document.
+This file remains a design record for requirements and deferred decisions, not
+the normative language specification. The accepted syntax and implemented
+behavior are documented in [LANGUAGE-REFERENCE.md](LANGUAGE-REFERENCE.md),
+[GRAMMAR.md](GRAMMAR.md), and [STDLIB.md](STDLIB.md).

@@ -3,9 +3,13 @@
 - [Simple language notes](SIMPLE-LANGUAGE-NOTES.md)
 - [Grammar reference](GRAMMAR.md)
 - [Language reference](LANGUAGE-REFERENCE.md)
+- [Compiler build and installation](INSTALLATION.md)
+- [Debugging Simple programs](DEBUGGING.md)
+- [Build and run examples](EXAMPLES.md)
 - [Compiler man page](simp.1)
 - [Standard library reference](STDLIB.md)
 - [Standard library source layout and adding packages](../stdlib/README.md)
+- [Test suite and adding tests](../tests/README.md)
 - [Project overview, build, and install](../README.md)
 
 The language reference documents signed 64-bit `int` and unsigned 64-bit

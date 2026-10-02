@@ -56,7 +56,8 @@ HORIZONTAL_WS   ::= one or more non-LF characters for which the C++ runtime
 NEWLINE         ::= LF ;
 
 PUNCTUATION     ::= "{" | "}" | "(" | ")" | "[" | "]" | "," | "." | ":" ;
-OPERATOR        ::= "+" | "-" | "*" | "/" | "%" | "!" | "&&" | "||"
+OPERATOR        ::= "+=" | "-=" | "*=" | "/=" | "%="
+                  | "+" | "-" | "*" | "/" | "%" | "!" | "&&" | "||"
                   | "=" | "==" | "!=" | "<" | "<=" | ">" | ">=" ;
 ```
 
@@ -82,9 +83,10 @@ Lexical details that affect parsing:
   rejected. Floats accept leading-dot (`.5`),
   trailing-dot (`5.`), and exponent forms (`1e3`, `1.0E-3`); an exponent must
   contain digits.
-- Only double-quoted strings interpret escapes, and only `\n`, `\r`, `\t`,
-  `\\`, and `\"` are accepted. Single-quoted strings preserve backslashes
-  literally. Both quote styles are one physical line and must decode to valid
+- Only double-quoted strings interpret escapes: `\e` produces ESC (`0x1b`),
+  and `\n`, `\r`, `\t`, `\\`, and `\"` are also accepted. Single-quoted
+  strings preserve backslashes literally. Both quote styles are one physical
+  line and must decode to valid
   UTF-8. A double-quoted string is marked as a possible format string; it is
   not interpolated unless it is immediately followed by a parenthesized
   argument list (see `format-suffix`).
@@ -356,7 +358,7 @@ Each parser routine has a corresponding production or grammar note above:
 All 50 member functions in `Parser.cpp` and `ParserClass.cpp` are accounted
 for above: syntax-producing methods map to productions and the remaining
 methods are identified as parser infrastructure or validation helpers. The
-95 `tests/functional/positive/*.simp` fixtures were checked against this map:
+101 `tests/functional/positive/*.simp` fixtures were checked against this map:
 all their parsed forms are represented by productions above. The fixtures
 exercise scalar and float literal variants, declarations and assignments,
 calls and overloads, casts and type tests, lists/dicts/buffers/handles,

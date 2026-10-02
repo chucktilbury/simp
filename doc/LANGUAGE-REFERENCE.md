@@ -34,8 +34,8 @@ the applicable range are rejected. Signs are unary operators, so
 `-0x8000000000000000` is the signed minimum, but its positive magnitude is
 out of range for `int`. Float literals accept decimal points and exponents.
 Double-quoted and single-quoted strings are UTF-8 and cannot span physical
-lines. Double quotes support `\n`, `\r`,
-`\t`, `\\`, and `\"`; single quotes do not interpret escapes. See `INTEGER`,
+lines. Double quotes support `\e` (ESC, byte `0x1b`), `\n`, `\r`, `\t`,
+`\\`, and `\"`; single quotes do not interpret escapes. See `INTEGER`,
 `UNSIGNED_INT`, `FLOAT`, `STRING`, and `ESCAPE`.
 
 ```simp
@@ -389,10 +389,11 @@ start {
 Handlers use `except(Type)` for a typed catch, `except() as name` for a
 catch-all whose binding is a `String` message, or `except(Type) as name` for
 an exception-object binding. A bare `raise()` rethrows the active exception
-and is valid only inside a handler. `finally` runs for normal completion,
-return, and exception propagation. A `try` needs at least one `except` or a
-`finally`; a catch-all must be last. See `try-statement` and
-`raise-statement`.
+and is valid only inside a handler. `finally` runs for normal completion and
+exception propagation. A `try` needs at least one `except` or a
+`finally`; a catch-all must be last. Method returns must be the final direct
+statement in a method body; a return cannot be nested inside
+`try`/`except`/`finally`. See `try-statement` and `raise-statement`.
 
 ```simp
 // Complete program: raising and catching a typed exception.
@@ -474,7 +475,8 @@ stored with dynamic tags, but `any` is not a type that can be declared for an
 element, variable, field, parameter, or return.
 `list.length` is read-only; `append(value)` and `resize(int)` mutate it.
 Although literals accept buffers and handles, the current `append` semantic
-check does not accept those two element types directly.
+check does not accept those two element types directly. There is no list
+element deletion operation; dicts separately provide `remove(string)`.
 Indexing and foreach iteration produce values inferred as `any` internally,
 not declared `any` variables. A dynamic value can be type-tested, passed,
 printed, or compared with `null`; extract it into a concrete local before
@@ -539,6 +541,42 @@ class Worker : Thread {
     }
 }
 ```
+
+## Compiler and executable backend
+
+The compiler lexes and parses Simple source, performs semantic analysis, emits
+textual LLVM IR, and invokes Clang to compile and link the executable. Use
+`--check-only` to run parsing and semantic checks without code generation, or
+`--emit-llvm FILE` to also save the generated IR. The full command-line
+interface is documented in [simp(1)](simp.1).
+The compiler does not link the LLVM C++ API or provide a configurable LLVM
+optimization pipeline; its Clang invocation is driven through the host POSIX
+shell.
+
+The implemented backend covers the language constructs in this reference:
+scalar and String values, collections with tagged dynamic values, control
+flow, exceptions, class construction and methods, inheritance (including
+secondary and virtual bases), virtual dispatch, and native/inline-C bindings.
+Printing accepts a single supported value or a double-quoted positional or
+named format call. For how the source, parser, runtime, and tests are
+organized, see [SIMPLE-LANGUAGE-NOTES.md](SIMPLE-LANGUAGE-NOTES.md) and the
+[test guide](../tests/README.md).
+
+Managed objects and collection values use a precise, non-moving,
+stop-the-world mark/sweep collector. Generated functions publish explicit
+root frames; arbitrary native stack words are not scanned. The runtime
+serializes Simple execution under a global lock. OS threads can make progress
+while another thread waits in a blocking native operation, but Simple
+instructions do not execute in parallel. Exceptions use the host C ABI's
+`setjmp`/`longjmp` mechanism rather than LLVM landing pads.
+
+Known language/backend boundaries include no free-standing functions, no
+automatic user-object `toString()` dispatch, no direct String index/slice
+syntax, no Unicode code-point operations, and no native-ABI lowering for
+`any`. There is no general reflection API beyond `type(value)`. String
+methods, Simple class methods, and C-bound methods described elsewhere remain
+available; these limitations should not be confused with the obsolete claim
+that formatted expressions or method overloading are unsupported.
 
 ## Garbage collection and destruction
 
