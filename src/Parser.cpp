@@ -471,6 +471,18 @@ Statement Parser::parseDeclaration() {
     statement.declaredType = typeName;
     if (match(TokenType::Equal)) {
         statement.expressions.push_back(parseExpression());
+    } else if (type.type == TokenType::Identifier && match(TokenType::LeftParen)) {
+        auto constructor = std::make_unique<Expression>();
+        constructor->kind = ExpressionKind::ConstructorCall;
+        constructor->location = type.location;
+        constructor->value = typeName;
+        if (!check(TokenType::RightParen)) {
+            do {
+                constructor->arguments.push_back(parseExpression());
+            } while (match(TokenType::Comma));
+        }
+        consume(TokenType::RightParen, "')' after constructor arguments");
+        statement.expressions.push_back(std::move(constructor));
     }
     if (check(TokenType::Inline)) {
         if (!statement.expressions.empty()) {

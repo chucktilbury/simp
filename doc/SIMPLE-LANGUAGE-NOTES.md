@@ -352,17 +352,20 @@ collection with references stored in secondary subobjects, call overrides
 through primary and secondary typed references, and verify that an exception
 during a secondary constructor suppresses finalization of the partial object.
 
-The prototype spells construction as `ClassName(args)`, matching the
-class-named constructor rule above. `destroy` is the destructor name. An
-explicit zero-argument `object.destroy()` warns, marks the object destroyed
-before invocation, and runs its complete destructor chain at most once;
-another call or later use raises a catchable runtime exception. Destruction
-selects the dynamic class and runs its body first, then each distinct base
-subobject in reverse declaration/depth-first construction order. Explicit
-destruction and GC finalization use this same chain. If a destructor raises,
-explicit destruction still invokes the remaining base destructors and then
-propagates the first error; the object remains destroyed and cannot be
-finalized again. `super Base(args)` initializes a named direct non-virtual base. Required
+The preferred local-construction syntax is `ClassName variable(args)`,
+including `ClassName variable()` for zero arguments. Constructor expressions
+`ClassName(args)` remain available in expression contexts, and the existing
+`type name = expression` initializer remains supported. `destroy` is the
+destructor name. An explicit zero-argument `object.destroy()` marks the object
+destroyed before invocation and runs its complete destructor chain at most
+once; it emits no compiler warning, and it does not immediately reclaim the
+object's storage. Another destruction call or later use raises a catchable
+runtime exception. Destruction selects the dynamic class and runs its body
+first, then each distinct base subobject in reverse declaration/depth-first
+construction order. Explicit destruction and GC finalization use this same
+chain. If a destructor raises, explicit destruction still invokes the
+remaining base destructors and then propagates the first error; the object
+remains destroyed and cannot be finalized again. `super Base(args)` initializes a named direct non-virtual base. Required
 non-virtual base constructors must be called once in declared order before the
 derived constructor body. A supported shared base is marked with
 `class Left : virtual Root` (the access and `virtual` modifiers may appear in
@@ -1187,14 +1190,17 @@ interchangeable.
 ### Destructors and GC
 
 - Callers that need timely resource cleanup, such as closing files or sockets,
-  invoke the user's destructor explicitly. Explicit calls are permitted, but
-  the compiler warns about them.
+  invoke the user's destructor explicitly. Explicit calls are permitted and
+  do not produce a compiler warning.
 - If the destructor was not explicitly called, GC finalization is the fallback.
   The runtime tracks explicit destruction so finalization does not invoke the
   destructor a second time.
 - Destructor execution and memory reclamation are separate: explicitly
   invoking a destructor does not force the GC to reclaim the object's memory
   immediately.
+- Explicit destruction marks the object destroyed before running its destructor
+  chain. A repeated destruction call or any later use raises a catchable runtime
+  exception, and the destructor chain cannot run again.
 
 The current prototype supports explicit and GC-triggered zero-argument `void
 destroy()` calls through inheritance hierarchies. The collector first marks

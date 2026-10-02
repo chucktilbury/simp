@@ -56,6 +56,46 @@ const TestGroupRegistration registration{1, {
              require(output.str().find("ConstructorCall [Box]") != std::string::npos,
                      "class-name constructor call missing from AST");
          }},
+        {"direct constructor declarations reuse constructor-call analysis", [] {
+             const auto program = parse(
+                 "class Box {\n"
+                 "  Box() {}\n"
+                 "  Box(int value) {}\n"
+                 "}\n"
+                 "start {\n"
+                 "  Box empty()\n"
+                 "  Box filled(42)\n"
+                 "}");
+             const auto& empty = program.statements[0];
+             const auto& filled = program.statements[1];
+             require(empty.kind == simp::StatementKind::Declaration &&
+                         empty.expressions.size() == 1 &&
+                         empty.expressions.front()->kind ==
+                             simp::ExpressionKind::ConstructorCall &&
+                         !empty.expressions.front()->resolvedSignature.empty(),
+                     "zero-argument declaration did not preserve constructor-call AST");
+             require(filled.kind == simp::StatementKind::Declaration &&
+                         filled.expressions.size() == 1 &&
+                         filled.expressions.front()->kind ==
+                             simp::ExpressionKind::ConstructorCall &&
+                         !filled.expressions.front()->resolvedSignature.empty(),
+                     "overloaded declaration did not record selected constructor");
+         }},
+        {"direct constructor declarations reject invalid construction", [] {
+             expectDiagnostic(
+                 "class Box { Box(int value) {} }\nstart { Box item() }",
+                 "constructor argument count does not match class 'Box'");
+             expectDiagnostic(
+                 "class Box { Box(int value) {} }\nstart { Box item(\"wrong\") }",
+                 "constructor argument type does not match parameter 'value'");
+             expectDiagnostic(
+                 "class Secret { private: Secret() {} }\nstart { Secret item() }",
+                 "constructor for class 'Secret' is not accessible here");
+             expectDiagnostic("start { Missing item() }",
+                              "unknown type or class 'Missing'");
+             expectDiagnostic("start { int value() }",
+                              "expected newline after statement");
+         }},
         {"single inheritance and base constructor syntax", [] {
              const auto program = parse(
                  "class Base { Base(int value) {} }\n"

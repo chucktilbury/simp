@@ -204,8 +204,13 @@ statement           ::= declaration
                       | inline-c-statement
                       | block ;
 
-declaration         ::= type, IDENT, [ "=", expression ], terminator
+declaration         ::= type, IDENT,
+                        [ "=", expression
+                        | direct-constructor-arguments ],
+                        terminator
                       | type, IDENT, inline-c-statement ;
+direct-constructor-arguments
+                    ::= "(", [ expression, { ",", expression } ], ")" ;
 assignment          ::= expression, assignment-operator, expression, terminator ;
 assignment-operator ::= "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 method-call-statement
@@ -242,6 +247,10 @@ terminator          ::= NEWLINE, { NEWLINE } | ε ;
 allow adjacent simple statements on the same line. The declaration form that
 places `inline` after a type and identifier declares that local and adds it
 as an implicit capture. An initializer on that form is rejected.
+`direct-constructor-arguments` is accepted only when `type` is a class name
+(a `QUALIFIED_IDENT`), not a built-in type such as `int`, `strg`, or `buffer`.
+It constructs the declared class directly; it does not declare a function.
+Class fields still have no initializer syntax.
 
 ### Expressions
 

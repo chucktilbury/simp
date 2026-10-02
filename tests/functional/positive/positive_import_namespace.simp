@@ -2,5 +2,6 @@
 import network as Net
 
 start {
-    print(Net.Http.Client().get("/"))
+    Net.Http.Client client()
+    print(client.get("/"))
 }

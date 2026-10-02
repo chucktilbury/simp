@@ -139,16 +139,23 @@ start {
 
 ## Variables and scope
 
-Declare a local with `type name` and optionally initialize it with
-`type name = expression`. Locals are block-scoped and may be initialized
-later. An inner declaration shadows an outer binding; assignments to the
-inner variable do not change the outer one, and shadowing currently emits no
-warning. Redeclaring a name in the same scope is an error. The compiler
-diagnoses a read that may occur before initialization. Parameters and fields
-are introduced by their declarations; `for` loop variables exist only in the
-loop body. Assignment operators are statements, not expressions. `=` assigns
-normally; `+=`, `-=`, `*=`, `/=`, and `%=` update an `int`, `unsigned`, or
-`float` variable or object field using the corresponding arithmetic operation.
+Declare a local with `type name`. Class-typed locals may be constructed
+directly with `ClassName name(arguments)`, including `ClassName name()` for
+the zero-argument constructor. This form selects the matching constructor
+using the usual overload, type, and access checks. Built-in types do not use
+this syntax. The existing `type name = expression` form remains supported,
+including constructor expressions such as `Base item = Derived()`; constructor
+expressions also remain valid in returns, call arguments, and other expression
+contexts. Locals are block-scoped and may be initialized later. An inner
+declaration shadows an outer binding; assignments to the inner variable do not
+change the outer one, and shadowing currently emits no warning. Redeclaring a
+name in the same scope is an error. The compiler diagnoses a read that may
+occur before initialization. Parameters and fields are introduced by their
+declarations; fields have no initializer syntax, and `for` loop variables
+exist only in the loop body. Assignment operators are statements, not
+expressions. `=` assigns normally; `+=`, `-=`, `*=`, `/=`, and `%=` update an
+`int`, `unsigned`, or `float` variable or object field using the corresponding
+arithmetic operation.
 Both operands must have a matching arithmetic type, and `%=` is limited to
 `int` and `unsigned`. Collections, buffers, `any`, booleans, and object
 references do not support compound assignment. A compound assignment evaluates
@@ -314,9 +321,11 @@ and a base name (for example, `object.Base.method()`), while a `super` base
 initializer is only for constructor initialization. The base initializer must
 appear before ordinary constructor statements.
 
-Explicit `object.destroy()` invokes the destructor but does not reclaim the
-object; the compiler emits a warning. Destructors cannot be defined out of
-line. See `super-initializer` and `postfix`.
+Explicit `object.destroy()` invokes the destructor but does not immediately
+reclaim the object's storage, and no compiler warning is emitted. The object
+is marked destroyed before the destructor runs; a repeated destruction call
+or later use of the object raises a catchable runtime exception. Destructors
+cannot be defined out of line. See `super-initializer` and `postfix`.
 
 ## Namespaces
 
@@ -341,7 +350,7 @@ namespace Geometry {
 }
 
 start {
-    Geometry.Point point = Geometry.Point(7)
+    Geometry.Point point(7)
     print(point.coordinate())
 }
 ```
@@ -591,11 +600,14 @@ references) and reclaims unreachable objects. A class `destroy()` method is
 used as a finalizer when the collector reclaims an instance; collection timing
 is not deterministic, so finalizers should not be used as a substitute for
 explicit resource management. Finalizers must not let exceptions escape.
-Explicit `object.destroy()` runs the method but does not free the object, and
-the compiler warns about that distinction.
+Explicit `object.destroy()` runs the method but does not immediately reclaim
+the object's storage. It marks the object destroyed before running the
+destructor chain; a repeated call or later use raises a catchable runtime
+exception, and GC will not run the destructor chain a second time.
 
-Derived and base destruction is handled by runtime class finalization; do not
-assume a particular collection point or use-after-finalization behavior.
+Derived and base destruction is handled by the runtime destructor chain,
+most-derived first and then through its bases. Unreachable objects are
+finalized during garbage collection, whose timing is nondeterministic.
 Resources requiring prompt release should be closed explicitly through their
 library API. See `destructor-declaration` and `postfix`, and
 [STDLIB.md](STDLIB.md).

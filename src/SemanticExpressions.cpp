@@ -12,7 +12,6 @@
 #include <charconv>
 #include <cstdint>
 #include <cmath>
-#include <iostream>
 #include <limits>
 
 namespace simp {
@@ -788,9 +787,6 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             if (!expression.arguments.empty()) {
                 throw DiagnosticError(expression.location, "destructor takes no arguments");
             }
-            std::cerr << target.location.file << ":" << target.location.line << ":"
-                      << target.location.column
-                      << ": warning: explicit destructor call does not reclaim the object\n";
             return "void";
         }
         const auto methodMatches = countMethods(*owner, target.value);

@@ -81,6 +81,19 @@ const TestGroupRegistration registration{5, {
               require(output.str().find("ConstructorCall [Foo.Bar]") != std::string::npos,
                       "qualified constructor call was not resolved in the AST");
          }},
+         {"qualified class names support direct constructor declarations", [] {
+              const auto program = parse(
+                  "namespace Foo {\n"
+                  "  class Bar {\n"
+                  "    int value\n"
+                  "    Bar(int initial) { value = initial }\n"
+                  "  }\n"
+                  "}\n"
+                  "start { Foo.Bar item(42)\n print(item.value) }");
+              require(program.statements.front().kind == simp::StatementKind::Declaration &&
+                          program.statements.front().expressions.front()->value == "Foo.Bar",
+                      "qualified direct declaration did not retain its class path");
+         }},
          {"namespace start declarations are rejected", [] {
               expectDiagnostic("namespace Hidden { start {} }",
                                "'start' cannot be declared inside a namespace");
