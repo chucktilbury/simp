@@ -394,7 +394,8 @@ No positive-fixture syntax or parser routine was left unmapped. The
   accepts either `super virtual Base(args)` or `virtual super Base(args)`;
   dotted forms are not part of the grammar.
 - The parser allows some forms that later fail semantic analysis: for example
-  `return` in `start`, `break` outside a loop, invalid lvalues, inaccessible
+  `return` in `start` or within `finally` (including nested blocks),
+  `break` outside a loop, invalid lvalues, inaccessible
   members, unknown types, bad argument/return conversions, an invalid
   `super` initializer, or a `raise` expression outside the exception class
   hierarchy. Constructor declarations must use their enclosing class name;

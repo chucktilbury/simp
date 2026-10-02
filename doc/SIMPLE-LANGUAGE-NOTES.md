@@ -568,8 +568,12 @@ type, message, and original source location.
 A `try` must have an `except` block, a `finally` block, or both. `finally`
 runs after successful completion, after a caught exception, and when an
 exception from the protected body or handler propagates. An exception raised
-inside `finally` propagates outward. Returns nested inside these constructs
-are not supported. Null dereferences, destroyed-object use or repeated
+inside `finally` propagates outward. A return from a protected body or handler
+evaluates its value once, then runs enclosing `finally` blocks in order before
+leaving the method. Returns inside `finally`, including nested statements,
+are rejected. Non-void methods must return a value or raise on every reachable
+path; an if without else or a loop body alone cannot establish this.
+Null dereferences, destroyed-object use or repeated
 destruction, integer division/remainder by zero, and other runtime checks
 raise built-in `Exception` instances, so `except(Exception)` catches them.
 An uncaught exception reports its source file, line, column, and message to

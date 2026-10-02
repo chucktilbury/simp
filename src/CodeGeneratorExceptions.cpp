@@ -34,7 +34,7 @@ void CodeGenerator::emitTry(const Statement& statement) {
                      "  call void @simp_exception_push(ptr " + frame + ")\n";
     scopes_.emplace_back();
     activeTryTransfers_.push_back(
-        {frame, statement.hasCleanup ? &statement.cleanup : nullptr, true});
+        {frame, statement.hasCleanup ? &statement.cleanup : nullptr, true, {}, {}});
     blockTerminated_ = false;
     emitStatements(statement.body);
     const bool bodyTerminated = blockTerminated_;
@@ -54,6 +54,7 @@ void CodeGenerator::emitTry(const Statement& statement) {
 
     std::vector<std::string> handlerLabels;
     handlerLabels.reserve(statement.exceptionHandlers.size());
+    bool endReachable = false;
     for (std::size_t index = 0; index < statement.exceptionHandlers.size(); ++index) {
         handlerLabels.push_back(freshLabel("except.match"));
     }
@@ -163,7 +164,8 @@ void CodeGenerator::emitTry(const Statement& statement) {
         }
 
         activeTryTransfers_.push_back(
-            {catchFrame, statement.hasCleanup ? &statement.cleanup : nullptr, true});
+            {catchFrame, statement.hasCleanup ? &statement.cleanup : nullptr, true,
+             frame, exceptionRoot});
         activeExceptionHandlers_.push_back(frame);
         blockTerminated_ = false;
         emitStatements(handler.body);
@@ -181,7 +183,10 @@ void CodeGenerator::emitTry(const Statement& statement) {
                 emitStatements(statement.cleanup);
                 scopes_.pop_back();
             }
-            if (!blockTerminated_) instructions_ += "  br label %" + endLabel + "\n";
+            if (!blockTerminated_) {
+                instructions_ += "  br label %" + endLabel + "\n";
+                endReachable = true;
+            }
         }
 
         instructions_ += catchErrorLabel + ":\n";
@@ -206,14 +211,19 @@ void CodeGenerator::emitTry(const Statement& statement) {
         }
     }
 
-    instructions_ += bodyDoneLabel + ":\n";
-    blockTerminated_ = false;
-    scopes_.emplace_back();
-    emitStatements(statement.cleanup);
-    scopes_.pop_back();
-    if (!blockTerminated_) instructions_ += "  br label %" + endLabel + "\n";
-    instructions_ += endLabel + ":\n";
-    blockTerminated_ = false;
+    if (!bodyTerminated) {
+        instructions_ += bodyDoneLabel + ":\n";
+        blockTerminated_ = false;
+        scopes_.emplace_back();
+        emitStatements(statement.cleanup);
+        scopes_.pop_back();
+        if (!blockTerminated_) {
+            instructions_ += "  br label %" + endLabel + "\n";
+            endReachable = true;
+        }
+    }
+    if (endReachable) instructions_ += endLabel + ":\n";
+    blockTerminated_ = !endReachable;
 }
 
 } // namespace simp

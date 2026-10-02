@@ -20,6 +20,57 @@ const TestGroupRegistration registration{3, {
                  "int Foo.compute(int x) {\n  return x * 2\n}\n"
                  "start {\n  print(Foo().compute(5))\n}");
          }},
+        {"nested returns and exhaustive branches satisfy non-void methods", [] {
+             expectValid(
+                 "class Choice {\n"
+                 "  int select(bool left) {\n"
+                 "    { if (left) { return 1 } else { return 2 } }\n"
+                 "  }\n"
+                 "  int protectedValue() {\n"
+                 "    try { return 3 } except() { return 4 } finally { print(5) }\n"
+                 "  }\n"
+                 "  void early() { if (true) { return } print(6) }\n"
+                 "}\nstart { print(Choice().select(true)) }");
+         }},
+        {"non-void methods reject reachable fallthrough", [] {
+             expectDiagnostic(
+                 "class Choice { int select(bool left) { if (left) { return 1 } } }\n"
+                 "start {}",
+                 "path without a return value or raise");
+             expectDiagnostic(
+                 "class Choice { int select() { while (true) { return 1 } } }\n"
+                 "start {}",
+                 "path without a return value or raise");
+             expectDiagnostic(
+                 "class Choice { int select() { try { return 1 } "
+                 "except() { print(0) } } }\nstart {}",
+                 "path without a return value or raise");
+         }},
+        {"return inside finally is rejected even when nested", [] {
+             expectDiagnostic(
+                 "class Choice { int select() { try { return 1 } finally { "
+                 "if (true) { { return 2 } } } } }\nstart {}",
+                 "return is not allowed inside finally");
+             expectDiagnostic(
+                 "class Choice { void select() { try { print(1) } finally { "
+                 "try { print(2) } except() { return } } } }\nstart {}",
+                 "return is not allowed inside finally");
+         }},
+        {"return type and entry restrictions remain enforced", [] {
+             expectDiagnostic("start { return }", "only valid inside a class method");
+             expectDiagnostic("class C { void f() { if (true) { return 1 } } }\nstart {}",
+                              "void method cannot return a value");
+             expectDiagnostic("class C { int f() { return } }\nstart {}",
+                              "non-void method must return a value");
+             expectDiagnostic("class C { int f() { { return \"bad\" } } }\nstart {}",
+                              "return type does not match method return type");
+             expectDiagnostic("class C { C() { return 1 } }\nstart {}",
+                              "void method cannot return a value");
+             expectDiagnostic("class C { void destroy() { return 1 } }\nstart {}",
+                              "void method cannot return a value");
+             expectValid("class C { C() { return } void destroy() { return } }\n"
+                         "start { C value = C() }");
+         }},
         {"external method validates and calls through ordinary method syntax", [] {
              expectValid(
                  "class Native {\n  int absolute(int value)\n}\n"

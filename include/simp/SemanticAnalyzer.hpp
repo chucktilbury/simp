@@ -115,6 +115,7 @@ private:
     std::string currentModule_;
     std::size_t loopDepth_ = 0;
     std::size_t exceptionHandlerDepth_ = 0;
+    std::size_t finallyDepth_ = 0;
     std::optional<std::filesystem::path> preludeSource_;
     std::unordered_map<std::string,
         std::unordered_map<std::string, ImportBinding>> importAliases_;

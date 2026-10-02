@@ -101,12 +101,19 @@ void CodeGenerator::emitLoopTransfer(bool isBreak, const SourceLocation& locatio
     }
     const auto target = loopTargets_.back();
     const auto savedTryTransfers = activeTryTransfers_;
+    const auto savedExceptionHandlers = activeExceptionHandlers_;
     while (activeTryTransfers_.size() > target.tryDepth) {
         const auto active = activeTryTransfers_.back();
         activeTryTransfers_.pop_back();
         if (active.exceptionFrameActive) {
             instructions_ += "  call void @simp_exception_pop(ptr " +
                              active.exceptionFrame + ")\n";
+        }
+        if (!active.handledExceptionFrame.empty()) {
+            instructions_ += "  call void @simp_exception_clear(ptr " +
+                             active.handledExceptionFrame + ")\n"
+                             "  store ptr null, ptr " + active.handledExceptionRoot + "\n";
+            activeExceptionHandlers_.pop_back();
         }
         if (active.cleanup != nullptr) {
             scopes_.emplace_back();
@@ -116,6 +123,7 @@ void CodeGenerator::emitLoopTransfer(bool isBreak, const SourceLocation& locatio
             scopes_.pop_back();
             if (cleanupTerminated) {
                 activeTryTransfers_ = savedTryTransfers;
+                activeExceptionHandlers_ = savedExceptionHandlers;
                 return;
             }
         }
@@ -124,6 +132,7 @@ void CodeGenerator::emitLoopTransfer(bool isBreak, const SourceLocation& locatio
                      "\n";
     blockTerminated_ = true;
     activeTryTransfers_ = savedTryTransfers;
+    activeExceptionHandlers_ = savedExceptionHandlers;
 }
 
 void CodeGenerator::emitStatement(const Statement& statement) {
@@ -295,21 +304,52 @@ void CodeGenerator::emitStatement(const Statement& statement) {
     case StatementKind::InlineC:
         emitInlineC(statement);
         return;
-    case StatementKind::Return:
-        if (statement.expressions.empty()) {
-            emitRootFramePop();
-            instructions_ += "  ret void\n";
-        } else {
+    case StatementKind::Return: {
+        std::string result;
+        if (!statement.expressions.empty()) {
             const auto value = emitExpression(*statement.expressions.front(),
                                               currentMethod_->returnType);
             const auto converted = convertObjectValue(value, currentMethod_->returnType,
                                                        statement.expressions.front()->location);
-            emitRootFramePop();
-            instructions_ += "  ret " + llvmType(currentMethod_->returnType) + " " +
-                             converted.operand + "\n";
+            result = rootObjectValue(converted, statement.expressions.front()->location).operand;
         }
+        const auto savedTryTransfers = activeTryTransfers_;
+        const auto savedExceptionHandlers = activeExceptionHandlers_;
+        while (!activeTryTransfers_.empty()) {
+            const auto active = activeTryTransfers_.back();
+            activeTryTransfers_.pop_back();
+            if (active.exceptionFrameActive) {
+                instructions_ += "  call void @simp_exception_pop(ptr " +
+                                 active.exceptionFrame + ")\n";
+            }
+            if (!active.handledExceptionFrame.empty()) {
+                instructions_ += "  call void @simp_exception_clear(ptr " +
+                                 active.handledExceptionFrame + ")\n"
+                                 "  store ptr null, ptr " + active.handledExceptionRoot + "\n";
+                activeExceptionHandlers_.pop_back();
+            }
+            if (active.cleanup != nullptr) {
+                scopes_.emplace_back();
+                blockTerminated_ = false;
+                emitStatements(*active.cleanup);
+                scopes_.pop_back();
+                if (blockTerminated_) {
+                    activeTryTransfers_ = savedTryTransfers;
+                    activeExceptionHandlers_ = savedExceptionHandlers;
+                    return;
+                }
+            }
+        }
+        emitRootFramePop();
+        instructions_ += statement.expressions.empty()
+                             ? "  ret void\n"
+                             : "  ret " + llvmType(currentMethod_->returnType) + " " +
+                                   result + "\n";
         blockTerminated_ = true;
+        activeTryTransfers_ = savedTryTransfers;
+        activeExceptionHandlers_ = savedExceptionHandlers;
         return;
+    }
     case StatementKind::SuperConstructorCall: {
         if (statement.virtualBaseInitializer) return;
         const auto base = classes_.find(statement.name);

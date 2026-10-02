@@ -466,7 +466,9 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         restoreInitializationState(mergedState);
         if (statement.hasCleanup) {
             scopes_.emplace_back();
+            ++finallyDepth_;
             analyzeStatements(statement.cleanup);
+            --finallyDepth_;
             scopes_.pop_back();
         }
         return;
@@ -477,6 +479,9 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         scopes_.pop_back();
         return;
     case StatementKind::Return: {
+        if (finallyDepth_ != 0) {
+            throw DiagnosticError(statement.location, "return is not allowed inside finally");
+        }
         if (currentMethod_ == nullptr) {
             throw DiagnosticError(statement.location, "return is only valid inside a class method");
         }

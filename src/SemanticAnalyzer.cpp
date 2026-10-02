@@ -23,23 +23,40 @@
 namespace simp {
 namespace {
 
-bool containsReturn(const Statement& statement) {
-    if (statement.kind == StatementKind::Return) return true;
-    for (const auto& child : statement.body) {
-        if (containsReturn(child)) return true;
+bool canFallThrough(const std::vector<Statement>& statements);
+
+bool canFallThrough(const Statement& statement) {
+    switch (statement.kind) {
+    case StatementKind::Return:
+    case StatementKind::Raise:
+    case StatementKind::Break:
+    case StatementKind::Continue:
+        return false;
+    case StatementKind::Block:
+        return canFallThrough(statement.body);
+    case StatementKind::If:
+        return canFallThrough(statement.body) ||
+               !statement.hasAlternate || canFallThrough(statement.alternate);
+    case StatementKind::Try:
+        if (statement.hasCleanup && !canFallThrough(statement.cleanup)) return false;
+        if (canFallThrough(statement.body)) return true;
+        return std::any_of(statement.exceptionHandlers.begin(),
+                           statement.exceptionHandlers.end(),
+                           [](const ExceptionHandler& handler) {
+                               return canFallThrough(handler.body);
+                           });
+    default:
+        // A loop may not run (or may exit via break); never infer a return
+        // solely from its body.
+        return true;
     }
-    for (const auto& child : statement.alternate) {
-        if (containsReturn(child)) return true;
+}
+
+bool canFallThrough(const std::vector<Statement>& statements) {
+    for (const auto& statement : statements) {
+        if (!canFallThrough(statement)) return false;
     }
-    for (const auto& handler : statement.exceptionHandlers) {
-        for (const auto& child : handler.body) {
-            if (containsReturn(child)) return true;
-        }
-    }
-    for (const auto& child : statement.cleanup) {
-        if (containsReturn(child)) return true;
-    }
-    return false;
+    return true;
 }
 
 bool containsSuperCall(const Statement& statement) {
@@ -874,13 +891,6 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
             }
         }
     }
-    if (method.returnType != "void" &&
-        (method.body.empty() ||
-         (method.body.back().kind != StatementKind::Return &&
-          method.body.back().kind != StatementKind::Raise))) {
-        throw DiagnosticError(method.location,
-                              "non-void prototype methods must end with a direct return or raise");
-    }
     for (std::size_t index = 0; index < method.body.size(); ++index) {
         const bool directLeadingSuper = method.constructor && index < leadingCalls &&
                                         method.body[index].kind ==
@@ -889,12 +899,6 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
             throw DiagnosticError(method.body[index].location,
                                   "super initializers must be direct leading constructor "
                                   "statements");
-        }
-        const bool finalDirectReturn = index + 1 == method.body.size() &&
-                                       method.body[index].kind == StatementKind::Return;
-        if (containsReturn(method.body[index]) && !finalDirectReturn) {
-            throw DiagnosticError(method.body[index].location,
-                                  "return must be the final direct statement in a prototype method");
         }
     }
     currentClass_ = &owner;
@@ -910,6 +914,10 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
         scopes_.back().emplace(parameter.name, index);
     }
     analyzeStatements(method.body);
+    if (method.returnType != "void" && canFallThrough(method.body)) {
+        throw DiagnosticError(method.location,
+                              "non-void method has a path without a return value or raise");
+    }
     scopes_.pop_back();
     scopes_.pop_back();
     currentClass_ = nullptr;

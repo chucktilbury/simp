@@ -57,6 +57,8 @@ private:
         std::string exceptionFrame;
         const std::vector<Statement>* cleanup = nullptr;
         bool exceptionFrameActive = false;
+        std::string handledExceptionFrame;
+        std::string handledExceptionRoot;
     };
     using Scope = std::unordered_map<std::string, Binding>;
 

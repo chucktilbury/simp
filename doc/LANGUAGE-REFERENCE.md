@@ -391,9 +391,14 @@ catch-all whose binding is a `String` message, or `except(Type) as name` for
 an exception-object binding. A bare `raise()` rethrows the active exception
 and is valid only inside a handler. `finally` runs for normal completion and
 exception propagation. A `try` needs at least one `except` or a
-`finally`; a catch-all must be last. Method returns must be the final direct
-statement in a method body; a return cannot be nested inside
-`try`/`except`/`finally`. See `try-statement` and `raise-statement`.
+`finally`; a catch-all must be last. A method may return from any executable
+statement, including nested blocks, branches, loops, and exception handlers.
+Returning runs enclosing `finally` blocks from innermost to outermost before
+leaving the method. A return inside `finally` (even in a nested statement)
+is invalid. A non-void method must return a value or raise on every reachable
+path; loops alone do not guarantee this. See `try-statement` and
+`raise-statement`. Constructors and destructors remain void-only, and `start`
+still cannot return.
 
 ```simp
 // Complete program: raising and catching a typed exception.
