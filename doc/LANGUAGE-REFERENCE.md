@@ -316,10 +316,40 @@ start {
 }
 ```
 
-The above is a complete program; base-qualified member access uses an object
-and a base name (for example, `object.Base.method()`), while a `super` base
-initializer is only for constructor initialization. The base initializer must
-appear before ordinary constructor statements.
+The above is a complete program. Base-qualified member access uses an object
+and a base path (for example, `object.Base.field`, `object.Base.method()`, or
+`object.Left.Root.field`). Inside a method, constructor, or destructor body,
+the receiver may be omitted: `Base.field` and `Base.method(args)` refer to the
+current object's base subobject, not static or class-level storage.
+`Left.Root.field` and `Left.Root.method(args)` select successive direct bases;
+the path cannot skip an inheritance edge. Reads, assignments, and supported
+scalar compound assignments (`+=`, `-=`, `*=`, `/=`, `%=`) use the same base
+layout and accessibility rules as explicit-object access. Method calls retain
+runtime dispatch, just like `object.Base.method()`; qualification selects a
+base view, not a non-virtual call.
+
+A local variable or parameter takes precedence over a field, and a field takes
+precedence over an implicit base qualifier, even if its name matches a base.
+Thus `Base.field` uses an ordinary object receiver when `Base` names a variable
+or field; it does not fall back to base qualification if that receiver is
+invalid or ambiguous. Otherwise, the initial class name is resolved using the
+normal lexical namespace/import-alias rules and must name a direct base.
+Both `Base.field` and `Namespace.Base.field` can supply that initial class name.
+Subsequent base steps follow the existing explicit-object base-path rules.
+Type-valued contexts and qualified class construction retain their existing
+name resolution; `Namespace.Class()` still constructs an object when its
+receiver prefix is not an applicable implicit base.
+
+Private inheritance permits access from the class declaring that inheritance
+but not from outside it or further derived classes. Base-private members
+remain inaccessible; protected members follow the ordinary derived-class
+access rules. Ambiguous unqualified members remain errors. This syntax does
+not enable `Base.field` or `Base.method()` outside an applicable class body.
+
+A `super` base initializer is only for constructor initialization and must
+appear before ordinary constructor statements. Field visibility uses sections
+such as `public:` followed by separate field declarations, not inline
+`public int field` declarations.
 
 Explicit `object.destroy()` invokes the destructor but does not immediately
 reclaim the object's storage, and no compiler warning is emitted. The object

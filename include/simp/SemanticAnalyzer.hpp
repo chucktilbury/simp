@@ -45,6 +45,9 @@ private:
     std::string resolveClassName(const std::string& name,
                                  const std::vector<std::string>& namespacePath,
                                  const SourceLocation& location) const;
+    std::optional<std::string> lookupClassName(
+        const std::string& name, const std::vector<std::string>& namespacePath,
+        std::string& diagnostic) const;
     bool hasNamespaceOrClass(const std::string& name,
                              const std::vector<std::string>& namespacePath) const;
     std::string qualify(const std::vector<std::string>& path,
@@ -75,6 +78,7 @@ private:
     std::vector<std::string> virtualBaseNames(const ClassDeclaration& declaration) const;
     std::size_t accessibleMemberCount(const ClassDeclaration& declaration,
                                       const std::string& name, bool method) const;
+    void addImplicitBaseReceiver(Expression& receiver);
     bool resolveBaseQualifier(Expression& receiver, Expression*& root,
                              const ClassDeclaration*& view,
                              std::vector<std::string>& path);

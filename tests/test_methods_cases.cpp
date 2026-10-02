@@ -14,6 +14,119 @@ namespace {
 using namespace simp_test;
 
 const TestGroupRegistration registration{3, {
+        {"implicit base qualifiers use the current instance", [] {
+             expectValid(
+                 "class A { int x\n protected:\n int p\n public:\n"
+                 "int f(int n) { return n } }\n"
+                 "class B { int x\n int f(int n) { return n + 1 } }\n"
+                 "class C: A, private B {\n"
+                 " C() { super A()\n super B()\n A.x = 1\n B.x = 2\n A.x += 3\n"
+                 "print(A.x)\n print(B.f(A.p)) }\n"
+                 " void destroy() { print(B.x) }\n"
+                 "}\nstart { C c = C()\n print(c.A.f(1)) }");
+         }},
+        {"implicit qualifiers preserve member and path accessibility", [] {
+             expectDiagnostic(
+                 "class A { private:\n int x }\n"
+                 "class C: A { void f() { print(A.x) } }\nstart {}",
+                 "field 'x' is not accessible");
+             expectDiagnostic(
+                 "class A { private:\n int x }\n"
+                 "class C: A { void f() { A.x += 1 } }\nstart {}",
+                 "field 'x' is not accessible");
+             expectDiagnostic(
+                 "class A { private:\n int x }\n"
+                 "class C: A { void f() { A.x = 1 } }\nstart {}",
+                 "field 'x' is not accessible");
+             expectDiagnostic(
+                 "class A { private:\n void f() {} }\n"
+                 "class C: A { void g() { A.f() } }\nstart {}",
+                 "method 'f' is not accessible");
+             expectDiagnostic(
+                 "class A { protected:\n int x }\n"
+                 "class C: A {}\nstart { C c = C()\n print(c.A.x) }",
+                 "field 'x' is not accessible");
+             expectDiagnostic(
+                 "class A { protected:\n void f() {} }\n"
+                 "class C: A {}\nstart { C c = C()\n c.A.f() }",
+                 "method 'f' is not accessible");
+             expectDiagnostic(
+                 "class A { int x }\nclass C: private A {}\n"
+                 "start { C c = C()\n print(c.A.x) }",
+                 "field 'x' is not accessible through this inheritance path");
+             expectDiagnostic(
+                 "class A { void f() {} }\nclass C: private A {}\n"
+                 "start { C c = C()\n c.A.f() }",
+                 "method 'f' is not accessible through this inheritance path");
+             expectDiagnostic(
+                 "class A { int x }\nclass B: private A {}\n"
+                 "class C: B { void f() { print(B.A.x) } }\nstart {}",
+                 "field 'x' is not accessible through this inheritance path");
+             expectDiagnostic(
+                 "class A { void f() {} }\nclass B: private A {}\n"
+                 "class C: B { void g() { B.A.f() } }\nstart {}",
+                 "method 'f' is not accessible through this inheritance path");
+         }},
+        {"implicit qualifiers do not hide ambiguity or create static access", [] {
+             expectDiagnostic(
+                 "class A { int x }\nclass B { int x }\n"
+                 "class C: A, B { void f() { print(x) } }\nstart {}",
+                 "ambiguous inherited field 'x'");
+             expectDiagnostic(
+                 "class A { void f() {} }\nclass B { void f() {} }\n"
+                 "class C: A, B { void g() { f() } }\nstart {}",
+                 "ambiguous inherited method 'f'");
+             expectDiagnostic(
+                 "class A { int x }\nstart { print(A.x) }",
+                 "undefined variable 'A'");
+             expectDiagnostic(
+                 "class A { void f() {} }\nstart { A.f() }",
+                 "unknown qualified class 'A.f'");
+             expectDiagnostic(
+                 "class A { int x }\nclass Other { int x }\n"
+                 "class C: A { void f() { print(Other.x) } }\nstart {}",
+                 "undefined variable 'Other'");
+             expectDiagnostic(
+                 "class A { int x }\nclass Other { int x }\n"
+                 "class C: A { void f() { print(A.Other.x) } }\nstart {}",
+                 "has no field 'Other'");
+             expectDiagnostic(
+                 "class A { int x }\nclass B: A {}\n"
+                 "class C: B { void f() { print(A.x) } }\nstart {}",
+                 "undefined variable 'A'");
+             expectDiagnostic(
+                 "class A { int f(int n) { return n } }\n"
+                 "class C: A { void g() { A.f(\"bad\") } }\nstart {}",
+                 "method argument type does not match parameter 'n'");
+             expectDiagnostic(
+                 "class A { int x }\nclass C: A { void f() { int A = 1\n"
+                 "print(A.x) } }\nstart {}",
+                 "unknown class 'int'");
+         }},
+        {"implicit qualifiers preserve lexical class and value precedence", [] {
+             expectValid(
+                 "namespace N { class A { int x\n int f() { return 1 } }\n"
+                 "class C: A { void g() { print(A.x)\n print(N.A.x)\n"
+                 "print(A.f())\n A other = N.A()\n print(other.f())\n type t = N.A }\n"
+                 "} }\nstart { N.C c = N.C() }");
+             expectValid(
+                 "class A { int x\n int f() { return 1 } }\n"
+                 "class Object { int x\n int f() { return 2 } }\n"
+                 "class C: A { Object A\n"
+                 " void g(Object local) { print(A.x)\n print(A.f())\n print(local.x) }\n"
+                 " void h(Object A) { print(A.x)\n print(A.f()) }\n"
+                 "}\nstart {}");
+             expectDiagnostic(
+                 "class A { int x }\nnamespace N { class A { int x }\n"
+                 "class C: A { void f() { print(N.A.x) } } }\n"
+                 "namespace M { class A { int x }\n"
+                 "class C: N.A { void f() { print(A.x) } } }\nstart {}",
+                 "undefined variable 'A'");
+             expectValid(
+                 "class A { int x\n int f() { return x } }\n"
+                 "class C: A { int g() }\n"
+                 "int C.g() { A.x += 1\n return A.f() }\nstart {}");
+         }},
         {"bare method statement reports argument count instead of parser error", [] {
              expectDiagnostic(
                  "/*\n"
