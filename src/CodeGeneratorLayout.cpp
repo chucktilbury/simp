@@ -290,9 +290,12 @@ bool CodeGenerator::resolveBaseQualifier(const Expression& receiver,
         reversed.push_back(cursor->value);
         cursor = cursor->left.get();
     }
-    if (reversed.empty() || cursor->kind != ExpressionKind::Identifier) return false;
-    const auto binding = findVariable(cursor->value, cursor->location);
-    const auto owner = classes_.find(binding.type);
+    if (reversed.empty() ||
+        (cursor->kind != ExpressionKind::Identifier &&
+         cursor->kind != ExpressionKind::ImplicitThis)) return false;
+    const auto rootType = cursor->kind == ExpressionKind::ImplicitThis
+        ? currentClass_->name : findVariable(cursor->value, cursor->location).type;
+    const auto owner = classes_.find(rootType);
     if (owner == classes_.end()) return false;
     root = cursor;
     view = owner->second;

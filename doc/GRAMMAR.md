@@ -319,6 +319,15 @@ The `postfix` shorthand has these implementation constraints: a call suffix
 is accepted only after an identifier or member expression; an identifier
 call is initially a constructor call, while a member call is a method call.
 Name resolution may recognize a dotted qualified class construction. A
+member expression such as `Base.field` or `Left.Root.method(args)` inside a
+class method, constructor, or destructor may instead receive an implicit
+current-object receiver when its initial class name denotes a direct base.
+The remaining qualifiers must follow successive direct-base edges, as with
+explicit `object.Left.Root.field` access. This is semantic resolution of the
+existing postfix grammar, not static member syntax or a new parser production.
+Local/parameter and field receiver names take precedence over implicit base
+qualification; namespace/import class lookup otherwise follows ordinary
+lexical rules. Type-valued name resolution is unchanged. A
 `method-call-statement` must parse to a method-call AST node; a bare
 constructor call is not accepted as a statement. Calls cannot be chained
 directly after a call or constructor-call node, although member and index

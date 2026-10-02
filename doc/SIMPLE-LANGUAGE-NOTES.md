@@ -488,7 +488,19 @@ non-virtual bases also have no explicit constructors.
   reports a syntax error.
 - A reference can contain calls and indexing, so references are not necessarily wholly statically resolvable.
 - Scope/path qualification can disambiguate inherited members. The prototype
-  implements base-path qualification for field reads and assignments.
+  implements base-path qualification for field reads, assignments, scalar
+  compound assignments, and method calls. Explicit receivers use
+  `object.Base.field` or `object.Left.Root.method(args)`. Inside method,
+  constructor, and destructor bodies, `Base.field` and
+  `Left.Root.method(args)` use the current object's selected base subobject.
+  Qualification retains normal accessibility, overload resolution, and
+  runtime dispatch; it does not create static members or bypass overrides.
+  Each step selects a direct base, including virtual-base paths. A local or
+  parameter receiver shadows a field receiver, and either shadows an implicit
+  base qualifier, without fallback on invalid receivers. Otherwise, the
+  initial base class name follows lexical namespace/import-alias lookup;
+  unrelated classes are not implicit receivers. Type-valued class names and
+  ordinary qualified construction retain their existing rules.
 - An unqualified inherited member that is ambiguous under multiple inheritance is a compile-time error; the prototype implements this for fields and methods.
 - Base classes may be marked `public`, `protected`, or `private`. The prototype
   defaults omitted visibility to public. The supported `virtual` base modifier

@@ -134,6 +134,15 @@ bool SemanticAnalyzer::hasNamespaceOrClass(
 std::string SemanticAnalyzer::resolveClassName(
     const std::string& name, const std::vector<std::string>& namespacePath,
     const SourceLocation& location) const {
+    std::string diagnostic;
+    const auto resolved = lookupClassName(name, namespacePath, diagnostic);
+    if (!resolved) throw DiagnosticError(location, diagnostic);
+    return *resolved;
+}
+
+std::optional<std::string> SemanticAnalyzer::lookupClassName(
+    const std::string& name, const std::vector<std::string>& namespacePath,
+    std::string& diagnostic) const {
     std::vector<std::string> components;
     std::size_t begin = 0;
     while (begin < name.size()) {
@@ -143,7 +152,8 @@ std::string SemanticAnalyzer::resolveClassName(
         begin = end == std::string::npos ? name.size() : end + 1;
     }
     if (components.empty()) {
-        throw DiagnosticError(location, "unknown class '" + name + "'");
+        diagnostic = "unknown class '" + name + "'";
+        return std::nullopt;
     }
 
     std::string candidate;
@@ -183,17 +193,20 @@ std::string SemanticAnalyzer::resolveClassName(
         }
     }
     if (!firstFound) {
-        throw DiagnosticError(location, "unknown class '" + name + "'");
+        diagnostic = "unknown class '" + name + "'";
+        return std::nullopt;
     }
     for (std::size_t index = 1; index < components.size(); ++index) {
         candidate += "." + components[index];
         if (!visible(candidate, resolvedOwner)) {
-            throw DiagnosticError(location, "unknown qualified class '" + name + "'");
+            diagnostic = "unknown qualified class '" + name + "'";
+            return std::nullopt;
         }
     }
     const auto found = classes_.find(candidate);
     if (found == classes_.end()) {
-        throw DiagnosticError(location, "qualified name '" + name + "' is not a class");
+        diagnostic = "qualified name '" + name + "' is not a class";
+        return std::nullopt;
     }
     return candidate;
 }

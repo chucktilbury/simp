@@ -125,10 +125,46 @@ bool expressionNamePath(const Expression& expression, std::string& name) {
 
 } // namespace
 
+void SemanticAnalyzer::addImplicitBaseReceiver(Expression& receiver) {
+    if (currentClass_ == nullptr) return;
+    std::vector<Expression*> prefixes;
+    Expression* cursor = &receiver;
+    while (cursor->kind == ExpressionKind::Member) {
+        prefixes.push_back(cursor);
+        cursor = cursor->left.get();
+    }
+    if (cursor->kind != ExpressionKind::Identifier ||
+        findSymbolIndex(cursor->value) != symbols_.size() ||
+        countFields(*currentClass_, cursor->value) != 0) {
+        return;
+    }
+    prefixes.push_back(cursor);
+    for (auto prefix = prefixes.rbegin(); prefix != prefixes.rend(); ++prefix) {
+        std::string name;
+        if (!expressionNamePath(**prefix, name)) return;
+        std::string diagnostic;
+        const auto base = lookupClassName(name, currentNamespace_, diagnostic);
+        if (!base) continue;
+        if (std::find(currentClass_->baseClassNames.begin(),
+                      currentClass_->baseClassNames.end(), *base) ==
+            currentClass_->baseClassNames.end()) {
+            continue;
+        }
+        auto implicitThis = std::make_unique<Expression>();
+        implicitThis->kind = ExpressionKind::ImplicitThis;
+        implicitThis->location = (*prefix)->location;
+        (*prefix)->kind = ExpressionKind::Member;
+        (*prefix)->value = *base;
+        (*prefix)->left = std::move(implicitThis);
+        return;
+    }
+}
+
 bool SemanticAnalyzer::resolveBaseQualifier(Expression& receiver,
                                            Expression*& root,
                                            const ClassDeclaration*& view,
                                            std::vector<std::string>& path) {
+    addImplicitBaseReceiver(receiver);
     std::vector<std::string> reversed;
     Expression* cursor = &receiver;
     while (cursor->kind == ExpressionKind::Member) {
@@ -642,6 +678,9 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         return owner->name;
     }
     case ExpressionKind::Call: {
+        if (expression.left && expression.left->kind == ExpressionKind::Member) {
+            addImplicitBaseReceiver(*expression.left->left);
+        }
         std::string qualifiedName;
         if (expression.left &&
             expressionNamePath(*expression.left, qualifiedName) &&
