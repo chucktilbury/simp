@@ -1,7 +1,7 @@
 # Rejects calling a class destructor that is private to outside code.
 class Hidden {
     private:
-    void destroy() {
+    destroy {
     }
 }
 

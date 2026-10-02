@@ -4,7 +4,7 @@ class Resource {
     Resource(int initial) {
         value = initial
     }
-    void destroy() {
+    destroy {
     }
 }
 

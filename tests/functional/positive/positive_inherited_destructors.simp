@@ -1,14 +1,14 @@
 # Exercises inherited and overridden destruction across single, multiple, and diamond inheritance, including failures.
 class Primary {
   int primaryCode
-  void destroy() {
+  destroy {
     print(primaryCode)
   }
 }
 
 class Secondary {
   int secondaryCode
-  void destroy() {
+  destroy {
     print(secondaryCode)
   }
 }
@@ -20,7 +20,7 @@ class Single : Primary {
     primaryCode = code
     ownCode = code + 1
   }
-  void destroy() {
+  destroy {
     print(ownCode)
   }
 }
@@ -33,7 +33,7 @@ class Multiple : Primary, Secondary {
     secondaryCode = code + 1
     ownCode = code + 2
   }
-  void destroy() {
+  destroy {
     print(ownCode)
   }
 }
@@ -53,7 +53,7 @@ class Maker {
 }
 
 class ThrowingBase {
-  void destroy() {
+  destroy {
     print("base after derived error")
     raise(Exception("base destructor failure"))
   }
@@ -63,13 +63,13 @@ class ThrowingDerived : ThrowingBase {
   ThrowingDerived() {
     super ThrowingBase()
   }
-  void destroy() {
+  destroy {
     raise(Exception("derived destructor failure"))
   }
 }
 
 class Root {
-  void destroy() {
+  destroy {
     print("root subobject")
   }
 }
@@ -84,7 +84,7 @@ class Diamond : Left, Right {
   Diamond() {
     super Left()
   }
-  void destroy() {
+  destroy {
     print("diamond")
   }
 }

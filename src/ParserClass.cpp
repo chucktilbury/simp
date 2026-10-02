@@ -74,13 +74,20 @@ ClassDeclaration Parser::parseClass() {
         }
         if (check(TokenType::Identifier) && current().text == "destroy" &&
             current_ + 1 < tokens_.size() &&
-            tokens_[current_ + 1].type == TokenType::LeftParen) {
+            (tokens_[current_ + 1].type == TokenType::LeftBrace ||
+             tokens_[current_ + 1].type == TokenType::LeftParen)) {
             const auto destructorName = current();
+            if (tokens_[current_ + 1].type != TokenType::LeftBrace) {
+                error(destructorName, "destructors use 'destroy { ... }' syntax");
+            }
             ++current_;
-            auto destructor = parseMethod(destructorName, destructorName, false);
+            MethodDeclaration destructor;
+            destructor.name = destructorName.text;
             destructor.returnType = "void";
+            destructor.location = destructorName.location;
             destructor.destructor = true;
             destructor.access = memberAccess;
+            destructor.body = parseBlock();
             declaration.methods.push_back(std::move(destructor));
             continue;
         }
@@ -95,14 +102,10 @@ ClassDeclaration Parser::parseClass() {
         }
         const auto member = consume(TokenType::Identifier, "field or method name");
         if (check(TokenType::LeftParen)) {
-            if (member.text == "destroy" && typeName != "void") {
-                error(member, "destructor must be declared void");
+            if (member.text == "destroy") {
+                error(member, "destructors use 'destroy { ... }' syntax");
             }
             auto method = parseMethod(type, member, false, typeName);
-            if (member.text == "destroy") {
-                method.destructor = true;
-                method.returnType = "void";
-            }
             method.access = memberAccess;
             declaration.methods.push_back(std::move(method));
         } else {

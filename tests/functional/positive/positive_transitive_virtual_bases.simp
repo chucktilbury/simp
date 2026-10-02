@@ -16,7 +16,7 @@ class Common {
         print("Common+")
     }
 
-    void destroy() {
+    destroy {
         print("Common-")
     }
 }
@@ -38,7 +38,7 @@ class Ancestor : Common {
         return value
     }
 
-    void destroy() {
+    destroy {
         print("Ancestor-")
     }
 }
@@ -51,7 +51,7 @@ class Root : virtual Ancestor {
         print("Root+")
     }
 
-    void destroy() {
+    destroy {
         print("Root-")
     }
 }
@@ -61,7 +61,7 @@ class Left : virtual Root {
         print("Left+")
     }
 
-    void destroy() {
+    destroy {
         print("Left-")
     }
 }
@@ -71,7 +71,7 @@ class Right : virtual Root {
         print("Right+")
     }
 
-    void destroy() {
+    destroy {
         print("Right-")
     }
 }
@@ -89,7 +89,7 @@ class Diamond : Left, Right {
         return 77
     }
 
-    void destroy() {
+    destroy {
         print("Diamond-")
     }
 }
@@ -99,7 +99,7 @@ class FailedAncestor {
         raise(Exception("transitive initialization failed"))
     }
 
-    void destroy() {
+    destroy {
         print("wrong FailedAncestor destroy")
     }
 }
@@ -115,7 +115,7 @@ class FailedDiamond : FailedSide {
         super FailedSide()
     }
 
-    void destroy() {
+    destroy {
         print("wrong FailedDiamond destroy")
     }
 }

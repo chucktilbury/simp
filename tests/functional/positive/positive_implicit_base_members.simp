@@ -36,7 +36,7 @@ class Child: public FirstBase, private SecondBase {
         print(FirstBase.method(true))
         print(SecondBase.method(1))
     }
-    void destroy() {
+    destroy {
         print("in the Child destructor")
         print(FirstBase.foo)
         print(SecondBase.foo)

@@ -270,8 +270,9 @@ Classes contain fields and methods. Member access is `public` by default;
 `private:` and `protected:` switch the access level for following members;
 `public:` restores public access.
 Fields have no in-class initializer syntax. A constructor is named after its
-class and can be overloaded. `destroy()` is the destructor form. Methods can
-be defined in the class body or declared there and defined out of line. See
+class and can be overloaded. A destructor is written `destroy { ... }` inside
+the class; it has no return-type or parameter list. Methods can be defined in
+the class body or declared there and defined out of line. See
 `class-declaration`, `class-member`, `constructor-declaration`,
 `destructor-declaration`, `method-declaration`, and
 `out-of-line-definition`.
@@ -352,7 +353,8 @@ such as `public:` followed by separate field declarations, not inline
 `public int field` declarations.
 
 Explicit `object.destroy()` invokes the destructor but does not immediately
-reclaim the object's storage, and no compiler warning is emitted. The object
+reclaim the object's storage, and no compiler warning is emitted. The call
+still uses parentheses; only the in-class definition omits them. The object
 is marked destroyed before the destructor runs; a repeated destruction call
 or later use of the object raises a catchable runtime exception. Destructors
 cannot be defined out of line. See `super-initializer` and `postfix`.
@@ -626,10 +628,11 @@ that formatted expressions or method overloading are unsupported.
 
 Managed objects, strings, and collections are allocated on a runtime-managed
 heap. The collector traces live roots (including locals and collection
-references) and reclaims unreachable objects. A class `destroy()` method is
-used as a finalizer when the collector reclaims an instance; collection timing
-is not deterministic, so finalizers should not be used as a substitute for
-explicit resource management. Finalizers must not let exceptions escape.
+references) and reclaims unreachable objects. A class `destroy { ... }`
+definition is used as a finalizer when the collector reclaims an instance;
+collection timing is not deterministic, so finalizers should not be used as a
+substitute for explicit resource management. Finalizers must not let
+exceptions escape.
 Explicit `object.destroy()` runs the method but does not immediately reclaim
 the object's storage. It marks the object destroyed before running the
 destructor chain; a repeated call or later use raises a catchable runtime
@@ -645,7 +648,7 @@ library API. See `destructor-declaration` and `postfix`, and
 ```simp
 // Fragment: finalizer timing is controlled by garbage collection.
 class Resource {
-    void destroy() {
+    destroy {
         print("resource became unreachable")
     }
 }

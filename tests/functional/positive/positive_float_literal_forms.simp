@@ -3,7 +3,7 @@
 # exponent. A bare "0" with no dot/exponent remains an int literal.
 class App {
     App() {}
-    destroy() {}
+    destroy {}
     void run() {
         float leadingDot = .5
         float trailingDot = 5.

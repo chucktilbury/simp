@@ -22,7 +22,7 @@ class Root {
         return value
     }
 
-    void destroy() {
+    destroy {
         print(value)
     }
 }
@@ -32,7 +32,7 @@ class Left : Root {
         super Root(initial)
     }
 
-    void destroy() {
+    destroy {
         print("Left")
     }
 }
@@ -45,7 +45,7 @@ class Right : Root {
         payload = Payload(initial + 20)
     }
 
-    void destroy() {
+    destroy {
         print("Right")
         raise(Exception("secondary destructor failure"))
     }
@@ -65,7 +65,7 @@ class Diamond : Left, Right {
         return 77
     }
 
-    void destroy() {
+    destroy {
         print("Diamond")
     }
 }
@@ -87,7 +87,7 @@ class FailingSide {
         raise(Exception("secondary constructor failure"))
     }
 
-    void destroy() {
+    destroy {
         print("must not destroy failed object")
     }
 }
@@ -98,7 +98,7 @@ class Failing : Root, FailingSide {
         super FailingSide()
     }
 
-    void destroy() {
+    destroy {
         print("must not destroy failed object")
     }
 }

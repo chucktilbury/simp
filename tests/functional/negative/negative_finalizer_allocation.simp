@@ -1,6 +1,6 @@
 # Raises at runtime when a destructor attempts to allocate another object during finalization.
 class Resource {
-    void destroy() {
+    destroy {
         Resource nested = Resource()
     }
 }

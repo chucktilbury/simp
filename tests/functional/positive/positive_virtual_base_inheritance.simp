@@ -20,7 +20,7 @@ class Root {
         return value
     }
 
-    void destroy() {
+    destroy {
         print("Root-")
     }
 }
@@ -30,7 +30,7 @@ class Left : virtual Root {
         print("Left+")
     }
 
-    void destroy() {
+    destroy {
         print("Left-")
     }
 }
@@ -40,7 +40,7 @@ class Right : virtual Root {
         print("Right+")
     }
 
-    void destroy() {
+    destroy {
         print("Right-")
     }
 }
@@ -56,7 +56,7 @@ class Diamond : Left, Right {
         return 77
     }
 
-    void destroy() {
+    destroy {
         print("Diamond-")
     }
 }
@@ -66,7 +66,7 @@ class FailedRoot {
         raise(Exception("virtual initialization failed"))
     }
 
-    void destroy() {
+    destroy {
         print("wrong FailedRoot destroy")
     }
 }
@@ -82,7 +82,7 @@ class FailedDiamond : FailedSide {
         super FailedSide()
     }
 
-    void destroy() {
+    destroy {
         print("wrong derived destroy")
     }
 }

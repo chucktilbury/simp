@@ -22,7 +22,7 @@ const TestGroupRegistration registration{3, {
                  "class C: A, private B {\n"
                  " C() { super A()\n super B()\n A.x = 1\n B.x = 2\n A.x += 3\n"
                  "print(A.x)\n print(B.f(A.p)) }\n"
-                 " void destroy() { print(B.x) }\n"
+                 " destroy { print(B.x) }\n"
                  "}\nstart { C c = C()\n print(c.A.f(1)) }");
          }},
         {"implicit qualifiers preserve member and path accessibility", [] {
@@ -240,10 +240,16 @@ const TestGroupRegistration registration{3, {
                               "return type does not match method return type");
              expectDiagnostic("class C { C() { return 1 } }\nstart {}",
                               "void method cannot return a value");
-             expectDiagnostic("class C { void destroy() { return 1 } }\nstart {}",
+             expectDiagnostic("class C { destroy { return 1 } }\nstart {}",
                               "void method cannot return a value");
-             expectValid("class C { C() { return } void destroy() { return } }\n"
+             expectValid("class C { C() { return } destroy { return } }\n"
                          "start { C value = C() }");
+             expectDiagnostic("class C { void destroy() {} }\nstart {}",
+                              "destructors use 'destroy { ... }' syntax");
+             expectDiagnostic("class C { destroy(int value) {} }\nstart {}",
+                              "destructors use 'destroy { ... }' syntax");
+             expectDiagnostic("class C { int destroy() {} }\nstart {}",
+                              "destructors use 'destroy { ... }' syntax");
          }},
         {"external method validates and calls through ordinary method syntax", [] {
              expectValid(
