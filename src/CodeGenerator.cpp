@@ -905,6 +905,8 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         }
         return value;
     }
+    case ExpressionKind::ImplicitThis:
+        return {currentClass_->name, "%this"};
     case ExpressionKind::Member: {
         const Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;

@@ -14,6 +14,67 @@ namespace {
 using namespace simp_test;
 
 const TestGroupRegistration registration{3, {
+        {"bare method statement reports argument count instead of parser error", [] {
+             expectDiagnostic(
+                 "/*\n"
+                 "    Demonstrate the unknown class bug.\n"
+                 "    Produces error:\n"
+                 "    only_method_calls.simp:9:24: error: only method calls may be used as expression statements\n"
+                 "    should be valid code.\n"
+                 " */\n"
+                 "class TheTest {\n"
+                 "    void another_function() {\n"
+                 "        some_function()\n"
+                 "    }\n"
+                 "    int some_function(int n) {\n"
+                 "        return(n-1)\n"
+                 "    }\n"
+                 "}\n"
+                 "start {\n"
+                 "    TheTest tst = TheTest()\n"
+                 "}\n",
+                 "method 'some_function' argument count mismatch");
+         }},
+        {"bare recursive method call resolves in current class", [] {
+             expectValid(
+                 "/*\n"
+                 "    Demonstrate the unknown class bug.\n"
+                 "    Produces error:\n"
+                 "    unknown_class.simp:10:20: error: unknown class 'some_function'\n"
+                 " */\n"
+                 "class TheTest {\n"
+                 "    int some_function(int n) {\n"
+                 "        if(n != 0) {\n"
+                 "            return(some_function(n))\n"
+                 "        }\n"
+                 "        return(n-1)\n"
+                 "    }\n"
+                 "}\n"
+                 "start {\n"
+                 "    TheTest tst = TheTest()\n"
+                 "    int x = 5\n"
+                 "    while(x != 0) {\n"
+                 "        print(tst.some_function(x))\n"
+                 "    }\n"
+                 "}\n");
+         }},
+        {"bare method calls reject wrong types and unknown methods", [] {
+             expectDiagnostic(
+                 "class C { void caller() { f(\"bad\") } void f(int n) {} }\nstart {}",
+                 "method argument type does not match parameter 'n'");
+             expectDiagnostic(
+                 "class C { void caller() { missing() } }\nstart {}",
+                 "class 'C' has no method 'missing'");
+             expectDiagnostic(
+                 "class C { int caller() { return missing() } }\nstart {}",
+                 "class 'C' has no method 'missing'");
+             expectDiagnostic(
+                 "start { print(Missing()) }",
+                 "unknown class 'Missing'");
+             expectDiagnostic(
+                 "class C { void f() { C() } }\nstart {}",
+                 "only method calls may be used as expression statements");
+         }},
         {"out-of-line method body completes an in-class declaration", [] {
              expectValid(
                  "class Foo {\n  int compute(int x)\n}\n"

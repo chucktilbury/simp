@@ -60,6 +60,7 @@ const char* expressionName(ExpressionKind kind) {
     case ExpressionKind::String: return "String";
     case ExpressionKind::FormatString: return "FormatString";
     case ExpressionKind::Identifier: return "Identifier";
+    case ExpressionKind::ImplicitThis: return "ImplicitThis";
     case ExpressionKind::Unary: return "Unary";
     case ExpressionKind::Binary: return "Binary";
     case ExpressionKind::Member: return "Member";

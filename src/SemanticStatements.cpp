@@ -504,7 +504,16 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         return;
     }
     case StatementKind::Expression:
+        if (statement.expressions.front()->kind == ExpressionKind::ConstructorCall &&
+            currentClass_ == nullptr) {
+            throw DiagnosticError(statement.location,
+                                  "only method calls may be used as expression statements");
+        }
         (void)analyzeExpression(*statement.expressions.front());
+        if (statement.expressions.front()->kind != ExpressionKind::Call) {
+            throw DiagnosticError(statement.location,
+                                  "only method calls may be used as expression statements");
+        }
         return;
     case StatementKind::InlineC: {
         for (const auto& capture : statement.inlineCaptures) {

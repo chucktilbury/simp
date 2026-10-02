@@ -282,6 +282,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         throw DiagnosticError(expression.location,
                               "undefined variable '" + expression.value + "' or field");
     }
+    case ExpressionKind::ImplicitThis:
+        return currentClass_->name;
     case ExpressionKind::Member: {
         if (expectedType == "type") {
             std::string name;
@@ -500,6 +502,27 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         return "buffer";
     case ExpressionKind::ConstructorCall: {
+        if (currentClass_ != nullptr && countMethods(*currentClass_, expression.value) != 0) {
+            auto receiver = std::make_unique<Expression>();
+            receiver->kind = ExpressionKind::ImplicitThis;
+            receiver->location = expression.location;
+            auto member = std::make_unique<Expression>();
+            member->kind = ExpressionKind::Member;
+            member->location = expression.location;
+            member->value = expression.value;
+            member->left = std::move(receiver);
+            expression.kind = ExpressionKind::Call;
+            expression.value.clear();
+            expression.left = std::move(member);
+            return analyzeExpression(expression);
+        }
+        if (currentClass_ != nullptr &&
+            expression.value.find('.') == std::string::npos &&
+            !hasNamespaceOrClass(expression.value, currentNamespace_)) {
+            throw DiagnosticError(expression.location,
+                                  "class '" + currentClass_->name + "' has no method '" +
+                                      expression.value + "'");
+        }
         expression.value =
             resolveClassName(expression.value, currentNamespace_, expression.location);
         const auto* owner = findClass(expression.value, expression.location);

@@ -515,7 +515,8 @@ Statement Parser::parseIdentifierStatement() {
         consumeStatementTerminator();
         return statement;
     }
-    if (expression->kind != ExpressionKind::Call) {
+    if (expression->kind != ExpressionKind::Call &&
+        expression->kind != ExpressionKind::ConstructorCall) {
         error(current(), "only method calls may be used as expression statements");
     }
     Statement statement;
