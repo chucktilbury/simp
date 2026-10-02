@@ -78,6 +78,18 @@ bool containsSuperCall(const Statement& statement) {
     return false;
 }
 
+bool containsReturn(const std::vector<Statement>& statements) {
+    for (const auto& statement : statements) {
+        if (statement.kind == StatementKind::Return ||
+            containsReturn(statement.body) || containsReturn(statement.alternate) ||
+            containsReturn(statement.cleanup)) return true;
+        for (const auto& handler : statement.exceptionHandlers) {
+            if (containsReturn(handler.body)) return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 std::string SemanticAnalyzer::qualify(const std::vector<std::string>& path,
@@ -793,7 +805,32 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
         return;
     }
     std::size_t leadingCalls = 0;
+    Statement* protectedInitialization = nullptr;
     if (method.constructor) {
+        if (!method.body.empty() && method.body.front().kind == StatementKind::Try &&
+            containsSuperCall(method.body.front())) {
+            protectedInitialization = &method.body.front();
+            if (protectedInitialization->body.empty() ||
+                std::any_of(protectedInitialization->body.begin(),
+                            protectedInitialization->body.end(),
+                            [](const Statement& statement) {
+                                return statement.kind != StatementKind::SuperConstructorCall;
+                            })) {
+                throw DiagnosticError(protectedInitialization->location,
+                                      "protected base initialization must contain only "
+                                      "ordered super initializers");
+            }
+            for (const auto& handler : protectedInitialization->exceptionHandlers) {
+                if (containsReturn(handler.body) || canFallThrough(handler.body)) {
+                    throw DiagnosticError(handler.location,
+                                          "base initialization handler must raise or rethrow "
+                                          "on every path and cannot return");
+                }
+            }
+            protectedInitialization->protectedConstructorInitialization = true;
+        }
+        const auto& initializers = protectedInitialization == nullptr
+                                       ? method.body : protectedInitialization->body;
         const auto virtualBases = virtualBaseNames(owner);
         std::vector<const Statement*> virtualInitializers(virtualBases.size(), nullptr);
         std::vector<std::size_t> requiredBases;
@@ -803,7 +840,7 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
         std::size_t nextBase = 0;
         std::size_t nextVirtualBase = 0;
         bool directBaseInitializationStarted = false;
-        for (const auto& statement : method.body) {
+        for (const auto& statement : initializers) {
             if (statement.kind != StatementKind::SuperConstructorCall) break;
             if (statement.virtualBaseInitializer) {
                 if (directBaseInitializationStarted) {
@@ -904,14 +941,34 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
             }
         }
     }
+    if (protectedInitialization != nullptr) {
+        for (const auto& handler : protectedInitialization->exceptionHandlers) {
+            for (const auto& statement : handler.body) {
+                if (containsSuperCall(statement)) {
+                    throw DiagnosticError(statement.location,
+                                          "super initializers cannot appear in initialization "
+                                          "handlers");
+                }
+            }
+        }
+        for (const auto& statement : protectedInitialization->cleanup) {
+            if (containsSuperCall(statement)) {
+                throw DiagnosticError(statement.location,
+                                      "super initializers cannot appear in initialization "
+                                      "finally");
+            }
+        }
+    }
     for (std::size_t index = 0; index < method.body.size(); ++index) {
-        const bool directLeadingSuper = method.constructor && index < leadingCalls &&
+        const bool directLeadingSuper = protectedInitialization == nullptr &&
+                                        method.constructor && index < leadingCalls &&
                                         method.body[index].kind ==
                                             StatementKind::SuperConstructorCall;
-        if (containsSuperCall(method.body[index]) && !directLeadingSuper) {
+        if (containsSuperCall(method.body[index]) && !directLeadingSuper &&
+            !(protectedInitialization != nullptr && index == 0)) {
             throw DiagnosticError(method.body[index].location,
                                   "super initializers must be direct leading constructor "
-                                  "statements");
+                                  "statements or the ordered body of a leading initialization try");
         }
     }
     currentClass_ = &owner;

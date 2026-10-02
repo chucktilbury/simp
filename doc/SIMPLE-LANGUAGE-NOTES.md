@@ -384,9 +384,27 @@ exactly one such initializer when that class is constructed as a complete
 object. Omitting an initializer is allowed for a virtual base with a
 zero-argument constructor, which is then invoked automatically. Duplicate
 initializers, an unknown/non-virtual base, an incorrect argument count or type,
-or an initializer outside the direct leading constructor-initializer sequence
+or an initializer outside the leading constructor-initializer sequence
 is rejected. The initializer expression is checked in the declaring
 constructor's parameter/field scope.
+
+The sequence may be direct leading statements (unchanged), or the entire body
+of one leading `try`. A protected body contains only ordered initializers;
+ordinary derived initialization follows the try. Automatic virtual-base
+initialization is lowered inside its exception frame, before direct bases.
+Typed and catch-all handlers use existing exception lowering and must complete
+exceptionally on every path: logging/cleanup followed by bare rethrow or a
+replacement raise is allowed, as are nested blocks/branches/tries that
+provably raise. Falling through, any nested/unreachable return, and relying
+only on a loop to terminate are rejected. `finally` runs normally on success,
+unmatched exceptions, rethrows, and replacement raises. Initializers cannot
+appear in handlers/cleanup or be split between direct and protected forms.
+Virtual-base ordering and most-derived initializer ownership are unchanged.
+This restriction prevents a caught base failure from completing construction:
+the existing runtime construction stack remains active during local handling
+and marks the complete allocation failed when the exception escapes. Unwinding
+restores exception/trace/GC-root frames; no partial-object destructor chain
+runs, and bare rethrow preserves exception identity and source/trace data.
 
 Construction carries a hidden complete-object flag through constructor calls.
 The complete object's virtual-base constructors run once before direct

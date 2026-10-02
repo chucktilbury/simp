@@ -36,6 +36,9 @@ void CodeGenerator::emitTry(const Statement& statement) {
     activeTryTransfers_.push_back(
         {frame, statement.hasCleanup ? &statement.cleanup : nullptr, true, {}, {}});
     blockTerminated_ = false;
+    if (statement.protectedConstructorInitialization) {
+        emitVirtualBaseInitializers(*currentClass_, statement.body);
+    }
     emitStatements(statement.body);
     const bool bodyTerminated = blockTerminated_;
     activeTryTransfers_.pop_back();

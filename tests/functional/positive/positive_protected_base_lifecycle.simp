@@ -1,0 +1,134 @@
+class Failure : Exception {
+    Failure(strg text) { super Exception(text) }
+}
+class Other : Exception {
+    Other(strg text) { super Exception(text) }
+}
+class Record {
+    Exception original
+    Record() { original = null }
+    int same(Exception left, Exception right)
+}
+int Record.same(Exception left, Exception right) from "simp_method_demo_exception_identity"
+
+class First {
+    First() { print("first initialized") }
+    destroy { print("INVALID first destructor") }
+}
+class Fails {
+    Fails() { raise(Failure("base failure")) }
+    destroy { print("INVALID failed base destructor") }
+}
+class Last {
+    Last() { print("INVALID last initialized") }
+    destroy { print("INVALID last destructor") }
+}
+class Rethrows : First, Fails, Last {
+    Rethrows(Record record, bool replace) {
+        try {
+            super First()
+            super Fails()
+            super Last()
+        } except(Other) {
+            raise()
+        } except(Failure) as caught {
+            record.original = caught
+            print(caught.message)
+            inline { simp_gc_collect(); }
+            if (replace) {
+                raise(Other("replacement"))
+            } else {
+                try { raise() }
+                except(Failure) { raise() }
+                finally { print("nested cleanup") }
+            }
+        } finally {
+            print("initializer cleanup")
+        }
+        print("INVALID derived continuation")
+    }
+    destroy { print("INVALID derived destructor") }
+}
+class Unmatched : Fails {
+    Unmatched() {
+        try { super Fails() }
+        except(Other) { raise() }
+        finally { print("unmatched cleanup") }
+    }
+}
+class CleanupOnly : Fails {
+    CleanupOnly() {
+        try { super Fails() }
+        finally { print("cleanup without handler") }
+    }
+}
+class Good {
+    Good(int value) { print(value) }
+}
+class Direct : Good {
+    Direct() {
+        super Good(10)
+        print("direct constructed")
+    }
+}
+class Guarded : Good {
+    Guarded() {
+        try { super Good(20) }
+        except() { raise(Exception("unexpected failure")) }
+        finally { print("success cleanup") }
+        print("protected constructed")
+    }
+}
+class More {
+    More() { print("second initialized") }
+}
+class MultiGood : Good, More {
+    MultiGood() {
+        try { super Good(30)
+              super More() }
+        except() { raise() }
+        print("multiple constructed")
+    }
+}
+class Argument {
+    int fail() { raise(Failure("argument failure")) }
+}
+class ArgumentFailure : Good {
+    ArgumentFailure(Argument argument) {
+        try { super Good(argument.fail()) }
+        except(Failure) { print("argument caught")
+                          raise() }
+    }
+}
+class Driver {
+    void run() {
+        Record record()
+        try { Rethrows item(record, false) }
+        except(Failure) as caught {
+            print(record.same(record.original, caught))
+            print(caught.message)
+        } finally { print("outer cleanup") }
+        try { Rethrows item(record, true) }
+        except(Other) as caught {
+            print(caught.message)
+            print(record.same(record.original, caught))
+        }
+        try { Unmatched item() }
+        except() as message { print(message) }
+        try { CleanupOnly item() }
+        except() as message { print(message) }
+        Direct direct()
+        Guarded guarded()
+        MultiGood multiple()
+        Argument argument()
+        try { ArgumentFailure failed(argument) }
+        except() as message { print(message) }
+    }
+}
+start {
+    Driver driver()
+    driver.run()
+    inline { simp_gc_collect(); }
+    try { raise(Exception("frames still work")) }
+    except() as message { print(message) }
+}

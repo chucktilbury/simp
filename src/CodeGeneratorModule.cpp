@@ -213,6 +213,51 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     }
 }
 
+void CodeGenerator::emitVirtualBaseInitializers(
+    const ClassDeclaration& owner, const std::vector<Statement>& initializers) {
+    const auto virtualBases = virtualBaseNames(owner);
+    if (virtualBases.empty()) return;
+    const auto initializeLabel = freshLabel("virtual.initialize");
+    const auto endLabel = freshLabel("virtual.initialize.end");
+    instructions_ += "  br i1 %simp.initialize.virtual.bases, label %" +
+                     initializeLabel + ", label %" + endLabel + "\n" +
+                     initializeLabel + ":\n";
+    for (const auto& baseName : virtualBases) {
+        const auto* base = classes_.at(baseName);
+        const Statement* initializer = nullptr;
+        for (const auto& candidate : initializers) {
+            if (candidate.kind == StatementKind::SuperConstructorCall &&
+                candidate.virtualBaseInitializer && candidate.name == baseName) {
+                initializer = &candidate;
+                break;
+            }
+        }
+        const auto* constructor = findConstructor(
+            *base, initializer == nullptr ? std::string{} : initializer->resolvedSignature);
+        if (constructor == nullptr) continue;
+        const auto basePointer = newTemporary();
+        instructions_ += "  " + basePointer +
+                         " = getelementptr inbounds %Class." + owner.name +
+                         ", ptr %this, i32 0, i32 " +
+                         std::to_string(virtualBaseStorageIndex(owner, baseName)) + "\n";
+        std::string arguments = "ptr " + basePointer + ", i1 false";
+        if (initializer != nullptr) {
+            for (std::size_t index = 0; index < initializer->expressions.size(); ++index) {
+                const auto value = emitExpression(
+                    *initializer->expressions[index], constructor->parameters[index].type);
+                const auto converted = convertObjectValue(
+                    value, constructor->parameters[index].type,
+                    initializer->expressions[index]->location);
+                arguments += ", " + llvmType(constructor->parameters[index].type) +
+                             " " + converted.operand;
+            }
+        }
+        instructions_ += "  call void " + methodSymbol(baseName, *constructor) +
+                         "(" + arguments + ")\n";
+    }
+    instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
+}
+
 void CodeGenerator::emitMethod(const ClassDeclaration& owner,
                                const MethodDeclaration& declaration,
                                const std::string& symbolOverride) {
@@ -290,53 +335,9 @@ void CodeGenerator::emitMethod(const ClassDeclaration& owner,
                                                parameter.location, argumentIndex++);
     }
     const auto returnType = llvmType(method.returnType);
-    if (method.constructor) {
-        const auto virtualBases = virtualBaseNames(owner);
-        if (!virtualBases.empty()) {
-            const auto initializeLabel = freshLabel("virtual.initialize");
-            const auto endLabel = freshLabel("virtual.initialize.end");
-            instructions_ += "  br i1 %simp.initialize.virtual.bases, label %" +
-                             initializeLabel + ", label %" + endLabel + "\n" +
-                             initializeLabel + ":\n";
-            for (const auto& baseName : virtualBases) {
-                const auto* base = classes_.at(baseName);
-                const Statement* initializer = nullptr;
-                for (const auto& candidate : method.body) {
-                    if (candidate.kind == StatementKind::SuperConstructorCall &&
-                        candidate.virtualBaseInitializer && candidate.name == baseName) {
-                        initializer = &candidate;
-                        break;
-                    }
-                }
-                const auto* constructor = findConstructor(
-                    *base, initializer == nullptr ? std::string{} :
-                                                    initializer->resolvedSignature);
-                if (constructor == nullptr) continue;
-                const auto basePointer = newTemporary();
-                instructions_ += "  " + basePointer +
-                                 " = getelementptr inbounds %Class." + owner.name +
-                                 ", ptr %this, i32 0, i32 " +
-                                 std::to_string(virtualBaseStorageIndex(owner, baseName)) +
-                                 "\n";
-                std::string arguments = "ptr " + basePointer + ", i1 false";
-                if (initializer != nullptr) {
-                    for (std::size_t index = 0;
-                         index < initializer->expressions.size(); ++index) {
-                        const auto value = emitExpression(
-                            *initializer->expressions[index],
-                            constructor->parameters[index].type);
-                        const auto converted = convertObjectValue(
-                            value, constructor->parameters[index].type,
-                            initializer->expressions[index]->location);
-                        arguments += ", " + llvmType(constructor->parameters[index].type) +
-                                     " " + converted.operand;
-                    }
-                }
-                instructions_ += "  call void " + methodSymbol(baseName, *constructor) +
-                                 "(" + arguments + ")\n";
-            }
-            instructions_ += "  br label %" + endLabel + "\n" + endLabel + ":\n";
-        }
+    if (method.constructor &&
+        (method.body.empty() || !method.body.front().protectedConstructorInitialization)) {
+        emitVirtualBaseInitializers(owner, method.body);
     }
     if (method.externalBinding) {
         std::string arguments = "ptr %this";

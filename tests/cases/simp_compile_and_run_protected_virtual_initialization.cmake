@@ -1,0 +1,3 @@
+set(CASE_NAME simp_compile_and_run_protected_virtual_initialization)
+set(CASE_FIXTURE positive_protected_virtual_initialization.simp)
+set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_compile_and_run_protected_virtual_initialization.stdout")

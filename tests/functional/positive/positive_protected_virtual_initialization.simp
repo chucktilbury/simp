@@ -1,0 +1,60 @@
+class Ancestor {
+    Ancestor() { print("ancestor") }
+    destroy { print("ancestor destroyed") }
+}
+class Root : virtual Ancestor {
+    int value
+    Root(int initial) {
+        print("root")
+        if (initial < 0) { raise(Exception("virtual failure")) }
+        value = initial
+    }
+    destroy { print("root destroyed") }
+}
+class Left : virtual Root {
+    Left() { print("left") }
+}
+class Right : virtual Root {
+    Right() { print("right") }
+}
+class Diamond : Left, Right {
+    Diamond(int initial)
+}
+Diamond Diamond.Diamond(int initial) {
+    try {
+        super virtual Root(initial)
+        super Left()
+        super Right()
+    } except() as message {
+        print(message)
+        raise()
+    } finally { print("virtual cleanup") }
+    print("diamond")
+}
+class DefaultRoot {
+    DefaultRoot() { raise(Exception("automatic virtual failure")) }
+    destroy { print("INVALID default root destructor") }
+}
+class DefaultLeft : virtual DefaultRoot {
+    DefaultLeft() { print("INVALID default left continuation") }
+}
+class DefaultDiamond : DefaultLeft {
+    DefaultDiamond() {
+        try { super DefaultLeft() }
+        except() {
+            print("automatic virtual caught")
+            raise()
+        }
+    }
+}
+start {
+    try { Diamond failed(-1) }
+    except() as message { print(message) }
+    try { DefaultDiamond failed() }
+    except() as message { print(message) }
+    Diamond good(42)
+    print(good.Left.Root.value)
+    print(good.Right.Root.value)
+    good.destroy()
+    inline { simp_gc_collect(); }
+}

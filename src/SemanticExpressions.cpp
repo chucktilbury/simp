@@ -661,8 +661,15 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 selectOverload(baseConstructors, noArguments, noArgumentTypes,
                                ambiguous) != nullptr;
             if (hasDefault) continue;
+            const auto definition = methodDefinitions_.find(
+                owner->name + "." + methodSignatureKey(*constructor));
+            const auto& body = definition == methodDefinitions_.end()
+                                   ? constructor->body : definition->second->method.body;
+            const bool protectedSequence =
+                !body.empty() && body.front().kind == StatementKind::Try;
+            const auto& initializers = protectedSequence ? body.front().body : body;
             const bool initialized = std::any_of(
-                constructor->body.begin(), constructor->body.end(),
+                initializers.begin(), initializers.end(),
                 [&baseName](const Statement& statement) {
                     return statement.kind == StatementKind::SuperConstructorCall &&
                            statement.virtualBaseInitializer && statement.name == baseName;

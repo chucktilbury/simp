@@ -415,6 +415,14 @@ No positive-fixture syntax or parser routine was left unmapped. The
 - A base initializer is spelled `super Base(args)`. A virtual-base initializer
   accepts either `super virtual Base(args)` or `virtual super Base(args)`;
   dotted forms are not part of the grammar.
+  A constructor's leading initializer sequence may be enclosed in one ordinary
+  `try-statement`. Its body must contain only ordered `super-initializer`
+  statements, with no branches, loops, nested blocks, or ordinary statements.
+  Required direct initializers must all be inside that sequence. Handlers must
+  raise/rethrow on every path and contain no return; optional `finally` follows
+  ordinary cleanup rules. No initializer is allowed in a handler or `finally`,
+  after this leading try, or in a mixed direct/protected sequence. These are
+  semantic constraints, not new parser productions.
 - The parser allows some forms that later fail semantic analysis: for example
   `return` in `start` or within `finally` (including nested blocks),
   `break` outside a loop, invalid lvalues, inaccessible

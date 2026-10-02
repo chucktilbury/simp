@@ -292,6 +292,44 @@ override an inherited method with a compatible signature. Calls use the
 runtime object's method dispatch; there is no separate `virtual` method
 modifier.
 
+A constructor may instead begin with a single `try` whose body consists only
+of its base initializers. Required direct bases must still be initialized
+exactly once in declared order; explicit virtual initializers precede them
+in virtual-base construction order and retain most-derived-only ownership.
+Automatic default virtual-base initialization also runs inside this `try`.
+Every `except` handler must raise or rethrow on every path (nested blocks,
+`if`/`else`, and `try` are supported); any `return`, including a nested or
+unreachable return, is rejected. A loop alone is not proof of exceptional
+termination. Optional `finally` uses the normal exception cleanup rules.
+Handlers cannot recover a failed initialization: the constructor cannot
+continue or return a successfully constructed partial object. No destructor
+or finalizer runs for the failed allocation. `raise()` retains the original
+exception object, raise location, and stack trace; a replacement `raise`
+creates a new exception. Initializers in handlers, cleanup, branches, loops,
+later statements, or mixed direct/protected sequences are rejected.
+
+```simp
+class Foo {
+    Foo() { raise(Exception("this is the string")) }
+}
+class Bar : Foo {
+    Bar() {
+        try { super Foo() }
+        except() {
+            print("caught the first time")
+            raise()
+        }
+    }
+}
+start {
+    try { Bar b() }
+    except() as e {
+        print(e)
+        print("caught the second time")
+    }
+}
+```
+
 ```simp
 // Complete program: inheritance, construction, override, and dispatch.
 class Meter {
