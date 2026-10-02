@@ -7,6 +7,7 @@
 
 #include "simp/Diagnostic.hpp"
 
+#include <algorithm>
 #include <ostream>
 #include <utility>
 
@@ -95,22 +96,136 @@ const Token& Parser::consume(TokenType type, const char* expectation) {
     throw DiagnosticError(token.location, message);
 }
 
-void Parser::validateFormatString(const Expression& format, std::size_t argumentCount,
-                                  const Token& location) const {
-    std::size_t placeholders = 0;
-    for (std::size_t index = 0; index < format.value.size(); ++index) {
-        if (format.value[index] == '{') {
-            if (index + 1 >= format.value.size() || format.value[index + 1] != '}') {
-                error(location, "only '{}' placeholders are supported in formatted strings");
+void Parser::validateFormatString(Expression& format) const {
+    const auto isIdentifierStart = [](char character) {
+        return (character >= 'a' && character <= 'z') ||
+               (character >= 'A' && character <= 'Z') || character == '_';
+    };
+    const auto isIdentifierPart = [&isIdentifierStart](char character) {
+        return isIdentifierStart(character) || (character >= '0' && character <= '9');
+    };
+
+    std::vector<std::string> placeholderNames;
+    std::string segment;
+    bool hasPositionalPlaceholder = false;
+    bool hasNamedPlaceholder = false;
+    for (std::size_t index = 0; index < format.value.size();) {
+        const char character = format.value[index];
+        if (character == '{') {
+            if (index + 1 < format.value.size() && format.value[index + 1] == '{') {
+                segment += '{';
+                index += 2;
+                continue;
             }
-            ++placeholders;
-            ++index;
-        } else if (format.value[index] == '}') {
-            error(location, "unmatched '}' in formatted string");
+            format.formatSegments.push_back(segment);
+            segment.clear();
+            if (index + 1 < format.value.size() && format.value[index + 1] == '}') {
+                placeholderNames.emplace_back();
+                hasPositionalPlaceholder = true;
+                index += 2;
+                continue;
+            }
+
+            std::size_t end = index + 1;
+            while (end < format.value.size() && format.value[end] != '}') {
+                ++end;
+            }
+            if (end == format.value.size()) {
+                throw DiagnosticError(format.location, "unmatched '{' in formatted string");
+            }
+            if (end == index + 1 ||
+                !isIdentifierStart(format.value[index + 1]) ||
+                !std::all_of(format.value.begin() + static_cast<std::ptrdiff_t>(index + 2),
+                             format.value.begin() + static_cast<std::ptrdiff_t>(end),
+                             isIdentifierPart)) {
+                throw DiagnosticError(format.location,
+                                      "malformed placeholder name in formatted string");
+            }
+            placeholderNames.push_back(format.value.substr(index + 1, end - index - 1));
+            hasNamedPlaceholder = true;
+            index = end + 1;
+            continue;
         }
+        if (character == '}') {
+            if (index + 1 < format.value.size() && format.value[index + 1] == '}') {
+                segment += '}';
+                index += 2;
+                continue;
+            }
+            throw DiagnosticError(format.location, "unmatched '}' in formatted string");
+        }
+        segment += character;
+        ++index;
     }
-    if (placeholders != argumentCount) {
-        error(location, "double-quoted format must have one '{}' placeholder per argument");
+    format.formatSegments.push_back(segment);
+
+    if (hasPositionalPlaceholder && hasNamedPlaceholder) {
+        throw DiagnosticError(format.location,
+                              "named and positional placeholders cannot be mixed");
+    }
+    if (format.argumentNames.size() != format.arguments.size() ||
+        format.argumentNameLocations.size() != format.arguments.size()) {
+        throw DiagnosticError(format.location, "invalid format argument metadata");
+    }
+
+    const bool hasNamedArgument = std::any_of(
+        format.argumentNames.begin(), format.argumentNames.end(),
+        [](const std::string& name) { return !name.empty(); });
+    const bool hasPositionalArgument = std::any_of(
+        format.argumentNames.begin(), format.argumentNames.end(),
+        [](const std::string& name) { return name.empty(); });
+    if (hasNamedArgument && hasPositionalArgument) {
+        throw DiagnosticError(format.location,
+                              "named and positional format arguments cannot be mixed");
+    }
+
+    if (hasNamedPlaceholder) {
+        if (hasPositionalArgument) {
+            throw DiagnosticError(format.location,
+                                  "named and positional format arguments cannot be mixed");
+        }
+        for (std::size_t argumentIndex = 0;
+             argumentIndex < format.argumentNames.size(); ++argumentIndex) {
+            const auto& name = format.argumentNames[argumentIndex];
+            if (std::find(placeholderNames.begin(), placeholderNames.end(), name) ==
+                placeholderNames.end()) {
+                throw DiagnosticError(format.argumentNameLocations[argumentIndex],
+                                      "unused named format argument '" + name + "'");
+            }
+        }
+        for (const auto& name : placeholderNames) {
+            const auto argument = std::find(format.argumentNames.begin(),
+                                            format.argumentNames.end(), name);
+            if (argument == format.argumentNames.end()) {
+                throw DiagnosticError(format.location,
+                                      "missing named format argument '" + name + "'");
+            }
+            format.formatArgumentIndices.push_back(static_cast<std::size_t>(
+                std::distance(format.argumentNames.begin(), argument)));
+        }
+        return;
+    }
+
+    if (hasNamedArgument) {
+        const auto named = std::find_if(
+            format.argumentNames.begin(), format.argumentNames.end(),
+            [](const std::string& name) { return !name.empty(); });
+        const auto argumentIndex = static_cast<std::size_t>(
+            std::distance(format.argumentNames.begin(), named));
+        if (placeholderNames.empty()) {
+            throw DiagnosticError(format.argumentNameLocations[argumentIndex],
+                                  "unused named format argument '" +
+                                      format.argumentNames[argumentIndex] + "'");
+        }
+        throw DiagnosticError(format.argumentNameLocations[argumentIndex],
+                              "named and positional format arguments cannot be mixed");
+    }
+    if (placeholderNames.size() != format.arguments.size()) {
+        throw DiagnosticError(format.location,
+                              "formatted string must have one '{}' placeholder per argument");
+    }
+    for (std::size_t index = 0; index < placeholderNames.size(); ++index) {
+        format.formatArgumentIndices.push_back(index);
     }
 }
 
@@ -1012,11 +1127,42 @@ std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> exp
             expression->kind = ExpressionKind::FormatString;
             if (!check(TokenType::RightParen)) {
                 do {
+                    if (check(TokenType::Identifier) && current_ + 1 < tokens_.size() &&
+                        tokens_[current_ + 1].type == TokenType::Equal) {
+                        const auto name = consume(TokenType::Identifier,
+                                                  "named format argument");
+                        if (std::find(expression->argumentNames.begin(),
+                                      expression->argumentNames.end(), name.text) !=
+                            expression->argumentNames.end()) {
+                            error(name, "duplicate named format argument '" + name.text + "'");
+                        }
+                        if (std::any_of(expression->argumentNames.begin(),
+                                        expression->argumentNames.end(),
+                                        [](const std::string& value) {
+                                            return value.empty();
+                                        })) {
+                            error(name, "named and positional format arguments cannot be mixed");
+                        }
+                        consume(TokenType::Equal, "'=' after named format argument");
+                        expression->argumentNames.push_back(name.text);
+                        expression->argumentNameLocations.push_back(name.location);
+                    } else {
+                        if (std::any_of(expression->argumentNames.begin(),
+                                        expression->argumentNames.end(),
+                                        [](const std::string& value) {
+                                            return !value.empty();
+                                        })) {
+                            error(current(),
+                                  "named and positional format arguments cannot be mixed");
+                        }
+                        expression->argumentNames.emplace_back();
+                        expression->argumentNameLocations.emplace_back();
+                    }
                     expression->arguments.push_back(parseExpression());
                 } while (match(TokenType::Comma));
             }
             consume(TokenType::RightParen, "')' after format arguments");
-            validateFormatString(*expression, expression->arguments.size(), tokens_[current_ - 1]);
+            validateFormatString(*expression);
             continue;
         }
         if (check(TokenType::LeftParen) &&

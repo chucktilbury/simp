@@ -45,8 +45,49 @@ const TestGroupRegistration registration{2, {
                               "one '{}' placeholder per argument");
          }},
         {"formatted print malformed brace", [] {
-             expectDiagnostic("start {\n print(\"value: {x}\"(1))\n}",
-                              "only '{}' placeholders are supported");
+             expectDiagnostic("start {\n print(\"value: {x-y}\"(x=1))\n}",
+                              "malformed placeholder name");
+         }},
+        {"formatted string unmatched braces", [] {
+             expectDiagnostic("start {\n print(\"value: {name\"(name=1))\n}",
+                              "unmatched '{'");
+             expectDiagnostic("start {\n print(\"value: name}\"(name=1))\n}",
+                              "unmatched '}'");
+         }},
+        {"formatted string rejects mixed placeholder and argument forms", [] {
+             expectDiagnostic("start {\n print(\"{} {name}\"(name=1))\n}",
+                              "named and positional placeholders cannot be mixed");
+             expectDiagnostic("start {\n print(\"{name}\"(1))\n}",
+                              "named and positional format arguments cannot be mixed");
+             expectDiagnostic("start {\n print(\"{}\"(name=1))\n}",
+                              "named and positional format arguments cannot be mixed");
+             expectDiagnostic("start {\n print(\"{name}\"(name=1, 2))\n}",
+                              "named and positional format arguments cannot be mixed");
+         }},
+        {"formatted string named argument validation", [] {
+             expectDiagnostic("start {\n print(\"{name}\"())\n}",
+                              "missing named format argument 'name'");
+             expectDiagnostic("start {\n print(\"{name}\"(name=1, name=2))\n}",
+                              "duplicate named format argument 'name'");
+             expectDiagnostic("start {\n print(\"{name}\"(other=1))\n}",
+                              "unused named format argument 'other'");
+             expectDiagnostic("start {\n print(\"plain\"(other=1))\n}",
+                              "unused named format argument 'other'");
+         }},
+        {"named formatting preserves non-printable value rejection", [] {
+             expectDiagnostic("start {\n buffer bytes = buffer(1)\n"
+                              " print(\"{value}\"(value=bytes))\n}",
+                              "formatted string argument is not printable");
+         }},
+        {"formatted string placeholder diagnostics include source location", [] {
+             try {
+                 (void)parse("start {\n print(\"{bad-name}\"(bad=1))\n}", "format.simp");
+             } catch (const simp::DiagnosticError& error) {
+                 require(std::string(error.what()).find("format.simp:2:8: error:") == 0,
+                         "malformed format placeholder diagnostic did not identify its source");
+                 return;
+             }
+             throw std::runtime_error("malformed format placeholder was accepted");
          }},
         {"single-quoted string format arguments", [] {
              expectDiagnostic("start {\n print('value: {}'(1))\n}",

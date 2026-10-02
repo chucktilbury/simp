@@ -615,10 +615,12 @@ statements.
 ### Strings
 
 - Single-quoted strings are absolute literals. They have no escapes or formatting; supplying formatting arguments is a syntax error.
-- Double-quoted strings support escapes and a format-expression list, for example:
+- Double-quoted strings support escapes and positional or named format
+  arguments, for example:
 
   ```simple
   "value: {}"(x)
+  "{name}"(name=x)
   ```
 
 - The double-quoted `\e` escape produces the ESC byte (`0x1b`). Other supported
@@ -657,11 +659,12 @@ statements.
   are unchanged. Operations use explicit byte lengths, so embedded NUL bytes
   remain ordinary String content. String indexing/slicing syntax and
   buffer-to-String conversion remain deferred.
-- Formatting `"{} {}"(left, right)` is an expression usable in declarations,
-  calls, returns, arrays, and maps; arguments are evaluated once in source
-  order. Only literal `{}` placeholders are supported; arity is checked at
-  compile time. Scalars, strings, type values and dynamic values format;
-  other class objects show `<object>`. `print` adds a newline.
+- Formatting `"{} {}"(left, right)` and `"{first} {second}"(second=b, first=a)`
+  are expressions usable in declarations, calls, returns, arrays, and maps.
+  Arguments are evaluated once in source order. Positional arity and named
+  argument matching are checked at compile time. Scalars, strings, type values
+  and dynamic values format; other class objects show `<object>`. `{{` and
+  `}}` escape literal braces, and `print` adds a newline.
 - Literal and formatted fragments are UTF-8 validated; runtime append
   validates supplied bytes and preserves valid UTF-8. No public byte
   raw-byte mutation or buffer-to-String conversion exists in this prototype.

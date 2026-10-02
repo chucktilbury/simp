@@ -311,13 +311,8 @@ support for the generated executable, not an IDE integration.
 - `print(expr)` prints a scalar, string, type, or internal collection value
   followed by a newline; collection values are rendered by runtime tag (see
   below).
-- Basic formatting uses a double-quoted literal followed by an expression list:
-  `strg result = "value: {}"(value)`. The result is a reusable `String`
-  expression, including in returns, arguments, arrays, maps, and `print`.
-  Each `{}` substitutes one supported scalar, `String`, type, or internal
-  dynamic value; class references without string conversion show `<object>`.
-  Arguments are evaluated once in source order. Unmatched braces and
-  argument-count mismatches are compile-time errors.
+- Formatted-string syntax and supported values are documented in
+  [the language reference](doc/LANGUAGE-REFERENCE.md).
 - Single-quoted strings are raw literals: they have no escapes and cannot be
   used with formatting arguments. Double-quoted strings support `\e` (byte
   `0x1b`, ESC), `\\`, `\"`, `\n`, `\r`, and `\t`; their source bytes must be

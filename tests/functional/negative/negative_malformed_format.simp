@@ -1,5 +1,4 @@
-# Rejects a formatted string containing a named placeholder instead of supported empty braces.
+# Rejects a formatted string containing a malformed placeholder name.
 start {
-    int value = 1
-    print("value: {x}"(value))
+    print("value: {x-y}"(x=1))
 }

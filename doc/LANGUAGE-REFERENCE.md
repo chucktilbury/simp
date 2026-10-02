@@ -200,12 +200,18 @@ on operand types; unsupported combinations are rejected during semantic
 analysis. Assignment is not an expression. There are no bitwise, increment,
 or ternary operators.
 
-Double-quoted text can be formatted by calling the literal:
-`"value: {}"(value)`. Only `{}` placeholders are accepted, and their number
-must equal the number of arguments. Formatting is not automatic interpolation.
-`print` takes at most one expression; it prints simple scalar/string/type
-values, or a double-quoted format call. See `format-suffix` and
-`print-statement`.
+Double-quoted text can be formatted by calling the literal with positional
+arguments, such as `"value: {}"(value)`, or with named arguments, such as
+`"user {name} has {count} messages"(count=total, name=user)`. Named arguments
+bind case-sensitively to placeholder names regardless of argument order.
+Each distinct placeholder needs exactly one named argument; a name may be
+referenced repeatedly, and its argument expression is evaluated once.
+Positional `{}` and named `{name}` forms cannot be mixed in one format call.
+Use `{{` and `}}` for literal braces. Formatting is not automatic
+interpolation. Arguments support the same printable scalar, string, type, and
+dynamic values as positional formatting. `print` takes at most one
+expression; it prints simple scalar/string/type values, or a double-quoted
+format call. See `format-suffix` and `print-statement`.
 
 ```simp
 // Complete program: arithmetic, logical operators, and formatting.

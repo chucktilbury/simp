@@ -7,6 +7,7 @@
 
 #include "simp/SourceLocation.hpp"
 
+#include <cstddef>
 #include <iosfwd>
 #include <memory>
 #include <string>
@@ -36,6 +37,10 @@ struct Expression {
     std::unique_ptr<Expression> left;
     std::unique_ptr<Expression> right;
     std::vector<std::unique_ptr<Expression>> arguments;
+    std::vector<std::string> argumentNames;
+    std::vector<SourceLocation> argumentNameLocations;
+    std::vector<std::string> formatSegments;
+    std::vector<std::size_t> formatArgumentIndices;
 };
 
 enum class StatementKind {

@@ -282,24 +282,9 @@ CodeGenerator::Value CodeGenerator::emitStringLiteral(const std::string& bytes,
 }
 
 CodeGenerator::Value CodeGenerator::emitFormatString(const Expression& expression) {
-    // '{}' placeholders split the format text into literal segments; the
-    // destination String is built first (so it is rooted before any argument
-    // allocates), then literal segments and formatted arguments are appended in
-    // source order, evaluating every argument exactly once.
-    std::vector<std::string> segments;
-    std::string segment;
-    for (std::size_t index = 0; index < expression.value.size(); ++index) {
-        if (expression.value[index] == '{' && index + 1 < expression.value.size() &&
-            expression.value[index + 1] == '}') {
-            segments.push_back(segment);
-            segment.clear();
-            ++index;
-            continue;
-        }
-        segment += expression.value[index];
-    }
-    segments.push_back(segment);
-    if (segments.size() != expression.arguments.size() + 1) {
+    const auto& segments = expression.formatSegments;
+    const auto& argumentIndices = expression.formatArgumentIndices;
+    if (segments.size() != argumentIndices.size() + 1) {
         throw DiagnosticError(expression.location,
                               "backend could not match format placeholders to arguments");
     }
@@ -318,10 +303,16 @@ CodeGenerator::Value CodeGenerator::emitFormatString(const Expression& expressio
                      classMetadataSymbol("String") + ", ptr " + leading + ", i64 " +
                      std::to_string(segments.front().size()) + ")\n";
     const auto result = rootObjectValue({"String", destination}, expression.location);
+    std::vector<Value> formattedArguments;
+    formattedArguments.reserve(expression.arguments.size());
     for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
         const auto& argumentExpression = *expression.arguments[index];
         const auto argument = emitExpression(argumentExpression);
         const auto dynamic = buildDynamicValue(argument, argumentExpression.location);
+        const auto formatted = newTemporary();
+        instructions_ += "  " + formatted + " = call ptr @simp_string_format_new(ptr " +
+                         classMetadataSymbol("String") + ", ptr null, i64 0)\n";
+        rootObjectValue({"String", formatted}, argumentExpression.location);
         const auto tag = newTemporary();
         const auto integer = newTemporary();
         const auto pointer = newTemporary();
@@ -336,12 +327,26 @@ CodeGenerator::Value CodeGenerator::emitFormatString(const Expression& expressio
                          dynamic.operand + ", 3\n";
         const auto& location = argumentExpression.location;
         const auto file = internString(location.file);
-        instructions_ += "  call void @simp_string_format_append(ptr " + destination +
+        instructions_ += "  call void @simp_string_format_append(ptr " + formatted +
                          ", i64 " + tag + ", i64 " + integer + ", ptr " + pointer + ", i64 " +
                          length + ", ptr " + file + ", i64 " +
                          std::to_string(location.file.size()) + ", i64 " +
                          std::to_string(location.line) + ", i64 " +
                          std::to_string(location.column) + ")\n";
+        formattedArguments.push_back({"String", formatted});
+    }
+    for (std::size_t index = 0; index < argumentIndices.size(); ++index) {
+        const auto argumentIndex = argumentIndices[index];
+        if (argumentIndex >= formattedArguments.size()) {
+            throw DiagnosticError(expression.location,
+                                  "backend could not match format placeholders to arguments");
+        }
+        std::string data;
+        std::string length;
+        emitStringBytesAccess(formattedArguments[argumentIndex],
+                              expression.arguments[argumentIndex]->location, data, length);
+        instructions_ += "  call void @simp_string_append_bytes(ptr " + destination +
+                         ", ptr " + data + ", i64 " + length + ")\n";
         const auto& trailing = segments[index + 1];
         if (!trailing.empty()) {
             const auto trailingPointer = emitSegmentPointer(trailing);

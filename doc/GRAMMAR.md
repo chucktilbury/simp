@@ -286,7 +286,13 @@ index-or-slice-suffix
                         [ ":", [ expression ] ] ], "]"
                       | "[", ":", [ expression ], [ ":", [ expression ] ], "]" ;
 call-suffix         ::= "(", [ argument-list ], ")" ;
-format-suffix       ::= "(", [ argument-list ], ")" ;
+format-suffix       ::= "(", [ format-argument-list ], ")" ;
+format-argument-list
+                    ::= argument-list
+                      | named-format-argument,
+                         { ",", named-format-argument } ;
+named-format-argument
+                    ::= IDENT, "=", expression ;
 argument-list       ::= expression, { ",", expression } ;
 
 primary             ::= INTEGER | UNSIGNED_INT | FLOAT | STRING
@@ -315,8 +321,14 @@ Name resolution may recognize a dotted qualified class construction. A
 constructor call is not accepted as a statement. Calls cannot be chained
 directly after a call or constructor-call node, although member and index
 suffixes can follow. A format suffix uses the same parentheses as a call, but
-is accepted only on a double-quoted string literal. Its literal must contain
-exactly one `{}` for each argument and no other braces; this validation runs
+is accepted only on a double-quoted string literal. It accepts either
+positional expressions or named `IDENT=expression` arguments, never both.
+Positional `{}` placeholders match positional arguments in order. Named
+`{IDENT}` placeholders match named arguments by case-sensitive name; every
+distinct placeholder name must have exactly one argument, and every argument
+must be used. A named placeholder may appear more than once and reuses its
+argument value. `{{` and `}}` produce literal braces; unmatched braces and
+malformed placeholder names are compile-time errors. The string is validated
 only when the literal is called. A single-quoted string is never a
 format-call target. Indexing and slicing bind as postfix forms. `type` always
 starts `type(expression)`; it is not a standalone type-value expression.
@@ -339,7 +351,7 @@ Each parser routine has a corresponding production or grammar note above:
 | `startsOutOfLineDefinition` | top-level lookahead for `out-of-line-definition`; not a separate syntax form |
 | `parseClass`, `parseOutOfLineMethodDefinition`, `parseType`, `parseParameters`, `parseMethod` | class/member/declaration productions |
 | `Parser` constructor, `current`, `previous`, `check`, `match`, `error` | token-stream setup/access, predicates, cursor movement, and diagnostics; these do not add productions |
-| `skipNewlines`, `consumeStatementTerminator`, `consume`, `validateFormatString`, `trace` | lexical/newline policy, `terminator`, format restrictions, and tracing; helpers do not add productions |
+| `skipNewlines`, `consumeStatementTerminator`, `consume`, `validateFormatString`, `trace` | lexical/newline policy, `terminator`, positional/named format validation, and tracing; helpers do not add productions |
 
 All 50 member functions in `Parser.cpp` and `ParserClass.cpp` are accounted
 for above: syntax-producing methods map to productions and the remaining
