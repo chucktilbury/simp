@@ -738,7 +738,7 @@ int main(int argc, char** argv) {
         if (!sourcePaths.empty() && !program.hasStart) {
             throw simp::DiagnosticError(
                 {sourcePaths.front(), 1, 1},
-                "input files must contain exactly one top-level 'start' block");
+                "programs must contain exactly one top-level 'start' block");
         }
         frontendTimer.emplace(verbosity, "load imported modules");
         simp::ModuleLoadOptions moduleOptions;

@@ -185,7 +185,7 @@ execute_process(
     COMMAND "${COMPILER}" "${work}/no-start.simp" -o "${work}/missing-entry"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )
-if(result EQUAL 0 OR NOT stderr MATCHES "exactly one top-level 'start' block")
+if(result EQUAL 0 OR NOT stderr MATCHES "programs must contain exactly one top-level 'start' block")
     message(FATAL_ERROR "A missing start block was not rejected:\n${stderr}")
 endif()
 endif()
