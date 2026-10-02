@@ -105,6 +105,12 @@ ClassDeclaration Parser::parseClass() {
             if (member.text == "destroy") {
                 error(member, "destructors use 'destroy { ... }' syntax");
             }
+            if (member.text == declaration.name) {
+                error(member, "constructor '" + member.text +
+                                  "' must omit the return type; write '" + member.text +
+                                  "(...)' instead of '" + typeName + " " + member.text +
+                                  "(...)'");
+            }
             auto method = parseMethod(type, member, false, typeName);
             method.access = memberAccess;
             declaration.methods.push_back(std::move(method));

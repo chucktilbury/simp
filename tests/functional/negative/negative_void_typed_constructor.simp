@@ -1,0 +1,8 @@
+class SomeClass {
+  void SomeClass() {
+    raise(Exception("This would be the error message"))
+  }
+}
+start {
+  SomeClass c()
+}

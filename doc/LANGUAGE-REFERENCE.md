@@ -270,7 +270,9 @@ Classes contain fields and methods. Member access is `public` by default;
 `private:` and `protected:` switch the access level for following members;
 `public:` restores public access.
 Fields have no in-class initializer syntax. A constructor is named after its
-class and can be overloaded. A destructor is written `destroy { ... }` inside
+class, omits the return type (write `Name(...)`, not `void Name(...)`), and
+can be overloaded. A class-body method named after its class with any return
+type is rejected rather than treated as an ordinary method. A destructor is written `destroy { ... }` inside
 the class; it has no return-type or parameter list. Methods can be defined in
 the class body or declared there and defined out of line. See
 `class-declaration`, `class-member`, `constructor-declaration`,

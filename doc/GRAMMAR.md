@@ -420,7 +420,9 @@ No positive-fixture syntax or parser routine was left unmapped. The
   `break` outside a loop, invalid lvalues, inaccessible
   members, unknown types, bad argument/return conversions, an invalid
   `super` initializer, or a `raise` expression outside the exception class
-  hierarchy. Constructor declarations must use their enclosing class name;
+  hierarchy. Constructor declarations must use their enclosing class name and omit a
+  return type; a class-body `method-declaration` whose `IDENT` is the
+  enclosing class name (for example `void Name()`) is a parser error;
   destructor parameters are rejected; native-bound constructors are rejected;
   and constructor/destructor placement and leading base-initializer rules are
   semantic checks.

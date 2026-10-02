@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional void-typed constructor rejected",
+  "expected_diagnostic": "must omit the return type",
+  "enabled": true
+}

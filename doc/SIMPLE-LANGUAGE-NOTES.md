@@ -189,7 +189,9 @@ For the normative syntax and current behavior, see the
   their parameter types differ. Symbols are mangled by parameter type (see
   "Name mangling (implemented)" below); exact matches are preferred over
   assignable conversions, and equally ranked candidates are ambiguous.
-- A constructor is named exactly after its class, for example `Window(...)`.
+- A constructor is named exactly after its class and omits the return type,
+  for example `Window(...)`. A class-body declaration such as
+  `void Window(...)` or `int Window(...)` is rejected; it is not a constructor.
   Constructors may be overloaded by distinct parameter-type signatures; an
   implicit no-argument constructor remains available only when no constructor
   is declared.
