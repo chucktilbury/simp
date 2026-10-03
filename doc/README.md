@@ -5,6 +5,7 @@
 - [Language reference](LANGUAGE-REFERENCE.md)
 - [Compiler build and installation](INSTALLATION.md)
 - [Project module version selection](INSTALLATION.md#project-module-version-selection)
+- [Project package manager (`simpkg`)](INSTALLATION.md#project-package-manager-simpkg)
 - [Debugging Simple programs](DEBUGGING.md)
 - [Build and run examples](EXAMPLES.md)
 - [Compiler man page](simp.1)

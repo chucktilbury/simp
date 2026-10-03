@@ -1,7 +1,9 @@
 # Build and installation
 
 The compiler uses CMake and requires Clang on `PATH` to compile and link its
-generated LLVM IR. The project uses C11 and C++17. A repository build stages
+generated LLVM IR. The project uses C11 and C++17. Building and running
+`simpkg` also requires Python 3.11 or newer; installing packages requires
+`git`. A repository build stages
 the compiler resources beside `bin/simp`, so the executable can run directly
 from the source tree:
 
@@ -114,3 +116,71 @@ When `modules.toml` is absent, existing package and deprecated registry
 resolution behavior is retained for compatibility with current projects.
 `simp --print-paths` shows the policy file location, and verbose compilation
 reports the selected module versions.
+
+## Project package manager (`simpkg`)
+
+`simpkg` is a small project-environment and GitHub package installer. The
+compiler remains responsible for compiling and building programs; `simpkg`
+does not run programs or implement compiler build logic. It is installed beside
+`simp` and uses the standard modules shipped with that same installation.
+
+Start a project from its root:
+
+```sh
+mkdir hello-simp
+cd hello-simp
+simpkg init
+simpkg add OWNER/REPO
+eval "$(simpkg env)"
+simp path/to/app.simp
+```
+
+`simpkg init [PROJECT_DIR]` creates `PROJECT_DIR/modules/modules.toml` (or
+`./modules/modules.toml`) with the exact versions of the installed standard
+modules. It refuses to overwrite an existing configuration. The compiler's
+`String` prelude/runtime is built in and available by default; it is not an
+ordinary imported module and is not listed in the allowlist.
+
+`simpkg add OWNER/REPO [VERSION]` obtains a package from that GitHub
+repository, using Git's configured authentication for private repositories
+that the user can access. With no version it picks the highest stable SemVer
+tag; with a version it checks out that exact SemVer tag (including a
+prerelease, if requested). It validates
+`simp-package.toml` and the package source, then installs into
+`modules/<package-name>/<version>/`. Existing installed versions are never
+replaced. The selected exact version is moved to the front of that package's
+ordered `modules.toml` version array, with prior fallback versions and other
+module entries retained. Run `simpkg list` to inspect the project allowlist
+and installed selections.
+
+GitHub `OWNER/REPO` is a direct repository shortcut, not a package catalog:
+there is no central index, name lookup, or automatic dependency repository
+mapping. Dependencies in package manifests remain exact `=VERSION` constraints
+enforced by the compiler. `simpkg add` will report when a required dependency
+is not both installed and allowed; install it explicitly from its GitHub
+`OWNER/REPO`, add its exact version to `modules.toml`, and retry. Packages do
+not trigger arbitrary transitive network fetches.
+
+`simpkg env` prints POSIX shell exports; it does not modify the parent shell.
+Evaluate the output from the project root as shown above. It reads optional
+user preferences from `$XDG_CONFIG_HOME/simp/preferences.toml`, or
+`~/.config/simp/preferences.toml` when `XDG_CONFIG_HOME` is unset. Create the
+file yourself if desired; only `[environment]` string values are supported:
+
+```toml
+[environment]
+CC = "clang"
+MY_BUILD_SETTING = "debug"
+```
+
+Then `eval "$(simpkg env)"` applies those values in the current shell and sets
+`SIMP_MODULE_DIR` to the current project's `modules` directory, regardless of
+any `SIMP_MODULE_DIR` inherited from elsewhere. An alternate existing file can
+be selected with `simpkg env --preferences FILE`; `simpkg` never creates or
+edits preference files. Environment names must be valid shell variable names,
+and `SIMP_MODULE_DIR` is reserved for the activated project.
+
+The compiler uses the explicitly activated `SIMP_MODULE_DIR` for packages
+regardless of the source file's directory. Without activation, its documented
+project root is the directory containing the first source input; therefore,
+run `simpkg env` from the project root before compiling nested source files.

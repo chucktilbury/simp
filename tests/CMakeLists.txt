@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
+find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(simp_tests LANGUAGES C CXX)
@@ -65,6 +66,12 @@ set_target_properties(simp_gc_runtime_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
 )
 add_test(NAME simp_gc_runtime_lifecycle COMMAND simp_gc_runtime_tests)
+add_test(NAME simpkg_cli
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test_simpkg.py"
+        --simpkg "${SIMP_RUNTIME_OUTPUT_DIRECTORY}/simpkg"
+        --compiler "$<TARGET_FILE:simp>"
+)
 
 add_test(NAME simp_multi_input_compiler
     COMMAND "${CMAKE_COMMAND}"

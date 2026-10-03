@@ -47,6 +47,9 @@ documentation relative to its installation prefix. CMake install rules honor
 [`doc/INSTALLATION.md`](doc/INSTALLATION.md) for the complete installed layout,
 resource overrides, package search order, and the optional
 [`modules.toml` version policy](doc/INSTALLATION.md#project-module-version-selection).
+The `simpkg` project package manager and its GitHub install, environment
+activation, and dependency limitations are documented in
+[`doc/INSTALLATION.md`](doc/INSTALLATION.md#project-package-manager-simpkg).
 
 ## Repository layout
 
