@@ -295,6 +295,8 @@ void writeResolvedPaths(std::ostream& output, const std::string& prefix,
     output << prefix << "project root: " << describePath(modules.projectRoot) << '\n';
     output << prefix << "project module root: " << describePath(modules.projectModuleRoot)
            << '\n';
+    output << prefix << "module selection file: " << describePath(modules.moduleSelectionFile)
+           << '\n';
     output << prefix << "standard modules: " << describePath(modules.standardModuleRoot)
            << '\n';
     if (modules.compatibilityRoots.empty()) {
@@ -743,8 +745,15 @@ int main(int argc, char** argv) {
         frontendTimer.emplace(verbosity, "load imported modules");
         simp::ModuleLoadOptions moduleOptions;
         moduleOptions.packageSearchRoots = moduleSearchPaths.packageRoots();
+        moduleOptions.moduleSelectionFile = moduleSearchPaths.moduleSelectionFile.path;
         moduleOptions.registry = moduleSearchPaths.registry;
         const auto moduleLoad = simp::loadImportedModules(program, moduleOptions);
+        if (verbose && moduleLoad.versionPolicyActive) {
+            for (const auto& module : moduleLoad.modules) {
+                std::cerr << "[verbose] selected module " << module.name << '@'
+                          << module.version << " from " << module.sourcePath << '\n';
+            }
+        }
         for (const auto& warning : moduleLoad.warnings) {
             std::cerr << "simp: warning: " << warning << '\n';
         }

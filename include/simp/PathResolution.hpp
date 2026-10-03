@@ -54,6 +54,7 @@ struct ModuleSearchRequest {
 struct ModuleSearchPaths {
     ResolvedPath projectRoot;
     ResolvedPath projectModuleRoot;
+    ResolvedPath moduleSelectionFile;
     bool projectModuleRootExplicit = false;
     ResolvedPath standardModuleRoot;
     std::vector<ResolvedPath> compatibilityRoots;

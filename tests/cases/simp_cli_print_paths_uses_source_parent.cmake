@@ -14,6 +14,7 @@ include directory: ]==]
 ]+/simp/prelude/String\.simp
 project root: <PROJECT_DIR> \(parent of first source input\)
 project module root: <PROJECT_DIR>/modules \(default <project-root>/modules\)
+module selection file: <PROJECT_DIR>/modules/modules\.toml \[not found\] \(project module selection\)
 standard modules: [^
 ]+/simp/modules \(executable-relative\)
 compatibility package roots: <none>

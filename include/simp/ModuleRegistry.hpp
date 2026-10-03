@@ -12,6 +12,8 @@ namespace simp {
 struct ModuleLoadOptions {
     /// Package manifest roots in search order.
     std::vector<ResolvedPath> packageSearchRoots;
+    /// Optional project-root allowlist and ordered version selection file.
+    std::filesystem::path moduleSelectionFile;
     /// Deprecated tab-separated registry consulted after all manifest roots.
     ResolvedPath registry;
 };
@@ -28,6 +30,7 @@ struct ModuleLoadResult {
     std::vector<std::filesystem::path> libraryPaths;
     std::vector<std::string> libraries;
     std::vector<std::string> warnings;
+    bool versionPolicyActive = false;
 };
 
 ModuleLoadResult loadImportedModules(Program& program,

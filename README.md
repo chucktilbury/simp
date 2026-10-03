@@ -45,7 +45,8 @@ The installed compiler locates its runtime, prelude, standard modules, and
 documentation relative to its installation prefix. CMake install rules honor
 `DESTDIR` for staged installations. See
 [`doc/INSTALLATION.md`](doc/INSTALLATION.md) for the complete installed layout,
-resource overrides, and package search order.
+resource overrides, package search order, and the optional
+[`modules.toml` version policy](doc/INSTALLATION.md#project-module-version-selection).
 
 ## Repository layout
 

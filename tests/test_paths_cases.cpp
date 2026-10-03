@@ -104,6 +104,8 @@ const TestGroupRegistration registration{6, {
              auto paths = simp::resolveModuleSearchPaths(request, resources, environmentOf({}));
              requirePath(paths.projectRoot.path, "/work/app", "project root");
              requirePath(paths.projectModuleRoot.path, "/work/app/modules", "default root");
+             requirePath(paths.moduleSelectionFile.path, "/work/app/modules/modules.toml",
+                         "default module selection file");
              require(!paths.projectModuleRootExplicit && paths.deprecationWarnings.empty(),
                      "the default root should be implicit and warning-free");
              requirePath(paths.registry.path, "/work/simp-modules.tsv", "default registry");
@@ -111,12 +113,16 @@ const TestGroupRegistration registration{6, {
              const auto environment = environmentOf({{"SIMP_MODULE_DIR", "/env/modules"}});
              paths = simp::resolveModuleSearchPaths(request, resources, environment);
              requirePath(paths.projectModuleRoot.path, "/env/modules", "environment root");
+             requirePath(paths.moduleSelectionFile.path, "/env/modules/modules.toml",
+                         "environment module selection file");
              require(paths.projectModuleRoot.origin == "SIMP_MODULE_DIR",
                      "environment root origin");
 
              request.moduleDirectoryOption = "deps";
              paths = simp::resolveModuleSearchPaths(request, resources, environment);
              requirePath(paths.projectModuleRoot.path, "/work/deps", "command-line root");
+             requirePath(paths.moduleSelectionFile.path, "/work/deps/modules.toml",
+                         "command-line module selection file");
              require(paths.projectModuleRoot.origin == "-M/--module-dir",
                      "command-line root origin");
 

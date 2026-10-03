@@ -1,0 +1,6 @@
+set(CASE_NAME simp_module_selection_rejects_legacy_registry)
+set(CASE_FIXTURE positive_import_class.simp)
+set(CASE_MODULE_POLICY policy/legacy-only.toml)
+set(CASE_MODULE_ROOT_SOURCE default)
+set(CASE_MODULE_REGISTRY ON)
+set(CASE_EXPECTED_DIAGNOSTIC "available only through the deprecated registry")

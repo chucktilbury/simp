@@ -83,3 +83,34 @@ separate textual `include` search path. Package layout and APIs are described
 in the [standard library docs](STDLIB.md) and
 [`stdlib/README.md`](../stdlib/README.md); exact CLI behavior is in
 [simp(1)](simp.1).
+
+### Project module version selection
+
+Place an optional `modules.toml` in the canonical project module root: the
+directory selected by `-M DIR`/`--module-dir DIR`, `SIMP_MODULE_DIR`, or the
+default `<project-root>/modules`. When present, it is a strict package
+allowlist and ordered version preference for imports from every package root,
+including the bundled standard modules:
+
+```toml
+[modules]
+geometry = ["1.2.3", "1.1.0"]
+system = ["0.1.0"]
+```
+
+Each value must be a nonempty, single-line array of distinct exact SemVer
+strings; only the `[modules]` table is supported.
+Versions are checked in order, and the first version installed in the
+established highest-priority root wins. A later listed version is tried only
+when an earlier version is absent; malformed installed packages and exact
+dependency-pin conflicts are errors, not reasons to fall back. If no listed
+version is installed, compilation reports the versions searched. Unlisted
+direct or transitive packages are not found. Version ranges and automatic
+newest-version selection are not supported while this file exists. Legacy
+registry-only modules also cannot be resolved under this policy because they
+do not provide the package manifests needed to enforce exact versions.
+
+When `modules.toml` is absent, existing package and deprecated registry
+resolution behavior is retained for compatibility with current projects.
+`simp --print-paths` shows the policy file location, and verbose compilation
+reports the selected module versions.

@@ -136,8 +136,35 @@ default
 A warning is printed whenever a module is resolved through it. Package
 manifests take precedence over registry entries.
 .PP
-The first module root containing a package shadows lower\-priority roots. The
-highest stable version is selected only from the versions in that root.
+The first module root containing a package shadows lower\-priority roots. Without
+a project selection policy, the highest stable version is selected only from
+the versions in that root.
+.PP
+An optional
+.I modules.toml
+in the canonical project module root (selected by
+.BR \-M ,
+.BR SIMP_MODULE_DIR ,
+or the default
+.IR project\-root /modules )
+contains a strict package allowlist and ordered exact-version preferences:
+.nf
+[modules]
+geometry = ["1.2.3", "1.1.0"]
+system = ["0.1.0"]
+.fi
+.PP
+Each entry must be a nonempty, single-line array of distinct exact SemVer
+strings; only the [modules] table is supported. The first configured version
+installed in the highest-priority root is selected;
+a later version is tried only when an earlier one is absent. Unlisted direct
+and transitive packages are not found, including standard modules unless
+listed. Exact dependency pins remain constraints and conflict rather than
+causing fallback. Malformed installed packages also fail without fallback.
+Legacy registry-only modules are unsupported while the policy is active.
+When
+.I modules.toml
+is absent, existing version-selection and registry behavior is retained.
 .PP
 When a module cannot be found, the diagnostic lists every module root and
 registry searched.
@@ -147,6 +174,10 @@ registry searched.
 Project module root when
 .B \-M
 is not given.
+.TP
+.B modules.toml
+Optional strict module allowlist and ordered version policy at the selected
+project module root.
 .TP
 .B SIMP_HOME
 Installation prefix used instead of the executable location.

@@ -438,6 +438,26 @@ calling an instance method, as in `Sys.Process().exit(0)`, rather than using
 a static-style call such as `Sys.Process.exit(0)`.
 Imports are top-level only and imported module source cannot define `start`.
 Package manifests and package APIs are documented in [STDLIB.md](STDLIB.md).
+An optional `modules.toml` in the canonical project module root can restrict
+importable packages and select exact versions in preference order:
+
+```toml
+[modules]
+geometry = ["1.2.3", "1.1.0"]
+system = ["0.1.0"]
+```
+
+When present, the file is a strict allowlist for direct and transitive
+packages, including standard-library packages. Each value must be a nonempty
+single-line array of distinct exact SemVer strings; only the `[modules]` table
+is supported. The first configured version installed in the highest-priority
+root is selected; a later version is tried only when
+an earlier one is absent. Exact dependency pins remain constraints and
+conflict rather than causing fallback. Malformed installed packages do not
+trigger fallback. When the policy file is absent, existing version and
+registry resolution behavior is preserved. See
+[project module version selection](INSTALLATION.md#project-module-version-selection)
+for the root-selection and compatibility details.
 See `import-declaration` and `module`.
 
 `include "relative/path.simp"` textually inserts source before parsing. It is

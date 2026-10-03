@@ -229,6 +229,8 @@ ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
         paths.projectModuleRoot = {paths.projectRoot.path / "modules",
                                    "default <project-root>/modules"};
     }
+    paths.moduleSelectionFile = {paths.projectModuleRoot.path / "modules.toml",
+                                 "project module selection"};
     paths.standardModuleRoot = resources.standardModuleDirectory;
     for (const auto& option : request.packagePathOptions) {
         if (option.empty()) continue;

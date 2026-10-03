@@ -1123,7 +1123,8 @@ interchangeable.
   links that IR with the importing program's IR. Legacy module imports are
   resolved recursively. The registry's version and dependency-version strings
   are metadata only; package manifests provide enforced package-level
-  constraints and native linker inputs.
+  constraints and native linker inputs. Registry-only modules are unsupported
+  when a project `modules.toml` policy is active.
 - The implementation performs registry/package lookup, designated-export
   validation, alias-scoped qualified-name resolution, module IR
   generation/linking, and diagnostics for malformed or missing entries.
@@ -1165,9 +1166,9 @@ interchangeable.
   must be exact `=VERSION` pins. Array values are single-line arrays of quoted
   strings. Unknown keys/tables, duplicate keys/tables, invalid versions,
   missing sources, and missing declared library directories are errors.
-- Package versions use SemVer 2.0.0. A direct import with no source-level
-  version constraint selects the highest stable version in the first module
-  root containing that package. Exact
+- Package versions use SemVer 2.0.0. Without a project policy, a direct import
+  with no source-level version constraint selects the highest stable version
+  in the first module root containing that package. Exact
   dependency pins constrain that package name across the whole compilation;
   a unique dependency pin selects that version even if an unpinned direct
   import also names the package. Different exact pins for one package name,
@@ -1175,6 +1176,27 @@ interchangeable.
   dependency cycles are errors. Repeated imports with different aliases and
   repeated identical package dependencies are tolerated and resolved once.
   There is no range solver, lockfile, or native-library ABI/version probing.
+- An optional `modules.toml` in the canonical project module root (chosen by
+  `-M`/`--module-dir`, `SIMP_MODULE_DIR`, or `<project-root>/modules`) enables
+  strict allowlist and ordered-version selection. Its supported form is a
+  single `[modules]` table mapping package identifiers to nonempty, single-line
+  arrays of distinct exact SemVer strings:
+
+  ```toml
+  [modules]
+  geometry = ["1.2.3", "1.1.0"]
+  system = ["0.1.0"]
+  ```
+
+  The first configured version installed in the established highest-priority
+  root is selected. A later version is tried only when an earlier version is
+  absent; malformed installed packages and conflicts with exact dependency
+  pins fail without fallback. If none of the configured versions is installed,
+  the diagnostic lists the versions searched. Unlisted direct and transitive
+  packages are not found, including bundled standard-library packages unless
+  listed. Registry-only resolution, version ranges, and automatic newest
+  version selection are unsupported while the policy is active. When the file
+  is absent, existing package and deprecated registry behavior is preserved.
 - Package module roots are checked in this order:
   1. The canonical project module root, chosen as `-M DIR`/`--module-dir DIR`,
      else `SIMP_MODULE_DIR`, else `<project-root>/modules`. The project root is

@@ -135,16 +135,25 @@ struct ModuleSource {
 
 ModuleLoadResult loadImportedModules(Program& program,
                                      const ModuleLoadOptions& options) {
-    if (program.imports.empty()) return {};
+    const auto policy = readModuleVersionPolicy(options.moduleSelectionFile);
+    ModuleLoadResult result;
+    result.versionPolicyActive = policy.has_value();
+    if (program.imports.empty()) return result;
+    auto registry = readRegistry(options.registry.path);
+    std::unordered_set<std::string> legacyRegistryModules;
+    legacyRegistryModules.reserve(registry.size());
+    for (const auto& [name, entry] : registry) {
+        static_cast<void>(entry);
+        legacyRegistryModules.insert(name);
+    }
     std::vector<std::string> rootNames;
     rootNames.reserve(program.imports.size());
     for (const auto& import : program.imports) rootNames.push_back(import.moduleName);
     std::vector<std::filesystem::path> searchRoots;
     searchRoots.reserve(options.packageSearchRoots.size());
     for (const auto& root : options.packageSearchRoots) searchRoots.push_back(root.path);
-    auto packages = resolvePackages(rootNames, searchRoots);
-    auto registry = readRegistry(options.registry.path);
-    ModuleLoadResult result;
+    auto packages = resolvePackages(rootNames, searchRoots, policy,
+                                    legacyRegistryModules);
     const auto addPackageEntries = [&registry](const PackageResolution& resolution) {
         for (const auto& [name, package] : resolution.packages) {
             RegistryEntry entry;
@@ -183,7 +192,8 @@ ModuleLoadResult loadImportedModules(Program& program,
             }
         }
         if (packages.packages.find(import.moduleName) == packages.packages.end()) {
-            const auto additional = resolvePackages({import.moduleName}, searchRoots);
+            const auto additional = resolvePackages({import.moduleName}, searchRoots, policy,
+                                                    legacyRegistryModules);
             for (const auto& [name, package] : additional.packages) {
                 const auto existing = packages.packages.find(name);
                 if (existing != packages.packages.end() &&

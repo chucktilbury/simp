@@ -484,13 +484,20 @@ PackageManifest readManifest(const std::filesystem::path& path,
 
 class Resolver {
 public:
-    explicit Resolver(const std::vector<std::filesystem::path>& roots)
-        : roots_(roots) {}
+    explicit Resolver(const std::vector<std::filesystem::path>& roots,
+                      const std::optional<ModuleVersionPolicy>& policy,
+                      const std::unordered_set<std::string>& legacyRegistryModules)
+        : roots_(roots), policy_(policy),
+          legacyRegistryModules_(legacyRegistryModules) {}
 
     PackageResolution resolve(const std::vector<std::string>& requested) {
         std::vector<std::string> packageRoots;
         for (const auto& name : requested) {
-            if (!discover(name).empty()) packageRoots.push_back(name);
+            if (policy_) {
+                packageRoots.push_back(name);
+            } else if (!discover(name).empty()) {
+                packageRoots.push_back(name);
+            }
         }
         if (packageRoots.empty()) return {};
 
@@ -610,7 +617,58 @@ private:
 
     const PackageManifest& select(const std::string& name,
                                   const std::string& requiredVersion) {
+        if (policy_ && policy_->versions.find(name) == policy_->versions.end()) {
+            throw std::runtime_error(
+                "module '" + name + "' is not found: it is not listed in " +
+                policy_->path.string() + " [modules]; modules.toml is an allowlist");
+        }
         const auto& candidates = discover(name);
+        if (policy_) {
+            const auto configured = policy_->versions.find(name);
+            const PackageManifest* selected = nullptr;
+            for (const auto& version : configured->second) {
+                const auto installed = std::find_if(
+                    candidates.begin(), candidates.end(),
+                    [&version](const PackageManifest& candidate) {
+                        return candidate.version == version;
+                    });
+                if (installed != candidates.end()) {
+                    selected = &*installed;
+                    break;
+                }
+            }
+            if (selected == nullptr) {
+                if (candidates.empty() && legacyRegistryModules_.count(name) != 0) {
+                    throw std::runtime_error(
+                        "module '" + name +
+                        "' is available only through the deprecated registry, which does "
+                        "not support exact package manifests required by " +
+                        policy_->path.string());
+                }
+                std::string searched;
+                for (std::size_t index = 0; index < configured->second.size(); ++index) {
+                    if (index != 0) searched += ", ";
+                    searched += configured->second[index];
+                }
+                std::string roots;
+                for (const auto& root : roots_) {
+                    if (!roots.empty()) roots += ", ";
+                    roots += root.string();
+                }
+                throw std::runtime_error(
+                    "module '" + name + "' has no installed configured version; versions "
+                    "searched in order: [" +
+                    searched + "]; module search roots: [" + roots + "]");
+            }
+            if (!requiredVersion.empty() && selected->version != requiredVersion) {
+                throw std::runtime_error(
+                    "package dependency constraint conflict for '" + name +
+                    "': modules.toml selects version '" + selected->version +
+                    "' (first installed configured version), but an exact dependency "
+                    "requires '" + requiredVersion + "'");
+            }
+            return *selected;
+        }
         if (requiredVersion.empty()) {
             const PackageManifest* best = nullptr;
             for (const auto& candidate : candidates) {
@@ -647,7 +705,7 @@ private:
 
     void visit(const std::string& name, const std::string& requiredVersion,
                Graph& graph, std::map<std::string, std::string>& pins) {
-        if (!requiredVersion.empty()) {
+        if (!requiredVersion.empty() && !policy_) {
             const auto pinned = pins.find(name);
             if (pinned != pins.end() && pinned->second != requiredVersion) {
                 throw std::runtime_error("conflicting package versions for '" + name +
@@ -655,6 +713,8 @@ private:
                                          requiredVersion);
             }
             pins[name] = requiredVersion;
+        } else if (!requiredVersion.empty()) {
+            pins.emplace(name, requiredVersion);
         }
         const auto& manifest = select(name, requiredVersion);
         const auto existing = graph.packages.find(name);
@@ -680,15 +740,123 @@ private:
     }
 
     const std::vector<std::filesystem::path>& roots_;
+    const std::optional<ModuleVersionPolicy>& policy_;
+    const std::unordered_set<std::string>& legacyRegistryModules_;
     std::unordered_map<std::string, std::vector<PackageManifest>> candidates_;
 };
 
 } // namespace
 
+std::optional<ModuleVersionPolicy> readModuleVersionPolicy(
+    const std::filesystem::path& path) {
+    std::error_code error;
+    if (!std::filesystem::exists(path, error)) {
+        if (error) {
+            throw std::runtime_error("cannot inspect module selection file '" +
+                                     path.string() + "': " + error.message());
+        }
+        return std::nullopt;
+    }
+    if (!std::filesystem::is_regular_file(path, error) || error) {
+        throw std::runtime_error("module selection file is not a regular file: " +
+                                 path.string());
+    }
+    std::ifstream input(path);
+    if (!input) {
+        throw std::runtime_error("cannot open module selection file: " + path.string());
+    }
+
+    ModuleVersionPolicy policy;
+    policy.path = path;
+    std::set<std::string> seen;
+    bool hasModulesTable = false;
+    std::string section;
+    std::string line;
+    std::size_t lineNumber = 0;
+    while (std::getline(input, line)) {
+        ++lineNumber;
+        line = trim(uncomment(line));
+        if (line.empty()) continue;
+        if (line.front() == '[' && line.back() == ']') {
+            section = trim(line.substr(1, line.size() - 2));
+            if (section != "modules") {
+                throw std::runtime_error(path.string() + ":" +
+                                         std::to_string(lineNumber) +
+                                         ": unsupported table [" + section +
+                                         "]; only [modules] is supported");
+            }
+            if (hasModulesTable) {
+                throw std::runtime_error(path.string() + ":" +
+                                         std::to_string(lineNumber) +
+                                         ": duplicate table [modules]");
+            }
+            hasModulesTable = true;
+            continue;
+        }
+        const auto equals = line.find('=');
+        if (section != "modules" || equals == std::string::npos) {
+            throw std::runtime_error(path.string() + ":" +
+                                     std::to_string(lineNumber) +
+                                     ": expected a module version array inside [modules]");
+        }
+        const auto name = trim(line.substr(0, equals));
+        const auto value = trim(line.substr(equals + 1));
+        if (!bareKey(name) || !identifier(name)) {
+            throw std::runtime_error(path.string() + ":" +
+                                     std::to_string(lineNumber) +
+                                     ": module names must be Simple identifiers");
+        }
+        if (!seen.insert(name).second) {
+            throw std::runtime_error(path.string() + ":" +
+                                     std::to_string(lineNumber) +
+                                     ": duplicate module key '" + name + "'");
+        }
+        if (!value.empty() && value.front() == '[' &&
+            (value.size() < 2 || value.back() != ']')) {
+            throw std::runtime_error(path.string() + ":" +
+                                     std::to_string(lineNumber) +
+                                     ": module version arrays must be single-line");
+        }
+        const auto versions = parseStringArray(value, path, lineNumber);
+        if (versions.empty()) {
+            throw std::runtime_error(path.string() + ":" +
+                                     std::to_string(lineNumber) +
+                                     ": module '" + name +
+                                     "' must have a nonempty version array");
+        }
+        std::set<std::string> uniqueVersions;
+        for (const auto& versionText : versions) {
+            Version version;
+            if (!parseVersion(versionText, version)) {
+                throw std::runtime_error(
+                    path.string() + ":" + std::to_string(lineNumber) +
+                    ": module '" + name + "' has invalid exact SemVer version '" +
+                    versionText + "'");
+            }
+            if (!uniqueVersions.insert(versionText).second) {
+                throw std::runtime_error(
+                    path.string() + ":" + std::to_string(lineNumber) +
+                    ": module '" + name + "' repeats version '" + versionText +
+                    "' in its selection array");
+            }
+        }
+        policy.versions.emplace(name, versions);
+    }
+    if (input.bad()) {
+        throw std::runtime_error("cannot read module selection file: " + path.string());
+    }
+    if (!hasModulesTable) {
+        throw std::runtime_error(path.string() + ": missing required [modules] table");
+    }
+    return policy;
+}
+
 PackageResolution resolvePackages(
     const std::vector<std::string>& rootNames,
-    const std::vector<std::filesystem::path>& searchRoots) {
-    return Resolver(searchRoots).resolve(rootNames);
+    const std::vector<std::filesystem::path>& searchRoots,
+    const std::optional<ModuleVersionPolicy>& policy,
+    const std::unordered_set<std::string>& legacyRegistryModules) {
+    return Resolver(searchRoots, policy, legacyRegistryModules).resolve(rootNames);
 }
 
 } // namespace simp
