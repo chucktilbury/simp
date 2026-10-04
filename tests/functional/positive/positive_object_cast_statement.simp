@@ -1,0 +1,20 @@
+class Bar {
+    int val
+    Bar(int v) { val = v }
+    void show() { print("class Bar {}"(val)) }
+}
+class Foo {
+    list flarp
+    Foo() {
+        flarp = []
+        int i = 0
+        while (i <= 10) {
+            flarp.append(Bar(i))
+            i += 1
+        }
+    }
+}
+start {
+    Foo f()
+    (f.flarp[1] as Bar).show()
+}

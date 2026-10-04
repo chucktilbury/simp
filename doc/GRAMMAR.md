@@ -278,7 +278,7 @@ unary operators associate right-to-left.
 | 6 | `+`, `-` | left |
 | 7 | `*`, `/`, `%` | left |
 | 8 | unary `+`, unary `-` | right (prefix) |
-| 9 | member access, calls, indexing and slicing | repeated left-to-right |
+| 9 | member access, calls, indexing, slicing, `as` object casts | repeated left-to-right |
 
 `is` consumes a type name rather than a right-hand expression. Equality
 operators bind more tightly than `is` and relational operators because that
@@ -356,7 +356,13 @@ Local/parameter and field receiver names take precedence over implicit base
 qualification; namespace/import class lookup otherwise follows ordinary
 lexical rules. Type-valued name resolution is unchanged. A
 `method-call-statement` must parse to a method-call AST node; a bare
-constructor call is not accepted as a statement. Calls cannot be chained
+constructor call is not accepted as a statement. Identifier- and
+parenthesis-started expressions are routed through statement parsing;
+parenthesized receivers such as `(items[0] as Foo).method()` are valid
+standalone calls, including calls returning `void`. Parenthesizing a noncall
+does not make it a valid expression statement. Declaration and assignment
+recognition still applies before the method-call-only check.
+Calls cannot be chained
 directly after a call or constructor-call node, although member and index
 suffixes can follow. A format suffix uses the same parentheses as a call, but
 is accepted only on a double-quoted string literal. It accepts either
@@ -380,7 +386,7 @@ Each parser routine has a corresponding production or grammar note above:
 | `parseProgram`, `parseModule` | `program`, `module`; exactly one `start` only in a program |
 | `parseImport`, `parseQualifiedIdentifier`, `parseNamespace` | `import-declaration`, `QUALIFIED_IDENT`, `namespace-declaration` |
 | `parseBlock`, `parseStatement` | `block`, `statement` |
-| `parseInlineC`, `parseDeclaration`, `parseIdentifierStatement` | `inline-c-statement`, `declaration`, `assignment`, `method-call-statement` |
+| `parseInlineC`, `parseDeclaration`, `parseExpressionStatement` | `inline-c-statement`, `declaration`, `assignment`, `method-call-statement` |
 | `parseReturn`, `parseSuperConstructorCall`, `parsePrint` | `return-statement`, `super-initializer`, `print-statement` |
 | `parseIf`, `parseWhile`, `parseDoWhile`, `parseForEach`, `parseLoopControl` | matching statement productions |
 | `parseRaise`, `parseTry` | `raise-statement`, `try-statement` |
