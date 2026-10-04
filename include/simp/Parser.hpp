@@ -34,6 +34,7 @@ private:
     void trace(const char* action) const;
 
     ClassDeclaration parseClass();
+    void parseEnumMembers(ClassDeclaration& declaration, AccessLevel access);
     void parseNamespace(Program& program);
     ImportDeclaration parseImport();
     std::string parseQualifiedIdentifier(const char* expectation);

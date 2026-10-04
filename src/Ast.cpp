@@ -64,6 +64,7 @@ const char* expressionName(ExpressionKind kind) {
     case ExpressionKind::Unary: return "Unary";
     case ExpressionKind::Binary: return "Binary";
     case ExpressionKind::Member: return "Member";
+    case ExpressionKind::EnumConstant: return "EnumConstant";
     case ExpressionKind::Call: return "Call";
     case ExpressionKind::ConstructorCall: return "ConstructorCall";
     case ExpressionKind::BufferConstructor: return "BufferConstructor";
@@ -233,6 +234,12 @@ void dumpAst(const Program& program, std::ostream& output) {
         for (const auto& field : declaration.fields) {
             indent(output, 2);
             output << "Field [" << field.type << " " << field.name << "]\n";
+        }
+        for (const auto& member : declaration.enumMembers) {
+            indent(output, 2);
+            output << "Enum member [" << member.name;
+            if (member.value) output << " = " << *member.value;
+            output << "]\n";
         }
         for (const auto& method : declaration.methods) {
             indent(output, 2);

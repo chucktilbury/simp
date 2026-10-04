@@ -550,7 +550,9 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
                 ? findSymbolIndex(capture.name) : symbols_.size();
             if (capture.target->kind == ExpressionKind::Identifier &&
                 index == symbols_.size() &&
-                (currentClass_ == nullptr || countFields(*currentClass_, capture.name) == 0)) {
+                (currentClass_ == nullptr ||
+                 (countFields(*currentClass_, capture.name) == 0 &&
+                  countEnumMembers(*currentClass_, capture.name) == 0))) {
                 throw DiagnosticError(capture.location,
                                       "undefined inline capture '" + capture.name + "'");
             }

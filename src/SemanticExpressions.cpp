@@ -54,6 +54,13 @@ bool isMinimumIntegerMagnitude(const Expression& expression) {
 }
 
 bool constantInteger(const Expression& expression, std::int64_t& value) {
+    if (expression.kind == ExpressionKind::EnumConstant) {
+        const auto parsed = std::from_chars(expression.value.data(),
+                                            expression.value.data() + expression.value.size(),
+                                            value);
+        return parsed.ec == std::errc{} &&
+               parsed.ptr == expression.value.data() + expression.value.size();
+    }
     if (expression.kind == ExpressionKind::Unary && expression.value == "-" &&
         expression.left && isMinimumIntegerMagnitude(*expression.left)) {
         value = std::numeric_limits<std::int64_t>::min();
@@ -124,6 +131,227 @@ bool expressionNamePath(const Expression& expression, std::string& name) {
 
 } // namespace
 
+std::int64_t SemanticAnalyzer::resolveEnumValue(ClassDeclaration& declaration,
+                                                std::size_t index) {
+    auto& member = declaration.enumMembers[index];
+    if (member.value) return *member.value;
+    if (member.resolving) {
+        throw DiagnosticError(member.location,
+                              "cyclic enum constant reference involving '" + member.name + "'");
+    }
+    const auto* previousClass = currentClass_;
+    const auto previousNamespace = currentNamespace_;
+    const auto previousModule = currentModule_;
+    currentClass_ = &declaration;
+    currentNamespace_ = declaration.namespacePath;
+    currentModule_ = declaration.moduleName;
+    member.resolving = true;
+    std::int64_t value = 0;
+    try {
+        if (member.initializer) {
+            value = evaluateEnumExpression(*member.initializer, declaration, index);
+        } else {
+            std::size_t previousIndex = index;
+            while (previousIndex != 0) {
+                --previousIndex;
+                if (declaration.enumMembers[previousIndex].blockIndex == member.blockIndex) {
+                    break;
+                }
+            }
+            if (previousIndex == index ||
+                declaration.enumMembers[previousIndex].blockIndex != member.blockIndex) {
+                value = 0;
+            } else {
+                const auto previous = resolveEnumValue(declaration, previousIndex);
+                if (__builtin_add_overflow(previous, std::int64_t{1}, &value)) {
+                    throw DiagnosticError(member.location,
+                                          "implicit enum value overflows signed 64-bit range");
+                }
+            }
+        }
+    } catch (...) {
+        member.resolving = false;
+        currentClass_ = previousClass;
+        currentNamespace_ = previousNamespace;
+        currentModule_ = previousModule;
+        throw;
+    }
+    member.value = value;
+    member.resolving = false;
+    currentClass_ = previousClass;
+    currentNamespace_ = previousNamespace;
+    currentModule_ = previousModule;
+    return value;
+}
+
+std::int64_t SemanticAnalyzer::evaluateEnumExpression(Expression& expression,
+                                                      ClassDeclaration& declaration,
+                                                      std::size_t memberIndex) {
+    if (expression.kind == ExpressionKind::Identifier ||
+        expression.kind == ExpressionKind::Member) {
+        const ClassDeclaration* targetClass = &declaration;
+        const EnumMemberDeclaration* targetMember = nullptr;
+        std::size_t targetIndex = 0;
+        bool classQualified = false;
+        if (expression.kind == ExpressionKind::Member && expression.left) {
+            std::string className;
+            if (expressionNamePath(*expression.left, className)) {
+                std::string diagnostic;
+                const auto resolved = lookupClassName(className, currentNamespace_, diagnostic);
+                if (resolved) {
+                    targetClass = classes_.at(*resolved);
+                    classQualified = true;
+                }
+            }
+            if (!classQualified) {
+                throw DiagnosticError(expression.location,
+                                      "enum values may reference only enum members, not "
+                                      "instance expressions");
+            }
+        }
+
+        const auto& memberName = expression.value;
+        const auto matches = countEnumMembers(*targetClass, memberName);
+        if (matches == 0) {
+            throw DiagnosticError(expression.location,
+                                  "enum initializer is not a compile-time integer expression");
+        }
+        const auto accessible = accessibleMemberCount(*targetClass, memberName, false);
+        if (accessible == 0 ||
+            !memberAccessible(*targetClass, memberName, false)) {
+            throw DiagnosticError(expression.location,
+                                  "enum member '" + memberName + "' is not accessible here");
+        }
+        if (matches > 1 || accessible > 1) {
+            throw DiagnosticError(expression.location,
+                                  "ambiguous enum member '" + memberName +
+                                      "'; qualify it through a base class");
+        }
+        targetMember = findEnumMember(*targetClass, memberName);
+        if (targetMember == nullptr) {
+            throw DiagnosticError(expression.location,
+                                  "enum initializer is not a compile-time integer expression");
+        }
+        const auto owner = std::find_if(
+            classes_.begin(), classes_.end(),
+            [targetMember](const auto& entry) {
+                return std::any_of(entry.second->enumMembers.begin(),
+                                   entry.second->enumMembers.end(),
+                                   [targetMember](const EnumMemberDeclaration& candidate) {
+                                       return &candidate == targetMember;
+                                   });
+            });
+        if (owner == classes_.end()) {
+            throw DiagnosticError(expression.location,
+                                  "enum initializer refers to an unresolved member");
+        }
+        auto* mutableOwner = owner->second;
+        const auto index = std::find_if(
+            mutableOwner->enumMembers.begin(), mutableOwner->enumMembers.end(),
+            [targetMember](const EnumMemberDeclaration& candidate) {
+                return &candidate == targetMember;
+            });
+        targetIndex = static_cast<std::size_t>(
+            std::distance(mutableOwner->enumMembers.begin(), index));
+        if (mutableOwner == &declaration && targetIndex >= memberIndex) {
+            throw DiagnosticError(expression.location,
+                                  "enum initializer cannot reference a later or cyclic member '" +
+                                      memberName + "'");
+        }
+        if (!targetMember->value && targetMember->resolving) {
+            throw DiagnosticError(expression.location,
+                                  "cyclic enum constant reference involving '" + memberName + "'");
+        }
+        const auto value = resolveEnumValue(*mutableOwner, targetIndex);
+        expression.kind = ExpressionKind::EnumConstant;
+        expression.value = std::to_string(value);
+        if (classQualified) expression.left.reset();
+        return value;
+    }
+
+    if (expression.kind == ExpressionKind::Integer ||
+        expression.kind == ExpressionKind::EnumConstant) {
+        std::int64_t value = 0;
+        if (constantInteger(expression, value)) return value;
+        throw DiagnosticError(expression.location,
+                              "enum integer literal is outside the signed 64-bit range");
+    }
+    if (expression.kind == ExpressionKind::Unary && expression.left) {
+        if (expression.value == "-" &&
+            isMinimumIntegerMagnitude(*expression.left)) {
+            expression.left->kind = ExpressionKind::EnumConstant;
+            expression.left->value = "9223372036854775808";
+            return std::numeric_limits<std::int64_t>::min();
+        }
+        auto value = evaluateEnumExpression(*expression.left, declaration, memberIndex);
+        if (expression.value == "+") return value;
+        if (expression.value == "-") {
+            if (value == std::numeric_limits<std::int64_t>::min()) {
+                throw DiagnosticError(expression.location,
+                                      "enum constant expression overflows signed 64-bit range");
+            }
+            return -value;
+        }
+        throw DiagnosticError(expression.location,
+                              "unsupported unary operator in enum constant expression");
+    }
+    if (expression.kind == ExpressionKind::Binary && expression.left && expression.right) {
+        const auto left =
+            evaluateEnumExpression(*expression.left, declaration, memberIndex);
+        const auto right =
+            evaluateEnumExpression(*expression.right, declaration, memberIndex);
+        std::int64_t value = 0;
+        if (expression.value == "+") {
+            if (__builtin_add_overflow(left, right, &value)) {
+                throw DiagnosticError(expression.location,
+                                      "enum constant expression overflows signed 64-bit range");
+            }
+            return value;
+        }
+        if (expression.value == "-") {
+            if (__builtin_sub_overflow(left, right, &value)) {
+                throw DiagnosticError(expression.location,
+                                      "enum constant expression overflows signed 64-bit range");
+            }
+            return value;
+        }
+        if (expression.value == "*") {
+            if (__builtin_mul_overflow(left, right, &value)) {
+                throw DiagnosticError(expression.location,
+                                      "enum constant expression overflows signed 64-bit range");
+            }
+            return value;
+        }
+        if (expression.value == "/" || expression.value == "%") {
+            if (right == 0) {
+                throw DiagnosticError(expression.location,
+                                      "division by zero in enum constant expression");
+            }
+            if (left == std::numeric_limits<std::int64_t>::min() && right == -1) {
+                throw DiagnosticError(expression.location,
+                                      "enum constant expression overflows signed 64-bit range");
+            }
+            return expression.value == "/" ? left / right : left % right;
+        }
+    }
+    throw DiagnosticError(expression.location,
+                          "enum value must be a compile-time integer expression");
+}
+
+void SemanticAnalyzer::resolveEnumConstants(Program& program) {
+    for (auto& declaration : program.classes) {
+        currentModule_ = declaration.moduleName;
+        currentNamespace_ = declaration.namespacePath;
+        currentClass_ = &declaration;
+        for (std::size_t index = 0; index < declaration.enumMembers.size(); ++index) {
+            resolveEnumValue(declaration, index);
+        }
+    }
+    currentModule_.clear();
+    currentNamespace_.clear();
+    currentClass_ = nullptr;
+}
+
 void SemanticAnalyzer::addImplicitBaseReceiver(Expression& receiver) {
     if (currentClass_ == nullptr) return;
     std::vector<Expression*> prefixes;
@@ -134,7 +362,8 @@ void SemanticAnalyzer::addImplicitBaseReceiver(Expression& receiver) {
     }
     if (cursor->kind != ExpressionKind::Identifier ||
         findSymbolIndex(cursor->value) != symbols_.size() ||
-        countFields(*currentClass_, cursor->value) != 0) {
+        countFields(*currentClass_, cursor->value) != 0 ||
+        countEnumMembers(*currentClass_, cursor->value) != 0) {
         return;
     }
     prefixes.push_back(cursor);
@@ -283,6 +512,12 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             return symbols_[index].type;
         }
         if (currentClass_ != nullptr) {
+            if (countEnumMembers(*currentClass_, expression.value) != 0 &&
+                accessibleMemberCount(*currentClass_, expression.value, false) > 1) {
+                throw DiagnosticError(expression.location,
+                                      "ambiguous inherited member '" + expression.value +
+                                          "'; qualify it through a base class");
+            }
             if (countFields(*currentClass_, expression.value) != 0 &&
                 accessibleMemberCount(*currentClass_, expression.value, false) == 0) {
                 throw DiagnosticError(expression.location,
@@ -302,6 +537,28 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 }
                 return field->type;
             }
+            if (countEnumMembers(*currentClass_, expression.value) != 0) {
+                const auto accessible =
+                    accessibleMemberCount(*currentClass_, expression.value, false);
+                if (accessible == 0 ||
+                    !memberAccessible(*currentClass_, expression.value, false)) {
+                    throw DiagnosticError(expression.location,
+                                          "enum member '" + expression.value +
+                                              "' is not accessible in this class");
+                }
+                if (accessible > 1 ||
+                    findField(*currentClass_, expression.value) != nullptr) {
+                    throw DiagnosticError(expression.location,
+                                          "ambiguous inherited member '" + expression.value +
+                                              "'; qualify it through a base class");
+                }
+                if (const auto* member =
+                        findEnumMember(*currentClass_, expression.value)) {
+                    expression.kind = ExpressionKind::EnumConstant;
+                    expression.value = std::to_string(*member->value);
+                    return "int";
+                }
+            }
         }
         if (expectedType == "type") {
             if (expression.value.find('.') == std::string::npos &&
@@ -319,6 +576,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
     }
     case ExpressionKind::ImplicitThis:
         return currentClass_->name;
+    case ExpressionKind::EnumConstant:
+        return "int";
     case ExpressionKind::Member: {
         if (expectedType == "type") {
             std::string name;
@@ -330,7 +589,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 rootName->kind == ExpressionKind::Identifier &&
                 (findSymbolIndex(rootName->value) != symbols_.size() ||
                  (currentClass_ != nullptr &&
-                  findField(*currentClass_, rootName->value) != nullptr));
+                  (findField(*currentClass_, rootName->value) != nullptr ||
+                   countEnumMembers(*currentClass_, rootName->value) != 0)));
             if (!startsWithLocal && expressionNamePath(expression, name)) {
                 expression.value = resolveClassName(name, currentNamespace_,
                                                      expression.location);
@@ -339,11 +599,45 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 return "type";
             }
         }
+        addImplicitBaseReceiver(*expression.left);
+        bool classQualified = false;
+        std::string className;
+        std::string resolvedClassName;
+        if (expressionNamePath(*expression.left, className)) {
+            const Expression* rootName = expression.left.get();
+            while (rootName->kind == ExpressionKind::Member && rootName->left) {
+                rootName = rootName->left.get();
+            }
+            const bool localBinding =
+                rootName->kind == ExpressionKind::Identifier &&
+                (findSymbolIndex(rootName->value) != symbols_.size() ||
+                 (currentClass_ != nullptr &&
+                  (countFields(*currentClass_, rootName->value) != 0 ||
+                   countEnumMembers(*currentClass_, rootName->value) != 0)));
+            if (!localBinding) {
+                std::string diagnostic;
+                const auto resolved =
+                    lookupClassName(className, currentNamespace_, diagnostic);
+                if (resolved) {
+                    resolvedClassName = *resolved;
+                    classQualified = true;
+                }
+            }
+        }
+        if (classQualified &&
+            countEnumMembers(*classes_.at(resolvedClassName), expression.value) == 0) {
+            classQualified = false;
+            resolvedClassName.clear();
+        }
         Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;
         std::vector<std::string> path;
-        const bool qualified = resolveBaseQualifier(*expression.left, root, owner, path);
-        if (!qualified) {
+        if (classQualified) {
+            owner = classes_.at(resolvedClassName);
+        }
+        const bool qualified = !classQualified &&
+            resolveBaseQualifier(*expression.left, root, owner, path);
+        if (!qualified && !classQualified) {
             const auto receiverType = analyzeExpression(*expression.left);
             if (isArrayType(receiverType)) {
                 if (expression.value == "length") return "int";
@@ -381,20 +675,55 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             }
             owner = findClass(receiverType, expression.location);
         }
-        const auto matches = countFields(*owner, expression.value);
+        const auto enumMatches = countEnumMembers(*owner, expression.value);
+        const auto fieldMatches = countFields(*owner, expression.value);
         const auto accessibleMatches = accessibleMemberCount(*owner, expression.value, false);
         if (accessibleMatches > 1) {
             throw DiagnosticError(expression.location,
-                                  "ambiguous inherited field '" + expression.value +
-                                      "'; qualify it through a base class");
+                                  enumMatches != 0
+                                      ? "ambiguous inherited member '" + expression.value +
+                                            "'; qualify it through a base class"
+                                      : "ambiguous inherited field '" + expression.value +
+                                            "'; qualify it through a base class");
         }
-        const auto& accessOwner = path.empty() ? *owner : *classes_.at(analyzeExpression(*root));
-        if (matches != 0 &&
+        const auto& accessOwner =
+            path.empty() ? *owner : *classes_.at(analyzeExpression(*root));
+        if ((fieldMatches != 0 || enumMatches != 0) &&
             (accessibleMatches == 0 ||
              (!path.empty() && !basePathAccessible(accessOwner, path)))) {
             throw DiagnosticError(expression.location,
-                                  "field '" + expression.value +
-                                      "' is not accessible through this inheritance path");
+                                  enumMatches != 0
+                                      ? "enum member '" + expression.value +
+                                            "' is not accessible through this inheritance path"
+                                      : "field '" + expression.value +
+                                            "' is not accessible through this inheritance path");
+        }
+        if (enumMatches != 0) {
+            if (findField(*owner, expression.value) != nullptr) {
+                throw DiagnosticError(expression.location,
+                                      "ambiguous inherited member '" + expression.value +
+                                          "'; qualify it through a base class");
+            }
+            const auto* member = findEnumMember(*owner, expression.value);
+            if (member == nullptr) {
+                if (!classQualified) {
+                    if (const auto* field = findField(*owner, expression.value)) {
+                        return field->type;
+                    }
+                }
+                throw DiagnosticError(expression.location,
+                                      "ambiguous inherited enum member '" + expression.value +
+                                          "'; qualify it through a base class");
+            }
+            expression.kind = ExpressionKind::EnumConstant;
+            expression.value = std::to_string(*member->value);
+            if (classQualified) expression.left.reset();
+            return "int";
+        }
+        if (classQualified) {
+            throw DiagnosticError(expression.location,
+                                  "class '" + owner->name + "' has no enum member '" +
+                                      expression.value + "'");
         }
         if (const auto* field = findField(*owner, expression.value)) {
             return field->type;
@@ -1147,6 +1476,12 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
                 }
                 return field->type;
             }
+            if (countEnumMembers(*currentClass_, expression.value) != 0) {
+                (void)analyzeExpression(expression);
+                throw DiagnosticError(expression.location,
+                                      "enum constants are immutable; copy the value into a local "
+                                      "before modifying it");
+            }
         }
         throw DiagnosticError(expression.location,
                               "undefined variable '" + expression.value + "' or field");
@@ -1183,6 +1518,12 @@ std::string SemanticAnalyzer::analyzeLValue(Expression& expression) {
                               "slice expressions are copies and are not assignable");
     }
     if (expression.kind == ExpressionKind::Member) {
+        (void)analyzeExpression(expression);
+        if (expression.kind == ExpressionKind::EnumConstant) {
+            throw DiagnosticError(expression.location,
+                                  "enum constants are immutable; copy the value into a local "
+                                  "before modifying it");
+        }
         Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;
         std::vector<std::string> path;

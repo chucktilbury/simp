@@ -148,11 +148,19 @@ base-modifier       ::= "public" | "protected" | "private" | "virtual" ;
 
 class-member        ::= access-section
                       | field-declaration
+                      | anonymous-enum-declaration
                       | constructor-declaration
                       | destructor-declaration
                       | method-declaration ;
 access-section      ::= ("public" | "protected" | "private"), ":", { NEWLINE } ;
 field-declaration   ::= type, IDENT, terminator ;
+anonymous-enum-declaration
+                    ::= "enum", "{", { NEWLINE },
+                        [ enum-member,
+                          { (",", { NEWLINE } | NEWLINE), enum-member },
+                          [ "," ], { NEWLINE } ],
+                        "}" ;
+enum-member         ::= IDENT, [ "=", expression ] ;
 constructor-declaration
                     ::= IDENT, parameter-list, method-tail ;
 destructor-declaration
@@ -178,6 +186,8 @@ include-directive   ::= "include", DOUBLE_STRING, terminator ;
 `destroy` is an in-class declaration form, not a general method signature: it
 must be followed by a block and has no return type or parameter list.
 Destructors cannot be declared without a body or defined out of line.
+`enum` is contextual to the class-member production above; it does not
+introduce a named enum type or a top-level declaration.
 
 The source loader accepts `include-directive` only at brace depth zero and
 before the root `start`; it searches the including file's directory before

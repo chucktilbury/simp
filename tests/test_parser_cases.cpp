@@ -1,11 +1,13 @@
 #include "test_cases.hpp"
 
 #include "simp/Diagnostic.hpp"
+#include "simp/CodeGenerator.hpp"
 #include "simp/Lexer.hpp"
 #include "simp/Parser.hpp"
 #include "simp/Token.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -56,6 +58,106 @@ const TestGroupRegistration registration{1, {
              require(output.str().find("ConstructorCall [Box]") != std::string::npos,
                      "class-name constructor call missing from AST");
          }},
+         {"class-scoped anonymous enum members parse and resolve as signed integers", [] {
+              const auto program = parse(
+                  "class Values {\n"
+                  " enum { FIRST = 40 + 2, NEXT, TWICE = FIRST * 2, }\n"
+                  " enum { ZERO, MIN = -0x8000000000000000, MAX = 0x7fffffffffffffff }\n"
+                  " int read() { return FIRST }\n"
+                  "}\nstart {}");
+              const auto values = std::find_if(
+                  program.classes.begin(), program.classes.end(),
+                  [](const auto& declaration) { return declaration.name == "Values"; });
+              require(values != program.classes.end() && values->enumMembers.size() == 6,
+                      "enum members missing from the class AST");
+              require(values->enumMembers[0].value == 42 &&
+                          values->enumMembers[1].value == 43 &&
+                          values->enumMembers[2].value == 84 &&
+                          values->enumMembers[3].value == 0 &&
+                          values->enumMembers[4].value ==
+                              std::numeric_limits<std::int64_t>::min() &&
+                          values->enumMembers[5].value ==
+                              std::numeric_limits<std::int64_t>::max(),
+                      "enum numbering or signed endpoint resolution is incorrect");
+          }},
+        {"enum constants add no fields to generated object layout", [] {
+              const auto program = parse(
+                  "class Values { enum { FIRST = 3 } }\n"
+                  "start { Values value = Values()\n print(value.FIRST) }");
+              const auto ir =
+                  simp::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
+              require(ir.find("%Class.Values = type { ptr, ptr }") != std::string::npos,
+                      "enum constants must not add per-instance storage");
+          }},
+         {"enum constants obey access, inheritance, and immutability rules", [] {
+              expectValid(
+                  "class Base { public: enum { VALUE = 7 } }\n"
+                  "class Child : Base { int read() { return VALUE } }\n"
+                  "start { Child child = Child()\n print(child.VALUE)\n"
+                  " print(child.Base.VALUE) }\n");
+              expectDiagnostic(
+                  "class Box { protected: enum { VALUE = 7 } }\n"
+                  "start { Box box = Box()\n print(box.VALUE) }",
+                  "not accessible");
+              expectDiagnostic(
+                  "class Box { private: enum { VALUE = 7 } }\n"
+                  "start { print(Box.VALUE) }",
+                  "not accessible");
+              expectDiagnostic(
+                  "class Base { enum { VALUE = 7 } }\n"
+                  "class Hidden : private Base {}\n"
+                  "start { Hidden hidden = Hidden()\n print(hidden.VALUE) }",
+                  "not accessible through this inheritance path");
+              expectDiagnostic(
+                  "class Box { enum { VALUE = 7 } }\n"
+                  "start { Box.VALUE = 8 }",
+                  "enum constants are immutable");
+              expectDiagnostic(
+                  "class Box { enum { VALUE = 7 } }\n"
+                  "start { Box box = Box()\n box.VALUE += 1 }",
+                  "enum constants are immutable");
+              expectDiagnostic(
+                  "class Box { enum { VALUE = 7 }\n"
+                  " void update() { inline (int VALUE) {} } }\nstart {}",
+                  "enum constants are immutable");
+              expectDiagnostic(
+                  "class Left { enum { VALUE = 1 } }\n"
+                  "class Right { enum { VALUE = 2 } }\n"
+                  "class Both : Left, Right {}\n"
+                  "start { Both both = Both()\n print(both.VALUE) }",
+                  "ambiguous inherited member");
+          }},
+         {"enum constants reject collisions and invalid values", [] {
+              expectDiagnostic("class Box { enum { VALUE, VALUE } }\nstart {}",
+                               "duplicate enum member");
+              expectDiagnostic("class Box { int VALUE\nenum { VALUE } }\nstart {}",
+                               "collides with another class member");
+              expectDiagnostic("class Box { void VALUE() {}\nenum { VALUE } }\nstart {}",
+                               "collides with another class member");
+              expectDiagnostic(
+                  "class Base { enum { VALUE } }\nclass Derived : Base { int VALUE }\nstart {}",
+                  "collides with an inherited enum member");
+              expectDiagnostic(
+                  "class Base { enum { VALUE } }\n"
+                  "class Derived : Base { int VALUE() { return 1 } }\nstart {}",
+                  "collides with an inherited enum member");
+              expectDiagnostic("class Box { enum { FIRST = LATER, LATER = 3 } }\nstart {}",
+                               "cannot reference a later or cyclic");
+              expectDiagnostic(
+                  "class First { enum { VALUE = Second.NEXT } }\n"
+                  "class Second { enum { NEXT = First.VALUE } }\nstart {}",
+                  "cyclic enum constant reference");
+              expectDiagnostic("class Box { enum { VALUE = call() } }\nstart {}",
+                               "compile-time integer expression");
+              expectDiagnostic("class Box { enum { VALUE = 1 / 0 } }\nstart {}",
+                               "division by zero");
+              expectDiagnostic(
+                  "class Box { enum { VALUE = 0x7fffffffffffffff, NEXT } }\nstart {}",
+                  "implicit enum value overflows");
+              expectDiagnostic(
+                  "class Box { enum { VALUE = 0x7fffffffffffffff + 1 } }\nstart {}",
+                  "overflows signed 64-bit range");
+          }},
         {"direct constructor declarations reuse constructor-call analysis", [] {
              const auto program = parse(
                  "class Box {\n"
