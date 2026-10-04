@@ -6,6 +6,54 @@ namespace {
 using namespace simp_test;
 
 const TestGroupRegistration registration{2, {
+    {"parenthesized cast receivers support standalone void method calls", [] {
+         expectValid(R"(class Bar {
+             int val
+             Bar(int v) { val = v }
+             void show() { print("class Bar {}"(val)) }
+         }
+         class Foo {
+             list flarp
+             Foo() {
+                 flarp = []
+                 int i = 0
+                 while (i <= 10) {
+                     flarp.append(Bar(i))
+                     i += 1
+                 }
+             }
+         }
+         start {
+             Foo f()
+             (f.flarp[1] as Bar).show()
+         })");
+     }},
+    {"parenthesized noncalls remain invalid expression statements", [] {
+         for (const auto& expression : {"(1)", "(1 + 2)", "(b)", "(b.val)",
+                                        "(b as Bar)", "(values[0] as Bar)", "(Bar())"}) {
+             expectDiagnostic(
+                 "class Bar { int val }\nstart {\n Bar b()\n list values = [b]\n " +
+                     std::string(expression) + "\n}",
+                 "only method calls may be used as expression statements");
+         }
+     }},
+    {"parenthesized statement routing preserves assignments and ordinary calls", [] {
+         expectValid(R"(class Bar { int val
+             void show() {}
+             void invoke() { (show()) }
+         }
+         start {
+             Bar b()
+             int value = 1
+             value += 1
+             b.val = value
+             (b).val += 1
+             (b.val) = 3
+             (b.show())
+             ((b)).show()
+             b.show()
+         })");
+     }},
     {"checked object casts accept class references, null, and collection values", [] {
          expectValid(R"(class Foo { int read() { return 7 } }
              class Bar : Foo {}

@@ -45,7 +45,7 @@ private:
     std::vector<Statement> parseBlock();
     Statement parseStatement();
     Statement parseDeclaration();
-    Statement parseIdentifierStatement();
+    Statement parseExpressionStatement();
     Statement parseReturn();
     Statement parseSuperConstructorCall();
     Statement parsePrint();

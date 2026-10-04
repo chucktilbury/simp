@@ -395,8 +395,8 @@ Statement Parser::parseStatement() {
         check(TokenType::TypeType) || check(TokenType::Void)) {
         return parseDeclaration();
     }
-    if (check(TokenType::Identifier)) {
-        return parseIdentifierStatement();
+    if (check(TokenType::Identifier) || check(TokenType::LeftParen)) {
+        return parseExpressionStatement();
     }
     if (check(TokenType::Print)) {
         return parsePrint();
@@ -521,7 +521,7 @@ Statement Parser::parseDeclaration() {
     return statement;
 }
 
-Statement Parser::parseIdentifierStatement() {
+Statement Parser::parseExpressionStatement() {
     std::size_t lookahead = current_;
     if (tokens_[lookahead].type == TokenType::Identifier) {
         ++lookahead;
