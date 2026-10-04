@@ -71,27 +71,53 @@ const TestGroupRegistration registration{2, {
                  print((Bar() as Foo as Bar).read())
              })");
      }},
-    {"checked object casts reject non-object static sources", [] {
-         for (const auto& source : {"1", "true", "1.5", "1u", "[1]",
-                                    "{\"a\": 1}", "buffer(1)", "type(1)"}) {
-             expectDiagnostic("class Foo {}\nstart { print(" + std::string(source) +
-                                  " as Foo) }",
-                              "checked object cast requires any or a class reference");
-         }
-         expectDiagnostic("class Foo {}\nstart { handle h = null\n print(h as Foo) }",
-                          "checked object cast requires any or a class reference");
+    {"checked casts support collection payload types and aliases", [] {
+         expectValid(R"(class Foo {}
+             start {
+                 list values = [1, 2u, true, 3.5, "text", [4], {"x": 5},
+                                buffer(1), type(int), Foo(), null]
+                 int i = values[0] as int
+                 unsigned u = values[1] as unsigned
+                 bool b = values[2] as bool
+                 float f = values[3] as float
+                 strg s = values[4] as strg
+                 list l = values[5] as list
+                 dict d = values[6] as dict
+                 buffer bytes = values[7] as buffer
+                 type descriptor = values[8] as type
+                 Foo object = values[9] as Foo
+                 print(i)
+                 print(u)
+                 print(b)
+                 print(f)
+                 print(s)
+                 print(l.length)
+                 print(d.length)
+                 print(bytes.length)
+                 print(descriptor)
+                 print(object is Foo)
+                 print(type(values[10] as null))
+                 print(values[10] as any)
+                 strg alias = values[4] as String
+                 print(alias)
+             })");
      }},
-    {"checked object casts require declared class targets", [] {
+    {"checked casts reject impossible sources and targets", [] {
+         expectDiagnostic("class Foo {}\nstart { print(1 as Foo) }",
+                          "checked cast from 'int' to 'Foo' is impossible");
+         expectDiagnostic("class Foo {}\nstart { print(Foo() as int) }",
+                          "checked cast from 'Foo' to 'int' is impossible");
+         expectDiagnostic("class Foo {}\nstart { print(Foo() as void) }",
+                          "checked cast target 'void' is not supported");
          expectDiagnostic("class Foo {}\nstart { print(Foo() as Missing) }",
-                          "unknown class 'Missing'");
-         for (const auto& target : {"int", "unsigned", "float", "bool", "list", "dict",
-                                    "any", "type", "void", "handle", "buffer", "strg"}) {
-             expectDiagnostic("class Foo {}\nstart { print(Foo() as " +
-                                  std::string(target) + ") }",
-                              "class name after 'as'");
-         }
+                          "unknown type name 'Missing'");
+         expectDiagnostic("class Foo {}\nstart { print(null is null) }",
+                          "expected type name after 'is'");
+         expectDiagnostic("class Foo { void noValue() {} }\n"
+                          "start { print(Foo().noValue() as int) }",
+                          "checked cast does not support source type 'void'");
          expectDiagnostic("class Foo {}\nstart { print(Foo() as) }",
-                          "class name after 'as'");
+                          "expected type name after 'as'");
          expectDiagnostic("class Foo {}\nstart { Foo value = Foo(Foo()) }",
                           "constructor");
      }},

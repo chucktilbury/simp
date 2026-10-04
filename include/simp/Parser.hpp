@@ -63,7 +63,7 @@ private:
     std::unique_ptr<Expression> parseNot();
     std::unique_ptr<Expression> parseComparison();
     std::unique_ptr<Expression> parseRelational();
-    std::string parseTypeTestName();
+    std::string parseTypeTestName(const std::string& operatorName);
     std::unique_ptr<Expression> parseAddition();
     std::unique_ptr<Expression> parseMultiplication();
     std::unique_ptr<Expression> parseUnary();

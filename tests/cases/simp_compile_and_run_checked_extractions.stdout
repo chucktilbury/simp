@@ -1,0 +1,49 @@
+42
+9
+true
+2.5
+text
+7
+8
+1
+7
+8
+0
+11
+handle
+11
+11
+int
+int
+bool
+42
+7
+(null)
+null
+true
+true
+null
+true
+null
+null
+true
+true
+null
+null
+int mismatch
+unsigned mismatch
+bool mismatch
+float mismatch
+string mismatch
+list mismatch
+dict mismatch
+buffer mismatch
+handle mismatch
+type mismatch
+class mismatch
+null mismatch
+list null extraction mismatch
+null list extraction mismatch
+null dict extraction mismatch
+null scalar mismatch
+object mismatch
