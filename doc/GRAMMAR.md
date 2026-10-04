@@ -324,15 +324,17 @@ primary             ::= INTEGER | UNSIGNED_INT | FLOAT | STRING
                       | "unsigned", "(", expression, ")"
                       | "float", "(", expression, ")"
                       | "buffer", "(", [ expression, { ",", expression } ], ")"
+                      | buffer-literal
                       | "(", expression, ")"
                       | list-literal | dict-literal | type-value ;
+buffer-literal      ::= "buffer", "[", [ argument-list ], "]" ;
 list-literal        ::= "[", [ argument-list ], "]" ;
 dict-literal        ::= "{", [ dict-entry, { ",", dict-entry } ], "}" ;
 dict-entry          ::= expression, ":", expression ;
 type-value          ::= "strg" | "list" | "dict"
                       | "handle" | "any"
                       | "bool" | "int" | "unsigned" | "float"  (* only when not followed by "(" *)
-                      | "buffer"                      (* only when not followed by "(" *) ;
+                      | "buffer"                      (* only when not followed by "(" or "[" *) ;
 ```
 
 The `postfix` shorthand has these implementation constraints: a call suffix

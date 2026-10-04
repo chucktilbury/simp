@@ -880,6 +880,26 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         }
         return {"list", array};
     }
+    case ExpressionKind::BufferLiteral: {
+        const auto file = internString(expression.location.file);
+        const auto result = newTemporary();
+        instructions_ += "  " + result + " = call ptr @simp_buffer_new(i64 " +
+                         std::to_string(expression.arguments.size()) + ", ptr " + file +
+                         ", i64 " + std::to_string(expression.location.file.size()) +
+                         ", i64 " + std::to_string(expression.location.line) + ", i64 " +
+                         std::to_string(expression.location.column) + ")\n";
+        rootObjectValue({"buffer", result}, expression.location);
+        for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
+            const auto value = emitExpression(*expression.arguments[index]);
+            instructions_ += "  call void @simp_buffer_set(ptr " + result + ", i64 " +
+                             std::to_string(index) + ", i64 " + value.operand + ", ptr " +
+                             file + ", i64 " +
+                             std::to_string(expression.location.file.size()) + ", i64 " +
+                             std::to_string(expression.location.line) + ", i64 " +
+                             std::to_string(expression.location.column) + ")\n";
+        }
+        return {"buffer", result};
+    }
     case ExpressionKind::MapLiteral: {
         const auto map = newTemporary();
         instructions_ += "  " + map + " = call ptr @simp_gc_alloc_map()\n";

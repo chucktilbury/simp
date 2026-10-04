@@ -772,7 +772,10 @@ subclassing, only a small fixed set of compiler-built-in operations.
 
 - `buffer` is a homogeneous, resizable, GC-traced sequence of bytes.
 - Construction: `buffer(n)` allocates a zero-filled buffer of length `n`.
-  There is no buffer literal syntax.
+- `buffer[byte, ...]` constructs an independent buffer; `buffer[]` is empty.
+  Literal elements must be `int` or `unsigned`, are evaluated once in source
+  order, and are truncated to their low 8 bits as with indexed writes and
+  `append`. Bare `[ ... ]` remains a heterogeneous list literal.
 - `b.resize(newLength)` grows or shrinks in place; new bytes introduced by
   growth are zero-filled, and shrinking discards trailing bytes.
 - `b.length` is a read-only `int`, matching the existing `list`/`dict`

@@ -18,7 +18,8 @@ namespace simp {
 enum class ExpressionKind {
     Integer, Unsigned, Float, Boolean, String, FormatString, Identifier, ImplicitThis,
     Unary, Binary, Member, Call,
-    ConstructorCall, BufferConstructor, Null, ArrayLiteral, MapLiteral, Index, Slice, Cast,
+    ConstructorCall, BufferConstructor, BufferLiteral, Null, ArrayLiteral, MapLiteral,
+    Index, Slice, Cast,
     TypeTest, TypeOf, TypeName
 };
 

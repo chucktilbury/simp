@@ -207,6 +207,29 @@ const TestGroupRegistration registration{1, {
              require(output.str().find("MapLiteral") != std::string::npos,
                      "dict literal missing from AST");
          }},
+        {"buffer literals are expressions and preserve bare buffer type values", [] {
+             const auto program = parse(
+                 "start {\n"
+                 "  buffer empty = buffer[]\n"
+                 "  buffer bytes = buffer[1, 2u]\n"
+                 "  type bufferType = buffer\n"
+                 "  print(bytes[0])\n"
+                 "}");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             require(output.str().find("BufferLiteral") != std::string::npos &&
+                         output.str().find("TypeName [buffer]") != std::string::npos &&
+                         output.str().find("ArrayLiteral") == std::string::npos,
+                     "buffer literals, bare type values, or list distinction were not preserved");
+         }},
+        {"buffer literals reject non-integer element types", [] {
+             expectDiagnostic("start { buffer bytes = buffer[true] }",
+                              "buffer literal elements must have type int or unsigned");
+             expectDiagnostic("start { buffer bytes = buffer[1.5] }",
+                              "buffer literal elements must have type int or unsigned");
+             expectDiagnostic("start { buffer bytes = buffer[\"byte\"] }",
+                              "buffer literal elements must have type int or unsigned");
+         }},
         {"raise, catch-all, and finally syntax", [] {
              const auto program = parse(
                  "class Failure : Exception {\n"

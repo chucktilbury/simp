@@ -211,8 +211,8 @@ This prints `3`, then `40`, on separate lines.
 
 ## Expressions and operators
 
-Expressions include literals, names, parentheses, list and dict literals,
-casts, `type(value)`, `buffer(length)`, class construction, method calls,
+Expressions include literals, names, parentheses, list, dict, and buffer
+literals, casts, `type(value)`, `buffer(length)`, class construction, method calls,
 member access, indexing, slicing, and type tests. Calls are written as
 `ClassName(arguments)` for construction or `object.method(arguments)` for
 methods. The parser does not support free functions, closures, or arbitrary
@@ -576,8 +576,13 @@ start {
 
 ## `buffer` and `handle`
 
-`buffer(length)` creates a mutable byte buffer. It has a read-only `length`,
-supports integer indexing and slicing, and provides `resize`, `clear`, and
+`buffer(length)` creates a mutable byte buffer of `length` zero-filled bytes.
+`buffer[byte, ...]` creates a new buffer initialized from its elements;
+`buffer[]` creates an empty buffer. Each element must have type `int` or
+`unsigned`, is evaluated once from left to right, and contributes its low 8
+bits, matching indexed writes and `append`. Bare `[ ... ]` remains a
+heterogeneous list literal. A buffer has a read-only `length`, supports
+integer indexing and slicing, and provides `resize`, `clear`, and
 `append(int-or-unsigned)` methods. Indexed values are `unsigned`; indexed
 assignment accepts `int` or `unsigned`. Bounds and allocation failures are
 checked by the runtime.
@@ -589,11 +594,10 @@ be stored in collections and passed through `any`. See `primary`,
 `index-or-slice-suffix`, and `postfix`.
 
 ```simp
-// Complete program: byte-buffer access and mutation.
+// Complete program: byte-buffer literals, access, and mutation.
 start {
-    buffer bytes = buffer(2)
-    bytes[0] = 65
-    bytes.append(66)
+    buffer bytes = buffer[65, 66]
+    bytes.append(67)
     print(bytes.length)
     print(bytes[0])
 }

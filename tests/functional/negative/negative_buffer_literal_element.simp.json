@@ -1,0 +1,5 @@
+{
+  "friendly_name": "buffer literals reject non-integer elements",
+  "expected_diagnostic": "buffer literal elements must have type int or unsigned",
+  "enabled": true
+}

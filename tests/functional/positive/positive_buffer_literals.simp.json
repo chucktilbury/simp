@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional explicit buffer literals",
+  "expected_diagnostic": "",
+  "enabled": true
+}

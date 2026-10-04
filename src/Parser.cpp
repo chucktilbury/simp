@@ -960,6 +960,21 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         return parseTypeName(token, "dict");
     }
     if (check(TokenType::BufferType) && current_ + 1 < tokens_.size() &&
+        tokens_[current_ + 1].type == TokenType::LeftBracket) {
+        ++current_;
+        auto expression = std::make_unique<Expression>();
+        expression->kind = ExpressionKind::BufferLiteral;
+        expression->location = token.location;
+        consume(TokenType::LeftBracket, "'[' after buffer");
+        if (!check(TokenType::RightBracket)) {
+            do {
+                expression->arguments.push_back(parseExpression());
+            } while (match(TokenType::Comma));
+        }
+        consume(TokenType::RightBracket, "']' after buffer elements");
+        return expression;
+    }
+    if (check(TokenType::BufferType) && current_ + 1 < tokens_.size() &&
         tokens_[current_ + 1].type != TokenType::LeftParen) {
         ++current_;
         return parseTypeName(token, "buffer");

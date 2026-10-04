@@ -424,6 +424,18 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         return "list";
     }
+    case ExpressionKind::BufferLiteral: {
+        for (auto& element : expression.arguments) {
+            const auto elementType = analyzeExpression(*element);
+            if (elementType != "int" && elementType != "unsigned") {
+                throw DiagnosticError(element->location,
+                                      "buffer literal elements must have type int or unsigned; "
+                                      "found " +
+                                          elementType);
+            }
+        }
+        return "buffer";
+    }
     case ExpressionKind::MapLiteral: {
         for (std::size_t index = 0; index < expression.arguments.size(); index += 2) {
             auto& key = *expression.arguments[index];
