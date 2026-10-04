@@ -110,7 +110,8 @@ The language is intended to have full object-oriented programming support. Broad
   `null` is now accepted at declaration/assignment for every type,
   including the scalars (`int`, `unsigned`, `float`, `bool`) and `strg`,
   in addition to the reference types (`class`, `list`, `dict`, `buffer`,
-  `handle`, `any`) that already supported it. `x == null` / `x != null`
+  `handle`) and internal dynamic collection values that already supported
+  it. `x == null` / `x != null`
   work for every type. Printing a null value of any type — scalar, `strg`,
   or `any` — prints `(null)`, matching the confirmed model.
   - **Scalar representation:** a *local* scalar variable that can hold
@@ -176,12 +177,23 @@ The language is intended to have full object-oriented programming support. Broad
 - **Checked extraction with `as` (implemented):** `value as Target` checks a
   dynamic collection payload's exact scalar/reference/type tag; class targets
   also accept subclasses and adjust to the unique requested base subobject.
+  This is extraction/identity, not numeric conversion: `as int` requires an
+  `int` payload, whereas `int(x)` converts a statically typed scalar.
   Targets cover `int`, `unsigned`, `bool`, `float`, `strg`/`String`, `list`,
   `dict`, `buffer`, `handle`, `type`, `null`, `any`, and declared classes;
   `void` and unknown targets are rejected. `as any` boxes supported static
-  values or preserves an existing dynamic value. `as null` checks for a null
-  reference payload, not scalar null state. Typed `any` extraction and null
-  behavior match the rules documented in [LANGUAGE-REFERENCE.md].
+  values or preserves an existing dynamic value; it does not make `any` a
+  legal declared type. Same-type static sources remain identity operations,
+  including their existing null state; static class references can also be
+  checked against another class target. Other statically impossible pairs
+  are rejected.
+  `as null` checks for a null reference payload or dynamic null, not scalar
+  null state or a type descriptor. Dynamic null extraction is target-specific:
+  class/`String`, `buffer`, and `handle` accept the canonical null tag;
+  `handle` also accepts a null pointer with the handle tag. `list`/`dict`
+  require their matching tag and a non-null reference; scalar and `type`
+  targets require their exact tags and reject null. See
+  [LANGUAGE-REFERENCE.md](LANGUAGE-REFERENCE.md#checked-extraction-with-as).
   Qualified targets and postfix method-call chaining are supported, and the
   source is evaluated once with managed references rooted. Mismatches raise
   catchable, source-located exceptions. `Foo(value)` remains construction,
@@ -231,6 +243,34 @@ For the normative syntax and current behavior, see the
 - Operator overloading is not supported.
 - Static classes and singletons are not supported.
 - Nested classes are not supported.
+- **Anonymous class enums (implemented):** `enum { FIRST = 10, NEXT }`
+  inside a class declares immutable signed 64-bit `int` constants, not a
+  new type or fields. Constants have no runtime allocation or per-instance
+  storage and are usable wherever an `int` expression is accepted.
+  - Each block starts at `0` if its first value is omitted; subsequent
+    omitted values increment the preceding value. Multiple blocks are
+    allowed. Members may be comma- or newline-separated, with a trailing
+    comma allowed.
+  - Explicit values are compile-time integer expressions: decimal/hex
+    literals, parentheses, unary `+`/`-`, binary `+`, `-`, `*`, `/`, `%`,
+    and enum-member references. Earlier members of the same class and
+    accessible class-qualified/inherited constants may be referenced;
+    instance expressions, later members of the same class, cycles, and
+    nonconstant expressions are rejected. Signed-i64 overflow (including
+    implicit increments and signed minimum divided by or taken modulo
+    `-1`) and division/remainder by zero are compile-time errors.
+  - Duplicate numeric values are allowed; duplicate names and collisions
+    with own or inherited class members are errors. Constants follow the
+    current public/protected/private access section and inheritance-path
+    access rules. Ambiguous inherited names need explicit base qualification.
+  - Both `Class.NAME` (including namespace/import qualification) and
+    `object.NAME` are supported, as are unqualified reads inside class
+    methods. Object-qualified lookup uses the static class, does not
+    dereference or null-check the receiver, and still evaluates receiver
+    side effects once. Assignment, compound assignment, and inline captures
+    of constants are rejected; copy into a local to modify or capture.
+  See [LANGUAGE-REFERENCE.md](LANGUAGE-REFERENCE.md#classes-objects-inheritance-and-dispatch)
+  for an example.
 
 The top-level `start` block is therefore the intentional exception to the
 class-member rule, not a general facility for top-level methods or data. Other
@@ -822,13 +862,12 @@ subclassing, only a small fixed set of compiler-built-in operations.
   duplicate. This is different from `list`/`dict`, whose assignment aliases
   shared mutable storage; `buffer` assignment is a value type in this
   respect.
-- No comparisons (`==`, `<`, and so on) are defined for `buffer`; a `buffer`
-  cannot appear as an operand in any operator expression at all (not just
-  comparisons) — the same restriction now applies to `handle` and to
-  `strg`. Passing a `buffer` as a call argument, storing it in a
-  field/variable/collection, indexing it, or invoking its built-in
-  operations above are not "expressions" in this restricted sense; using it
-  with `+`, `==`, `<`, and so on is.
+- `buffer` has no arithmetic, ordering, or buffer-to-buffer equality
+  operators. Comparisons with `null`, type inspection with `is`/`type`,
+  and supported `as` extraction/identity operations remain valid.
+  Passing, storing, indexing, and invoking its built-in operations are also
+  supported. `handle` has the same operator limits; `strg` instead follows
+  class-reference identity equality.
 - Runtime representation (parallel to the existing `SimpArray`/`SimpMap`
   structs in `include/simp/RuntimeGc.h`):
 
@@ -855,8 +894,9 @@ subclassing, only a small fixed set of compiler-built-in operations.
 - `handle` is opaque in every way: the compiler and runtime carry it as an
   untyped reference and never inspect, trace, copy, index, or compare its
   contents. It has no built-in operations at all — not even `.length`.
-- A `handle` cannot appear as an operand in any operator expression, the
-  same restriction as `buffer` and `strg`.
+- A `handle` has no arithmetic, ordering, or handle-to-handle equality
+  operators. As with `buffer`, null comparisons, type inspection, and
+  supported `as` operations remain valid.
 - **Confirmed:** since `handle` has no literal syntax and no built-in
   constructor, a `handle` value can only be produced by native code: either
   a native-bound (`from "<symbol>"` C) method that returns one, or an
@@ -1546,8 +1586,15 @@ An external module package has at least:
 Packages are versioned at the package level. The manifest format, resolution
 rules, native-link behavior, search locations, and authoring workflow are
 specified in "Package manifests, resolution, and native linking" above.
-Name mangling is deliberate (see "Name mangling (implemented)" below). SWIG
-may be considered where useful, but no particular binding generator is selected.
+Name mangling is deliberate (see "Name mangling (implemented)" above).
+**Simple will not use SWIG and has no SWIG dependency.** External native
+bindings use class method declarations with out-of-line `from "<symbol>"`
+definitions and the native C ABI described below; packages may link a native
+library or C shim through their manifest. Inline C uses generated capture
+shims and the installed public `simp/Stdlib.h` facade for supported
+standard-library native APIs, as described above and in
+[STDLIB.md](STDLIB.md#inline-c-api). This facade does not make arbitrary
+Simple methods callable from C.
 
 ### Bundled standard-library packages
 
@@ -1765,7 +1812,9 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   symbolic forms `&&`, `||`, `!`.
 - `bool`, `float` (an alias for `double`-precision IEEE 754), and `unsigned`
   are required scalar types with full static type checking, alongside the
-  existing `int`, `strg`, `list`, `dict`, and `any`.
+  existing `int`, `strg`, `list`, and `dict`. `any` is the internal tagged
+  value type for collection reads/iteration and `as any`, not a legal
+  declared type.
 - Float literals follow `strtod()`'s decimal-constant lexical shape,
   including leading-dot (`.5`) and trailing-dot (`5.`) forms; a bare digit
   sequence with no point or exponent remains `int`.
@@ -1804,8 +1853,9 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   primitive-like (not classes, no user methods, no subclassing). `buffer`
   is a resizable, GC-traced byte sequence with `.resize`/`.length`/`.clear`/
   `.append` and array-style slicing; assigning a `buffer` copies it.
-  `handle` is fully opaque with no built-in operations at all. Neither
-- `buffer` nor `handle` may appear as an operand in an operator expression;
+  `handle` is fully opaque with no buffer-like built-in operations.
+  Neither supports arithmetic, ordering, or same-type equality; both support
+  null comparisons, type inspection, and supported `as` operations.
   `strg` instead follows class-reference equality rules.
 - `handle` is a valid `inline` C capture type, including the sugared
   `handle x inline { ... }` declare-and-capture form (see "Inline C and
@@ -1837,7 +1887,6 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
 - Prebuilt module binary formats, package version ranges and lockfiles,
   platform-specific native-link clauses, and automated package build/install
   commands.
-- Whether and where SWIG is used.
 - The full set of future standard/external modules.
 - Library search paths, `any` values across the native boundary, and ABI
   support beyond x86-64 SysV.

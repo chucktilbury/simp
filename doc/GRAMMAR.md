@@ -288,10 +288,10 @@ unary operators associate right-to-left.
 | 6 | `+`, `-` | left |
 | 7 | `*`, `/`, `%` | left |
 | 8 | unary `+`, unary `-` | right (prefix) |
-| 9 | member access, calls, indexing, slicing, `as` object casts | repeated left-to-right |
+| 9 | member access, calls, indexing, slicing, `as` checked extraction | repeated left-to-right |
 
 `is` consumes a type name rather than a right-hand expression. Equality
-operators bind more tightly than `is` and relational operators because that
+operators bind less tightly than `is` and relational operators because that
 is how `parseComparison` and `parseRelational` are layered. Assignment is a
 statement, not an expression.
 
@@ -366,6 +366,8 @@ current-object receiver when its initial class name denotes a direct base.
 The remaining qualifiers must follow successive direct-base edges, as with
 explicit `object.Left.Root.field` access. This is semantic resolution of the
 existing postfix grammar, not static member syntax or a new parser production.
+Anonymous enum constants also support `Class.NAME` and `object.NAME`;
+class-qualified constant reads are not static fields or static method calls.
 Local/parameter and field receiver names take precedence over implicit base
 qualification; namespace/import class lookup otherwise follows ordinary
 lexical rules. Type-valued name resolution is unchanged. A
@@ -407,21 +409,19 @@ Each parser routine has a corresponding production or grammar note above:
 | `parseExpression`, `parseOr`, `parseAnd`, `parseNot`, `parseComparison`, `parseRelational`, `parseAddition`, `parseMultiplication`, `parseUnary` | matching expression-precedence productions |
 | `parseTypeTestName`, `parsePrimary`, `parseTypeName`, `parsePostfix` | `type-test-name`, `primary`, type-value primary, and postfix productions |
 | `startsOutOfLineDefinition` | top-level lookahead for `out-of-line-definition`; not a separate syntax form |
-| `parseClass`, `parseOutOfLineMethodDefinition`, `parseType`, `parseParameters`, `parseMethod` | class/member/declaration productions |
+| `parseClass`, `parseEnumMembers`, `parseOutOfLineMethodDefinition`, `parseType`, `parseParameters`, `parseMethod` | class/member/declaration productions, including `anonymous-enum-declaration` |
 | `Parser` constructor, `current`, `previous`, `check`, `match`, `error` | token-stream setup/access, predicates, cursor movement, and diagnostics; these do not add productions |
 | `skipNewlines`, `consumeStatementTerminator`, `consume`, `validateFormatString`, `trace` | lexical/newline policy, `terminator`, positional/named format validation, and tracing; helpers do not add productions |
 
-All 50 member functions in `Parser.cpp` and `ParserClass.cpp` are accounted
-for above: syntax-producing methods map to productions and the remaining
-methods are identified as parser infrastructure or validation helpers. The
-101 `tests/functional/positive/*.simp` fixtures were checked against this map:
-all their parsed forms are represented by productions above. The fixtures
+The map covers syntax-producing methods in `Parser.cpp` and `ParserClass.cpp`
+and identifies parser infrastructure and validation helpers. The
+`tests/functional/positive/*.simp` fixtures
 exercise scalar and float literal variants, declarations and assignments,
 calls and overloads, casts and type tests, lists/dicts/buffers/handles,
 indexing/slicing/iteration, conditionals and loops, classes and inheritance
-(including virtual and secondary bases), exceptions, namespaces, imports,
-textual inclusion, native bindings, inline C, strings, and thread bindings.
-No positive-fixture syntax or parser routine was left unmapped. The
+(including anonymous enums, virtual and secondary bases), exceptions,
+namespaces, imports, textual inclusion, native bindings, inline C, strings,
+and thread bindings.
 `include-directive` case is the only construct expanded before parsing.
 
 ## Notes and known irregularities

@@ -74,6 +74,9 @@ in [`stdlib/README.md`](stdlib/README.md); its public APIs are in
   strings support `\e` and positional or named format placeholders.
 - Scalar `int`, `unsigned`, and `float` variables and fields support
   `+=`, `-=`, `*=`, `/=`, and the applicable `%=` compound assignments.
+- Anonymous class enums declare immutable signed 64-bit `int` constants
+  accessible as `Class.NAME` or `object.NAME`, without creating a new type or
+  per-instance storage.
 - Base constructors use dotless `super Base(args)` syntax; virtual bases use
   `super virtual Base(args)` or `virtual super Base(args)`.
 - Collection type keywords are `list` and `dict`; `array` and `map` are
