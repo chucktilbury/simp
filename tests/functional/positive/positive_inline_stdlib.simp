@@ -1,0 +1,81 @@
+import math as M
+import system as Sys
+
+start {
+    float root = 0.0
+    unsigned clock = 0u
+    bool ok = false
+    strg path
+    strg mode = "w+"
+    strg message = "inline public API"
+    strg result
+    strg error
+    strg pattern = "/this/path/does/not/exist/*"
+    list matches
+    buffer bytes
+    handle file
+    handle mutex
+    handle condition
+    handle semaphore
+    handle child
+    strg executable = "/usr/bin/printf"
+    list arguments = ["inline-child"]
+    strg childOutput
+    strg missing = "/this/path/does/not/exist"
+    bool failed = false
+    inline (float root, unsigned clock, bool ok, strg path, strg mode,
+            strg message, strg result, strg error, strg pattern, list matches,
+            buffer bytes, handle file, handle mutex, handle condition, handle semaphore,
+            handle child, strg executable, list arguments, strg childOutput,
+            strg missing, bool failed) {
+        *root = simp_math_sqrt(NULL, 9.0);
+        *clock = simp_time_monotonic_milliseconds(NULL);
+        *path = simp_fs_temp_file(NULL);
+        *file = simp_file_open(NULL, *path, *mode);
+        *ok = *file != NULL &&
+              simp_file_write(NULL, *file, *message) == 17 &&
+              simp_file_seek(NULL, *file, 0, 0) == 0;
+        *result = simp_file_read_all(NULL, *file);
+        simp_file_close(NULL, *file);
+        *file = NULL;
+        *ok = *ok && simp_fs_remove(NULL, *path);
+        *matches = simp_glob_glob(NULL, *pattern);
+        *bytes = simp_random_bytes(NULL, 4);
+        *ok = *ok && *bytes != NULL && simp_random_fill(NULL, *bytes) &&
+              simp_time_sleep_milliseconds(NULL, 0) &&
+              simp_terminal_columns(NULL) >= 0;
+        *mutex = simp_mutex_create(NULL);
+        *condition = simp_condition_create(NULL);
+        *semaphore = simp_semaphore_create(NULL, 0);
+        *ok = *ok && *mutex && *condition && *semaphore &&
+              simp_mutex_lock(NULL, *mutex) && simp_mutex_unlock(NULL, *mutex) &&
+              simp_condition_signal(NULL, *condition) &&
+              simp_condition_release(NULL, *condition) && simp_mutex_release(NULL, *mutex);
+        simp_semaphore_signal(NULL, *semaphore);
+        simp_semaphore_wait(NULL, *semaphore);
+        simp_semaphore_release(NULL, *semaphore);
+        *mutex = *condition = *semaphore = NULL;
+        int64_t socket = simp_net_socket_create(NULL);
+        *ok = *ok && socket >= 0;
+        if (socket >= 0) simp_net_socket_close(NULL, socket);
+        *child = simp_process_spawn(NULL, *executable, *arguments);
+        *ok = *ok && *child != NULL && simp_process_wait(NULL, *child) &&
+              simp_process_exit_code(NULL, *child) == 0;
+        *childOutput = simp_process_stdout(NULL, *child);
+        simp_process_close(NULL, *child);
+        *child = NULL;
+        *failed = simp_fs_file_size(NULL, *missing) == -1;
+        *error = simp_system_last_error(NULL);
+        *ok = *ok && simp_system_argc(NULL) >= 1 &&
+              strcmp(simp_string_cstr(result), "inline public API") == 0;
+    }
+    print(root == M.Math().sqrt(9.0))
+    print(clock > 0u)
+    print(ok)
+    print(result)
+    print(matches.length)
+    print(bytes.length)
+    print(failed && error.length > 0)
+    print(childOutput)
+    print(Sys.System().argc() > 0)
+}

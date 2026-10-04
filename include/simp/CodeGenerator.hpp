@@ -175,6 +175,7 @@ private:
     void emitPrintValue(const Value& value, const SourceLocation& location);
     void emitPrintDynamicValue(const Value& value, const SourceLocation& location);
     void emitInlineC(const Statement& statement);
+    Binding emitFieldBinding(const Expression& target);
     std::string inlineSymbol(const Statement& statement) const;
     void emitNullCheck(const std::string& pointer, const SourceLocation& location);
     bool isArrayType(const std::string& type) const;

@@ -242,7 +242,7 @@ super-initializer   ::= ( "super", [ "virtual" ] | "virtual", "super" ), IDENT,
                         terminator ;
 inline-c-statement  ::= "inline", [ capture-list ], INLINE_BODY, terminator ;
 capture-list        ::= "(", [ capture, { ",", capture } ], ")" ;
-capture             ::= capture-type, IDENT ;
+capture             ::= capture-type, [ "." ], IDENT, { ".", IDENT } ;
 capture-type        ::= type | "void" ;
 terminator          ::= NEWLINE, { NEWLINE } | ε ;
 ```
@@ -251,6 +251,12 @@ terminator          ::= NEWLINE, { NEWLINE } | ε ;
 allow adjacent simple statements on the same line. The declaration form that
 places `inline` after a type and identifier declares that local and adds it
 as an implicit capture. An initializer on that form is rejected.
+An unqualified capture resolves a local/parameter before an instance field.
+Leading `.` selects the implicit receiver explicitly; other dotted capture
+paths must resolve through that receiver's base classes. Only the final
+identifier names the C parameter; final names must be unique within a list.
+Field captures obey normal access, ambiguity, and exact-type checks and
+require an instance context.
 `direct-constructor-arguments` is accepted only when `type` is a class name
 (a `QUALIFIED_IDENT`), not a built-in type such as `int`, `strg`, or `buffer`.
 It constructs the declared class directly; it does not declare a function.

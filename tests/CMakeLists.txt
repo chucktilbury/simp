@@ -340,6 +340,7 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "-DDOCDIR=${CMAKE_INSTALL_DOCDIR}"
                 "-DMANDIR=${CMAKE_INSTALL_MANDIR}"
                 "-DRUNTIME_LIBRARY_NAME=$<TARGET_FILE_NAME:simp_runtime>"
+                "-DCLANG=${SIMP_CLANG_EXECUTABLE}"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallLayoutTest.cmake"
         )
     endforeach()

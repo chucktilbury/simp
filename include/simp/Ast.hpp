@@ -53,6 +53,7 @@ struct InlineCapture {
     std::string type;
     std::string name;
     SourceLocation location;
+    std::unique_ptr<Expression> target;
 };
 
 struct Statement;

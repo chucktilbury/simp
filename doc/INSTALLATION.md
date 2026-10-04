@@ -13,6 +13,15 @@ cmake --build build -j4
 ctest --test-dir build --output-on-failure
 ```
 
+The current native compiler/runtime target is POSIX (including `unistd.h`
+and pthreads); non-POSIX targets are not supported. CMake reports a missing
+`unistd.h`, and generated inline-C compilation diagnoses any required target
+header that Clang cannot find rather than silently omitting it.
+Installed application resources include the public opaque C API
+`include/simp/Stdlib.h` and the linked runtime archive; application developers
+do not need runtime implementation source. See
+[the inline C API](STDLIB.md#inline-c-api) for supported bindings.
+
 The root build is the recommended build. The `include/`, `src/`, and `tests/`
 directories also have component `CMakeLists.txt` files; standalone
 configuration is optional. To build only the compiler outside the repository's

@@ -1414,9 +1414,15 @@ return(h)
   optional. Capture types are `int`, `bool`, `float`, `unsigned`, `strg`,
   `list`, `dict`, `buffer`, `handle`, or a declared class type; `void` and
   `any` are not capture types. Every
-  listed type must exactly match an enclosing Simple local or parameter.
-  Captures are by name, cannot be duplicated, and only listed locals are
-  available to the C block.
+  listed type must exactly match an enclosing Simple local/parameter or an
+  accessible instance field. Locals and parameters take precedence over
+  fields. `inline (int .value)` explicitly captures the current receiver's
+  field, bypassing local shadowing; `inline (int Base.value)` or
+  `inline (int Base.OtherBase.value)` uses the normal implicit-this and
+  base-qualified access checks. The final field name is the C parameter
+  (`value` in these examples); duplicate final names are errors. Arbitrary
+  object expressions, inaccessible/ambiguous fields, and field captures in
+  `start` are rejected. There are no static fields.
 - A second, sugared form declares and captures a single local in one
   statement: `<type> <name> inline { <C source> }`, where `<type>` is one
   of the capture-eligible types above. This is exactly equivalent to
@@ -1427,7 +1433,7 @@ return(h)
   is typically obtained: `handle h inline { /* C code assigns h */ }`. The
   local is uninitialized (`null`) for the duration of the C block, exactly
   as an ordinary declaration without an initializer would be.
-- Captured locals are passed by address so C writes are visible to the Simple
+- Captured locals and instance fields are passed by address so C writes are visible to the Simple
   code after the block. The generated shim parameters are `int64_t *` for `int`,
   `_Bool *` for `bool`, `double *` for `float`, `uint64_t *` for `unsigned`,
   `SimpBuffer **` for `buffer`, and `void **` for `strg`, `list`, `dict`,
@@ -1439,7 +1445,7 @@ return(h)
   represent.
 - This is intentionally different from a C-bound method: its arguments
   are passed by value according to their C ABI, while inline captures are mutable
-  references to the caller's local storage. A generated inline shim needs
+  references to the caller's local or field storage. A generated inline shim needs
   addresses to make assignments in C observable afterward.
 - Inline C may call C functions such as `printf`. Simple strings are not
   guaranteed to be NUL-terminated, so no implicit conversion is made. In
@@ -1465,6 +1471,27 @@ return(h)
   initial design. Shim symbols are derived from the inline statement's source
   file and location, allowing separate translation units to refer to the same
   block without name collisions.
+- Field capture addresses reuse the field-assignment backend, including
+  receiver adjustment for primary/secondary bases, repeated nonvirtual
+  bases, and shared virtual bases. A managed field remains traced through
+  the rooted receiver; it is not copied into an unrooted C temporary.
+- Application developers need only installed compiler/library artifacts,
+  not runtime implementation source. Generated inline C includes the public
+  opaque `simp/Stdlib.h` facade for existing standard-library native APIs
+  (see [STDLIB.md](STDLIB.md#inline-c-api)), plus `stdlib.h`, `stdio.h`,
+  `string.h`, `errno.h`, `ctype.h`, `stdint.h`, `limits.h`, and `unistd.h`.
+  Includes precede all bodies and are emitted once per translation unit.
+  Simple class wrappers remain the preferred ordinary application API;
+  arbitrary Simple methods are not directly callable from C. Legacy runtime
+  declarations needed by existing capture shims are not supported public APIs.
+- `unistd.h` is POSIX-only. The current build requires a POSIX native
+  host/target and diagnoses a missing header during CMake configuration.
+  Shim compilation by the configured native Clang also diagnoses missing
+  target headers; required includes are never conditionally skipped.
+  Captured slots and borrowed bytes must not outlive their block; store
+  managed C API results directly into rooted captures before another
+  allocating call. Do not substitute `malloc` memory for managed values
+  or bypass the shim's cleanup with a C `return`/`longjmp`.
 
 ## Modules, packages, and priorities
 
@@ -1747,9 +1774,11 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   { ... }` declare-and-capture sugar) compile to a generated C shim per the
   "Inline C and LLVM/backend direction" section, built and linked through
   the existing C toolchain step. Captured managed references (`strg`,
-  `list`, `dict`, `handle`, class types) are passed as rooted addresses;
+  `list`, `dict`, `buffer`, class types) are passed as rooted addresses;
   the wrapper roots the implicit receiver and managed parameters for the
-  duration of the call, matching native-bound methods.
+  duration of the call, matching native-bound methods. Fields use actual
+  slots in that receiver, including adjusted base subobjects. Opaque
+  `handle` values are deliberately not GC roots.
 - `simp_string_cstr`'s storage/cleanup contract is implemented and final:
   each call copies the string into a NUL-terminated buffer owned by a
   thread-local per-shim arena; the generated shim opens that arena

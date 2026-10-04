@@ -333,6 +333,27 @@ std::string CodeGenerator::emitAddress(const Binding& binding, const SourceLocat
     return emitFieldAddress("%this", *currentFieldClass_, binding.fieldPath);
 }
 
+CodeGenerator::Binding CodeGenerator::emitFieldBinding(const Expression& target) {
+    const Expression* root = nullptr;
+    const ClassDeclaration* owner = nullptr;
+    std::vector<std::string> basePath;
+    const bool qualified = resolveBaseQualifier(*target.left, root, owner, basePath);
+    auto receiver = emitExpression(qualified ? *root : *target.left);
+    emitNullCheck(receiver.operand, target.location);
+    if (!qualified) {
+        owner = classes_.at(receiver.type);
+    } else {
+        receiver = {owner->name,
+                    emitSubobjectAddress(receiver.operand, *classes_.at(receiver.type), basePath)};
+    }
+    std::vector<std::size_t> fieldPath;
+    const auto* field = findField(*owner, target.value, fieldPath);
+    if (field == nullptr) {
+        throw DiagnosticError(target.location, "backend could not resolve field");
+    }
+    return {field->type, emitFieldAddress(receiver.operand, *owner, fieldPath), {}};
+}
+
 CodeGenerator::Value CodeGenerator::convertObjectValue(
     Value value, const std::string& expectedType, const SourceLocation& location) {
     if (value.operand == "null") {

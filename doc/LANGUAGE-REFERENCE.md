@@ -738,12 +738,24 @@ return types, and native definitions must be in the same compilation unit
 and namespace as their class. See `method-declaration` and
 `out-of-line-definition`.
 
-`inline { ... }` embeds raw C in a method or start block; optional
-`(type name, ...)` captures expose existing Simple locals to the generated
-code. The C fragment is passed to the generated LLVM/C ABI boundary and must
-respect the runtime's rooting and value representation. Inline C and native
-bindings are low-level interfaces; prefer package-level wrappers for public
-APIs. See `inline-c-statement` and `capture-list`.
+`inline { ... }` embeds raw C in a method, constructor, destructor, or start
+block. `inline (type name, ...)` captures existing locals/parameters first,
+then accessible instance fields of the current receiver. There are no static
+field captures, and `start` has no instance receiver. Capture types must match
+exactly; inaccessible, unavailable, and ambiguous inherited fields are errors.
+Use `type .field` to bypass a local that shadows a field, or `type Base.field`
+and `type Base.OtherBase.field` to select an inheritance path. Qualification
+uses the existing implicit-this/base access rules, not arbitrary object
+expressions. The final field name becomes the C parameter name; two captures
+with the same final name are rejected even if their paths differ.
+
+Captures are mutable references to the actual storage slot, not copies.
+For example, `*count += 1` in C updates the captured Simple `int`. Managed
+reference slots remain traced through rooted locals or the rooted receiver;
+buffers use `SimpBuffer **`, other managed references use `void **`.
+Primary, secondary, repeated nonvirtual, and shared virtual bases use the same
+receiver adjustment as Simple field assignments. The declare-and-capture
+sugar below still declares a **local**, never a field.
 
 ```simp
 // Fragment: the declared local is implicitly captured by this inline C block.
@@ -751,3 +763,50 @@ int result inline {
     *result = 42;
 }
 ```
+
+```simp
+class Counter {
+    int count
+    Counter() { count = 0 }
+    void add(int count) {
+        inline (int .count) { *count += 1; }
+        // The parameter still shadows the field in ordinary unqualified access.
+        print(count)
+    }
+}
+start {
+    Counter counter = Counter()
+    counter.add(10)
+    print(counter.count) // 1
+}
+```
+
+### Application-facing inline API
+
+Application developers do not need runtime implementation source. Prefer the
+Simple standard-library class wrappers for ordinary code. Inline C automatically
+receives the installed, supported opaque C facade `simp/Stdlib.h`; it exposes
+the existing native implementations of the eight shipped standard packages
+without inspecting private objects. See [the standard library C API](STDLIB.md#inline-c-api)
+for the symbol mapping, errors, lifetime rules, and limitations. This is a real
+C bridge to those functions, **not** a facility for calling arbitrary Simple
+methods or wrapper constructors from C.
+
+Generated shims also include `stdlib.h`, `stdio.h`, `string.h`, `errno.h`,
+`ctype.h`, `stdint.h`, `limits.h`, and `unistd.h` once per translation unit,
+before all C bodies. Their normal C APIs are available without user includes.
+`unistd.h` is **POSIX-only**: the current compiler/runtime build requires a
+POSIX host/target with that header, and CMake rejects its absence. If the Clang
+target lacks any required header, shim compilation fails with a diagnostic;
+headers are never silently omitted. The compiler uses its configured native
+Clang target, not a separate inline-C cross-compilation target.
+
+Inline C must preserve the language's value representation and GC invariants.
+`malloc` memory is not managed Simple storage; do not put it into a String,
+collection, buffer, or class reference slot. Raw native resources belong in
+`handle` slots and require explicit cleanup. Do not retain capture addresses
+or string-conversion pointers beyond the block, or leave the raw body with
+`return`, `longjmp`, or another transfer that bypasses shim cleanup.
+Legacy runtime declarations retained by the capture shim for compatibility
+are not an application API promise; do not depend on private layouts or other
+`Runtime*.h` interfaces.

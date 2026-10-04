@@ -840,7 +840,13 @@ int main(int argc, char** argv) {
         std::string inlineShimPath;
         if (!inlineShims.empty()) {
             inlineShimPath = temporaryPath(outputPath, "inline.c");
-            std::string source = "#include \"simp/RuntimeGc.h\"\n#include <stdio.h>\n\n";
+            // Keep the legacy capture ABI available; Stdlib.h is the public C API.
+            std::string source =
+                "#include \"simp/Stdlib.h\"\n"
+                "#include \"simp/RuntimeGc.h\"\n"
+                "#include <stdlib.h>\n#include <stdio.h>\n#include <string.h>\n"
+                "#include <errno.h>\n#include <ctype.h>\n#include <stdint.h>\n"
+                "#include <limits.h>\n#include <unistd.h>\n\n";
             for (const auto& shim : inlineShims) {
                 source += shim.second;
                 source += '\n';
@@ -856,6 +862,8 @@ int main(int argc, char** argv) {
             appendUnique(packageInputs.libraries, library);
         }
         if (!inlineShimPath.empty()) {
+            requireResource(buildContext.includeDirectory / "simp" / "Stdlib.h",
+                            "public standard-library header", "SIMP_INCLUDE_DIR");
             requireResource(buildContext.includeDirectory / "simp" / "RuntimeGc.h",
                             "runtime header", "SIMP_INCLUDE_DIR");
         }

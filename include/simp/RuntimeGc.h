@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include "simp/Stdlib.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -448,8 +448,32 @@ Statement Parser::parseInlineC() {
             do {
                 const auto location = current().location;
                 const auto type = parseType(true);
+                std::unique_ptr<Expression> target;
+                if (match(TokenType::Dot)) {
+                    target = std::make_unique<Expression>();
+                    target->kind = ExpressionKind::ImplicitThis;
+                    target->location = location;
+                }
                 const auto name = consume(TokenType::Identifier, "capture name");
-                statement.inlineCaptures.push_back({type, name.text, location});
+                auto member = std::make_unique<Expression>();
+                member->kind = target ? ExpressionKind::Member : ExpressionKind::Identifier;
+                member->location = name.location;
+                member->value = name.text;
+                member->left = std::move(target);
+                target = std::move(member);
+                std::string captureName = name.text;
+                while (match(TokenType::Dot)) {
+                    const auto next = consume(TokenType::Identifier, "capture field after '.'");
+                    member = std::make_unique<Expression>();
+                    member->kind = ExpressionKind::Member;
+                    member->location = next.location;
+                    member->value = next.text;
+                    member->left = std::move(target);
+                    target = std::move(member);
+                    captureName = next.text;
+                }
+                statement.inlineCaptures.push_back(
+                    {type, captureName, location, std::move(target)});
             } while (match(TokenType::Comma));
         }
         consume(TokenType::RightParen, "')' after inline capture list");
@@ -490,7 +514,7 @@ Statement Parser::parseDeclaration() {
         }
         pendingStatements_.push_back(parseInlineC());
         auto& inlineStatement = pendingStatements_.back();
-        inlineStatement.inlineCaptures.push_back({typeName, name.text, type.location});
+        inlineStatement.inlineCaptures.push_back({typeName, name.text, type.location, nullptr});
         return statement;
     }
     consumeStatementTerminator();

@@ -483,12 +483,123 @@ start {
 }
 ```
 
+## Inline C API
+
+The installed header **`simp/Stdlib.h`** is the supported application-facing
+C facade. Generated inline shims include it automatically and link the shipped
+runtime archive; no runtime implementation source or private object structures
+are needed. Simple package imports and class wrappers continue to work normally.
+The C facade reuses all 123 existing standard-package native bindings, plus
+`simp_string_cstr` and `simp_string_bytes` (125 exported functions total).
+Its declarations, not incidental declarations in `Runtime*.h`, define the
+supported C surface.
+
+| Package / Simple API | Public C functions |
+|---|---|
+| `system`: Process, System | `simp_system_argc`, `argv`, `arg`, `exit`, `abort`, `getenv`, `setenv`, `last_error` (all with the `simp_system_` prefix) |
+| `system`: FileSystem | All `simp_fs_*` and `simp_path_*` declarations in the header: existence/type/size, remove/rename/copy, directories, cwd, absolute path, temporary files/directories, join/normalize/basename/dirname/extension |
+| `system`: Glob, File, StandardIO | `simp_glob_glob`, all `simp_file_*` and `simp_stdio_*` declarations: the file and stream operations listed above |
+| `math`: Math | All `simp_math_*` declarations: the numeric operations above except the Simple-only `pi`, `e`, and `tau` constants |
+| `networking`: Socket, ServerSocket | All `simp_net_socket_*` and `simp_net_server_*` declarations: native descriptor operations (not `Url` parsing or wrapper state getters) |
+| `time`: Clock | `simp_time_epoch_seconds`, `simp_time_epoch_milliseconds`, `simp_time_monotonic_milliseconds`, `simp_time_sleep_milliseconds` |
+| `terminal`: Terminal | `simp_terminal_stdin_interactive`, `simp_terminal_stdout_interactive`, `simp_terminal_columns`, `simp_terminal_rows`, `simp_terminal_supports_color` |
+| `random`: SecureRandom | `simp_random_bytes`, `simp_random_fill` |
+| `process`: Process | `simp_process_spawn`, `wait`, `exit_code`, `stdout`, `stderr`, `close` (all with the `simp_process_` prefix) |
+| `synchronization`: Mutex, Condition, Semaphore | All `simp_mutex_*`, `simp_condition_*`, and `simp_semaphore_*` declarations; `release` is the C counterpart of wrapper `close` |
+| String conversion for C | `simp_string_cstr` accepts a captured String slot; `simp_string_bytes` accepts a managed String object and returns borrowed bytes/length |
+
+All package functions take a reserved first receiver argument: **pass `NULL`**.
+The native implementations do not inspect it. This is not an arbitrary Simple
+method-call ABI. Pure Simple wrapper methods, constructors, `Url`, and wrapper
+state management have no C bridge in this MVP; use them from Simple, or use
+the listed native primitives and manage their resource state explicitly.
+General object construction, GC control, reflection/layout metadata, and
+private runtime functions are not part of this facade.
+
+```simp
+start {
+    float root = 0.0
+    strg directory
+    inline (float root, strg directory) {
+        *root = simp_math_sqrt(NULL, 9.0);
+        *directory = simp_fs_get_cwd(NULL);
+        printf("%s\n", simp_string_cstr(directory));
+    }
+    print(root) // 3.0
+}
+```
+
+### Values, ownership, and errors
+
+- Simple `int`/`unsigned` map to `int64_t`/`uint64_t`, `float` to `double`.
+  Native boolean results are `int32_t` (zero/one); a captured Simple boolean
+  is `_Bool *`. String/list/buffer API arguments and results are opaque
+  managed object pointers, **not C strings or private structs**. Pass `*text`,
+  `*values`, or `*bytes` from the respective capture. Captured references are
+  mutable slots (`void **`, or `SimpBuffer **` for buffers).
+- A managed return value must be stored **directly in a captured Simple slot
+  before any further allocating call**. C automatic variables are not GC
+  roots. Keep all managed inputs in captured/rooted slots for the entire call;
+  the receiver roots fields, including inherited/base-qualified fields. The
+  collector is non-moving, but an unrooted result may still be reclaimed.
+  Do not `free` managed objects or store `malloc`/libc pointers in their slots.
+  To inspect or manipulate a returned collection or object, return to Simple
+  and use its public methods rather than accessing its layout.
+- `simp_string_cstr(slot)` copies into a per-inline-block temporary arena;
+  the NUL-terminated result expires when the shim returns. Do not free or
+  retain it. `simp_string_bytes(object, &bytes, &length)` borrows a byte range
+  that is not necessarily NUL-terminated, is invalidated by resizing, and
+  must not outlive the rooted object. Embedded NUL bytes are preserved in
+  managed strings; APIs requiring a C string may reject or truncate them.
+- File/process/synchronization returns are **unmanaged opaque handles**;
+  store them in `handle` captures, close/release explicitly, and clear the
+  slot afterward. Networking uses integer file descriptors; close them with
+  the matching socket function. Do not mix resource kinds or reuse closed
+  handles. Wrapper objects do not automatically take ownership of raw C
+  handles. Semaphore creation requires a nonnegative initial count; misuse
+  follows the documented native abort behavior.
+- Failure sentinels and `System.lastError()` behavior are the same as for
+  the corresponding package operations documented above. In C use
+  `simp_system_last_error(NULL)` and store its managed String result in a
+  capture. Retrieve it promptly, before another operation changes the
+  thread-local error. Network failures use return sentinels, not that error
+  channel; math uses C math-library results. **Libc `errno` is separate** and
+  is not automatically converted to `lastError()`.
+- Use these APIs on the already-registered Simple thread executing the inline
+  shim. Arbitrary external C threads/standalone managed allocations are not
+  supported by this facade. Blocking package APIs use the existing runtime
+  lock protocol; do not replace them with raw blocking calls when Simple
+  thread progress is required. Raw C allocations and resources remain outside
+  GC ownership. Do not use C `return`/`longjmp` to bypass shim cleanup.
+
+### Headers and platforms
+
+The shim also supplies `stdlib.h`, `stdio.h`, `string.h`, `errno.h`, `ctype.h`,
+`stdint.h`, `limits.h`, and `unistd.h`, once before all inline bodies. These
+are platform libc APIs, distinct from the Simple standard library. Developers
+may use both surfaces without obtaining runtime source. Other private runtime
+declarations still present for legacy capture compatibility are not a public
+API contract, and the facade itself includes no private headers or structs.
+
+`unistd.h` is **POSIX-only**. The compiler/runtime currently requires a POSIX
+native host/target, C11/C++17, Clang, and pthreads. CMake rejects a missing
+`unistd.h`; Clang emits a compilation diagnostic if a required target header
+is unavailable. No required header is silently skipped, and non-POSIX/cross
+targets are not promised. Optional POSIX functions may require explicit
+feature-test macros in the toolchain configuration; this header list does not
+promise every libc extension. Applications normally need only the installed
+compiler, public headers, standard package artifacts, and runtime archive.
+Install tests relocate those artifacts and compile/run both an inline
+application and a standalone scalar C facade smoke test with no private
+headers on its include path.
+
 ## Native implementation helpers
 
 The package namespaces also expose `Runtime` classes used by the wrappers
 above. Their methods are public in the shipped Simple sources, but are
-low-level implementation details; prefer the wrapper APIs, and do not rely on
-these bindings remaining stable.
+low-level Simple implementation details; prefer the wrapper APIs. The deliberate
+C surface above is supported independently; other implementation classes,
+private layouts, and bindings are not covered by that contract.
 
 `Sys.Runtime` file operations:
 

@@ -1,7 +1,7 @@
 # Installs the configured build into a temporary prefix, then compiles and runs
 # a package-importing fixture with only the installed compiler and resources.
 foreach(required IN ITEMS BUILD_DIR SOURCE_DIR FIXTURE MODULE_FIXTURE EXPECTED_OUTPUT_FILE
-        BINDIR LIBDIR INCLUDEDIR DATADIR DOCDIR MANDIR RUNTIME_LIBRARY_NAME)
+        BINDIR LIBDIR INCLUDEDIR DATADIR DOCDIR MANDIR RUNTIME_LIBRARY_NAME CLANG)
     if(NOT DEFINED ${required})
         message(FATAL_ERROR "${required} is required")
     endif()
@@ -42,6 +42,7 @@ function(require_installed_layout prefix)
             "${BINDIR}/simp"
             "${LIBDIR}/simp/${RUNTIME_LIBRARY_NAME}"
             "${INCLUDEDIR}/simp/RuntimeGc.h"
+            "${INCLUDEDIR}/simp/Stdlib.h"
             "${INCLUDEDIR}/simp/RuntimeThreads.h"
             "${INCLUDEDIR}/simp/RuntimeDemoShims.h"
             "${DATADIR}/simp/prelude/String.simp"
@@ -112,6 +113,19 @@ if(print_output MATCHES "\\[not found\\]\\)?\n(runtime|include|prelude)")
     message(FATAL_ERROR "Installed resources were not found:\n${print_output}")
 endif()
 require_no_tree_references("${print_output}" "--print-paths")
+
+# Compile the facade in isolation: no private headers are present on this path.
+file(MAKE_DIRECTORY "${project_directory}/public/simp")
+file(COPY "${relocated_prefix}/${INCLUDEDIR}/simp/Stdlib.h"
+    DESTINATION "${project_directory}/public/simp")
+file(COPY "${SOURCE_DIR}/tests/functional/cli/inline_stdlib.c"
+    DESTINATION "${project_directory}")
+run_checked("standalone public C header"
+    "${CLANG}" -std=c11 -Wall -Wextra -Werror
+    "-I${project_directory}/public" "${project_directory}/inline_stdlib.c"
+    "${relocated_prefix}/${LIBDIR}/simp/${RUNTIME_LIBRARY_NAME}"
+    -lm -pthread -o "${project_directory}/public-api")
+run_checked("public C API executable" "${project_directory}/public-api")
 
 set(executable "${project_directory}/installed-program")
 execute_process(

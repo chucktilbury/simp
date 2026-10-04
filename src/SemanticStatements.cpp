@@ -535,23 +535,56 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
             }
         }
         std::unordered_set<std::string> captureNames;
-        for (const auto& capture : statement.inlineCaptures) {
+        for (auto& capture : statement.inlineCaptures) {
             if (!captureNames.emplace(capture.name).second) {
                 throw DiagnosticError(capture.location,
                                       "duplicate inline capture '" + capture.name + "'");
             }
-            const auto index = findSymbolIndex(capture.name);
-            if (index == symbols_.size()) {
+            if (!capture.target) {
+                capture.target = std::make_unique<Expression>();
+                capture.target->kind = ExpressionKind::Identifier;
+                capture.target->value = capture.name;
+                capture.target->location = capture.location;
+            }
+            const auto index = capture.target->kind == ExpressionKind::Identifier
+                ? findSymbolIndex(capture.name) : symbols_.size();
+            if (capture.target->kind == ExpressionKind::Identifier &&
+                index == symbols_.size() &&
+                (currentClass_ == nullptr || countFields(*currentClass_, capture.name) == 0)) {
                 throw DiagnosticError(capture.location,
                                       "undefined inline capture '" + capture.name + "'");
             }
-            if (symbols_[index].type != capture.type) {
+            if (capture.target->kind == ExpressionKind::Member) {
+                if (currentClass_ == nullptr) {
+                    throw DiagnosticError(capture.location,
+                                          "instance field inline capture requires an instance context");
+                }
+                addImplicitBaseReceiver(*capture.target->left);
+                const Expression* root = capture.target.get();
+                while (root->kind == ExpressionKind::Member) root = root->left.get();
+                if (root->kind != ExpressionKind::ImplicitThis) {
+                    throw DiagnosticError(capture.location,
+                                          "qualified inline capture must name an instance field "
+                                          "through an implicit receiver or base class");
+                }
+                if (capture.target->left->kind != ExpressionKind::ImplicitThis) {
+                    Expression* receiverRoot = nullptr;
+                    const ClassDeclaration* view = nullptr;
+                    std::vector<std::string> path;
+                    if (!resolveBaseQualifier(*capture.target->left, receiverRoot, view, path)) {
+                        throw DiagnosticError(capture.location,
+                                              "inline capture field path must contain only base classes");
+                    }
+                }
+            }
+            const auto actualType = analyzeLValue(*capture.target);
+            if (actualType != capture.type) {
                 throw DiagnosticError(capture.location,
                                       "inline capture type '" + capture.type +
-                                          "' does not match " + symbols_[index].type +
+                                          "' does not match " + actualType +
                                           " variable '" + capture.name + "'");
             }
-            symbols_[index].initialized = true;
+            if (index != symbols_.size()) symbols_[index].initialized = true;
         }
         return;
     }

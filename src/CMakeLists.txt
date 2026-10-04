@@ -75,6 +75,7 @@ set(SIMP_SOURCE_INCLUDE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../include/simp")
 set(SIMP_SOURCE_PRELUDE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../prelude")
 set(SIMP_SOURCE_STDLIB_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib")
 set(SIMP_RUNTIME_HEADERS
+    "${SIMP_SOURCE_INCLUDE_DIRECTORY}/Stdlib.h"
     "${SIMP_SOURCE_INCLUDE_DIRECTORY}/RuntimeDemoShims.h"
     "${SIMP_SOURCE_INCLUDE_DIRECTORY}/RuntimeGc.h"
     "${SIMP_SOURCE_INCLUDE_DIRECTORY}/RuntimeThreads.h"
@@ -84,6 +85,12 @@ file(GLOB_RECURSE SIMP_STDLIB_SOURCES CONFIGURE_DEPENDS
     "${SIMP_SOURCE_STDLIB_DIRECTORY}/*")
 
 find_package(Threads REQUIRED)
+
+include(CheckIncludeFile)
+check_include_file(unistd.h SIMP_HAVE_UNISTD_H)
+if(NOT SIMP_HAVE_UNISTD_H)
+    message(FATAL_ERROR "simp requires a POSIX target with unistd.h (including inline C)")
+endif()
 
 add_library(simp_runtime STATIC RuntimeGc.c RuntimeStdlib.c RuntimeOS.c RuntimeProcess.c
     RuntimeDemoShims.c RuntimeThreads.c)

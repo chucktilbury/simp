@@ -34,12 +34,14 @@ void CodeGenerator::emitInlineC(const Statement& statement) {
     std::string llvmArguments;
     std::string cParameters;
     for (const auto& capture : statement.inlineCaptures) {
-        const auto binding = findVariable(capture.name, capture.location);
+        const auto binding = capture.target && capture.target->kind == ExpressionKind::Member
+            ? emitFieldBinding(*capture.target)
+            : findVariable(capture.name, capture.location);
         if (!llvmArguments.empty()) {
             llvmArguments += ", ";
             cParameters += ", ";
         }
-        llvmArguments += "ptr " + binding.pointer;
+        llvmArguments += "ptr " + emitAddress(binding, capture.location);
         if (capture.type == "int") {
             cParameters += "int64_t *" + capture.name;
         } else if (capture.type == "bool") {
@@ -217,27 +219,8 @@ void CodeGenerator::emitStatement(const Statement& statement) {
                 mapElementTarget = true;
             }
         } else {
-            const Expression* root = nullptr;
-            const ClassDeclaration* owner = nullptr;
-            std::vector<std::string> basePath;
-            const bool qualified = resolveBaseQualifier(*statement.target->left, root, owner,
-                                                        basePath);
-            auto receiver = emitExpression(qualified ? *root : *statement.target->left);
-            emitNullCheck(receiver.operand, statement.target->location);
-            if (!qualified) {
-                owner = classes_.at(receiver.type);
-            } else {
-                receiver = {owner->name,
-                            emitSubobjectAddress(receiver.operand, *classes_.at(receiver.type),
-                                                 basePath)};
-            }
-            std::vector<std::size_t> fieldPath;
-            const auto* field = findField(*owner, statement.target->value, fieldPath);
-            if (field == nullptr) {
-                throw DiagnosticError(statement.target->location, "backend could not resolve field");
-            }
-            binding.type = field->type;
-            address = emitFieldAddress(receiver.operand, *owner, fieldPath);
+            binding = emitFieldBinding(*statement.target);
+            address = binding.pointer;
         }
         const bool compoundAssignment = statement.assignmentOperator != "=";
         if (compoundAssignment) {
