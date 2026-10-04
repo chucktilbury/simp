@@ -1,0 +1,166 @@
+/*
+    Demonstrate the use of handles with inline.
+ */
+
+namespace scanner {
+    class File {
+
+        enum {
+            END_OF_INPUT = -2,
+            END_OF_FILE,
+        }
+
+        handle fh
+        int line
+        int col
+        strg name
+        strg err
+        int ch
+
+        File() {}
+
+        File(strg fname, strg mode) {
+            name = fname
+            open(fname, mode)
+        }
+
+        void open(strg fname, strg mode) {
+
+            inline(handle fh, strg err, strg fname, strg mode) {
+                *fh = simp_file_open(NULL, *fname, *mode);
+                *err = simp_system_last_error(NULL);
+            }
+
+            if(err.length > 0) {
+                raise(Exception("Cannot open file: \"{}\": {}"(fname, err)))
+            }
+        }
+
+        void close() {
+            inline(handle fh) {
+                simp_file_close(NULL, *fh);
+            }
+        }
+
+        int get_char() {
+            return(ch)
+        }
+
+        int consume_char() {
+            if(ch != -1) {
+                if(ch == 0x0a) {
+                    line += 1
+                    col = 1
+                }
+                else {
+                    col += 1
+                }
+
+                inline(strg err, handle fh, int ch) {
+                    FILE* stream = (FILE*)*fh;
+                    *ch = fgetc(stream);
+                    *err = simp_system_last_error(NULL);
+                }
+            }
+            else {
+                ch = -2
+            }
+
+            return(ch)
+        }
+
+    }
+
+    class FileStack {
+
+        list stack 
+        int index
+
+        FileStack() {
+            index = -1
+            stack = []
+        }
+
+        void open(strg fname, strg mode) {
+            File fp(fname, mode)
+            index += 1
+            stack.append(fp)
+            fp.consume_char()
+        }
+
+        ; silently fail if stack is empty
+        void close() {
+            if(index >= 0) {
+                (stack[index] as File).close()
+                index -= 1
+            }
+            ; Do nothing
+        }
+
+        int get_line() { 
+            if(index >= 0) {
+                return((stack[index] as File).line) 
+            }
+            else {
+                return(File.END_OF_FILE)
+            }
+        }
+        
+        int get_col() { 
+            if(index >= 0) {
+                return((stack[index] as File).col) 
+            }
+            else {
+                return(File.END_OF_FILE)
+            }
+        }
+        
+        strg get_name() {
+            if(index >= 0) {
+                return((stack[index] as File).name)
+            }
+            else {
+                return(null)
+            } 
+        }
+
+        int get_char() {
+            if(index >= 0) {
+                return((stack[index] as File).ch)
+            }
+            else {
+                return(File.END_OF_INPUT)
+            } 
+        }
+
+        int consume_char() {
+            return((stack[index] as File).consume_char())
+        }
+
+        void print_char() {
+            int c = get_char()
+            inline(int c) {
+                printf("%c", (char)*c);
+            }
+        }
+    }
+
+} /* scanner */
+
+start {
+    
+    scanner.FileStack fstk()
+
+    fstk.open("input_test.txt", "r")
+    print("opened file: {}"(fstk.get_name()))
+
+    int ch = fstk.get_char()
+    do {
+        fstk.print_char()
+        ch = fstk.consume_char()
+        if(ch == scanner.File.END_OF_FILE) {
+            fstk.close()
+        }
+    } while(ch != scanner.File.END_OF_INPUT) 
+
+}

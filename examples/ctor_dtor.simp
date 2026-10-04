@@ -1,0 +1,78 @@
+/*
+    This example demonstrates constructors and destructors.
+*/
+
+class FirstBase {
+
+    int bar
+    int foo
+
+    FirstBase(int n) {
+        print("in the FirstBase constructor")
+        init()
+        foo = n
+    }
+
+    FirstBase() {
+        print("in the FirstBase constructor")
+        init()
+        foo = 123
+    }
+
+    void modify() {
+        foo += 123
+    }
+
+    destroy {
+        print("in the FirstBase destructor")
+    }
+
+    private:
+    void init() {
+        bar = 24
+    }
+}
+
+class SecondBase {
+
+    int foo
+    SecondBase() {
+        print("in the SecondBase constructor")
+        foo = 42
+    }
+
+    destroy {
+        print("in the SecondBase destructor")
+    }
+}
+
+class Child: public FirstBase, private SecondBase {
+
+    Child() {
+        super FirstBase()
+        super SecondBase()
+        print("\nin the Child constructor")
+        print("first foo is {}"(FirstBase.foo))
+        print("second foo is {}"(SecondBase.foo))
+        print("end child constructor\n")
+    }
+
+    destroy {
+        print("in the Child destructor")
+    }
+}
+
+start {
+
+    Child f()
+    print("first base bar is {}"(f.bar))
+    f.modify()
+
+    ; correct, not private, value is chosen
+    print("first base foo is {}\n"(f.foo))
+
+    ; compiler error due to second being private to child
+    ; print("{}"(f.SecondBase.foo))
+
+    f.destroy()
+}

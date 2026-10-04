@@ -1,0 +1,41 @@
+
+/*
+    Pedantic prime number filter
+*/
+
+start {
+    int limit
+    int n
+    int d
+    int is_prime
+    int rem
+    int count
+
+    limit = 30
+    count = 0
+    n = 2
+
+    print("Primes up to {}:"(limit))
+
+    while (n <= limit) {
+        is_prime = 1
+        d = 2
+        while (d * d <= n) {
+            rem = n
+            while (rem >= d) {
+                rem = rem - d
+            }
+            if (rem == 0) {
+                is_prime = 0
+            }
+            d = d + 1
+        }
+        if (is_prime == 1) {
+            print("  {}"(n))
+            count = count + 1
+        }
+        n = n + 1
+    }
+
+    print("Found {} primes"(count))
+}
