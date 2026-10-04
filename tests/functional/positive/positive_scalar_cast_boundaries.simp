@@ -6,7 +6,12 @@ class Conversions {
 }
 
 start {
+    int x = -10
+    unsigned y = unsigned(x)
+    print(y)
+    print(unsigned(-10))
     Conversions conversions = Conversions()
+    print(conversions.toUnsigned(-10))
     print(conversions.toUnsigned(0))
     print(conversions.toUnsigned(9223372036854775806))
     print(conversions.toUnsigned(9223372036854775807))
@@ -18,10 +23,8 @@ start {
     print(float(9223372036854775807) == 9223372036854775808.0)
     print(float(18446744073709551615u) == 18446744073709551616.0)
 
-    try { print(conversions.toUnsigned(-1)) }
-    except() as error { print(error) }
-    try { print(conversions.toUnsigned(-9223372036854775808)) }
-    except() as error { print(error) }
+    print(conversions.toUnsigned(-1))
+    print(conversions.toUnsigned(-9223372036854775808))
     try { print(conversions.toInt(9223372036854775808u)) }
     except() as error { print(error) }
     try { print(conversions.toInt(18446744073709551615u)) }

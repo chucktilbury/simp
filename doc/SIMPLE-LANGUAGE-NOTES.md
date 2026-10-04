@@ -147,8 +147,11 @@ The language is intended to have full object-oriented programming support. Broad
   - A number to `bool` maps zero to false and every nonzero value to true.
     For floats, both signed zeros are false; NaN, infinities, and positive
     or negative subnormals are true (IEEE unordered-or-not-equal comparison).
-  - `int` to `unsigned` requires a nonnegative value; `unsigned` to `int`
-    requires a value <= 9223372036854775807. These casts never wrap.
+  - `int` to `unsigned` preserves the 64-bit pattern (value modulo 2^64)
+    without overflow: `unsigned(-10)` prints 18446744073709551606,
+    `unsigned(-1)` prints 18446744073709551615, and signed minimum converts
+    to 9223372036854775808. The reverse `unsigned` to `int` cast remains
+    checked and requires a value <= 9223372036854775807; it does not wrap.
   - `int`/`unsigned` to `float` uses normal IEEE double conversion, rounding
     when the integer is not exactly representable.
   - `float` to `int`/`unsigned` checks the input before truncating toward
@@ -1824,8 +1827,9 @@ to tooling, packaging, or infrastructure work) and are suggested as the
 next things to resolve, roughly in priority order:
 
 1. **Resolved and implemented:** explicit scalar casts support all sixteen
-   `bool`/`int`/`unsigned`/`float` pairs, including identities, checked
-   integer range conversions, and float-to-integer truncation toward zero
+   `bool`/`int`/`unsigned`/`float` pairs, including identities,
+   modulo-2^64 `int` to `unsigned` conversion, checked `unsigned` to `int`
+   conversion, and float-to-integer truncation toward zero
    (see "Explicit scalar casts (implemented)" above).
 2. **Resolved and implemented:** `null` is a universal value (see
    "Nullability model (confirmed)" above) — assignable to any type

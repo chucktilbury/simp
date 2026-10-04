@@ -115,14 +115,18 @@ The following table is normative (rows are source types, columns are targets):
 | Source / target | `bool` | `int` (signed i64) | `unsigned` (u64) | `float` (double) |
 |---|---|---|---|---|
 | `bool` | Identity | `false` = 0, `true` = 1 | `false` = 0, `true` = 1 | `false` = 0.0, `true` = 1.0 |
-| `int` | Zero = false, nonzero = true | Identity | Checked nonnegative value | IEEE double conversion |
+| `int` | Zero = false, nonzero = true | Identity | Value modulo 2^64 (same bits) | IEEE double conversion |
 | `unsigned` | Zero = false, nonzero = true | Checked value <= 9223372036854775807 | Identity | IEEE double conversion |
 | `float` | Zero = false, nonzero (including NaN) = true | Checked, truncate toward zero | Checked, truncate toward zero | Identity |
 
 Integer-to-float conversion rounds to the nearest representable double when
-needed. Integer-to-integer casts never wrap: negative `int` to `unsigned`,
-or `unsigned` greater than the signed maximum to `int`, raises a catchable
-`integer overflow` exception.
+needed. Casting `int` to `unsigned` preserves the 64-bit pattern and yields
+the value modulo 2^64, without overflow: `unsigned(-10)` is
+18446744073709551606, `unsigned(-1)` is 18446744073709551615, and
+`unsigned(-9223372036854775808)` is 9223372036854775808. Printing these
+results uses unsigned decimal notation. The reverse cast remains checked:
+an `unsigned` greater than 9223372036854775807 cast to `int` raises a
+catchable `integer overflow` exception, rather than reinterpreting the bits.
 Float-to-integer casts check the input **before** truncating toward zero.
 For `int`, the accepted interval is [-9223372036854775808, 9223372036854775808);
 for `unsigned`, it is [0, 18446744073709551616). NaN, either infinity, and

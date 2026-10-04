@@ -1377,13 +1377,13 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             instructions_ += "  " + result +
                              (target == "float" ? " = uitofp i1 " : " = zext i1 ") +
                              operand.operand + (target == "float" ? " to double\n" : " to i64\n");
-        } else if ((target == "int" && operand.type == "unsigned") ||
-                   (target == "unsigned" && operand.type == "int")) {
+        } else if (target == "unsigned" && operand.type == "int") {
+            // Both types use i64; retaining the bits implements conversion modulo 2^64.
+            return {target, operand.operand};
+        } else if (target == "int" && operand.type == "unsigned") {
             const auto valid = newTemporary();
-            instructions_ += "  " + valid +
-                             (target == "int" ? " = icmp ule i64 " : " = icmp sge i64 ") +
-                             operand.operand +
-                             (target == "int" ? ", 9223372036854775807\n" : ", 0\n");
+            instructions_ += "  " + valid + " = icmp ule i64 " +
+                             operand.operand + ", 9223372036854775807\n";
             checkRange(valid);
             return {target, operand.operand};
         } else if (target == "float" && operand.type == "int") {
