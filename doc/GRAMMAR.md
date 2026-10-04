@@ -313,6 +313,7 @@ argument-list       ::= expression, { ",", expression } ;
 primary             ::= INTEGER | UNSIGNED_INT | FLOAT | STRING
                       | "true" | "false" | "null" | IDENT
                       | "type", "(", expression, ")"
+                      | "bool", "(", expression, ")"
                       | "int", "(", expression, ")"
                       | "unsigned", "(", expression, ")"
                       | "float", "(", expression, ")"
@@ -322,9 +323,9 @@ primary             ::= INTEGER | UNSIGNED_INT | FLOAT | STRING
 list-literal        ::= "[", [ argument-list ], "]" ;
 dict-literal        ::= "{", [ dict-entry, { ",", dict-entry } ], "}" ;
 dict-entry          ::= expression, ":", expression ;
-type-value          ::= "bool" | "strg" | "list" | "dict"
+type-value          ::= "strg" | "list" | "dict"
                       | "handle" | "any"
-                      | "int" | "unsigned" | "float"  (* only when not followed by "(" *)
+                      | "bool" | "int" | "unsigned" | "float"  (* only when not followed by "(" *)
                       | "buffer"                      (* only when not followed by "(" *) ;
 ```
 

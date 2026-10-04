@@ -1355,7 +1355,38 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         const auto operand = emitExpression(*expression.arguments.front());
         const auto& target = expression.value;
         const auto result = newTemporary();
-        if (target == "float" && operand.type == "int") {
+        const auto checkRange = [&](const std::string& valid) {
+            const auto validLabel = freshLabel("cast.valid");
+            const auto invalidLabel = freshLabel("cast.invalid");
+            instructions_ += "  br i1 " + valid + ", label %" + validLabel + ", label %" +
+                             invalidLabel + "\n" + invalidLabel + ":\n"
+                             "  call void @simp_exception_raise(ptr @.simp.overflow.message, i64 16, ptr " +
+                             internString(expression.location.file) + ", i64 " +
+                             std::to_string(expression.location.file.size()) + ", i64 " +
+                             std::to_string(expression.location.line) + ", i64 " +
+                             std::to_string(expression.location.column) + ")\n"
+                             "  unreachable\n" + validLabel + ":\n";
+        };
+        if (target == operand.type) {
+            return {target, operand.operand};
+        } else if (target == "bool") {
+            instructions_ += "  " + result +
+                             (operand.type == "float" ? " = fcmp une double " : " = icmp ne i64 ") +
+                             operand.operand + (operand.type == "float" ? ", 0.0\n" : ", 0\n");
+        } else if (operand.type == "bool") {
+            instructions_ += "  " + result +
+                             (target == "float" ? " = uitofp i1 " : " = zext i1 ") +
+                             operand.operand + (target == "float" ? " to double\n" : " to i64\n");
+        } else if ((target == "int" && operand.type == "unsigned") ||
+                   (target == "unsigned" && operand.type == "int")) {
+            const auto valid = newTemporary();
+            instructions_ += "  " + valid +
+                             (target == "int" ? " = icmp ule i64 " : " = icmp sge i64 ") +
+                             operand.operand +
+                             (target == "int" ? ", 9223372036854775807\n" : ", 0\n");
+            checkRange(valid);
+            return {target, operand.operand};
+        } else if (target == "float" && operand.type == "int") {
             instructions_ += "  " + result + " = sitofp i64 " + operand.operand + " to double\n";
         } else if (target == "float" && operand.type == "unsigned") {
             instructions_ += "  " + result + " = uitofp i64 " + operand.operand + " to double\n";
@@ -1364,22 +1395,13 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
             const auto lower = newTemporary();
             const auto upper = newTemporary();
             const auto valid = newTemporary();
-            const auto validLabel = freshLabel("cast.valid");
-            const auto invalidLabel = freshLabel("cast.invalid");
             instructions_ += "  " + lower + " = fcmp oge double " + operand.operand +
                              (target == "int" ? ", -9223372036854775808.0\n" : ", 0.0\n") +
                              "  " + upper + " = fcmp olt double " + operand.operand +
                              (target == "int" ? ", 9223372036854775808.0\n" :
                                                 ", 18446744073709551616.0\n") +
-                             "  " + valid + " = and i1 " + lower + ", " + upper + "\n"
-                             "  br i1 " + valid + ", label %" + validLabel + ", label %" +
-                             invalidLabel + "\n" + invalidLabel + ":\n"
-                             "  call void @simp_exception_raise(ptr @.simp.overflow.message, i64 16, ptr " +
-                             internString(expression.location.file) + ", i64 " +
-                             std::to_string(expression.location.file.size()) + ", i64 " +
-                             std::to_string(expression.location.line) + ", i64 " +
-                             std::to_string(expression.location.column) + ")\n"
-                             "  unreachable\n" + validLabel + ":\n";
+                             "  " + valid + " = and i1 " + lower + ", " + upper + "\n";
+            checkRange(valid);
             instructions_ += "  " + result + (target == "int" ? " = fptosi double " :
                                                " = fptoui double ") +
                              operand.operand + " to i64\n";

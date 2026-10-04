@@ -1,5 +1,5 @@
 {
   "friendly_name": "functional unsupported scalar cast rejected",
-  "expected_diagnostic": "cannot cast bool to float",
+  "expected_diagnostic": "cannot cast String to float",
   "enabled": true
 }

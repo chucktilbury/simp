@@ -1,0 +1,52 @@
+0
+9223372036854775806
+9223372036854775807
+0
+9223372036854775806
+9223372036854775807
+-9223372036854775808
+18446744073709551615
+true
+true
+integer overflow
+integer overflow
+integer overflow
+integer overflow
+true
+true
+true
+false
+false
+true
+true
+true
+true
+true
+true
+true
+true
+true
+0
+0
+0
+0
+0
+0
+0
+0
+-3
+3
+-9223372036854775808
+9223372036854774784
+18446744073709549568
+integer overflow
+integer overflow
+integer overflow
+integer overflow
+integer overflow
+integer overflow
+integer overflow
+integer overflow
+integer overflow
+integer overflow
+integer overflow

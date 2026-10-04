@@ -908,7 +908,8 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         ++current_;
         return parseTypeName(token, "int");
     }
-    if (check(TokenType::Bool)) {
+    if (check(TokenType::Bool) && current_ + 1 < tokens_.size() &&
+        tokens_[current_ + 1].type != TokenType::LeftParen) {
         ++current_;
         return parseTypeName(token, "bool");
     }
@@ -960,9 +961,10 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         consume(TokenType::RightParen, "')' after buffer length");
         return expression;
     }
-    if (check(TokenType::Int) || check(TokenType::Unsigned) ||
+    if (check(TokenType::Bool) || check(TokenType::Int) || check(TokenType::Unsigned) ||
         check(TokenType::FloatType)) {
-        const auto castTargetType = current().type == TokenType::Int      ? "int"
+        const auto castTargetType = current().type == TokenType::Bool     ? "bool"
+                                    : current().type == TokenType::Int      ? "int"
                                     : current().type == TokenType::Unsigned ? "unsigned"
                                                                              : "float";
         ++current_;
