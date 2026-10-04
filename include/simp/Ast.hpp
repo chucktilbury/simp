@@ -8,8 +8,10 @@
 #include "simp/SourceLocation.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <iosfwd>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,7 +19,7 @@ namespace simp {
 
 enum class ExpressionKind {
     Integer, Unsigned, Float, Boolean, String, FormatString, Identifier, ImplicitThis,
-    Unary, Binary, Member, Call,
+    Unary, Binary, Member, EnumConstant, Call,
     ConstructorCall, BufferConstructor, Null, ArrayLiteral, MapLiteral, Index, Slice, Cast,
     ObjectCast, TypeTest, TypeOf, TypeName, BufferLiteral
 };
@@ -107,6 +109,16 @@ struct FieldDeclaration {
     AccessLevel access = AccessLevel::Public;
 };
 
+struct EnumMemberDeclaration {
+    std::string name;
+    SourceLocation location;
+    AccessLevel access = AccessLevel::Public;
+    std::size_t blockIndex = 0;
+    std::unique_ptr<Expression> initializer;
+    std::optional<std::int64_t> value;
+    bool resolving = false;
+};
+
 struct MethodDeclaration {
     std::string name;
     std::string returnType;
@@ -135,6 +147,8 @@ struct ClassDeclaration {
     std::vector<AccessLevel> baseAccess;
     std::vector<bool> baseVirtual;
     std::vector<FieldDeclaration> fields;
+    std::vector<EnumMemberDeclaration> enumMembers;
+    std::size_t enumBlockCount = 0;
     std::vector<MethodDeclaration> methods;
 };
 

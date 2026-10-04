@@ -7,7 +7,21 @@
 
 #include "simp/Diagnostic.hpp"
 
+#include <cctype>
+#include <string>
+
 namespace simp {
+namespace {
+
+bool isEnumKeyword(const Token& token) {
+    if (token.type != TokenType::Identifier || token.text.size() != 4) return false;
+    return std::tolower(static_cast<unsigned char>(token.text[0])) == 'e' &&
+           std::tolower(static_cast<unsigned char>(token.text[1])) == 'n' &&
+           std::tolower(static_cast<unsigned char>(token.text[2])) == 'u' &&
+           std::tolower(static_cast<unsigned char>(token.text[3])) == 'm';
+}
+
+} // namespace
 
 ClassDeclaration Parser::parseClass() {
     const auto keyword = consume(TokenType::Class, "'class'");
@@ -58,6 +72,13 @@ ClassDeclaration Parser::parseClass() {
         }
         if (check(TokenType::Inline)) {
             error(current(), "'inline' is only allowed inside a function or method body");
+        }
+        if (isEnumKeyword(current()) &&
+            current_ + 1 < tokens_.size() &&
+            tokens_[current_ + 1].type == TokenType::LeftBrace) {
+            ++current_;
+            parseEnumMembers(declaration, memberAccess);
+            continue;
         }
         if ((check(TokenType::Public) || check(TokenType::Protected) ||
              check(TokenType::Private)) &&
@@ -122,6 +143,36 @@ ClassDeclaration Parser::parseClass() {
     }
     consume(TokenType::RightBrace, "'}' after class body");
     return declaration;
+}
+
+void Parser::parseEnumMembers(ClassDeclaration& declaration, AccessLevel access) {
+    const auto blockIndex = declaration.enumBlockCount++;
+    consume(TokenType::LeftBrace, "'{' after 'enum'");
+    skipNewlines();
+    while (!check(TokenType::RightBrace) && !check(TokenType::End)) {
+        const auto name = consume(TokenType::Identifier, "enum member name");
+        EnumMemberDeclaration member;
+        member.name = name.text;
+        member.location = name.location;
+        member.access = access;
+        member.blockIndex = blockIndex;
+        if (match(TokenType::Equal)) {
+            member.initializer = parseExpression();
+        }
+        declaration.enumMembers.push_back(std::move(member));
+
+        if (match(TokenType::Comma)) {
+            skipNewlines();
+            if (check(TokenType::RightBrace)) break;
+            continue;
+        }
+        if (check(TokenType::RightBrace)) break;
+        if (!check(TokenType::Newline)) {
+            error(current(), "expected ',' or newline after enum member");
+        }
+        skipNewlines();
+    }
+    consume(TokenType::RightBrace, "'}' after enum members");
 }
 
 OutOfLineMethodDefinition Parser::parseOutOfLineMethodDefinition() {

@@ -63,6 +63,15 @@ private:
                                       const std::string& name) const;
     std::size_t countFields(const ClassDeclaration& declaration,
                             const std::string& name) const;
+    const EnumMemberDeclaration* findEnumMember(const ClassDeclaration& declaration,
+                                                const std::string& name) const;
+    std::size_t countEnumMembers(const ClassDeclaration& declaration,
+                                 const std::string& name) const;
+    void resolveEnumConstants(Program& program);
+    std::int64_t resolveEnumValue(ClassDeclaration& declaration, std::size_t index);
+    std::int64_t evaluateEnumExpression(Expression& expression,
+                                        ClassDeclaration& declaration,
+                                        std::size_t memberIndex);
     const MethodDeclaration* findMethod(const ClassDeclaration& declaration,
                                         const std::string& name) const;
     std::vector<const MethodDeclaration*> findOverloads(const ClassDeclaration& declaration,
@@ -111,7 +120,7 @@ private:
     std::vector<SymbolInfo> symbols_;
     std::unordered_set<std::string> namespaces_;
     std::unordered_map<std::string, std::string> namespaceOwners_;
-    std::unordered_map<std::string, const ClassDeclaration*> classes_;
+    std::unordered_map<std::string, ClassDeclaration*> classes_;
     std::unordered_map<std::string, OutOfLineMethodDefinition*> methodDefinitions_;
     const ClassDeclaration* currentClass_ = nullptr;
     const MethodDeclaration* currentMethod_ = nullptr;

@@ -336,6 +336,47 @@ the class body or declared there and defined out of line. See
 `destructor-declaration`, `method-declaration`, and
 `out-of-line-definition`.
 
+An anonymous class-scoped enum block declares immutable signed 64-bit `int`
+constants, not an enum type:
+
+```simp
+class Status {
+    public:
+    enum {
+        READY = 10,
+        RUNNING,
+        COMPLETE = READY + 2,
+    }
+}
+
+start {
+    Status status = Status()
+    int code = status.RUNNING
+    print(Status.COMPLETE)
+}
+```
+
+The first omitted value in each block is `0`; each later omitted value is the
+preceding value plus one. Explicit values may use integer literals, unary
+`+`/`-`, `+`, `-`, `*`, `/`, `%`, and previously resolved enum members. Values
+are checked for signed 64-bit overflow, including implicit increments;
+duplicate numeric values are allowed, but duplicate names and class-member
+collisions are errors. Forward/cyclic references, nonconstant expressions,
+division by zero, and out-of-range values are compile-time errors. Multiple
+blocks may appear in one class, with distinct member names.
+
+Constants are usable anywhere an `int` expression is accepted, including
+method arguments, collection values, and scalar casts. They follow the
+declaring member's public/protected/private access and ordinary inherited
+member lookup; ambiguous inherited constants need explicit base qualification.
+Use either `object.NAME` or `Class.NAME`, including namespace-qualified class
+names. Instance-qualified access resolves from the static class and does not
+dereference or null-check the receiver, but a receiver expression with side
+effects is still evaluated exactly once. Constants have no runtime allocation
+or per-instance storage. Assignment, compound assignment, and inline field
+captures are rejected; copy the constant into a local before modifying or
+capturing it.
+
 Inheritance uses a colon and one or more comma-separated base specifiers.
 Each base defaults to public access. `public`, `protected`, or `private`
 controls the inheritance path; `virtual` may also mark a base. Multiple

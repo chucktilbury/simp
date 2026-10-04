@@ -450,6 +450,11 @@ void SemanticAnalyzer::analyze(Program& program) {
         for (auto& field : declaration.fields) {
             normalizeType(field.type, declaration.namespacePath, field.location);
         }
+        for (auto& member : declaration.enumMembers) {
+            if (member.initializer) {
+                normalizeExpression(*member.initializer, declaration.namespacePath);
+            }
+        }
         for (auto& method : declaration.methods) {
             normalizeType(method.returnType, declaration.namespacePath, method.location);
             for (auto& parameter : method.parameters) {
@@ -650,6 +655,40 @@ void SemanticAnalyzer::analyze(Program& program) {
                 }
             }
         }
+        for (std::size_t index = 0; index < declaration.enumMembers.size(); ++index) {
+            const auto& member = declaration.enumMembers[index];
+            for (std::size_t other = index + 1;
+                 other < declaration.enumMembers.size(); ++other) {
+                if (member.name == declaration.enumMembers[other].name) {
+                    throw DiagnosticError(declaration.enumMembers[other].location,
+                                          "duplicate enum member '" +
+                                              declaration.enumMembers[other].name +
+                                              "' in class '" + declaration.name + "'");
+                }
+            }
+            if (std::any_of(declaration.fields.begin(), declaration.fields.end(),
+                            [&member](const FieldDeclaration& field) {
+                                return field.name == member.name;
+                            }) ||
+                std::any_of(declaration.methods.begin(), declaration.methods.end(),
+                            [&member](const MethodDeclaration& method) {
+                                return method.name == member.name;
+                            })) {
+                throw DiagnosticError(member.location,
+                                      "enum member '" + member.name +
+                                          "' collides with another class member");
+            }
+            for (const auto& baseName : declaration.baseClassNames) {
+                const auto* base = findClass(baseName, member.location);
+                if (countFields(*base, member.name) != 0 ||
+                    countEnumMembers(*base, member.name) != 0 ||
+                    countMethods(*base, member.name) != 0) {
+                    throw DiagnosticError(member.location,
+                                          "enum member '" + member.name +
+                                              "' collides with an inherited class member");
+                }
+            }
+        }
         if (!declaration.baseClassName.empty()) {
             const auto hasConstructor = std::any_of(
                 declaration.methods.begin(), declaration.methods.end(),
@@ -679,12 +718,22 @@ void SemanticAnalyzer::analyze(Program& program) {
                                               "field '" + field.name +
                                                   "' duplicates an inherited field");
                     }
+                    if (countEnumMembers(*base, field.name) != 0) {
+                        throw DiagnosticError(field.location,
+                                              "field '" + field.name +
+                                                  "' collides with an inherited enum member");
+                    }
                 }
             }
             for (const auto& method : declaration.methods) {
                 if (method.constructor) continue;
                 for (const auto& baseName : declaration.baseClassNames) {
                     const auto* base = findClass(baseName, declaration.baseLocation);
+                    if (countEnumMembers(*base, method.name) != 0) {
+                        throw DiagnosticError(method.location,
+                                              "method '" + method.name +
+                                                  "' collides with an inherited enum member");
+                    }
                     // Only a same-name, same-parameter-types inherited method is
                     // an override; a different parameter list is a new overload,
                     // which is allowed.
@@ -720,6 +769,7 @@ void SemanticAnalyzer::analyze(Program& program) {
             }
         }
     }
+    resolveEnumConstants(program);
     for (auto& declaration : program.classes) {
         currentModule_ = declaration.moduleName;
         for (auto& method : declaration.methods) {

@@ -925,6 +925,16 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
     }
     case ExpressionKind::ImplicitThis:
         return {currentClass_->name, "%this"};
+    case ExpressionKind::EnumConstant:
+        if (expression.left) {
+            const Expression* root = nullptr;
+            const ClassDeclaration* owner = nullptr;
+            std::vector<std::string> basePath;
+            const bool baseQualified =
+                resolveBaseQualifier(*expression.left, root, owner, basePath);
+            (void)emitExpression(baseQualified ? *root : *expression.left);
+        }
+        return {"int", expression.value};
     case ExpressionKind::Member: {
         const Expression* root = nullptr;
         const ClassDeclaration* owner = nullptr;

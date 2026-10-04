@@ -69,6 +69,15 @@ bool SemanticAnalyzer::memberAccessible(const ClassDeclaration& owner,
                     break;
                 }
             }
+            if (!declared) {
+                for (const auto& member : current.enumMembers) {
+                    if (member.name == name) {
+                        declaredAccess = member.access;
+                        declared = true;
+                        break;
+                    }
+                }
+            }
         }
         if (declared) {
             if (currentClass_ == nullptr && declaredAccess != AccessLevel::Public) {
@@ -180,6 +189,33 @@ const FieldDeclaration* SemanticAnalyzer::findField(const ClassDeclaration& decl
     return visit(visit, declaration);
 }
 
+const EnumMemberDeclaration* SemanticAnalyzer::findEnumMember(
+    const ClassDeclaration& declaration, const std::string& name) const {
+    std::unordered_set<std::string> seenVirtual;
+    const auto visit = [this, &name, &seenVirtual](
+                           const auto& self, const ClassDeclaration& current)
+        -> const EnumMemberDeclaration* {
+        for (const auto& member : current.enumMembers) {
+            if (member.name == name) return &member;
+        }
+        const EnumMemberDeclaration* result = nullptr;
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto& baseName = current.baseClassNames[index];
+            const auto base = classes_.find(baseName);
+            if (base == classes_.end()) continue;
+            if (!basePathAccessible(current, {baseName}) ||
+                !memberAccessible(*base->second, name, false)) continue;
+            if (current.baseVirtual[index] && !seenVirtual.emplace(baseName).second) continue;
+            const auto* candidate = self(self, *base->second);
+            if (candidate == nullptr) continue;
+            if (result != nullptr) return nullptr;
+            result = candidate;
+        }
+        return result;
+    };
+    return visit(visit, declaration);
+}
+
 std::size_t SemanticAnalyzer::accessibleMemberCount(const ClassDeclaration& declaration,
                                                     const std::string& name,
                                                     bool method) const {
@@ -191,7 +227,11 @@ std::size_t SemanticAnalyzer::accessibleMemberCount(const ClassDeclaration& decl
     } else {
         declaredHere = std::any_of(
             declaration.fields.begin(), declaration.fields.end(),
-            [&name](const FieldDeclaration& item) { return item.name == name; });
+            [&name](const FieldDeclaration& item) { return item.name == name; }) ||
+            std::any_of(declaration.enumMembers.begin(), declaration.enumMembers.end(),
+                        [&name](const EnumMemberDeclaration& item) {
+                            return item.name == name;
+                        });
     }
     if (declaredHere) return memberAccessible(declaration, name, method) ? 1 : 0;
     std::unordered_set<std::string> seenVirtual;
@@ -207,6 +247,10 @@ std::size_t SemanticAnalyzer::accessibleMemberCount(const ClassDeclaration& decl
         } else {
             hasMember = std::any_of(current.fields.begin(), current.fields.end(),
                                     [&name](const FieldDeclaration& item) {
+                                        return item.name == name;
+                                    }) ||
+                        std::any_of(current.enumMembers.begin(), current.enumMembers.end(),
+                                    [&name](const EnumMemberDeclaration& item) {
                                         return item.name == name;
                                     });
         }
@@ -252,6 +296,29 @@ std::size_t SemanticAnalyzer::countFields(const ClassDeclaration& declaration,
                     continue;
                 count += self(self, *base->second);
             }
+        }
+        return count;
+    };
+    return visit(visit, declaration);
+}
+
+std::size_t SemanticAnalyzer::countEnumMembers(const ClassDeclaration& declaration,
+                                               const std::string& name) const {
+    std::unordered_set<std::string> seenVirtual;
+    const auto visit = [this, &name, &seenVirtual](const auto& self,
+                                                   const ClassDeclaration& current)
+        -> std::size_t {
+        std::size_t count = 0;
+        for (const auto& member : current.enumMembers) {
+            if (member.name == name) ++count;
+        }
+        if (count != 0) return count;
+        for (std::size_t index = 0; index < current.baseClassNames.size(); ++index) {
+            const auto& baseName = current.baseClassNames[index];
+            const auto base = classes_.find(baseName);
+            if (base == classes_.end()) continue;
+            if (current.baseVirtual[index] && !seenVirtual.emplace(baseName).second) continue;
+            count += self(self, *base->second);
         }
         return count;
     };
