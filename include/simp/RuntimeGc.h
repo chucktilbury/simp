@@ -22,6 +22,8 @@ typedef struct SimpMethodMeta {
 typedef struct SimpClassName {
     const char *name;
     uint64_t name_length;
+    /* Offset from the complete object, shared by all its view metadata. */
+    uint64_t offset;
 } SimpClassName;
 
 typedef struct SimpClassMeta {
@@ -347,13 +349,17 @@ void *simp_gc_root(void *object);
 void simp_gc_require_alive(void *object, const char *file, uint64_t file_length,
                            uint64_t line, uint64_t column);
 
-/* Extraction guards for the 'any' dynamic value representation: raise on a tag
- * or exact-class mismatch instead of returning a value. */
+/* Extraction guards for the 'any' dynamic value representation. */
 void simp_value_require_tag(uint64_t actual, uint64_t expected, const char *file,
                             uint64_t file_length, uint64_t line, uint64_t column);
 void simp_value_require_class(uint64_t actual_tag, void *pointer,
                               const SimpClassMeta *expected, const char *file,
                               uint64_t file_length, uint64_t line, uint64_t column);
+/* Checked class extraction accepts subclasses and null and returns the unique
+ * adjusted subobject. The legacy void guard above only accepts exact metadata. */
+void *simp_value_cast_class(uint64_t actual_tag, void *pointer,
+                            const SimpClassMeta *expected, const char *file,
+                            uint64_t file_length, uint64_t line, uint64_t column);
 void simp_value_require_map(uint64_t actual_tag, void *pointer, const char *file,
                             uint64_t file_length, uint64_t line, uint64_t column);
 void simp_value_require_array(uint64_t actual_tag, void *pointer, const char *file,

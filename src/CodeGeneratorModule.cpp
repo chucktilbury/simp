@@ -63,7 +63,7 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
     typeDefinitions_ +=
         "%SimpleClassMeta = type { ptr, i64, i64, ptr, i64, i64, i64, ptr, ptr, i64, ptr, i64, ptr }\n";
     typeDefinitions_ += "%SimpleMethodMeta = type { ptr, i64, ptr }\n";
-    typeDefinitions_ += "%SimpleClassName = type { ptr, i64 }\n";
+    typeDefinitions_ += "%SimpleClassName = type { ptr, i64, i64 }\n";
     metadataGlobals_ +=
         "@simp_exception_class_meta = external constant %SimpleClassMeta\n";
     for (const auto& owner : program.classes) {
@@ -128,19 +128,12 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
         const auto dynamicOffsetPointer =
             dynamicReferenceOffsets.empty() ? "null" : dynamicOffsets;
         std::vector<std::string> baseClassNames;
-        std::unordered_set<std::string> seenBaseNames;
-        const auto collectBases = [this, &baseClassNames, &seenBaseNames](
-                                      const auto& self,
-                                      const ClassDeclaration& declaration) -> void {
-            for (const auto& baseName : declaration.baseClassNames) {
-                if (seenBaseNames.emplace(baseName).second) {
-                    baseClassNames.push_back(baseName);
-                }
-                const auto base = classes_.find(baseName);
-                if (base != classes_.end()) self(self, *base->second);
-            }
-        };
-        collectBases(collectBases, owner);
+        std::vector<std::string> baseClassOffsets;
+        for (const auto& subobject : subobjects(owner)) {
+            if (subobject.first.empty()) continue;
+            baseClassNames.push_back(subobject.second->name);
+            baseClassOffsets.push_back(subobjectFieldOffset(owner, subobject.first, 0, false));
+        }
         const auto baseNamesGlobal = "@.simp.base.names." + owner.name;
         if (!baseClassNames.empty()) {
             metadataGlobals_ += baseNamesGlobal + " = private constant [" +
@@ -150,7 +143,8 @@ void CodeGenerator::emitClassTypesAndMetadata(const Program& program) {
                 if (index != 0) metadataGlobals_ += ", ";
                 const auto baseName = internString(baseClassNames[index]);
                 metadataGlobals_ += "%SimpleClassName { ptr " + baseName + ", i64 " +
-                                    std::to_string(baseClassNames[index].size()) + " }";
+                                    std::to_string(baseClassNames[index].size()) + ", i64 " +
+                                    baseClassOffsets[index] + " }";
             }
             metadataGlobals_ += "]\n";
         }
@@ -769,6 +763,7 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare void @simp_gc_require_alive(ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_tag(i64, i64, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_class(i64, ptr, ptr, ptr, i64, i64, i64)\n"
+           << "declare ptr @simp_value_cast_class(i64, ptr, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_map(i64, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_array(i64, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_buffer(i64, ptr, ptr, i64, i64, i64)\n"

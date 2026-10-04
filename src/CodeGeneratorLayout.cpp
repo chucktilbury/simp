@@ -292,9 +292,11 @@ bool CodeGenerator::resolveBaseQualifier(const Expression& receiver,
     }
     if (reversed.empty() ||
         (cursor->kind != ExpressionKind::Identifier &&
+         cursor->kind != ExpressionKind::ObjectCast &&
          cursor->kind != ExpressionKind::ImplicitThis)) return false;
     const auto rootType = cursor->kind == ExpressionKind::ImplicitThis
-        ? currentClass_->name : findVariable(cursor->value, cursor->location).type;
+        ? currentClass_->name : cursor->kind == ExpressionKind::ObjectCast
+        ? cursor->value : findVariable(cursor->value, cursor->location).type;
     const auto owner = classes_.find(rootType);
     if (owner == classes_.end()) return false;
     root = cursor;

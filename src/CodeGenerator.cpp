@@ -665,18 +665,16 @@ CodeGenerator::Value CodeGenerator::extractTypedValue(Value value,
                          line + ", i64 " + column + ")\n";
         return {"handle", pointer};
     }
-    // Otherwise expectedType names a class: the value must tag as an object
-    // reference, and (unless it is null) its runtime class metadata must match
-    // exactly. This prototype does not support extracting a proper subclass
-    // instance into a base-class-typed variable from 'any'.
     const auto pointer = newTemporary();
+    const auto converted = newTemporary();
     const auto expectedMetadata = classMetadataSymbol(expectedType);
     instructions_ += "  " + pointer + " = extractvalue %SimpleArrayValue " + value.operand +
                      ", 2\n"
-                     "  call void @simp_value_require_class(i64 " + tag + ", ptr " + pointer +
+                     "  " + converted + " = call ptr @simp_value_cast_class(i64 " + tag +
+                     ", ptr " + pointer +
                      ", ptr " + expectedMetadata + ", ptr " + file + ", i64 " +
                      fileLength + ", i64 " + line + ", i64 " + column + ")\n";
-    return rootObjectValue({expectedType, pointer}, location);
+    return rootObjectValue({expectedType, converted}, location);
 }
 
 std::string CodeGenerator::rootFrameInitialization() const {
@@ -1434,6 +1432,12 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         // raw zero payload is what gets converted, so the result is simply
         // the cast of 0 and carries no null flag of its own.
         return {target, result};
+    }
+    case ExpressionKind::ObjectCast: {
+        const auto operand = rootObjectValue(emitExpression(*expression.left),
+                                             expression.location);
+        return extractTypedValue(buildDynamicValue(operand, expression.location),
+                                 expression.value, expression.location);
     }
     case ExpressionKind::TypeTest: {
         const auto operand = emitExpression(*expression.left);

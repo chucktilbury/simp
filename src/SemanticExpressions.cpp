@@ -923,6 +923,20 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         }
         return target;
     }
+    case ExpressionKind::ObjectCast: {
+        const auto operand = analyzeExpression(*expression.left);
+        if (classes_.find(expression.value) == classes_.end()) {
+            throw DiagnosticError(expression.typeLocation,
+                                  "checked cast target must be a declared class");
+        }
+        if (operand != "any" && operand != "null" &&
+            classes_.find(operand) == classes_.end()) {
+            throw DiagnosticError(expression.location,
+                                  "checked object cast requires any or a class reference, not " +
+                                      operand);
+        }
+        return expression.value;
+    }
     case ExpressionKind::TypeTest: {
         const auto operand = analyzeExpression(*expression.left);
         const auto& target = expression.value;

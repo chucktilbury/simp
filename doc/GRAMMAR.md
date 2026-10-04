@@ -300,7 +300,8 @@ multiplication      ::= unary, { ("*" | "/" | "%"), unary } ;
 unary               ::= ("+" | "-"), unary | postfix ;
 
 postfix             ::= primary, { member-suffix | index-or-slice-suffix
-                                  | call-suffix | format-suffix } ;
+                                  | call-suffix | format-suffix | object-cast-suffix } ;
+object-cast-suffix  ::= "as", QUALIFIED_IDENT ;
 member-suffix       ::= ".", IDENT ;
 index-or-slice-suffix
                     ::= "[", expression, [ ":", [ expression ],
@@ -340,6 +341,12 @@ type-value          ::= "strg" | "list" | "dict"
 The `postfix` shorthand has these implementation constraints: a call suffix
 is accepted only after an identifier or member expression; an identifier
 call is initially a constructor call, while a member call is a method call.
+An `as` suffix requires a declared class target and an `any`, class-reference,
+or `null` operand. It binds at postfix precedence and can be repeated.
+Parenthesize the cast before member access, as in
+`(items[index] as model.Foo).method()`, because dotted names after `as` are
+parsed as qualified class names. Scalar conversion retains `int(value)` and
+the other scalar type-name call forms; `Foo(value)` is always construction.
 Name resolution may recognize a dotted qualified class construction. A
 member expression such as `Base.field` or `Left.Root.method(args)` inside a
 class method, constructor, or destructor may instead receive an implicit
