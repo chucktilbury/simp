@@ -231,38 +231,55 @@ Operators from lowest to highest precedence:
 | `+`, `-` | left |
 | `*`, `/`, `%` | left |
 | unary `+`, unary `-` | right prefix |
-| `.`, calls, `[]` indexing/slicing, `as` checked object casts | repeated postfix |
+| `.`, calls, `[]` indexing/slicing, `as` checked extraction | repeated postfix |
 
 Logical operators require booleans. Arithmetic and comparison support depend
 on operand types; unsupported combinations are rejected during semantic
 analysis. Assignment is not an expression. There are no bitwise, increment,
 or ternary operators.
 
-### Checked object casts
+### Checked extraction with `as`
 
-`value as Foo` explicitly checks that a value is an instance of the declared
-class `Foo` or one of its subclasses and returns a `Foo` reference. Sources
-may be class references, internal `any` values (including list/dict reads and
-foreach values), or `null`. Null is preserved, including null class references;
-null opaque handles are not object references. Other statically known source
-types and non-class targets are rejected at compile time.
+`value as Target` is checked extraction/identity, not a numeric conversion.
+Targets are `int`, `unsigned`, `bool`, `float`, `strg` (also spelled `String`),
+`list`, `dict`, `buffer`, `handle`, `type`, `null`, `any`, or a declared class
+(including a qualified class name). `void` and unknown names are compile-time
+errors. The source is evaluated exactly once.
 
-Use `(items[index] as Foo).method()` for member calls without a temporary local.
-Qualified class names are supported, for example
-`(mapping["item"] as model.Foo).method()`. The target's dotted name is parsed
-in full, so parentheses separate it from subsequent member access. Casts bind
-at postfix precedence, evaluate their source exactly once, and root managed
-references. `Foo(value)` remains a constructor call, never a cast; scalar
-casts retain their existing `int(value)` and similar syntax.
+An internal `any` source, such as a list or dict read or foreach value, is
+checked against the requested dynamic tag. Scalars and type descriptors require
+the exact matching tag; `strg`/`String` requires a String object; list, dict,
+buffer, and handle targets require their respective reference tags; class
+targets accept the exact class or a subclass.
+Class extraction adjusts to the requested unique base subobject, including
+secondary and virtual bases. Ambiguous repeated nonvirtual bases and all
+mismatches raise catchable, source-located runtime exceptions. Use `is` to
+inspect mixed bags without raising on a mismatch.
 
-The runtime checks the complete object's class metadata and adjusts the
-reference to the requested subobject, supporting checked downcasts,
-secondary bases, and shared virtual bases. Unrelated objects, non-object
-dynamic values, and ambiguous repeated nonvirtual base subobjects raise a
-catchable `Exception` at the `as` source location. Ordinary typed extraction
-from `any` also accepts subclasses and preserves null using this check.
-Use `is Foo` to inspect mixed collections without raising on a mismatch;
-`is` tests class membership, not subobject uniqueness.
+Statically known sources may be extracted identically; class references may
+also be checked against another class target. Other statically impossible
+source/target pairs are rejected during semantic analysis. `as any` boxes a
+statically typed supported value, or preserves an existing `any`; the `null` literal boxes as the dynamic null value. `as null` checks
+for a null pointer in a reference payload (class/String, list, dict, buffer,
+or handle) or a dynamic null. It does not recognize null-valued scalar slots
+or type descriptors.
+
+Null extraction follows the existing typed-extraction representation:
+Class/String extraction preserves the canonical dynamic null payload.
+`buffer` extraction accepts that canonical null tag; `handle` extraction
+accepts it and also accepts a null pointer carrying the handle tag. `list` and
+`dict` extraction require their matching tag and a non-null collection
+reference. Scalar and `type` targets require their exact tags and therefore
+reject null. Statically typed same-type expressions remain identity
+operations and preserve their existing nullable value. No new
+nullable-scalar behavior is introduced.
+
+Use `(items[index] as Foo).method()` for member calls without a temporary
+local. Qualified targets work, for example
+`(mapping["item"] as model.Foo).method()`. Casts bind at postfix precedence.
+`Foo(value)` remains construction, never a cast, and scalar conversions retain
+their existing `int(value)`, `bool(value)`, `unsigned(value)`, and
+`float(value)` syntax.
 
 Double-quoted text can be formatted by calling the literal with positional
 arguments, such as `"value: {}"(value)`, or with named arguments, such as
@@ -633,12 +650,14 @@ handle nativeResource = null
 ## Collections
 
 List literals use `[...]` and may mix supported scalar values, strings,
-class references, lists, dicts, buffers, handles, and `null`. Values are
+type descriptors, class references, lists, dicts, buffers, handles, and
+`null`. Values are
 stored with dynamic tags, but `any` is not a type that can be declared for an
 element, variable, field, parameter, or return.
 `list.length` is read-only; `append(value)` and `resize(int)` mutate it.
-Although literals accept buffers and handles, the current `append` semantic
-check does not accept those two element types directly. There is no list
+Type descriptors are also accepted by `append`. Although literals accept
+buffers and handles, the current `append` semantic check does not accept those
+two element types directly. There is no list
 element deletion operation; dicts separately provide `remove(string)`.
 Indexing and foreach iteration produce values inferred as `any` internally,
 not declared `any` variables. A dynamic value can be type-tested, passed,
@@ -650,7 +669,8 @@ List slices return a copy and can include a step:
 `values[start:end:step]`. Bounds are checked by the runtime.
 
 Dict literals use `{ key: value, ... }`. Keys must be strings; values may be
-supported scalar/reference/collection types. Indexed reads and foreach
+supported scalar/reference/collection types, including type descriptors.
+Indexed reads and foreach
 iteration produce dynamically tagged values inferred internally as `any`,
 not legal `any` declarations. Dicts
 support `length`, `contains(string)`, `remove(string)`, string-key indexing,

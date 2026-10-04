@@ -916,6 +916,18 @@ void simp_value_require_tag(uint64_t actual, uint64_t expected, const char *file
     }
 }
 
+void simp_value_require_null(uint64_t actual_tag, void *pointer, const char *file,
+                             uint64_t file_length, uint64_t line, uint64_t column) {
+    const int nullable_tag =
+        actual_tag == SIMP_ARRAY_STRING || actual_tag == SIMP_ARRAY_OBJECT ||
+        actual_tag == SIMP_ARRAY_MAP || actual_tag == SIMP_ARRAY_ARRAY ||
+        actual_tag == SIMP_ARRAY_BUFFER || actual_tag == SIMP_ARRAY_HANDLE;
+    if (!nullable_tag || pointer != NULL) {
+        static const char message[] = "'any' value does not hold null";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+}
+
 void simp_value_require_class(uint64_t actual_tag, void *pointer,
                               const SimpClassMeta *expected, const char *file,
                               uint64_t file_length, uint64_t line, uint64_t column) {

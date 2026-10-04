@@ -1414,10 +1414,32 @@ CodeGenerator::Value CodeGenerator::emitExpression(const Expression& expression,
         return {target, result};
     }
     case ExpressionKind::ObjectCast: {
-        const auto operand = rootObjectValue(emitExpression(*expression.left),
-                                             expression.location);
+        auto operand = rootObjectValue(emitExpression(*expression.left), expression.location);
+        const auto& target = expression.value;
+        if (target == "any") {
+            return rootObjectValue(buildDynamicValue(operand, expression.location),
+                                   expression.location);
+        }
+        if (target == "null") {
+            if (operand.type == "null") return operand;
+            const auto dynamic = buildDynamicValue(operand, expression.location);
+            const auto tag = newTemporary();
+            const auto pointer = newTemporary();
+            const auto file = internString(expression.location.file);
+            instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " +
+                             dynamic.operand + ", 0\n"
+                             "  " + pointer + " = extractvalue %SimpleArrayValue " +
+                             dynamic.operand + ", 2\n"
+                             "  call void @simp_value_require_null(i64 " + tag + ", ptr " +
+                             pointer + ", ptr " + file + ", i64 " +
+                             std::to_string(expression.location.file.size()) + ", i64 " +
+                             std::to_string(expression.location.line) + ", i64 " +
+                             std::to_string(expression.location.column) + ")\n";
+            return {"null", "null"};
+        }
+        if (operand.type == target) return operand;
         return extractTypedValue(buildDynamicValue(operand, expression.location),
-                                 expression.value, expression.location);
+                                 target, expression.location);
     }
     case ExpressionKind::TypeTest: {
         const auto operand = emitExpression(*expression.left);

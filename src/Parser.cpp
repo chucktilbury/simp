@@ -842,7 +842,7 @@ std::unique_ptr<Expression> Parser::parseRelational() {
         if (operation.type == TokenType::Is) {
             combined->kind = ExpressionKind::TypeTest;
             combined->typeLocation = current().location;
-            combined->value = parseTypeTestName();
+            combined->value = parseTypeTestName("'is'");
         } else {
             combined->kind = ExpressionKind::Binary;
             combined->value = operation.text;
@@ -853,7 +853,7 @@ std::unique_ptr<Expression> Parser::parseRelational() {
     return expression;
 }
 
-std::string Parser::parseTypeTestName() {
+std::string Parser::parseTypeTestName(const std::string& operatorName) {
     if (check(TokenType::Identifier)) {
         return parseQualifiedIdentifier("type name after 'is'");
     }
@@ -868,8 +868,16 @@ std::string Parser::parseTypeTestName() {
     if (match(TokenType::HandleType)) return "handle";
     if (match(TokenType::AnyType)) return "any";
     if (match(TokenType::TypeType)) return "type";
+    if (check(TokenType::Null)) {
+        if (operatorName == "'as'") {
+            ++current_;
+            return "null";
+        }
+        error(current(), std::string("expected type name after ") + operatorName +
+                             ", found " + tokenTypeName(current().type));
+    }
     if (match(TokenType::Void)) return "void";
-    error(current(), std::string("expected type name after 'is', found ") +
+    error(current(), "expected type name after " + operatorName + ", found " +
                          tokenTypeName(current().type));
 }
 
@@ -1100,7 +1108,7 @@ std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> exp
             cast->kind = ExpressionKind::ObjectCast;
             cast->location = previous().location;
             cast->typeLocation = current().location;
-            cast->value = parseQualifiedIdentifier("class name after 'as'");
+            cast->value = parseTypeTestName("'as'");
             cast->left = std::move(expression);
             expression = std::move(cast);
             continue;

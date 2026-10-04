@@ -414,11 +414,13 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                                       isMapType(actualType) || isArrayType(actualType) ||
                                       isBufferType(actualType) ||
                                       isOpaqueHandleType(actualType) ||
+                                      actualType == "type" ||
                                       classes_.find(actualType) != classes_.end();
             if (!validElement) {
                 throw DiagnosticError(element->location,
-                                      "list elements must be scalar, strg, a class reference, "
-                                  "a list, a dict, a buffer, a handle, null, or 'any'; found " +
+                                      "list elements must be scalar, strg, a type descriptor, "
+                                  "a class reference, a list, a dict, a buffer, a handle, null, "
+                                  "or 'any'; found " +
                                       actualType);
             }
         }
@@ -435,13 +437,15 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
             const bool validValue = valueType == "int" || valueType == "bool" ||
                                     valueType == "float" || valueType == "unsigned" ||
                                     valueType == "String" ||
+                                    valueType == "type" ||
                                     valueType == "null" || valueType == "any" ||
                                     valueType == "list" || valueType == "dict" ||
                                     valueType == "buffer" || valueType == "handle" ||
                                     classes_.find(valueType) != classes_.end();
             if (!validValue) {
                 throw DiagnosticError(expression.arguments[index + 1]->location,
-                                      "dict values must be scalar, strg, a collection, a class "
+                                      "dict values must be scalar, strg, a type descriptor, "
+                                      "a collection, a class "
                                       "reference, a buffer, a handle, null, or 'any'; found " +
                                           valueType);
             }
@@ -728,7 +732,8 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
                 if (target.value == "resize" ? type != "int" :
                     (type != "any" && type != "null" && type != "int" &&
                      type != "bool" && type != "float" && type != "unsigned" &&
-                     type != "String" && !isArrayType(type) && !isMapType(type) &&
+                     type != "String" && type != "type" &&
+                     !isArrayType(type) && !isMapType(type) &&
                      classes_.find(type) == classes_.end())) {
                     throw DiagnosticError(expression.arguments.front()->location,
                                           target.value == "resize"
@@ -913,17 +918,45 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
     }
     case ExpressionKind::ObjectCast: {
         const auto operand = analyzeExpression(*expression.left);
-        if (classes_.find(expression.value) == classes_.end()) {
+        const auto& target = expression.value;
+        const bool targetKnown =
+            target == "int" || target == "bool" || target == "float" ||
+            target == "unsigned" || target == "String" || target == "list" ||
+            target == "dict" || target == "buffer" || target == "handle" ||
+            target == "any" || target == "type" || target == "null" ||
+            target == "void" ||
+            classes_.find(target) != classes_.end();
+        if (!targetKnown) {
             throw DiagnosticError(expression.typeLocation,
-                                  "checked cast target must be a declared class");
+                                  "unknown type name '" + target + "'");
         }
-        if (operand != "any" && operand != "null" &&
-            classes_.find(operand) == classes_.end()) {
-            throw DiagnosticError(expression.location,
-                                  "checked object cast requires any or a class reference, not " +
-                                      operand);
+        if (target == "void") {
+            throw DiagnosticError(expression.typeLocation,
+                                  "checked cast target 'void' is not supported");
         }
-        return expression.value;
+        const bool supportedOperand =
+            operand == "any" || operand == "null" || operand == "int" ||
+            operand == "bool" || operand == "float" || operand == "unsigned" ||
+            operand == "String" || operand == "list" || operand == "dict" ||
+            operand == "buffer" || operand == "handle" || operand == "type" ||
+            classes_.find(operand) != classes_.end();
+        if (!supportedOperand) {
+            throw DiagnosticError(expression.left->location,
+                                  "checked cast does not support source type '" + operand + "'");
+        }
+        if (target == "any" || operand == "any" || operand == "null" ||
+            (target == "null" &&
+             (operand == "String" || operand == "list" || operand == "dict" ||
+              operand == "buffer" || operand == "handle" ||
+              classes_.find(operand) != classes_.end())) ||
+            operand == target ||
+            (classes_.find(operand) != classes_.end() &&
+             classes_.find(target) != classes_.end())) {
+            return target;
+        }
+        throw DiagnosticError(expression.location,
+                              "checked cast from '" + operand + "' to '" + target +
+                                  "' is impossible");
     }
     case ExpressionKind::TypeTest: {
         const auto operand = analyzeExpression(*expression.left);

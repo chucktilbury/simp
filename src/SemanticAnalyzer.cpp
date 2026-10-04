@@ -241,7 +241,19 @@ void SemanticAnalyzer::normalizeType(
 
 void SemanticAnalyzer::normalizeExpression(
     Expression& expression, const std::vector<std::string>& namespacePath) {
-    if (expression.kind == ExpressionKind::ObjectCast) {
+    if (expression.kind == ExpressionKind::ObjectCast &&
+        expression.value != "int" && expression.value != "bool" &&
+        expression.value != "float" && expression.value != "unsigned" &&
+        expression.value != "String" && expression.value != "list" &&
+        expression.value != "dict" && expression.value != "buffer" &&
+        expression.value != "handle" && expression.value != "any" &&
+        expression.value != "type" && expression.value != "null" &&
+        expression.value != "void") {
+        if (expression.value.find('.') == std::string::npos &&
+            !hasNamespaceOrClass(expression.value, namespacePath)) {
+            throw DiagnosticError(expression.typeLocation,
+                                  "unknown type name '" + expression.value + "'");
+        }
         expression.value = resolveClassName(expression.value, namespacePath,
                                              expression.typeLocation);
     }

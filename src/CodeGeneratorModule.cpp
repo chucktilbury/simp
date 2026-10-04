@@ -762,6 +762,7 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare double @simp_string_to_float(ptr, i64, ptr, i64, i64, i64)\n"
            << "declare void @simp_gc_require_alive(ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_tag(i64, i64, ptr, i64, i64, i64)\n"
+           << "declare void @simp_value_require_null(i64, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_class(i64, ptr, ptr, ptr, i64, i64, i64)\n"
            << "declare ptr @simp_value_cast_class(i64, ptr, ptr, ptr, i64, i64, i64)\n"
            << "declare void @simp_value_require_map(i64, ptr, ptr, i64, i64, i64)\n"

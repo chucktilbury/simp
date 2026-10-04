@@ -173,16 +173,20 @@ The language is intended to have full object-oriented programming support. Broad
   See the normative table in [LANGUAGE-REFERENCE.md](LANGUAGE-REFERENCE.md).
 - String-to-number conversion uses ordinary native-bound `String` methods:
   `toInt()`, `toFloat()`, and `toUnsigned()`.
-- **Checked object casts (implemented):** `(values[index] as Foo).method()`
-  checks an internal `any` value or class reference against a declared class,
-  accepts subclasses, and preserves null. Qualified targets are supported.
-  The source is evaluated once and managed references remain rooted.
-  Unrelated dynamic values or objects raise a catchable, source-located
-  `Exception`; non-object static sources and non-class targets are rejected.
-  Runtime lookup adjusts references for secondary and virtual bases;
-  ambiguous repeated nonvirtual bases raise instead of selecting arbitrarily.
-  `Foo(value)` remains construction, and scalar casts keep their existing
-  syntax. Use `is` to inspect mixed bags without raising on mismatches.
+- **Checked extraction with `as` (implemented):** `value as Target` checks a
+  dynamic collection payload's exact scalar/reference/type tag; class targets
+  also accept subclasses and adjust to the unique requested base subobject.
+  Targets cover `int`, `unsigned`, `bool`, `float`, `strg`/`String`, `list`,
+  `dict`, `buffer`, `handle`, `type`, `null`, `any`, and declared classes;
+  `void` and unknown targets are rejected. `as any` boxes supported static
+  values or preserves an existing dynamic value. `as null` checks for a null
+  reference payload, not scalar null state. Typed `any` extraction and null
+  behavior match the rules documented in [LANGUAGE-REFERENCE.md].
+  Qualified targets and postfix method-call chaining are supported, and the
+  source is evaluated once with managed references rooted. Mismatches raise
+  catchable, source-located exceptions. `Foo(value)` remains construction,
+  scalar conversion syntax is unchanged, and `is` remains the non-raising
+  option for inspecting mixed bags.
 - Invalid explicit scalar casts are rejected during semantic analysis;
   dynamically tagged collection values are checked when extracted into a
   concrete type.
@@ -966,10 +970,12 @@ copies. The GC-managed array header remains stable as its separately allocated
 element buffer grows. Out-of-range indices raise catchable, source-located
 exceptions; slice bounds normalize and clamp as described above. The internal
 dynamic representation holds an `int`, `bool`, `float`, `unsigned`, `strg`,
-class reference, list reference, dict reference, buffer, handle, or `null`.
+type descriptor, class reference, list reference, dict reference, buffer,
+handle, or `null`.
 Typed extraction is runtime-checked and raises on a tag or class mismatch;
 class extraction accepts subclasses, adjusts to a unique base subobject,
-and preserves null, just like explicit `as` casts. Nested arrays and
+and follows the target-specific null rules documented in the language
+reference, just like explicit `as` casts. Nested arrays and
 collections are supported as elements and are traced by the GC.
 Class metadata base entries now include complete-object-relative subobject
 offsets (and retain repeated nonvirtual bases). Rebuild generated modules and

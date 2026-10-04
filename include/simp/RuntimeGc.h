@@ -352,6 +352,8 @@ void simp_gc_require_alive(void *object, const char *file, uint64_t file_length,
 /* Extraction guards for the 'any' dynamic value representation. */
 void simp_value_require_tag(uint64_t actual, uint64_t expected, const char *file,
                             uint64_t file_length, uint64_t line, uint64_t column);
+void simp_value_require_null(uint64_t actual_tag, void *pointer, const char *file,
+                             uint64_t file_length, uint64_t line, uint64_t column);
 void simp_value_require_class(uint64_t actual_tag, void *pointer,
                               const SimpClassMeta *expected, const char *file,
                               uint64_t file_length, uint64_t line, uint64_t column);
