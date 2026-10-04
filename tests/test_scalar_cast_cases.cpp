@@ -69,6 +69,20 @@ const TestGroupRegistration registration{2, {
          requireGuard("-9223372036854775808\\.0", "9223372036854775808\\.0", "fptosi");
          requireGuard("0\\.0", "18446744073709551616\\.0", "fptoui");
      }},
+    {"signed to unsigned casts retain i64 bits without a range check", [] {
+         auto program = parse(R"(class Casts {
+             unsigned bits(int value) { return unsigned(value) }
+         }
+         start {}
+         )");
+         const auto ir = simp::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
+         require(ir.find(" = icmp sge i64 ") == std::string::npos,
+                 "signed to unsigned conversion must accept negative values");
+         require(ir.find("cast.invalid.") == std::string::npos,
+                 "signed to unsigned conversion must not have an overflow branch");
+         require(std::regex_search(ir, std::regex("  ret i64 %t[0-9]+\n")),
+                 "signed to unsigned conversion must return the i64 payload");
+     }},
     {"boolean float conversion uses unordered not-equal without fast math", [] {
          auto program = parse(R"(class Casts {
              bool truth(float value) { return bool(value) }
