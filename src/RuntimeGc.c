@@ -923,10 +923,8 @@ void simp_value_require_class(uint64_t actual_tag, void *pointer,
         static const char message[] = "'any' value does not hold an object reference";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
-    if (pointer == NULL) {
-        /* A null object reference is compatible with every class type. */
-        return;
-    }
+    if (pointer == NULL) return;
+    simp_gc_require_alive(pointer, file, file_length, line, column);
     const SimpClassMeta *actual;
     memcpy(&actual, pointer, sizeof(actual));
     if (actual != expected) {
@@ -934,6 +932,46 @@ void simp_value_require_class(uint64_t actual_tag, void *pointer,
             "'any' value holds a different class than the requested type";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
+}
+
+void *simp_value_cast_class(uint64_t actual_tag, void *pointer,
+                            const SimpClassMeta *expected, const char *file,
+                            uint64_t file_length, uint64_t line, uint64_t column) {
+    if (expected == NULL) abort();
+    if (actual_tag != SIMP_ARRAY_OBJECT) {
+        static const char message[] = "'any' value does not hold an object reference";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    if (pointer == NULL) {
+        /* A null object reference is compatible with every class type. */
+        return NULL;
+    }
+    simp_gc_require_alive(pointer, file, file_length, line, column);
+    HeapNode *node = find_containing_object(pointer);
+    const SimpClassMeta *actual;
+    memcpy(&actual, node->object, sizeof(actual));
+    if (actual->name_length == expected->name_length &&
+        memcmp(actual->name, expected->name, (size_t)expected->name_length) == 0) {
+        return node->object;
+    }
+    void *result = NULL;
+    for (uint64_t index = 0; index < actual->base_class_count; ++index) {
+        const SimpClassName *base = &actual->base_classes[index];
+        if (base->name_length == expected->name_length &&
+            memcmp(base->name, expected->name, (size_t)expected->name_length) == 0) {
+            if (result != NULL) {
+                static const char message[] = "checked object cast has an ambiguous base subobject";
+                simp_exception_raise(message, sizeof(message) - 1, file, file_length,
+                                     line, column);
+            }
+            result = (char *)node->object + base->offset;
+        }
+    }
+    if (result != NULL) return result;
+    static const char message[] =
+        "'any' value holds a different class than the requested type";
+    simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    return NULL;
 }
 
 void simp_value_require_map(uint64_t actual_tag, void *pointer, const char *file,

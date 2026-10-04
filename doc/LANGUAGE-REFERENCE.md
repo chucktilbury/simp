@@ -231,12 +231,38 @@ Operators from lowest to highest precedence:
 | `+`, `-` | left |
 | `*`, `/`, `%` | left |
 | unary `+`, unary `-` | right prefix |
-| `.`, calls, `[]` indexing/slicing | repeated postfix |
+| `.`, calls, `[]` indexing/slicing, `as` checked object casts | repeated postfix |
 
 Logical operators require booleans. Arithmetic and comparison support depend
 on operand types; unsupported combinations are rejected during semantic
 analysis. Assignment is not an expression. There are no bitwise, increment,
 or ternary operators.
+
+### Checked object casts
+
+`value as Foo` explicitly checks that a value is an instance of the declared
+class `Foo` or one of its subclasses and returns a `Foo` reference. Sources
+may be class references, internal `any` values (including list/dict reads and
+foreach values), or `null`. Null is preserved, including null class references;
+null opaque handles are not object references. Other statically known source
+types and non-class targets are rejected at compile time.
+
+Use `(items[index] as Foo).method()` for member calls without a temporary local.
+Qualified class names are supported, for example
+`(mapping["item"] as model.Foo).method()`. The target's dotted name is parsed
+in full, so parentheses separate it from subsequent member access. Casts bind
+at postfix precedence, evaluate their source exactly once, and root managed
+references. `Foo(value)` remains a constructor call, never a cast; scalar
+casts retain their existing `int(value)` and similar syntax.
+
+The runtime checks the complete object's class metadata and adjusts the
+reference to the requested subobject, supporting checked downcasts,
+secondary bases, and shared virtual bases. Unrelated objects, non-object
+dynamic values, and ambiguous repeated nonvirtual base subobjects raise a
+catchable `Exception` at the `as` source location. Ordinary typed extraction
+from `any` also accepts subclasses and preserves null using this check.
+Use `is Foo` to inspect mixed collections without raising on a mismatch;
+`is` tests class membership, not subobject uniqueness.
 
 Double-quoted text can be formatted by calling the literal with positional
 arguments, such as `"value: {}"(value)`, or with named arguments, such as
@@ -617,7 +643,9 @@ element deletion operation; dicts separately provide `remove(string)`.
 Indexing and foreach iteration produce values inferred as `any` internally,
 not declared `any` variables. A dynamic value can be type-tested, passed,
 printed, or compared with `null`; extract it into a concrete local before
-using ordinary member access or arithmetic. The runtime checks extraction.
+using arithmetic. For class members, either extract into a typed local or
+use a checked cast such as `(values[0] as Foo).method()`.
+The runtime checks extraction.
 List slices return a copy and can include a step:
 `values[start:end:step]`. Bounds are checked by the runtime.
 

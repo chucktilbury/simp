@@ -1095,6 +1095,16 @@ std::unique_ptr<Expression> Parser::parseTypeName(const Token& token, std::strin
 
 std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> expression) {
     for (;;) {
+        if (match(TokenType::As)) {
+            auto cast = std::make_unique<Expression>();
+            cast->kind = ExpressionKind::ObjectCast;
+            cast->location = previous().location;
+            cast->typeLocation = current().location;
+            cast->value = parseQualifiedIdentifier("class name after 'as'");
+            cast->left = std::move(expression);
+            expression = std::move(cast);
+            continue;
+        }
         if (match(TokenType::LeftBracket)) {
             auto access = std::make_unique<Expression>();
             access->location = previous().location;

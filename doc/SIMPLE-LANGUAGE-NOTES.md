@@ -173,8 +173,19 @@ The language is intended to have full object-oriented programming support. Broad
   See the normative table in [LANGUAGE-REFERENCE.md](LANGUAGE-REFERENCE.md).
 - String-to-number conversion uses ordinary native-bound `String` methods:
   `toInt()`, `toFloat()`, and `toUnsigned()`.
-- Invalid explicit casts are rejected during semantic analysis; dynamically
-  tagged collection values are checked when extracted into a concrete type.
+- **Checked object casts (implemented):** `(values[index] as Foo).method()`
+  checks an internal `any` value or class reference against a declared class,
+  accepts subclasses, and preserves null. Qualified targets are supported.
+  The source is evaluated once and managed references remain rooted.
+  Unrelated dynamic values or objects raise a catchable, source-located
+  `Exception`; non-object static sources and non-class targets are rejected.
+  Runtime lookup adjusts references for secondary and virtual bases;
+  ambiguous repeated nonvirtual bases raise instead of selecting arbitrarily.
+  `Foo(value)` remains construction, and scalar casts keep their existing
+  syntax. Use `is` to inspect mixed bags without raising on mismatches.
+- Invalid explicit scalar casts are rejected during semantic analysis;
+  dynamically tagged collection values are checked when extracted into a
+  concrete type.
 
 For the normative syntax and current behavior, see the
 [language reference](LANGUAGE-REFERENCE.md) and [grammar](GRAMMAR.md).
@@ -956,9 +967,15 @@ element buffer grows. Out-of-range indices raise catchable, source-located
 exceptions; slice bounds normalize and clamp as described above. The internal
 dynamic representation holds an `int`, `bool`, `float`, `unsigned`, `strg`,
 class reference, list reference, dict reference, buffer, handle, or `null`.
-Typed extraction is runtime-checked and raises on a tag or exact-class mismatch;
-there is no covariant/polymorphic downcast support. Nested arrays and
+Typed extraction is runtime-checked and raises on a tag or class mismatch;
+class extraction accepts subclasses, adjusts to a unique base subobject,
+and preserves null, just like explicit `as` casts. Nested arrays and
 collections are supported as elements and are traced by the GC.
+Class metadata base entries now include complete-object-relative subobject
+offsets (and retain repeated nonvirtual bases). Rebuild generated modules and
+native code using `SimpClassName` with the matching compiler/runtime headers.
+Generated extraction uses the returning `simp_value_cast_class` helper;
+the legacy void `simp_value_require_class` guard retains exact-metadata checks.
 Equality and ordering comparisons are supported for matching scalar types
 (`int`, `unsigned`, and `float` ordering; equality also supports `bool`).
 Equality/inequality on compatible class-reference types compares object

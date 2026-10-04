@@ -241,6 +241,10 @@ void SemanticAnalyzer::normalizeType(
 
 void SemanticAnalyzer::normalizeExpression(
     Expression& expression, const std::vector<std::string>& namespacePath) {
+    if (expression.kind == ExpressionKind::ObjectCast) {
+        expression.value = resolveClassName(expression.value, namespacePath,
+                                             expression.typeLocation);
+    }
     if (expression.kind == ExpressionKind::TypeTest &&
         expression.value != "int" && expression.value != "bool" &&
         expression.value != "float" && expression.value != "unsigned" &&
