@@ -101,14 +101,37 @@ Conversions are deliberately limited. Compatible class references can be
 assigned to a base-class variable when the inheritance path is unambiguous
 and accessible. Dynamically tagged collection values can be extracted into
 supported concrete local types; the runtime checks the contained value.
-Explicit numeric casts use
-`int(expr)`, `unsigned(expr)`, or `float(expr)`. Implicit numeric conversions
+Explicit scalar casts use
+`bool(expr)`, `int(expr)`, `unsigned(expr)`, or `float(expr)`. All sixteen
+ordered pairs of these scalar types are supported, including identity casts.
+The operand must have one of these four static types; class, reference,
+string, dynamically tagged `any`, and bare `null` operands are not supported.
+Implicit numeric conversions
 are not general-purpose; overload resolution allows a plain integer literal
 (decimal or hexadecimal) to match an `unsigned` parameter, while `u` literals
 are unsigned directly.
-Integer-to-float casts round to the nearest representable double when needed.
-Float-to-integer casts truncate toward zero; NaN and values outside the
-target range raise a catchable `integer overflow` exception. Signed
+The following table is normative (rows are source types, columns are targets):
+
+| Source / target | `bool` | `int` (signed i64) | `unsigned` (u64) | `float` (double) |
+|---|---|---|---|---|
+| `bool` | Identity | `false` = 0, `true` = 1 | `false` = 0, `true` = 1 | `false` = 0.0, `true` = 1.0 |
+| `int` | Zero = false, nonzero = true | Identity | Checked nonnegative value | IEEE double conversion |
+| `unsigned` | Zero = false, nonzero = true | Checked value <= 9223372036854775807 | Identity | IEEE double conversion |
+| `float` | Zero = false, nonzero (including NaN) = true | Checked, truncate toward zero | Checked, truncate toward zero | Identity |
+
+Integer-to-float conversion rounds to the nearest representable double when
+needed. Integer-to-integer casts never wrap: negative `int` to `unsigned`,
+or `unsigned` greater than the signed maximum to `int`, raises a catchable
+`integer overflow` exception.
+Float-to-integer casts check the input **before** truncating toward zero.
+For `int`, the accepted interval is [-9223372036854775808, 9223372036854775808);
+for `unsigned`, it is [0, 18446744073709551616). NaN, either infinity, and
+values outside these intervals raise the same exception, including negative
+fractions or negative subnormals cast to `unsigned`.
+For `bool(floatValue)`, both +0.0 and -0.0 are false; every other value,
+including positive/negative subnormals, infinities, and NaN, is true.
+Identity casts preserve the scalar payload, including floating-point signed
+zero and NaN. Signed
 `int` division or remainder with the minimum value and `-1` likewise raises
 `integer overflow`.
 String-to-number conversion is provided by the instance methods
@@ -117,8 +140,12 @@ invalid input or an integer value outside the target type's range.
 See `primary` and `postfix`.
 
 `null` is a universal null value and can initialize nullable locals, including
-scalar locals. Such a scalar local carries a null state; reading/casting it as
-a scalar when null raises a runtime exception. Null assignment does not make
+scalar locals. Such a scalar local carries a null state for assignment,
+printing, and comparison with `null`. An explicit cast consumes that state:
+it converts the local's zero payload and returns a non-null scalar, even for
+an identity cast. Thus `bool(nullFloat)` is false, `float(nullInt)` is 0.0,
+and `int(nullInt)` is a non-null 0; none raises an exception.
+Null assignment does not make
 primitive fields, collection values, arguments, or returns nullable in the
 same way: those contexts retain their declared representation. Object and
 reference values can be null. Use `is Type` to inspect a value's dynamic type;

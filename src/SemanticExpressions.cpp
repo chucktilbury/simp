@@ -899,16 +899,15 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
         return method->returnType;
     }
     case ExpressionKind::Cast: {
-        // Integer-to-float casts round to double precision; float-to-integer
-        // casts truncate toward zero after the backend checks their range.
         const auto operand = analyzeExpression(*expression.arguments.front());
         const auto& target = expression.value;
-        const bool widening = target == "float" && (operand == "int" || operand == "unsigned");
-        const bool narrowing = (target == "int" || target == "unsigned") && operand == "float";
-        if (!widening && !narrowing) {
+        const auto isScalar = [](const std::string& type) {
+            return type == "bool" || type == "int" || type == "unsigned" || type == "float";
+        };
+        if (!isScalar(operand) || !isScalar(target)) {
             throw DiagnosticError(expression.location,
                                   "cannot cast " + operand + " to " + target +
-                                      "; only int/unsigned <-> float conversions are supported");
+                                      "; only bool/int/unsigned/float conversions are supported");
         }
         return target;
     }

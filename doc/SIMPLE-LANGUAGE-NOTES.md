@@ -81,8 +81,8 @@ The language is intended to have full object-oriented programming support. Broad
   comparisons are rejected. Type variables and fields are assignable, and
   printing a type value prints its name.
 - There are no implicit conversions between `int`, `unsigned`, `float`, and
-  `bool`. Explicit scalar casts are limited to `int`/`unsigned` to `float` and
-  `float` to `int`/`unsigned`; see the implemented cast rules below.
+  `bool`. Explicit scalar casts support every ordered pair of these types,
+  including identities; see the implemented cast rules below.
 - Printing supports all four scalar types: booleans display as `true` or
   `false`, floats use `printf`'s `%.15g` format, and unsigned integers display
   as unsigned decimal values. Formatted print placeholders accept these scalar
@@ -139,21 +139,35 @@ The language is intended to have full object-oriented programming support. Broad
     exception as any other member access on a null reference, instead of
     crashing.
 - An explicit class conversion routine may be called when a conversion is intentionally provided.
-- **Explicit scalar casts (implemented):** `float(x)` converts an `int` or
-  `unsigned` operand to a double-precision `float` (rounding when the
-  integer is not exactly representable); `int(x)` and `unsigned(x)` convert
-  an in-range `float` operand to that type, truncating toward zero
-  (`int(-3.99)` is `-3`). NaN and out-of-range inputs raise a catchable
-  `integer overflow` exception. Signed minimum divided by or taken modulo
-  `-1` raises the same exception. The cast syntax reuses the
-  existing type-name-as-call convention already used for `buffer(len)`.
-  No other scalar cast pairs are supported (for example there is no
-  `int(bool)`, `bool(int)`, or direct `int(unsigned)`/`unsigned(int)`
-  cast) — attempting one is a semantic error naming the offending types.
-  Casting a null-holding local scalar (see the nullability model above) is
-  simply a consumption boundary like any other: the operand's zero payload
-  is what gets converted, so `float(nullInt)` yields `0.0`, not an
-  exception.
+- **Explicit scalar casts (implemented):** `bool(x)`, `int(x)`,
+  `unsigned(x)`, and `float(x)` support all sixteen ordered pairs among
+  `bool`, signed i64 `int`, u64 `unsigned`, and double `float`.
+  Identity casts are legal and preserve the payload.
+  - `bool` to a number maps false to zero and true to one.
+  - A number to `bool` maps zero to false and every nonzero value to true.
+    For floats, both signed zeros are false; NaN, infinities, and positive
+    or negative subnormals are true (IEEE unordered-or-not-equal comparison).
+  - `int` to `unsigned` requires a nonnegative value; `unsigned` to `int`
+    requires a value <= 9223372036854775807. These casts never wrap.
+  - `int`/`unsigned` to `float` uses normal IEEE double conversion, rounding
+    when the integer is not exactly representable.
+  - `float` to `int`/`unsigned` checks the input before truncating toward
+    zero (`int(-3.99)` is `-3`). The accepted intervals are
+    [-9223372036854775808, 9223372036854775808) for `int` and
+    [0, 18446744073709551616) for `unsigned`. Negative fractions and
+    negative subnormals therefore cannot be cast to `unsigned`.
+  Checked casts with NaN, infinity, or out-of-range inputs raise a catchable
+  `integer overflow` exception; integer-to-boolean and float-to-boolean
+  casts never overflow. Signed minimum divided by or taken modulo `-1`
+  raises the same exception. The cast syntax reuses the existing
+  type-name-as-call convention already used for `buffer(len)`. Other
+  operand types (including class/reference/string values, `any`, and bare
+  `null`) are rejected during semantic analysis.
+  Casting a null-holding local scalar is a consumption boundary: its zero
+  payload is converted and the result has no null flag, including for
+  identity casts. `float(nullInt)` yields `0.0`, `bool(nullFloat)` yields
+  false, and `int(nullInt)` yields a non-null 0, not an exception.
+  See the normative table in [LANGUAGE-REFERENCE.md](LANGUAGE-REFERENCE.md).
 - String-to-number conversion uses ordinary native-bound `String` methods:
   `toInt()`, `toFloat()`, and `toUnsigned()`.
 - Invalid explicit casts are rejected during semantic analysis; dynamically
@@ -1809,12 +1823,10 @@ Of the items above, these are pure language/syntax design gaps (as opposed
 to tooling, packaging, or infrastructure work) and are suggested as the
 next things to resolve, roughly in priority order:
 
-1. **Resolved and implemented:** explicit scalar cast syntax for
-   `int`/`unsigned` <-> `float`, same truncation-toward-zero model as C
-   (see "Explicit scalar casts (implemented)" above). `bool` has no cast
-   to or from any other scalar type, and `int` <-> `unsigned` has no
-   direct cast either — only the four int/unsigned <-> float pairs are
-   supported.
+1. **Resolved and implemented:** explicit scalar casts support all sixteen
+   `bool`/`int`/`unsigned`/`float` pairs, including identities, checked
+   integer range conversions, and float-to-integer truncation toward zero
+   (see "Explicit scalar casts (implemented)" above).
 2. **Resolved and implemented:** `null` is a universal value (see
    "Nullability model (confirmed)" above) — assignable to any type
    including scalars, with no flow-sensitive null analysis. Scalars,

@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional checked scalar casts and IEEE boundaries",
+  "expected_diagnostic": "",
+  "enabled": true
+}
