@@ -1,6 +1,7 @@
 /*
     Demonstrate the use of handles with inline.
  */
+import system as Sys
 
 namespace scanner {
     class File {
@@ -140,7 +141,17 @@ namespace scanner {
         void print_char() {
             int c = get_char()
             inline(int c) {
-                printf("%c", (char)*c);
+                switch(*c) {
+                    case -1:
+                        printf("END OF FILE");
+                        break;
+                    case -2:
+                        printf("END OF INPUT");
+                        break;
+                    default:
+                        printf("%c", (char)*c);
+                        break;
+                }
             }
         }
     }
@@ -151,16 +162,28 @@ start {
     
     scanner.FileStack fstk()
 
-    fstk.open("input_test.txt", "r")
-    print(format("opened file: {}", fstk.get_name()))
+    try {
+        fstk.open("input_test.txt", "r")
+        print(format("opened file: {}\n", fstk.get_name()))
+    }
+    except() as msg {
+        print(format("open input file failed: {}\n", msg))
+        raise()
+    }
 
     int ch = fstk.get_char()
     do {
         fstk.print_char()
+        
+        ; The next line throws a RT error because END_OF_FILE and END_OF_INPUT 
+        ; are not ASCII characters. 
+        ; print(format("{:c}", ch))
+
         ch = fstk.consume_char()
         if(ch == scanner.File.END_OF_FILE) {
             fstk.close()
         }
     } while(ch != scanner.File.END_OF_INPUT) 
 
+    print("\n")
 }
