@@ -9,7 +9,7 @@ namespace Math {
                 return (n)
             }
             int v = compute(n - 1) + compute(n - 2)
-            ; print("{val}, "(val=v))
+            ; print(format("{val}, ", val=v))
             return(v)
         }
     }

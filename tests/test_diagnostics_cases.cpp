@@ -41,47 +41,47 @@ const TestGroupRegistration registration{2, {
              throw std::runtime_error("invalid UTF-8 string was accepted");
          }},
         {"formatted print arity", [] {
-             expectDiagnostic("start {\n print(\"value: {}\"(1, 2))\n}",
+             expectDiagnostic("start {\n print(format(\"value: {}\", 1, 2))\n}",
                               "one '{}' placeholder per argument");
          }},
         {"formatted print malformed brace", [] {
-             expectDiagnostic("start {\n print(\"value: {x-y}\"(x=1))\n}",
+             expectDiagnostic("start {\n print(format(\"value: {x-y}\", x=1))\n}",
                               "malformed placeholder name");
          }},
         {"formatted string unmatched braces", [] {
-             expectDiagnostic("start {\n print(\"value: {name\"(name=1))\n}",
+             expectDiagnostic("start {\n print(format(\"value: {name\", name=1))\n}",
                               "unmatched '{'");
-             expectDiagnostic("start {\n print(\"value: name}\"(name=1))\n}",
+             expectDiagnostic("start {\n print(format(\"value: name}\", name=1))\n}",
                               "unmatched '}'");
          }},
         {"formatted string rejects mixed placeholder and argument forms", [] {
-             expectDiagnostic("start {\n print(\"{} {name}\"(name=1))\n}",
+             expectDiagnostic("start {\n print(format(\"{} {name}\", name=1))\n}",
                               "named and positional placeholders cannot be mixed");
-             expectDiagnostic("start {\n print(\"{name}\"(1))\n}",
+             expectDiagnostic("start {\n print(format(\"{name}\", 1))\n}",
                               "named and positional format arguments cannot be mixed");
-             expectDiagnostic("start {\n print(\"{}\"(name=1))\n}",
+             expectDiagnostic("start {\n print(format(\"{}\", name=1))\n}",
                               "named and positional format arguments cannot be mixed");
-             expectDiagnostic("start {\n print(\"{name}\"(name=1, 2))\n}",
+             expectDiagnostic("start {\n print(format(\"{name}\", name=1, 2))\n}",
                               "named and positional format arguments cannot be mixed");
          }},
         {"formatted string named argument validation", [] {
-             expectDiagnostic("start {\n print(\"{name}\"())\n}",
+             expectDiagnostic("start {\n print(format(\"{name}\"))\n}",
                               "missing named format argument 'name'");
-             expectDiagnostic("start {\n print(\"{name}\"(name=1, name=2))\n}",
+             expectDiagnostic("start {\n print(format(\"{name}\", name=1, name=2))\n}",
                               "duplicate named format argument 'name'");
-             expectDiagnostic("start {\n print(\"{name}\"(other=1))\n}",
+             expectDiagnostic("start {\n print(format(\"{name}\", other=1))\n}",
                               "unused named format argument 'other'");
-             expectDiagnostic("start {\n print(\"plain\"(other=1))\n}",
+             expectDiagnostic("start {\n print(format(\"plain\", other=1))\n}",
                               "unused named format argument 'other'");
          }},
         {"named formatting preserves non-printable value rejection", [] {
              expectDiagnostic("start {\n buffer bytes = buffer(1)\n"
-                              " print(\"{value}\"(value=bytes))\n}",
+                              " print(format(\"{value}\", value=bytes))\n}",
                               "formatted string argument is not printable");
          }},
         {"formatted string placeholder diagnostics include source location", [] {
              try {
-                 (void)parse("start {\n print(\"{bad-name}\"(bad=1))\n}", "format.simp");
+                 (void)parse("start {\n print(format(\"{bad-name}\", bad=1))\n}", "format.simp");
              } catch (const simp::DiagnosticError& error) {
                  require(std::string(error.what()).find("format.simp:2:8: error:") == 0,
                          "malformed format placeholder diagnostic did not identify its source");
@@ -91,7 +91,33 @@ const TestGroupRegistration registration{2, {
          }},
         {"single-quoted string format arguments", [] {
              expectDiagnostic("start {\n print('value: {}'(1))\n}",
-                              "format arguments require a double-quoted string literal");
+                              "string-literal calls were removed");
+         }},
+        {"double-quoted string calls removed", [] {
+             expectDiagnostic("start {\n print(\"{}\"(1))\n}",
+                              "string-literal calls were removed");
+         }},
+        {"format templates must be literals", [] {
+             expectDiagnostic("start {\n strg text = \"{}\"\n print(format(text, 1))\n}",
+                              "format requires a string literal template");
+             expectDiagnostic("start {\n strg text = \"{}\"\n print(text, 1)\n}",
+                              "formatted print requires a string literal template");
+         }},
+        {"format specifier validation", [] {
+             for (const auto& spec : {"q", "8xx", ".2f", "0>8", "<08", "08c",
+                                      "1000001", "999999999999999999999"}) {
+                 expectDiagnostic("start {\n print(\"{:" + std::string(spec) + "}\", 1)\n}",
+                                  spec == std::string("1000001") || spec[0] == '9'
+                                      ? "format width exceeds" : "invalid format specifier");
+             }
+             for (const auto& spec : {"d", "x", "X", "c", "08"}) {
+                 expectDiagnostic("start {\n print(\"{:" + std::string(spec) + "}\", true)\n}",
+                                  "numeric format specifiers require int or unsigned");
+             }
+             expectDiagnostic("start {\n print(\"{}\", 1, 2)\n}",
+                              "one '{}' placeholder per argument");
+             expectDiagnostic("start {\n print(\"{name}\", name=1, name=2)\n}",
+                              "duplicate named format argument");
          }},
         {"string condition rejected", [] {
              expectDiagnostic("start { if (\"not a condition\") { } }",

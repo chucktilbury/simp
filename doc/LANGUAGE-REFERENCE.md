@@ -44,7 +44,7 @@ start {
     int count = 0x12
     unsigned total = 0x12u
     float ratio = .5
-    print("count={}, total={}, ratio={}"(count, total, ratio))
+    print(format("count={}, total={}, ratio={}", count, total, ratio))
 }
 ```
 
@@ -281,18 +281,48 @@ local. Qualified targets work, for example
 their existing `int(value)`, `bool(value)`, `unsigned(value)`, and
 `float(value)` syntax.
 
-Double-quoted text can be formatted by calling the literal with positional
-arguments, such as `"value: {}"(value)`, or with named arguments, such as
-`"user {name} has {count} messages"(count=total, name=user)`. Named arguments
+Literal text can be formatted with the `format` intrinsic and positional
+arguments, such as `format("value: {}", value)`, or with named arguments, such as
+`format("user {name} has {count} messages", count=total, name=user)`. Named arguments
 bind case-sensitively to placeholder names regardless of argument order.
 Each distinct placeholder needs exactly one named argument; a name may be
 referenced repeatedly, and its argument expression is evaluated once.
 Positional `{}` and named `{name}` forms cannot be mixed in one format call.
 Use `{{` and `}}` for literal braces. Formatting is not automatic
 interpolation. Arguments support the same printable scalar, string, type, and
-dynamic values as positional formatting. `print` takes at most one
-expression; it prints simple scalar/string/type values, or a double-quoted
-format call. See `format-suffix` and `print-statement`.
+dynamic values as positional formatting. `format` returns a fresh managed `strg`,
+usable anywhere an expression is accepted. Templates must be string literals
+(either quote style); dynamic templates are not supported. Arguments are
+evaluated and snapshotted once, left-to-right, before assembling the result.
+The old string-literal-call syntax is rejected, not an alias.
+
+`print(value)` retains scalar/string/type/dynamic printing. `print("literal")`
+prints the literal unchanged, including braces. `print("value: {}", value)`
+formats with the same rules as `format`, then prints the completed result and
+a newline; formatting failure emits no partial output.
+
+An optional `:` introduces this deliberately limited, C++20-inspired subset,
+not full `std::format` compatibility:
+
+| Specifier | Meaning |
+|---|---|
+| `d` | Decimal `int` or `unsigned` |
+| `x`, `X` | Lower-/upper-case hexadecimal, without prefix; negative signed values use sign plus magnitude |
+| `c` | One ASCII byte from an integral value in 0..127, including NUL |
+| Width | Minimum field width, at most 1000000; never truncates |
+| `<`, `>`, `^` before width | Left, right, or center space padding; an odd center-padding remainder goes on the right |
+| Leading `0` before width | Numeric zero padding after the minus sign; integral values only; incompatible with explicit alignment and `c` |
+
+The order is `[alignment][width][type]`, for example `{:x}`, `{:08X}`,
+`{:c}`, `{:>8}`, or `{value:08X}`. Empty specs retain default rendering.
+Default alignment is right for numeric values and left otherwise. Width counts
+Unicode code points, not bytes or terminal display columns. Floating-point
+precision, custom fill characters, positional indices, and other type codes
+are unsupported. Explicit type codes require `int`/`unsigned`; statically
+known incompatible types and malformed templates are compile-time errors.
+Dynamic type mismatches and ASCII range violations raise catchable exceptions
+located at the argument expression. Negative values and 128+ never generate
+invalid UTF-8. See `format-expression` and `print-statement` in the grammar.
 
 ```simp
 // Complete program: arithmetic, logical operators, and formatting.
@@ -301,7 +331,7 @@ start {
     int second = 22
     bool ready = first > 0 and second > 0
     if (ready) {
-        print("answer={}"(first + second))
+        print(format("answer={}", first + second))
     }
 }
 ```

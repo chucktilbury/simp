@@ -239,17 +239,7 @@ void SemanticAnalyzer::analyzeStatement(Statement& statement) {
         for (const auto& expression : statement.expressions) {
             types.push_back(analyzeExpression(*expression));
         }
-        if (types.size() > 1) {
-            for (std::size_t index = 1; index < types.size(); ++index) {
-                if (types[index] != "int" && types[index] != "bool" &&
-                    types[index] != "float" && types[index] != "unsigned" &&
-                    types[index] != "type" && types[index] != "any") {
-                    throw DiagnosticError(statement.expressions[index]->location,
-                                          "formatted print arguments must have type int, bool, "
-                                          "float, unsigned, type, or a collection element value");
-                }
-            }
-        } else if (!types.empty() && types.front() != "int" && types.front() != "bool" &&
+        if (!types.empty() && types.front() != "int" && types.front() != "bool" &&
                    types.front() != "float" && types.front() != "unsigned" &&
                    types.front() != "String" && types.front() != "any" &&
                    types.front() != "type") {

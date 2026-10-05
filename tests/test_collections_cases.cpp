@@ -148,7 +148,7 @@ const TestGroupRegistration registration{4, {
                          "  dict mapped = {\"value\": values[0]}\n"
                          "  mapped[\"value\"] = values[0]\n"
                          "  print(values[0])\n"
-                         "  print(\"value {}\"(values[0]))\n"
+                         "  print(format(\"value {}\", values[0]))\n"
                          "  bool isInteger = values[0] is int\n"
                          "  type dynamicType = type(values[0])\n"
                          "  bool isNull = values[0] == null\n"

@@ -13,13 +13,13 @@ class App {
         float trailingDotExponent = 5.e2
         int bareZero = 0
 
-        print("{}"(leadingDot))
-        print("{}"(trailingDot))
-        print("{}"(digitDotDigit))
-        print("{}"(exponentOnly))
-        print("{}"(leadingDotExponent))
-        print("{}"(trailingDotExponent))
-        print("{}"(bareZero))
+        print(format("{}", leadingDot))
+        print(format("{}", trailingDot))
+        print(format("{}", digitDotDigit))
+        print(format("{}", exponentOnly))
+        print(format("{}", leadingDotExponent))
+        print(format("{}", trailingDotExponent))
+        print(format("{}", bareZero))
     }
 }
 

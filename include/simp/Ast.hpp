@@ -24,12 +24,18 @@ enum class ExpressionKind {
     ObjectCast, TypeTest, TypeOf, TypeName, BufferLiteral
 };
 
+struct FormatSpec {
+    char type = 0;
+    char alignment = 0;
+    bool zeroPad = false;
+    unsigned width = 0;
+};
+
 struct Expression {
     ExpressionKind kind = ExpressionKind::Integer;
     SourceLocation location;
     SourceLocation typeLocation;
     std::string value;
-    bool formattedString = false;
     bool sliceHasStart = true;
     bool sliceHasEnd = true;
     bool sliceHasStep = false;
@@ -44,6 +50,7 @@ struct Expression {
     std::vector<SourceLocation> argumentNameLocations;
     std::vector<std::string> formatSegments;
     std::vector<std::size_t> formatArgumentIndices;
+    std::vector<FormatSpec> formatSpecs;
 };
 
 enum class StatementKind {

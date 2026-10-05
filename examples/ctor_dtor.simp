@@ -52,8 +52,8 @@ class Child: public FirstBase, private SecondBase {
         super FirstBase()
         super SecondBase()
         print("\nin the Child constructor")
-        print("first foo is {}"(FirstBase.foo))
-        print("second foo is {}"(SecondBase.foo))
+        print(format("first foo is {}", FirstBase.foo))
+        print(format("second foo is {}", SecondBase.foo))
         print("end child constructor\n")
     }
 
@@ -65,14 +65,14 @@ class Child: public FirstBase, private SecondBase {
 start {
 
     Child f()
-    print("first base bar is {}"(f.bar))
+    print(format("first base bar is {}", f.bar))
     f.modify()
 
     ; correct, not private, value is chosen
-    print("first base foo is {}\n"(f.foo))
+    print(format("first base foo is {}\n", f.foo))
 
     ; compiler error due to second being private to child
-    ; print("{}"(f.SecondBase.foo))
+    ; print(format("{}", f.SecondBase.foo))
 
     f.destroy()
 }

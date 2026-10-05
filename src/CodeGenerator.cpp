@@ -284,7 +284,8 @@ CodeGenerator::Value CodeGenerator::emitStringLiteral(const std::string& bytes,
 CodeGenerator::Value CodeGenerator::emitFormatString(const Expression& expression) {
     const auto& segments = expression.formatSegments;
     const auto& argumentIndices = expression.formatArgumentIndices;
-    if (segments.size() != argumentIndices.size() + 1) {
+    if (segments.size() != argumentIndices.size() + 1 ||
+        expression.formatSpecs.size() != argumentIndices.size()) {
         throw DiagnosticError(expression.location,
                               "backend could not match format placeholders to arguments");
     }
@@ -303,47 +304,54 @@ CodeGenerator::Value CodeGenerator::emitFormatString(const Expression& expressio
                      classMetadataSymbol("String") + ", ptr " + leading + ", i64 " +
                      std::to_string(segments.front().size()) + ")\n";
     const auto result = rootObjectValue({"String", destination}, expression.location);
-    std::vector<Value> formattedArguments;
-    formattedArguments.reserve(expression.arguments.size());
+    std::vector<Value> formattedArguments(argumentIndices.size());
     for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
         const auto& argumentExpression = *expression.arguments[index];
         const auto argument = emitExpression(argumentExpression);
         const auto dynamic = buildDynamicValue(argument, argumentExpression.location);
-        const auto formatted = newTemporary();
-        instructions_ += "  " + formatted + " = call ptr @simp_string_format_new(ptr " +
-                         classMetadataSymbol("String") + ", ptr null, i64 0)\n";
-        rootObjectValue({"String", formatted}, argumentExpression.location);
-        const auto tag = newTemporary();
-        const auto integer = newTemporary();
-        const auto pointer = newTemporary();
-        const auto length = newTemporary();
-        instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " + dynamic.operand +
-                         ", 0\n"
-                         "  " + integer + " = extractvalue %SimpleArrayValue " +
-                         dynamic.operand + ", 1\n"
-                         "  " + pointer + " = extractvalue %SimpleArrayValue " +
-                         dynamic.operand + ", 2\n"
-                         "  " + length + " = extractvalue %SimpleArrayValue " +
-                         dynamic.operand + ", 3\n";
-        const auto& location = argumentExpression.location;
-        const auto file = internString(location.file);
-        instructions_ += "  call void @simp_string_format_append(ptr " + formatted +
-                         ", i64 " + tag + ", i64 " + integer + ", ptr " + pointer + ", i64 " +
-                         length + ", ptr " + file + ", i64 " +
-                         std::to_string(location.file.size()) + ", i64 " +
-                         std::to_string(location.line) + ", i64 " +
-                         std::to_string(location.column) + ")\n";
-        formattedArguments.push_back({"String", formatted});
+        for (std::size_t field = 0; field < argumentIndices.size(); ++field) {
+            if (argumentIndices[field] != index) continue;
+            const auto& spec = expression.formatSpecs[field];
+            const auto formatted = newTemporary();
+            instructions_ += "  " + formatted + " = call ptr @simp_string_format_new(ptr " +
+                             classMetadataSymbol("String") + ", ptr null, i64 0)\n";
+            rootObjectValue({"String", formatted}, argumentExpression.location);
+            const auto tag = newTemporary();
+            const auto integer = newTemporary();
+            const auto pointer = newTemporary();
+            const auto length = newTemporary();
+            instructions_ += "  " + tag + " = extractvalue %SimpleArrayValue " + dynamic.operand +
+                             ", 0\n"
+                             "  " + integer + " = extractvalue %SimpleArrayValue " +
+                             dynamic.operand + ", 1\n"
+                             "  " + pointer + " = extractvalue %SimpleArrayValue " +
+                             dynamic.operand + ", 2\n"
+                             "  " + length + " = extractvalue %SimpleArrayValue " +
+                             dynamic.operand + ", 3\n";
+            const auto& location = argumentExpression.location;
+            const auto file = internString(location.file);
+            instructions_ += "  call void @simp_string_format_spec_append(ptr " + formatted +
+                             ", i64 " + tag + ", i64 " + integer + ", ptr " + pointer + ", i64 " +
+                             length + ", i64 " + std::to_string(spec.type) +
+                             ", i64 " + std::to_string(spec.width) +
+                             ", i64 " + std::to_string(spec.alignment) +
+                             ", i64 " + std::to_string(spec.zeroPad) +
+                             ", ptr " + file + ", i64 " +
+                             std::to_string(location.file.size()) + ", i64 " +
+                             std::to_string(location.line) + ", i64 " +
+                             std::to_string(location.column) + ")\n";
+            formattedArguments[field] = {"String", formatted};
+        }
     }
     for (std::size_t index = 0; index < argumentIndices.size(); ++index) {
         const auto argumentIndex = argumentIndices[index];
-        if (argumentIndex >= formattedArguments.size()) {
+        if (argumentIndex >= expression.arguments.size()) {
             throw DiagnosticError(expression.location,
                                   "backend could not match format placeholders to arguments");
         }
         std::string data;
         std::string length;
-        emitStringBytesAccess(formattedArguments[argumentIndex],
+        emitStringBytesAccess(formattedArguments[index],
                               expression.arguments[argumentIndex]->location, data, length);
         instructions_ += "  call void @simp_string_append_bytes(ptr " + destination +
                          ", ptr " + data + ", i64 " + length + ")\n";

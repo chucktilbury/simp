@@ -89,9 +89,6 @@ void dumpExpression(const Expression& expression, std::ostream& output, int dept
     if (!expression.value.empty()) {
         output << " [" << expression.value << "]";
     }
-    if (expression.formattedString) {
-        output << " [formatted]";
-    }
     output << '\n';
     if (expression.left) {
         dumpExpression(*expression.left, output, depth + 1);

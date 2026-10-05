@@ -5,6 +5,6 @@ start {
     copy = greeting
     int value = 42
     print(copy)
-    print("value: {}"(value))
-    print("sum {} {}"(20 + 1, 21))
+    print(format("value: {}", value))
+    print(format("sum {} {}", 20 + 1, 21))
 }

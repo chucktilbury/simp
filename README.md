@@ -71,7 +71,10 @@ in [`stdlib/README.md`](stdlib/README.md); its public APIs are in
 
 - `int` is signed 64-bit; integer literals support decimal and `0x` hexadecimal
   forms with checked ranges. The string type keyword is `strg`; double-quoted
-  strings support `\e` and positional or named format placeholders.
+  strings support `\e`. `format("value {}", value)` returns `strg`, and
+  `print("{value:08X}", value=42)` formats directly. Literal templates support
+  positional/named fields, alignment, width, decimal/hex integers, and
+  ASCII-only `c`; string-literal calls are no longer supported.
 - Scalar `int`, `unsigned`, and `float` variables and fields support
   `+=`, `-=`, `*=`, `/=`, and the applicable `%=` compound assignments.
 - Anonymous class enums declare immutable signed 64-bit `int` constants

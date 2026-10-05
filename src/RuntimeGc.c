@@ -1058,7 +1058,7 @@ void simp_gc_begin_destroy(void *object, const char *file, uint64_t file_length,
         simp_exception_raise("invalid object reference", 24, file, file_length, line, column);
     if (node->destroyed)
         simp_exception_raise("object has already been destroyed", 32,
-                             file, file_length, line, column);
+                                  file, file_length, line, column);
     node->destroyed = 1;
     node->destroying = 1;
     node->destroy_previous = destroy_stack;
@@ -1873,9 +1873,37 @@ void *simp_string_method_to_lower(void *receiver) {
 void simp_string_format_append(void *object, uint64_t tag, int64_t integer,
                                void *pointer, uint64_t length, const char *file,
                                uint64_t file_length, uint64_t line, uint64_t column) {
+    simp_string_format_spec_append(object, tag, integer, pointer, length, 0, 0, 0, 0,
+                                   file, file_length, line, column);
+}
+
+void simp_string_format_spec_append(void *object, uint64_t tag, int64_t integer,
+                                   void *pointer, uint64_t length, uint64_t type,
+                                   uint64_t width, uint64_t alignment, uint64_t zero_pad,
+                                   const char *file, uint64_t file_length,
+                                   uint64_t line, uint64_t column) {
     char text[128];
+    const char *data = text;
+    uint64_t count = 0;
     int written = 0;
-    if (tag == SIMP_ARRAY_INTEGER) written =
+    const int integral = tag == SIMP_ARRAY_INTEGER || tag == SIMP_ARRAY_UNSIGNED;
+    if ((type || zero_pad) && !integral) {
+        static const char message[] = "numeric format specifiers require int or unsigned";
+        simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+    }
+    if (type == 'c') {
+        if ((uint64_t)integer > 127) {
+            static const char message[] = "ASCII character format requires a value in 0..127";
+            simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
+        }
+        text[0] = (char)integer;
+        written = 1;
+    } else if (type == 'x' || type == 'X') {
+        const int negative = tag == SIMP_ARRAY_INTEGER && integer < 0;
+        const uint64_t magnitude = negative ? 0 - (uint64_t)integer : (uint64_t)integer;
+        written = snprintf(text, sizeof(text), type == 'x' ? "%s%llx" : "%s%llX",
+                           negative ? "-" : "", (unsigned long long)magnitude);
+    } else if (tag == SIMP_ARRAY_INTEGER) written =
         snprintf(text, sizeof(text), "%lld", (long long)integer);
     else if (tag == SIMP_ARRAY_UNSIGNED) written =
         snprintf(text, sizeof(text), "%llu", (unsigned long long)(uint64_t)integer);
@@ -1884,37 +1912,63 @@ void simp_string_format_append(void *object, uint64_t tag, int64_t integer,
         memcpy(&number, &integer, sizeof(number));
         written = snprintf(text, sizeof(text), "%.15g", number);
     } else if (tag == SIMP_ARRAY_BOOLEAN) {
-        simp_string_append_bytes(object, integer ? "true" : "false", integer ? 4 : 5);
-        return;
+        data = integer ? "true" : "false";
+        count = integer ? 4 : 5;
     } else if (tag == SIMP_ARRAY_TYPE) {
-        simp_string_append_bytes(object, (const char *)pointer, length);
-        return;
+        data = (const char *)pointer;
+        count = length;
     } else if (tag == SIMP_ARRAY_OBJECT) {
         if (pointer == NULL) {
-            simp_string_append_bytes(object, "(null)", 6);
-            return;
+            data = "(null)";
+            count = 6;
+        } else {
+            const SimpClassMeta *metadata = *(const SimpClassMeta **)pointer;
+            if (metadata != NULL && metadata->name_length == 6 &&
+                memcmp(metadata->name, "String", 6) == 0) {
+                simp_string_bytes(pointer, &data, &count);
+            } else {
+                data = "<object>";
+                count = 8;
+            }
         }
-        const SimpClassMeta *metadata = *(const SimpClassMeta **)pointer;
-        if (metadata != NULL && metadata->name_length == 6 &&
-            memcmp(metadata->name, "String", 6) == 0) {
-            const char *data;
-            uint64_t count;
-            simp_string_bytes(pointer, &data, &count);
-            simp_string_append_bytes(object, data, count);
-            return;
-        }
-        simp_string_append_bytes(object, "<object>", 8);
-        return;
     } else if (tag == SIMP_ARRAY_MAP || tag == SIMP_ARRAY_ARRAY ||
                tag == SIMP_ARRAY_STRING) {
-        simp_string_append_bytes(object, "<object>", 8);
-        return;
+        data = "<object>";
+        count = 8;
     } else {
         static const char message[] = "buffer and handle values are not formattable";
         simp_exception_raise(message, sizeof(message) - 1, file, file_length, line, column);
     }
     if (written < 0 || written >= (int)sizeof(text)) abort();
-    simp_string_append_bytes(object, text, (uint64_t)written);
+    if (data == text) count = (uint64_t)written;
+    uint64_t field_length = count;
+    if (data != text) {
+        field_length = 0;
+        for (uint64_t index = 0; index < count; ++index) {
+            if (((uint8_t)data[index] & 0xc0) != 0x80) ++field_length;
+        }
+    }
+    const uint64_t padding = width > field_length ? width - field_length : 0;
+    if (!alignment) alignment = integral || tag == SIMP_ARRAY_FLOAT ? '>' : '<';
+    uint64_t before = alignment == '<' ? 0 : alignment == '^' ? padding / 2 : padding;
+    uint64_t after = padding - before;
+    if (zero_pad && count && data[0] == '-') {
+        simp_string_append_bytes(object, data++, 1);
+        --count;
+    }
+    char fill[128];
+    memset(fill, zero_pad ? '0' : ' ', sizeof(fill));
+    while (before) {
+        uint64_t chunk = before > sizeof(fill) ? sizeof(fill) : before;
+        simp_string_append_bytes(object, fill, chunk);
+        before -= chunk;
+    }
+    simp_string_append_bytes(object, data, count);
+    while (after) {
+        uint64_t chunk = after > sizeof(fill) ? sizeof(fill) : after;
+        simp_string_append_bytes(object, fill, chunk);
+        after -= chunk;
+    }
 }
 
 static void buffer_reserve(SimpBuffer *buffer, uint64_t capacity) {

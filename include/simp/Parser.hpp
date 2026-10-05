@@ -31,6 +31,7 @@ private:
     const Token& consume(TokenType type, const char* expectation);
     [[noreturn]] void error(const Token& token, const std::string& message) const;
     void validateFormatString(Expression& format) const;
+    void parseFormatArguments(Expression& format);
     void trace(const char* action) const;
 
     ClassDeclaration parseClass();

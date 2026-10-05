@@ -15,7 +15,7 @@ namespace Bar {
             }
 
             if(err.length > 0) {
-                print("error opening \"{}\": \"{}\""(fname, err))
+                print(format("error opening \"{}\": \"{}\"", fname, err))
             }
         }
     }

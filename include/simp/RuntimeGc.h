@@ -112,6 +112,11 @@ const char *simp_string_cstr(void *const *text);
 void simp_string_bytes(void *object, const char **data, uint64_t *length);
 void *simp_string_new(const SimpClassMeta *metadata, const char *bytes, uint64_t length);
 void *simp_string_format_new(const SimpClassMeta *metadata, const char *bytes, uint64_t length);
+void simp_string_format_spec_append(void *object, uint64_t tag, int64_t integer,
+                                   void *pointer, uint64_t length, uint64_t type,
+                                   uint64_t width, uint64_t alignment, uint64_t zero_pad,
+                                   const char *file, uint64_t file_length,
+                                   uint64_t line, uint64_t column);
 void simp_string_append_bytes(void *object, const char *bytes, uint64_t length);
 void simp_string_format_append(void *object, uint64_t tag, int64_t integer,
                                void *pointer, uint64_t length, const char *file,

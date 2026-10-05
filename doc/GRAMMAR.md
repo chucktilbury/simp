@@ -87,9 +87,8 @@ Lexical details that affect parsing:
   and `\n`, `\r`, `\t`, `\\`, and `\"` are also accepted. Single-quoted
   strings preserve backslashes literally. Both quote styles are one physical
   line and must decode to valid
-  UTF-8. A double-quoted string is marked as a possible format string; it is
-  not interpolated unless it is immediately followed by a parenthesized
-  argument list (see `format-suffix`).
+  UTF-8. Neither quote style interpolates automatically; literal templates
+  are interpreted only by `format` or multi-argument `print`.
 - `;`, `#`, and `//` begin line comments; a semicolon is **not** a statement
   separator. Block comments are non-nesting. Newline characters inside a
   block comment still delimit statements outside parentheses and brackets.
@@ -229,7 +228,8 @@ assignment          ::= expression, assignment-operator, expression, terminator 
 assignment-operator ::= "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 method-call-statement
                     ::= expression, terminator ;
-print-statement     ::= "print", "(", [ expression ], ")", terminator ;
+print-statement     ::= "print", "(", [ expression
+                         | STRING, ",", format-argument-list ], ")", terminator ;
 if-statement        ::= "if", "(", expression, ")", { NEWLINE }, block,
                         [ { NEWLINE }, "else", { NEWLINE }, block ] ;
 while-statement     ::= "while", "(", expression, ")", { NEWLINE }, block ;
@@ -310,7 +310,7 @@ multiplication      ::= unary, { ("*" | "/" | "%"), unary } ;
 unary               ::= ("+" | "-"), unary | postfix ;
 
 postfix             ::= primary, { member-suffix | index-or-slice-suffix
-                                  | call-suffix | format-suffix | object-cast-suffix } ;
+                                  | call-suffix | object-cast-suffix } ;
 object-cast-suffix  ::= "as", cast-target ;
 cast-target         ::= QUALIFIED_IDENT | primitive-type | "void" | "null" ;
 member-suffix       ::= ".", IDENT ;
@@ -319,7 +319,7 @@ index-or-slice-suffix
                         [ ":", [ expression ] ] ], "]"
                       | "[", ":", [ expression ], [ ":", [ expression ] ], "]" ;
 call-suffix         ::= "(", [ argument-list ], ")" ;
-format-suffix       ::= "(", [ format-argument-list ], ")" ;
+format-expression   ::= "format", "(", STRING, [ ",", format-argument-list ], ")" ;
 format-argument-list
                     ::= argument-list
                       | named-format-argument,
@@ -329,6 +329,7 @@ named-format-argument
 argument-list       ::= expression, { ",", expression } ;
 
 primary             ::= INTEGER | UNSIGNED_INT | FLOAT | STRING
+                      | format-expression
                       | "true" | "false" | "null" | IDENT
                       | "type", "(", expression, ")"
                       | "bool", "(", expression, ")"
@@ -380,17 +381,22 @@ does not make it a valid expression statement. Declaration and assignment
 recognition still applies before the method-call-only check.
 Calls cannot be chained
 directly after a call or constructor-call node, although member and index
-suffixes can follow. A format suffix uses the same parentheses as a call, but
-is accepted only on a double-quoted string literal. It accepts either
+suffixes can follow. The `format` expression requires a literal template,
+returns `strg`, and accepts either
 positional expressions or named `IDENT=expression` arguments, never both.
 Positional `{}` placeholders match positional arguments in order. Named
 `{IDENT}` placeholders match named arguments by case-sensitive name; every
 distinct placeholder name must have exactly one argument, and every argument
 must be used. A named placeholder may appear more than once and reuses its
 argument value. `{{` and `}}` produce literal braces; unmatched braces and
-malformed placeholder names are compile-time errors. The string is validated
-only when the literal is called. A single-quoted string is never a
-format-call target. Indexing and slicing bind as postfix forms. `type` always
+malformed placeholder names are compile-time errors. Fields may include
+`:` followed by `[alignment][width][type]`, where alignment is `<`, `>`, or `^`,
+width is decimal digits (maximum 1000000), and type is `d`, `x`, `X`, or `c`.
+A leading-zero width requests integral zero padding; explicit alignment and
+`c` cannot combine with it. See the language reference for type, ASCII,
+padding, and exception rules. Validation happens only in `format` or
+multi-argument `print`. String-literal calls are rejected.
+Indexing and slicing bind as postfix forms. `type` always
 starts `type(expression)`; it is not a standalone type-value expression.
 
 ## Parser coverage map
@@ -411,7 +417,7 @@ Each parser routine has a corresponding production or grammar note above:
 | `startsOutOfLineDefinition` | top-level lookahead for `out-of-line-definition`; not a separate syntax form |
 | `parseClass`, `parseEnumMembers`, `parseOutOfLineMethodDefinition`, `parseType`, `parseParameters`, `parseMethod` | class/member/declaration productions, including `anonymous-enum-declaration` |
 | `Parser` constructor, `current`, `previous`, `check`, `match`, `error` | token-stream setup/access, predicates, cursor movement, and diagnostics; these do not add productions |
-| `skipNewlines`, `consumeStatementTerminator`, `consume`, `validateFormatString`, `trace` | lexical/newline policy, `terminator`, positional/named format validation, and tracing; helpers do not add productions |
+| `skipNewlines`, `consumeStatementTerminator`, `consume`, `parseFormatArguments`, `validateFormatString`, `trace` | lexical/newline policy, `terminator`, positional/named format arguments and validation, and tracing |
 
 The map covers syntax-producing methods in `Parser.cpp` and `ParserClass.cpp`
 and identifies parser infrastructure and validation helpers. The
@@ -443,9 +449,9 @@ and thread bindings.
   continuation.
 - `return ()` is accepted as a void return, alongside bare `return`.
   Parenthesized non-empty returns are ordinary expressions.
-- `print` has an extra parser check: a directly printed double-quoted literal
-  containing `{` or `}` must be used as a format call. The same literal can
-  otherwise be stored or used as a normal string.
+- `format` is recognized as an intrinsic in call position. `print` formats
+  only when its literal first argument has additional arguments; otherwise
+  a directly printed literal, including braces, is unchanged.
 - A base initializer is spelled `super Base(args)`. A virtual-base initializer
   accepts either `super virtual Base(args)` or `virtual super Base(args)`;
   dotted forms are not part of the grammar.

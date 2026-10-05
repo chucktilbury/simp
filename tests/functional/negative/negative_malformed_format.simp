@@ -1,4 +1,4 @@
 # Rejects a formatted string containing a malformed placeholder name.
 start {
-    print("value: {x-y}"(x=1))
+    print(format("value: {x-y}", x=1))
 }

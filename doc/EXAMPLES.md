@@ -4,6 +4,22 @@ After [building the compiler](INSTALLATION.md), the following examples
 compile checked-in functional fixtures, run the resulting executables, and
 show the expected output or behavior:
 
+Formatting uses literal templates, not calls on string literals:
+
+```simp
+start {
+    strg message = format("this is {}", 42)
+    print(message)
+    print("{value:08X}", value=42)
+    print("ASCII: {:c}", 65)
+    print("literal {}")
+}
+```
+
+This prints `this is 42`, `0000002A`, `ASCII: A`, and `literal {}`.
+`c` accepts only ASCII 0..127. See the language reference for the supported
+specifier subset.
+
 ```sh
 ./bin/simp tests/functional/positive/positive_integer_output.simp \
   -o bin/positive_integer_output

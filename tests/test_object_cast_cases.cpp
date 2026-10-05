@@ -10,7 +10,7 @@ const TestGroupRegistration registration{2, {
          expectValid(R"(class Bar {
              int val
              Bar(int v) { val = v }
-             void show() { print("class Bar {}"(val)) }
+             void show() { print(format("class Bar {}", val)) }
          }
          class Foo {
              list flarp

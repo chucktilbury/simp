@@ -757,6 +757,7 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare ptr @simp_string_format_new(ptr, ptr, i64)\n"
            << "declare void @simp_string_append_bytes(ptr, ptr, i64)\n"
            << "declare void @simp_string_format_append(ptr, i64, i64, ptr, i64, ptr, i64, i64, i64)\n"
+           << "declare void @simp_string_format_spec_append(ptr, i64, i64, ptr, i64, i64, i64, i64, i64, ptr, i64, i64, i64)\n"
            << "declare i64 @simp_string_to_int(ptr, i64, ptr, i64, i64, i64)\n"
            << "declare i64 @simp_string_to_unsigned(ptr, i64, ptr, i64, i64, i64)\n"
            << "declare double @simp_string_to_float(ptr, i64, ptr, i64, i64, i64)\n"

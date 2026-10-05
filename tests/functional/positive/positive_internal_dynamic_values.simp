@@ -24,7 +24,7 @@ start {
     mapped["value"] = values[0]
 
     print(values[0])
-    print("formatted {}"(values[0]))
+    print(format("formatted {}", values[0]))
     print(values[0] is int)
     type dynamicType = type(values[0])
     print(dynamicType)

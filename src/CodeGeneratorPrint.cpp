@@ -49,27 +49,12 @@ void CodeGenerator::emitStringBytes(const std::string& bytes) {
 
 void CodeGenerator::emitPrint(const Statement& statement) {
     if (statement.expressions.empty()) return;
-    if (statement.expressions.size() > 1) {
-        const auto& format = *statement.expressions.front();
-        std::size_t segmentStart = 0;
-        std::size_t argumentIndex = 1;
-        for (std::size_t index = 0; index < format.value.size(); ++index) {
-            if (format.value[index] != '{') continue;
-            emitStringBytes(format.value.substr(segmentStart, index - segmentStart));
-            const auto value = emitExpression(*statement.expressions[argumentIndex++]);
-            emitPrintValue(value, statement.location);
-            index += 1;
-            segmentStart = index + 1;
-        }
-        emitStringBytes(format.value.substr(segmentStart));
+    const auto& expression = *statement.expressions.front();
+    if (expression.kind == ExpressionKind::String) {
+        emitStringBytes(expression.value);
     } else {
-        const auto& expression = *statement.expressions.front();
-        if (expression.kind == ExpressionKind::String) {
-            emitStringBytes(expression.value);
-        } else {
-            const auto value = emitExpression(expression);
-            emitPrintValue(value, statement.location);
-        }
+        const auto value = emitExpression(expression);
+        emitPrintValue(value, statement.location);
     }
     emitStringBytes("\n");
 }

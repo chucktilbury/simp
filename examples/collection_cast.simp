@@ -8,7 +8,7 @@ class Bar {
     }
 
     void show() {
-        print("class Bar {}"(val))
+        print(format("class Bar {}", val))
     }
 }
 

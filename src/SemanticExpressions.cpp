@@ -470,12 +470,22 @@ std::string SemanticAnalyzer::analyzeExpression(Expression& expression,
     case ExpressionKind::String:
         return "String";
     case ExpressionKind::FormatString:
-        for (auto& argument : expression.arguments) {
+        for (std::size_t index = 0; index < expression.arguments.size(); ++index) {
+            auto& argument = expression.arguments[index];
             const auto type = analyzeExpression(*argument);
             if (type == "void" || type == "buffer" || type == "handle" ||
                 type == "list" || type == "dict") {
                 throw DiagnosticError(argument->location,
                                       "formatted string argument is not printable");
+            }
+            for (std::size_t field = 0; field < expression.formatSpecs.size(); ++field) {
+                const auto& spec = expression.formatSpecs[field];
+                if (expression.formatArgumentIndices[field] == index &&
+                    (spec.type || spec.zeroPad) && type != "int" &&
+                    type != "unsigned" && type != "any") {
+                    throw DiagnosticError(argument->location,
+                                          "numeric format specifiers require int or unsigned");
+                }
             }
         }
         return "String";

@@ -4,7 +4,7 @@ class Root {
 
     Root(int initial) {
         value = initial
-        print("Root:{}"(initial))
+        print(format("Root:{}", initial))
     }
 }
 

@@ -119,13 +119,6 @@ void Parser::validateFormatString(Expression& format) const {
             }
             format.formatSegments.push_back(segment);
             segment.clear();
-            if (index + 1 < format.value.size() && format.value[index + 1] == '}') {
-                placeholderNames.emplace_back();
-                hasPositionalPlaceholder = true;
-                index += 2;
-                continue;
-            }
-
             std::size_t end = index + 1;
             while (end < format.value.size() && format.value[end] != '}') {
                 ++end;
@@ -133,16 +126,46 @@ void Parser::validateFormatString(Expression& format) const {
             if (end == format.value.size()) {
                 throw DiagnosticError(format.location, "unmatched '{' in formatted string");
             }
-            if (end == index + 1 ||
-                !isIdentifierStart(format.value[index + 1]) ||
-                !std::all_of(format.value.begin() + static_cast<std::ptrdiff_t>(index + 2),
-                             format.value.begin() + static_cast<std::ptrdiff_t>(end),
-                             isIdentifierPart)) {
+            const auto colon = format.value.find(':', index + 1);
+            const auto nameEnd = colon < end ? colon : end;
+            if (nameEnd != index + 1 &&
+                (!isIdentifierStart(format.value[index + 1]) ||
+                 !std::all_of(format.value.begin() + static_cast<std::ptrdiff_t>(index + 2),
+                              format.value.begin() + static_cast<std::ptrdiff_t>(nameEnd),
+                              isIdentifierPart))) {
                 throw DiagnosticError(format.location,
                                       "malformed placeholder name in formatted string");
             }
-            placeholderNames.push_back(format.value.substr(index + 1, end - index - 1));
-            hasNamedPlaceholder = true;
+            placeholderNames.push_back(format.value.substr(index + 1, nameEnd - index - 1));
+            hasNamedPlaceholder |= nameEnd != index + 1;
+            hasPositionalPlaceholder |= nameEnd == index + 1;
+            FormatSpec spec;
+            if (colon < end) {
+                auto cursor = colon + 1;
+                if (cursor < end &&
+                    (format.value[cursor] == '<' || format.value[cursor] == '>' ||
+                     format.value[cursor] == '^')) {
+                    spec.alignment = format.value[cursor++];
+                }
+                if (cursor < end && format.value[cursor] == '0') spec.zeroPad = true;
+                while (cursor < end && format.value[cursor] >= '0' &&
+                       format.value[cursor] <= '9') {
+                    spec.width = spec.width * 10 +
+                                 static_cast<unsigned>(format.value[cursor++] - '0');
+                    if (spec.width > 1000000) {
+                        throw DiagnosticError(format.location, "format width exceeds 1000000");
+                    }
+                }
+                if (cursor < end &&
+                    (format.value[cursor] == 'd' || format.value[cursor] == 'x' ||
+                     format.value[cursor] == 'X' || format.value[cursor] == 'c')) {
+                    spec.type = format.value[cursor++];
+                }
+                if (cursor != end || (spec.zeroPad && (spec.alignment || spec.type == 'c'))) {
+                    throw DiagnosticError(format.location, "invalid format specifier");
+                }
+            }
+            format.formatSpecs.push_back(spec);
             index = end + 1;
             continue;
         }
@@ -621,12 +644,13 @@ Statement Parser::parsePrint() {
     if (!check(TokenType::RightParen)) {
         statement.expressions.push_back(parseExpression());
         if (match(TokenType::Comma)) {
-            error(previous(), "use double-quoted format-call syntax: print(\"{}\"(value))");
-        }
-        const auto& value = *statement.expressions.front();
-        if (value.kind == ExpressionKind::String && value.formattedString &&
-            value.value.find_first_of("{}") != std::string::npos) {
-            error(keyword, "formatted string requires expression arguments in parentheses");
+            auto& format = *statement.expressions.front();
+            if (format.kind != ExpressionKind::String) {
+                error(keyword, "formatted print requires a string literal template");
+            }
+            format.kind = ExpressionKind::FormatString;
+            parseFormatArguments(format);
+            validateFormatString(format);
         }
     }
     consume(TokenType::RightParen, "')' after print arguments");
@@ -1057,7 +1081,6 @@ std::unique_ptr<Expression> Parser::parsePrimary() {
         expression->kind = ExpressionKind::String;
         expression->location = token.location;
         expression->value = token.text;
-        expression->formattedString = token.formattedString;
         return expression;
     }
     if (match(TokenType::Identifier)) {
@@ -1187,52 +1210,20 @@ std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> exp
             expression = std::move(access);
             continue;
         }
-        if (check(TokenType::LeftParen) &&
-            expression->kind == ExpressionKind::String &&
-            !expression->formattedString) {
-            error(current(), "format arguments require a double-quoted string literal");
+        if (check(TokenType::LeftParen) && expression->kind == ExpressionKind::String) {
+            error(current(), "string-literal calls were removed; use format(template, values...)");
         }
         if (check(TokenType::LeftParen) &&
-            expression->kind == ExpressionKind::String &&
-            expression->formattedString) {
+            expression->kind == ExpressionKind::Identifier && expression->value == "format") {
             ++current_;
-            expression->kind = ExpressionKind::FormatString;
-            if (!check(TokenType::RightParen)) {
-                do {
-                    if (check(TokenType::Identifier) && current_ + 1 < tokens_.size() &&
-                        tokens_[current_ + 1].type == TokenType::Equal) {
-                        const auto name = consume(TokenType::Identifier,
-                                                  "named format argument");
-                        if (std::find(expression->argumentNames.begin(),
-                                      expression->argumentNames.end(), name.text) !=
-                            expression->argumentNames.end()) {
-                            error(name, "duplicate named format argument '" + name.text + "'");
-                        }
-                        if (std::any_of(expression->argumentNames.begin(),
-                                        expression->argumentNames.end(),
-                                        [](const std::string& value) {
-                                            return value.empty();
-                                        })) {
-                            error(name, "named and positional format arguments cannot be mixed");
-                        }
-                        consume(TokenType::Equal, "'=' after named format argument");
-                        expression->argumentNames.push_back(name.text);
-                        expression->argumentNameLocations.push_back(name.location);
-                    } else {
-                        if (std::any_of(expression->argumentNames.begin(),
-                                        expression->argumentNames.end(),
-                                        [](const std::string& value) {
-                                            return !value.empty();
-                                        })) {
-                            error(current(),
-                                  "named and positional format arguments cannot be mixed");
-                        }
-                        expression->argumentNames.emplace_back();
-                        expression->argumentNameLocations.emplace_back();
-                    }
-                    expression->arguments.push_back(parseExpression());
-                } while (match(TokenType::Comma));
+            const auto location = expression->location;
+            expression = parseExpression();
+            if (expression->kind != ExpressionKind::String) {
+                throw DiagnosticError(location, "format requires a string literal template");
             }
+            expression->kind = ExpressionKind::FormatString;
+            expression->location = location;
+            if (match(TokenType::Comma)) parseFormatArguments(*expression);
             consume(TokenType::RightParen, "')' after format arguments");
             validateFormatString(*expression);
             continue;
@@ -1261,6 +1252,26 @@ std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> exp
         }
         return expression;
     }
+}
+
+void Parser::parseFormatArguments(Expression& format) {
+    do {
+        std::string name;
+        auto location = current().location;
+        if (check(TokenType::Identifier) && current_ + 1 < tokens_.size() &&
+            tokens_[current_ + 1].type == TokenType::Equal) {
+            const auto token = consume(TokenType::Identifier, "named format argument");
+            name = token.text;
+            if (std::find(format.argumentNames.begin(), format.argumentNames.end(), name) !=
+                format.argumentNames.end()) {
+                error(token, "duplicate named format argument '" + name + "'");
+            }
+            consume(TokenType::Equal, "'=' after named format argument");
+        }
+        format.argumentNames.push_back(name);
+        format.argumentNameLocations.push_back(location);
+        format.arguments.push_back(parseExpression());
+    } while (match(TokenType::Comma));
 }
 
 } // namespace simp

@@ -56,7 +56,7 @@ start {
     print(quotient)
     print(remainder)
     print(maximum > 9223372036854775808u)
-    print("formatted {} {} {}"(no, scientific, 42u))
+    print(format("formatted {} {} {}", no, scientific, 42u))
 
     list values = [yes, amount, maximum]
     print(values[0])

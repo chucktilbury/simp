@@ -15,7 +15,7 @@ start {
     count = 0
     n = 2
 
-    print("Primes up to {}:"(limit))
+    print(format("Primes up to {}:", limit))
 
     while (n <= limit) {
         is_prime = 1
@@ -31,11 +31,11 @@ start {
             d = d + 1
         }
         if (is_prime == 1) {
-            print("  {}"(n))
+            print(format("  {}", n))
             count = count + 1
         }
         n = n + 1
     }
 
-    print("Found {} primes"(count))
+    print(format("Found {} primes", count))
 }

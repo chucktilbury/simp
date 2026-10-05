@@ -21,8 +21,8 @@ class Child: public FirstBase, private SecondBase {
     Child() {
         super FirstBase()
         super SecondBase()
-        print("first foo is {}"(FirstBase.foo))
-        print("second foo is {}"(SecondBase.foo))
+        print(format("first foo is {}", FirstBase.foo))
+        print(format("second foo is {}", SecondBase.foo))
     }
     void change() {
         FirstBase.foo = 10

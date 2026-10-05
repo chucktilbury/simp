@@ -32,7 +32,7 @@ namespace scanner {
             }
 
             if(err.length > 0) {
-                raise(Exception("Cannot open file: \"{}\": {}"(fname, err)))
+                raise(Exception(format("Cannot open file: \"{}\": {}", fname, err)))
             }
         }
 
@@ -152,7 +152,7 @@ start {
     scanner.FileStack fstk()
 
     fstk.open("input_test.txt", "r")
-    print("opened file: {}"(fstk.get_name()))
+    print(format("opened file: {}", fstk.get_name()))
 
     int ch = fstk.get_char()
     do {

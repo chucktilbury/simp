@@ -736,13 +736,14 @@ statements.
 
 ### Strings
 
-- Single-quoted strings are absolute literals. They have no escapes or formatting; supplying formatting arguments is a syntax error.
-- Double-quoted strings support escapes and positional or named format
-  arguments, for example:
+- Single-quoted strings have no escapes; double-quoted strings interpret escapes.
+  Neither quote style can be called. Both can be literal templates for the
+  `format` intrinsic or multi-argument `print`, for example:
 
   ```simple
-  "value: {}"(x)
-  "{name}"(name=x)
+  format("value: {}", x)
+  format("{name}", name=x)
+  print("{value:08X}", value=42)
   ```
 
 - The double-quoted `\e` escape produces the ESC byte (`0x1b`). Other supported
@@ -781,12 +782,23 @@ statements.
   are unchanged. Operations use explicit byte lengths, so embedded NUL bytes
   remain ordinary String content. String indexing/slicing syntax and
   buffer-to-String conversion remain deferred.
-- Formatting `"{} {}"(left, right)` and `"{first} {second}"(second=b, first=a)`
+- Formatting `format("{} {}", left, right)` and `format("{first} {second}", second=b, first=a)`
   are expressions usable in declarations, calls, returns, arrays, and maps.
   Arguments are evaluated once in source order. Positional arity and named
   argument matching are checked at compile time. Scalars, strings, type values
   and dynamic values format; other class objects show `<object>`. `{{` and
   `}}` escape literal braces, and `print` adds a newline.
+- Templates are compile-time literals, not dynamic strings. Multi-argument
+  `print(template, values...)` assembles a managed String before output;
+  `print("literal {}")` prints braces unchanged. The old literal suffix is
+  removed. Field specs support `[alignment][width][type]`: `<`, `>`, `^`,
+  minimum width up to 1000000, and integral `d`, `x`, `X`, `c`.
+  Leading-zero widths pad integral numbers after the sign and cannot combine
+  with explicit alignment or `c`. Signed hex uses sign plus magnitude.
+  `c` accepts only ASCII 0..127 (including NUL); other ranges raise a catchable,
+  argument-source-located exception. Width counts Unicode code points;
+  default alignment is right for numbers, left otherwise. This is not full
+  C++20 formatting; see the language reference for exact restrictions.
 - Literal and formatted fragments are UTF-8 validated; runtime append
   validates supplied bytes and preserves valid UTF-8. No public byte
   raw-byte mutation or buffer-to-String conversion exists in this prototype.

@@ -19,7 +19,7 @@
 class Payload {
 
     Payload(int initial) {
-        print("in Payload ctor ({})"(initial))
+        print(format("in Payload ctor ({})", initial))
         value = initial
     }
 
@@ -122,7 +122,7 @@ start {
     Root root = diamond
 
     ; defined in Root
-    print("read() from diamond: {}"(diamond.read()))
+    print(format("read() from diamond: {}", diamond.read()))
 
     ; show that both sides of the diamond can access the value
     print("expression with left and right: {}"
@@ -135,12 +135,12 @@ start {
     Payload trigger = Payload(9)
 
     ; access the Payload value through the Right virtual class
-    ;print("value in right Payload: {}"(diamond.Right.Root.item.value))
+    ;print(format("value in right Payload: {}", diamond.Right.Root.item.value))
 
     ; access the correct read()
-    print("read() from Root: {}"(root.read()))
-    print("read() from Right Payload: {}"(diamond.Right.Root.item.read()))
-    print("read() from Left Payload: {}"(diamond.Left.Root.item.read()))
+    print(format("read() from Root: {}", root.read()))
+    print(format("read() from Right Payload: {}", diamond.Right.Root.item.read()))
+    print(format("read() from Left Payload: {}", diamond.Left.Root.item.read()))
 
     ; destroys diamond, left, and right, but not Payload
     diamond.destroy()

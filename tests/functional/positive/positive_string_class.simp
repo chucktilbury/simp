@@ -1,6 +1,6 @@
 class Text {
     strg wrap(strg value) {
-        return "[{}]"(value)
+        return format("[{}]", value)
     }
 }
 
@@ -38,17 +38,17 @@ start {
     derived.append("x")
     print(base)
 
-    strg formatted = "value {} {}"(42, true)
+    strg formatted = format("value {} {}", 42, true)
     print(formatted)
     Order order = Order()
-    strg ordered = "{} {}"(order.next(), order.next())
+    strg ordered = format("{} {}", order.next(), order.next())
     print(ordered)
     print(order.count)
     print(Text().wrap(original))
-    list values = ["list {}"(original)]
+    list values = [format("list {}", original)]
     strg item = values[0]
     print(item)
-    dict formattedKey = {"key {}"(1): 7}
+    dict formattedKey = {format("key {}", 1): 7}
     print(formattedKey["key 1"])
     dict lookup = {"key": 1}
     strg key = "key"
