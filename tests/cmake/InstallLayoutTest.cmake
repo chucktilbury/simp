@@ -166,10 +166,18 @@ endif()
 set(string_project "${work_directory}/string-project")
 run_checked("relocated simpkg init" "${CMAKE_COMMAND}" -E env ${clean_environment}
     "${relocated_prefix}/${BINDIR}/simpkg" init "${string_project}")
-file(READ "${string_project}/modules/modules.toml" policy)
-if(NOT policy MATCHES "String is provided by the compiler builtin/runtime"
-   OR policy MATCHES "\nString[ \t]*=")
-    message(FATAL_ERROR "Initialized policy did not keep String built in:\n${policy}")
+if(NOT EXISTS "${string_project}/simpkg.toml"
+   OR EXISTS "${string_project}/modules/modules.toml")
+    message(FATAL_ERROR "Initialized project did not use the manifest/lock workflow")
+endif()
+file(READ "${string_project}/simpkg.lock" lock)
+if(NOT lock MATCHES "^schema = 1\n"
+   OR NOT lock MATCHES "\n\\[modules\\]\n"
+   OR NOT lock MATCHES "\nmath = \\[\"0.1.0\"\\]"
+   OR NOT lock MATCHES "\nsystem = \\[\"0.1.0\"\\]"
+   OR lock MATCHES "\nString[ \t]*="
+   OR lock MATCHES "\n\\[packages\\.String\\]")
+    message(FATAL_ERROR "Initialized lock did not lock standard modules without String:\n${lock}")
 endif()
 file(COPY "${SOURCE_DIR}/tests/functional/positive/positive_string_class.simp"
     DESTINATION "${string_project}")

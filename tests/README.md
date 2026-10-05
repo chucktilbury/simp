@@ -58,3 +58,6 @@ The install-layout tests stage with `DESTDIR`, relocate an installed prefix,
 and exercise installed package imports, `simpkg init`, and automatic `String`
 availability and inheritance. They also move `share/simp/builtin/` out of the
 prefix to verify `SIMP_BUILTIN_DIR` lookup and missing-resource diagnostics.
+Initialized projects are checked for `simpkg.toml` and a generated `simpkg.lock`
+that locks standard modules without listing `String` as a package; no legacy
+`modules/modules.toml` is created.

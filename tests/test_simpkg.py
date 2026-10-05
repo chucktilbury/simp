@@ -195,13 +195,16 @@ class SimpkgTest(unittest.TestCase):
             self.assertEqual(len(entry["sha256"]), 64)
         verified = self.simpkg("install")
         self.assertEqual(verified.returncode, 0, verified.stderr)
-        
-    def test_init_allowlists_installed_standard_modules_and_documents_string(self) -> None:
-        policy = (self.project / "modules" / "modules.toml").read_text(encoding="utf-8")
-        self.assertIn('math = ["0.1.0"]', policy)
-        self.assertIn('system = ["0.1.0"]', policy)
-        self.assertIn("String is provided by the compiler builtin/runtime", policy)
-        self.assertNotIn("\nString =", policy)
+
+    def test_init_locks_standard_modules_and_keeps_string_inheritance_builtin(self) -> None:
+        self.assertEqual(self.project_manifest(), {"schema": 1, "sources": {}})
+        self.assertFalse((self.project / "modules/modules.toml").exists())
+        lock = self.lock()
+        self.assertEqual(lock["schema"], 1)
+        self.assertEqual(lock["modules"]["math"], ["0.1.0"])
+        self.assertEqual(lock["modules"]["system"], ["0.1.0"])
+        self.assertNotIn("String", lock["modules"])
+        self.assertNotIn("String", lock["packages"])
         source = self.project / "string.simp"
         source.write_text(
             "class Text : String { Text() { super String() } }\n"
@@ -213,10 +216,12 @@ class SimpkgTest(unittest.TestCase):
             encoding="utf-8",
         )
         executable = self.project / "string-program"
+        environment = self.base_environment.copy()
+        environment.pop("SIMP_MODULE_DIR", None)
         compiled = run(
             [str(self.args.compiler), str(source), "-o", str(executable)],
             cwd=self.project,
-            env=self.base_environment,
+            env=environment,
         )
         self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
         result = run([str(executable)], cwd=self.project, env=self.base_environment)

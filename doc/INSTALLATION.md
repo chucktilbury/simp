@@ -168,8 +168,8 @@ simp path/to/app.simp
 `simpkg init [PROJECT_DIR]` creates `simpkg.toml`, `simpkg.lock`, and the
 `modules` directory, locking the installed standard modules locally without
 network access. It refuses to overwrite existing configuration. The compiler's
-`String` prelude/runtime is built in and available by default; it is not an
-ordinary imported module and is not listed in the allowlist.
+`String` builtin/runtime is available by default; it is not an ordinary
+imported module and is not listed in the lockfile's module allowlist or packages.
 
 `simpkg add OWNER/REPO [VERSION] --yes` obtains a package from that GitHub
 repository, using Git's configured authentication for private repositories
