@@ -37,7 +37,11 @@ directory; `source` is relative to that version directory; and `export` names
 the exported class or namespace.
 
 Optional manifest sections include `[dependencies]` with exact version pins
-(for example, `pkg = "=0.1.0"`) and native-library configuration.
+(for example, `pkg = "=0.1.0"`), `[sources]` mapping those names to GitHub
+`OWNER/REPO`, and native-library configuration. Omitted dependency sources
+must be mapped explicitly by the consuming project (bundled dependencies
+resolve locally). See [the complete package and lock schema](../doc/PACKAGES.md).
+An unaliased import binds the declared export name, not the package name.
 
 ## Staging and installation
 

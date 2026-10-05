@@ -183,7 +183,9 @@ void dumpAst(const Program& program, std::ostream& output) {
     output << "Program\n";
     for (const auto& import : program.imports) {
         indent(output, 1);
-        output << "Import [" << import.moduleName << " as " << import.alias << "]\n";
+        output << "Import [" << import.moduleName;
+        if (!import.alias.empty()) output << " as " << import.alias;
+        output << "]\n";
     }
     for (const auto& declaration : program.namespaces) {
         indent(output, 1);

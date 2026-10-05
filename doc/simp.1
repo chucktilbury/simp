@@ -118,8 +118,9 @@ if given, otherwise
 .BR SIMP_MODULE_DIR ,
 otherwise
 .IR project\-root /modules ,
-where the project root is the directory containing the first source input (or
-the current directory when there is no source input). A missing default root
+where the project root is the nearest source ancestor containing simpkg.toml
+or a modules directory (starting at the current directory without source input).
+Without a marker, the source parent is used. A missing default root
 is not an error.
 .IP 2. 4
 The standard module directory shipped with the compiler.
@@ -140,7 +141,17 @@ The first module root containing a package shadows lower\-priority roots. Withou
 a project selection policy, the highest stable version is selected only from
 the versions in that root.
 .PP
-An optional
+New projects use simpkg.toml for direct dependencies and simpkg.lock for the
+complete exact graph. Selecting such a project's modules directory uses the
+adjacent lock, including when selected explicitly with \-M or SIMP_MODULE_DIR.
+Selecting another directory instead uses that directory's policy.
+The compiler checks the lock schema, manifest freshness, selected package
+contents, and graph edges without network access. Missing or invalid locks
+are errors. Combining simpkg.toml with modules/modules.toml is rejected.
+Use simpkg init, simpkg add OWNER/REPO \-\-yes, and simpkg install \-\-yes;
+ordinary compilation does not require evaluating simpkg env.
+.PP
+For legacy projects without simpkg.toml, an optional
 .I modules.toml
 in the canonical project module root (selected by
 .BR \-M ,
@@ -162,9 +173,13 @@ and transitive packages are not found, including standard modules unless
 listed. Exact dependency pins remain constraints and conflict rather than
 causing fallback. Malformed installed packages also fail without fallback.
 Legacy registry-only modules are unsupported while the policy is active.
-When
+When neither simpkg.toml nor
 .I modules.toml
-is absent, existing version-selection and registry behavior is retained.
+is present, existing version-selection and registry behavior is retained.
+.PP
+An unaliased import binds the manifest's declared export name; import system
+exposes System.Process. An explicit import system as Sys exposes Sys.Process
+instead. Colliding bindings are errors. String remains an implicit prelude.
 .PP
 When a module cannot be found, the diagnostic lists every module root and
 registry searched.

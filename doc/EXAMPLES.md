@@ -68,3 +68,25 @@ To save the generated LLVM IR as well as building an executable:
 These are executable regression fixtures, not standalone documentation
 snippets. The grammar and language reference describe each feature; see
 [`../tests/README.md`](../tests/README.md) for adding or running tests.
+
+## Package workflow
+
+After installing `simp` and `simpkg` on `PATH`, a project with nested sources
+needs no environment activation:
+
+```sh
+mkdir -p hello-simp/src
+cd hello-simp
+simpkg init
+# Copy examples/package_workflow.simp from this repository to src/main.simp.
+simp src/main.simp -o hello
+./hello
+```
+
+The example uses the default exported `System` namespace, a `math` alias,
+and the implicit `String` prelude. `init` locks the bundled packages locally,
+without network access. For an external dependency, review its repository and
+run `simpkg add OWNER/REPO VERSION --yes`; the command installs the complete
+declared graph and updates the manifest/lock. `simpkg install --yes` restores
+that lock on another checkout. See [package schemas and plan/consent
+behavior](PACKAGES.md) before adding untrusted dependencies.

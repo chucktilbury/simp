@@ -129,7 +129,7 @@ module-item         ::= import-declaration
                       | out-of-line-definition ;
 
 start-block         ::= "start", { NEWLINE }, block ;
-import-declaration  ::= "import", IDENT, "as", IDENT, terminator ;
+import-declaration  ::= "import", IDENT, [ "as", IDENT ], terminator ;
 namespace-declaration
                     ::= "namespace", IDENT, { NEWLINE }, "{",
                         { NEWLINE },
@@ -192,7 +192,8 @@ The source loader accepts `include-directive` only at brace depth zero and
 before the root `start`; it searches the including file's directory before
 configured include paths, expands each canonical file once, and rejects
 `start` inside included text. Imports are parsed but resolved through the
-module/package registry during compilation. The import alias denotes the
+module/package registry during compilation. Without an alias the binding uses
+the manifest's declared export name. An explicit import alias denotes the
 exported namespace itself; it does not add a package-name prefix to exported
 class names (for example, `import time as T` exposes `T.Clock`). Imported
 module files use `module`, which does not permit a `start` block.

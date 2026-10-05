@@ -137,6 +137,7 @@ add_library(simp_frontend
     Diagnostic.cpp
     Lexer.cpp
     ModuleRegistry.cpp
+    PackageIntegrity.cpp
     PackageRegistry.cpp
     Parser.cpp
     ParserClass.cpp

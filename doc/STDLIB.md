@@ -1,6 +1,8 @@
 # Standard library reference
 
-Standard packages are imported by package name. The alias itself names the
+Standard packages are imported by package name. Without an alias, the manifest's
+declared namespace is exposed: `import system` provides `System.Process` and
+`System.System`. An optional alias itself names the
 package namespace; use the exported classes directly beneath it. For example,
 `import system as Sys` makes `Sys.Process` and `Sys.System` the class names
 (not `Sys.System.Process`):
@@ -30,7 +32,8 @@ describes their C/LLVM ABI representations.
 
 ## `system`
 
-Import with `import system as Sys`; the alias names the package namespace, so
+Import with `import system` to use `System`, or `import system as Sys`;
+the alias names the package namespace, so
 the exported classes are available directly as `Sys.Process`, `Sys.File`,
 `Sys.FileSystem`, `Sys.Glob`, `Sys.StandardIO`, and `Sys.System`.
 

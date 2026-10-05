@@ -223,6 +223,7 @@ ModuleLoadResult loadImportedModules(Program& program,
                                   missingModuleMessage(import.moduleName, options));
         }
         const auto entryData = entry->second;
+        if (import.alias.empty()) import.alias = entryData.exportName;
         auto found = modules.find(import.moduleName);
         if (found != modules.end()) {
             if (found->second.state == ModuleSource::State::Loading) {

@@ -1232,13 +1232,15 @@ interchangeable.
   and linker requirements. Its package root is
   `<search-root>/<package-name>/<version>/`; the manifest is
   `simp-package.toml`. Package names are Simple identifiers so the existing
-  import grammar remains `import <package-name> as <Alias>`. Each package
+  import grammar is `import <package-name> [as <Alias>]`. Without `as`, the
+  declared export name becomes the binding. Each package
   designates exactly one top-level class or namespace. Use a namespace to
   group related public classes; multiple independent exports per package
   would require a future language feature.
 - The supported TOML subset uses `[package]` string keys `name`, `version`,
   `source`, and `export`; a `[dependencies]` table mapping package identifiers
-  to exact pins; and a `[link]` table with string arrays `libraries` and
+  to exact pins; an optional `[sources]` table mapping dependency names to
+  GitHub `OWNER/REPO`; and a `[link]` table with string arrays `libraries` and
   `library-paths`. For example:
 
   ```toml
@@ -1270,8 +1272,13 @@ interchangeable.
   unavailable versions, ambiguous same-name/same-version manifests, and
   dependency cycles are errors. Repeated imports with different aliases and
   repeated identical package dependencies are tolerated and resolved once.
-  There is no range solver, lockfile, or native-library ABI/version probing.
-- An optional `modules.toml` in the canonical project module root (chosen by
+  There is no range solver or native-library ABI/version probing.
+- New projects have a direct-dependency `simpkg.toml` and generated complete
+  exact graph `simpkg.lock`; `simpkg` resolves declared source repositories
+  with explicit network consent and installs all transitives. Compilation
+  validates lock freshness, exact graph edges, and selected package hashes
+  without network access. See [the schema and contract](PACKAGES.md).
+- For legacy projects without `simpkg.toml`, an optional `modules.toml` in the canonical project module root (chosen by
   `-M`/`--module-dir`, `SIMP_MODULE_DIR`, or `<project-root>/modules`) enables
   strict allowlist and ordered-version selection. Its supported form is a
   single `[modules]` table mapping package identifiers to nonempty, single-line
@@ -1295,8 +1302,10 @@ interchangeable.
 - Package module roots are checked in this order:
   1. The canonical project module root, chosen as `-M DIR`/`--module-dir DIR`,
      else `SIMP_MODULE_DIR`, else `<project-root>/modules`. The project root is
-     the absolute parent directory of the first `.simp` source input (the
-     current directory when no source is given). An explicitly selected root
+     the nearest ancestor of the first `.simp` source input containing
+     `simpkg.toml` or a `modules` directory (starting at the current directory
+     without source input). Without a marker it is the source parent.
+     An explicitly selected root
      that does not exist is an error; a missing default root is skipped.
   2. The compiler's standard modules, `<prefix>/share/simp/modules`
      (overridable with `SIMP_STDLIB_MODULE_DIR` or `SIMP_HOME`).
@@ -1309,9 +1318,10 @@ interchangeable.
   lower-priority roots, and version selection occurs only within that root.
   A missing-module diagnostic lists every normalized root and registry
   searched, with `[not found]` marking absent paths.
-- A project-level manifest that names the project root and its module
-  directory is deferred. Until it exists the project root is derived from the
-  first source input as described above.
+- A locked project's canonical `modules` directory uses the adjacent
+  `simpkg.lock`. Selecting a different explicit module directory uses its
+  policy instead. Dual new/legacy configuration is an error, not a priority
+  guess; nested source builds do not require `eval "$(simpkg env)"`.
 - `[link].libraries` contains library names without a `-l` prefix, and
   `[link].library-paths` provides package-relative directories. The compiler
   translates these to `-lNAME` and `-L DIR` arguments for its existing Clang
