@@ -322,8 +322,8 @@ void SemanticAnalyzer::normalizeStatements(
     }
 }
 
-void SemanticAnalyzer::setPreludeSource(std::filesystem::path path) {
-    preludeSource_ = std::move(path);
+void SemanticAnalyzer::setBuiltinSource(std::filesystem::path path) {
+    builtinSource_ = std::move(path);
 }
 
 void SemanticAnalyzer::analyze(Program& program) {
@@ -335,32 +335,32 @@ void SemanticAnalyzer::analyze(Program& program) {
         program.classes.end());
     program.classes.insert(program.classes.begin(), makeBuiltinExceptionClass());
     {
-        std::filesystem::path preludePath;
+        std::filesystem::path builtinPath;
         try {
-            preludePath = preludeSource_ ? *preludeSource_
-                                         : processResourcePaths().preludeSource;
+            builtinPath = builtinSource_ ? *builtinSource_
+                                         : processResourcePaths().builtinSource;
         } catch (const std::runtime_error& error) {
-            throw DiagnosticError({"<prelude>", 1, 1},
-                                  std::string("cannot locate String prelude: ") +
+            throw DiagnosticError({"<builtin>", 1, 1},
+                                  std::string("cannot locate String builtin: ") +
                                       error.what());
         }
-        std::ifstream source(preludePath);
+        std::ifstream source(builtinPath);
         if (!source) {
-            throw DiagnosticError({"<prelude>", 1, 1},
-                                  "cannot load String prelude from '" +
-                                      preludePath.string() +
-                                      "'; set SIMP_PRELUDE_DIR or SIMP_HOME");
+            throw DiagnosticError({"<builtin>", 1, 1},
+                                  "cannot load String builtin from '" +
+                                      builtinPath.string() +
+                                      "'; set SIMP_BUILTIN_DIR or SIMP_HOME");
         }
         const std::string text{std::istreambuf_iterator<char>(source),
                                std::istreambuf_iterator<char>()};
-        Parser parser(Lexer(text, preludePath.string()).tokenize());
-        auto prelude = parser.parseProgram(false);
+        Parser parser(Lexer(text, builtinPath.string()).tokenize());
+        auto builtin = parser.parseProgram(false);
         program.classes.insert(program.classes.begin() + 1,
-                               std::make_move_iterator(prelude.classes.begin()),
-                               std::make_move_iterator(prelude.classes.end()));
+                               std::make_move_iterator(builtin.classes.begin()),
+                               std::make_move_iterator(builtin.classes.end()));
         program.outOfLineMethods.insert(program.outOfLineMethods.begin(),
-            std::make_move_iterator(prelude.outOfLineMethods.begin()),
-            std::make_move_iterator(prelude.outOfLineMethods.end()));
+            std::make_move_iterator(builtin.outOfLineMethods.begin()),
+            std::make_move_iterator(builtin.outOfLineMethods.end()));
     }
     scopes_.clear();
     symbols_.clear();

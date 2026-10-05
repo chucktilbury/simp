@@ -227,7 +227,7 @@ def render_policy(versions: dict[str, list[str]], *, include_string_note: bool =
     if include_string_note:
         lines.extend(
             [
-                "# String is provided by the compiler prelude/runtime and is available by default.",
+                "# String is provided by the compiler builtin/runtime and is available by default.",
                 "# It is not an ordinary imported module and does not belong in [modules].",
             ]
         )

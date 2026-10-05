@@ -25,11 +25,12 @@ endforeach()
 
 set(clean_environment
     --unset=SIMP_HOME --unset=SIMP_RUNTIME_DIR --unset=SIMP_INCLUDE_DIR
-    --unset=SIMP_PRELUDE_DIR --unset=SIMP_STDLIB_MODULE_DIR --unset=SIMP_MODULE_DIR
+    --unset=SIMP_BUILTIN_DIR --unset=SIMP_STDLIB_MODULE_DIR --unset=SIMP_MODULE_DIR
     --unset=SIMP_PACKAGE_PATH --unset=SIMP_MODULE_REGISTRY --unset=DESTDIR)
 
 function(run_checked description)
     execute_process(COMMAND ${ARGN}
+        WORKING_DIRECTORY "${work_directory}"
         RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr)
     if(NOT result EQUAL 0)
         message(FATAL_ERROR "${description} failed (${result}):\n${stdout}${stderr}")
@@ -40,12 +41,13 @@ endfunction()
 function(require_installed_layout prefix)
     foreach(installed_file IN ITEMS
             "${BINDIR}/simp"
+            "${BINDIR}/simpkg"
             "${LIBDIR}/simp/${RUNTIME_LIBRARY_NAME}"
             "${INCLUDEDIR}/simp/RuntimeGc.h"
             "${INCLUDEDIR}/simp/Stdlib.h"
             "${INCLUDEDIR}/simp/RuntimeThreads.h"
             "${INCLUDEDIR}/simp/RuntimeDemoShims.h"
-            "${DATADIR}/simp/prelude/String.simp"
+            "${DATADIR}/simp/builtin/String.simp"
             "${DOCDIR}/README.md"
             "${DOCDIR}/SIMPLE-LANGUAGE-NOTES.md"
             "${MANDIR}/man1/simp.1")
@@ -109,8 +111,18 @@ string(REGEX REPLACE "([][+.*()^$?|\\\\{}])" "\\\\\\1" relocated_pattern "${relo
 if(NOT print_output MATCHES "prefix: ${relocated_pattern} \\(executable-relative\\)")
     message(FATAL_ERROR "Installed compiler did not derive its prefix:\n${print_output}")
 endif()
-if(print_output MATCHES "\\[not found\\]\\)?\n(runtime|include|prelude)")
+if(print_output MATCHES
+   "(runtime directory|runtime library|include directory|builtin directory|builtin source|standard modules): [^\n]*\\[not found\\]")
     message(FATAL_ERROR "Installed resources were not found:\n${print_output}")
+endif()
+string(FIND "${print_output}"
+    "builtin directory: ${relocated_prefix}/${DATADIR}/simp/builtin (executable-relative)"
+    builtin_directory_position)
+string(FIND "${print_output}"
+    "builtin source: ${relocated_prefix}/${DATADIR}/simp/builtin/String.simp"
+    builtin_source_position)
+if(builtin_directory_position EQUAL -1 OR builtin_source_position EQUAL -1)
+    message(FATAL_ERROR "Installed builtin paths were not reported:\n${print_output}")
 endif()
 require_no_tree_references("${print_output}" "--print-paths")
 
@@ -147,5 +159,58 @@ file(READ "${EXPECTED_OUTPUT_FILE}" expected_output)
 if(NOT run_result EQUAL 0 OR NOT program_output STREQUAL expected_output)
     message(FATAL_ERROR
         "Installed program returned ${run_result} with '${program_output}':\n${run_stderr}")
+endif()
+
+# Initialize a project using relocated standard modules, keeping String out of
+# the package allowlist while exercising its automatic availability/inheritance.
+set(string_project "${work_directory}/string-project")
+run_checked("relocated simpkg init" "${CMAKE_COMMAND}" -E env ${clean_environment}
+    "${relocated_prefix}/${BINDIR}/simpkg" init "${string_project}")
+file(READ "${string_project}/modules/modules.toml" policy)
+if(NOT policy MATCHES "String is provided by the compiler builtin/runtime"
+   OR policy MATCHES "\nString[ \t]*=")
+    message(FATAL_ERROR "Initialized policy did not keep String built in:\n${policy}")
+endif()
+file(COPY "${SOURCE_DIR}/tests/functional/positive/positive_string_class.simp"
+    DESTINATION "${string_project}")
+set(string_source "${string_project}/positive_string_class.simp")
+set(string_executable "${string_project}/string-program")
+run_checked("installed String compilation" "${CMAKE_COMMAND}" -E env ${clean_environment}
+    "${compiler}" "${string_source}" -o "${string_executable}")
+run_checked("installed String executable" "${string_executable}")
+file(READ "${SOURCE_DIR}/tests/cases/simp_compile_and_run_string_class.stdout"
+    expected_string_output)
+if(NOT last_output STREQUAL expected_string_output)
+    message(FATAL_ERROR "Installed String output differs:\n${last_output}")
+endif()
+
+# Remove the default resource so compilation can succeed only via the override.
+set(builtin_override "${work_directory}/custom-builtin")
+file(RENAME "${relocated_prefix}/${DATADIR}/simp/builtin" "${builtin_override}")
+run_checked("builtin override paths" "${CMAKE_COMMAND}" -E env ${clean_environment}
+    "SIMP_BUILTIN_DIR=${builtin_override}" "${compiler}" --print-paths)
+string(FIND "${last_output}"
+    "builtin directory: ${builtin_override} (SIMP_BUILTIN_DIR)" override_position)
+if(override_position EQUAL -1)
+    message(FATAL_ERROR "Builtin override was not reported:\n${last_output}")
+endif()
+require_no_tree_references("${last_output}" "Builtin override paths")
+run_checked("overridden String compilation" "${CMAKE_COMMAND}" -E env ${clean_environment}
+    "SIMP_BUILTIN_DIR=${builtin_override}" "${compiler}" "${string_source}"
+    -o "${string_executable}")
+run_checked("overridden String executable" "${string_executable}")
+if(NOT last_output STREQUAL expected_string_output)
+    message(FATAL_ERROR "Overridden String output differs:\n${last_output}")
+endif()
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env ${clean_environment}
+        "SIMP_BUILTIN_DIR=${work_directory}/missing-builtin"
+        "${compiler}" --check-only "${string_source}"
+    RESULT_VARIABLE missing_result OUTPUT_VARIABLE missing_stdout
+    ERROR_VARIABLE missing_stderr)
+if(missing_result EQUAL 0 OR NOT missing_stderr MATCHES
+   "cannot load String builtin[^\n]*; set SIMP_BUILTIN_DIR or SIMP_HOME")
+    message(FATAL_ERROR
+        "Missing builtin override did not fail explicitly:\n${missing_stdout}${missing_stderr}")
 endif()
 file(REMOVE_RECURSE "${work_directory}")

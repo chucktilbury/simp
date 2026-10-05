@@ -1,4 +1,4 @@
-# Standard String class. Literal creation is compiler-owned; no public constructor.
+# Built-in String class. Literal creation is compiler-owned; no public constructor.
 class String {
     private:
     buffer _bytes

@@ -11,7 +11,7 @@ Comments in the productions are explanatory, not grammar terminals.
 
 The lexer recognizes ASCII identifiers and keywords, UTF-8 string contents,
 and the tokens listed here. Keywords are case-insensitive except that the
-exact spelling `String` is an identifier (the prelude class); keyword-like
+exact spelling `String` is an identifier (the builtin class); keyword-like
 spellings such as `STRG` are still the `strg` type token. Lowercase `string`
 is an ordinary identifier.
 
@@ -434,7 +434,7 @@ and thread bindings.
 ## Notes and known irregularities
 
 - Keywords are case-folded, but ordinary identifiers are case-sensitive.
-  `String` is an identifier naming the prelude class, `strg` is the primitive
+  `String` is an identifier naming the builtin class, `strg` is the primitive
   string type keyword, and lowercase `string` is an ordinary identifier.
 - `array` and `map` are ordinary identifiers, not collection type aliases.
 - Newline suppression tracks both `()` and `[]` with one nesting counter. A

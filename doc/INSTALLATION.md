@@ -55,8 +55,8 @@ DESTDIR=/tmp/stage cmake --install build
 CMake's `GNUInstallDirs` control the destinations. The installed tree contains
 the compiler in `${CMAKE_INSTALL_BINDIR}`, the runtime archive in
 `${CMAKE_INSTALL_LIBDIR}/simp/`, runtime headers in
-`${CMAKE_INSTALL_INCLUDEDIR}/simp/`, the String prelude in
-`${CMAKE_INSTALL_DATADIR}/simp/prelude/`, standard modules in
+`${CMAKE_INSTALL_INCLUDEDIR}/simp/`, the String builtin in
+`${CMAKE_INSTALL_DATADIR}/simp/builtin/`, standard modules in
 `${CMAKE_INSTALL_DATADIR}/simp/modules/`, and documentation in
 `${CMAKE_INSTALL_DOCDIR}` plus `${CMAKE_INSTALL_MANDIR}/man1/simp.1`.
 The documentation install also preserves the repository-relative
@@ -65,11 +65,18 @@ Installation directories must remain inside `CMAKE_INSTALL_PREFIX`.
 
 The compiler derives resources relative to its executable and the installation
 prefix; an installed tree can be moved as a unit. Resource lookup can be
-overridden with `SIMP_RUNTIME_DIR`, `SIMP_INCLUDE_DIR`, `SIMP_PRELUDE_DIR`, or
+overridden with `SIMP_RUNTIME_DIR`, `SIMP_INCLUDE_DIR`, `SIMP_BUILTIN_DIR`, or
 `SIMP_STDLIB_MODULE_DIR` individually, or with `SIMP_HOME` for the prefix.
 `CC` selects the compiler-driver executable in place of the configured Clang
 driver. Use `simp --print-paths` to inspect the resolved executable, resources,
 module roots, registry, and Clang executable.
+
+The former `prelude/` source directory, `share/simp/prelude/` resource path,
+and `SIMP_PRELUDE_DIR` override have been replaced by `builtin/`,
+`share/simp/builtin/`, and `SIMP_BUILTIN_DIR`. No legacy path fallback or
+environment alias is supported: rebuild and reinstall the compiler and its
+resources together, and update any resource overrides. `SIMP_BUILTIN_DIR`
+names the directory containing `String.simp`, not a project package root.
 
 ## Project module search
 

@@ -38,7 +38,7 @@
 namespace simp {
 namespace {
 
-constexpr const char* preludeFileName = "String.simp";
+constexpr const char* builtinFileName = "String.simp";
 
 std::filesystem::path normalizedAbsolute(const std::filesystem::path& path) {
     return std::filesystem::absolute(path).lexically_normal();
@@ -190,9 +190,9 @@ ResourcePaths resolveResourcePaths(const std::optional<std::filesystem::path>& e
     paths.runtimeDirectory = resolve("SIMP_RUNTIME_DIR", layout.libDirectory / "simp");
     paths.runtimeLibrary = paths.runtimeDirectory.path / SIMP_RUNTIME_LIBRARY_NAME;
     paths.includeDirectory = resolve("SIMP_INCLUDE_DIR", layout.includeDirectory);
-    paths.preludeDirectory =
-        resolve("SIMP_PRELUDE_DIR", layout.dataDirectory / "simp" / "prelude");
-    paths.preludeSource = paths.preludeDirectory.path / preludeFileName;
+    paths.builtinDirectory =
+        resolve("SIMP_BUILTIN_DIR", layout.dataDirectory / "simp" / "builtin");
+    paths.builtinSource = paths.builtinDirectory.path / builtinFileName;
     paths.standardModuleDirectory =
         resolve("SIMP_STDLIB_MODULE_DIR", layout.dataDirectory / "simp" / "modules");
     return paths;

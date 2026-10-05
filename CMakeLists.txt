@@ -11,7 +11,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 include(GNUInstallDirs)
 
 # Root builds stage a developer prefix in the source tree: <source>/bin/simp
-# finds its runtime, headers, prelude, and standard modules in sibling
+# finds its runtime, headers, builtin, and standard modules in sibling
 # directories with the same relative shape as an installed prefix.
 set(SIMP_STAGE_PREFIX "${CMAKE_SOURCE_DIR}")
 set(SIMP_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")

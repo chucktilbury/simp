@@ -19,7 +19,7 @@ ctest --test-dir build --output-on-failure
 ```
 
 The build places the compiler at `bin/simp` and stages the runtime, String
-prelude, and standard modules beside it in the repository's `lib/`, `include/`,
+builtin, and standard modules beside it in the repository's `lib/`, `include/`,
 and `share/` directories. To compile and run a program:
 
 ```sh
@@ -41,7 +41,7 @@ cmake --build build
 cmake --install build
 ```
 
-The installed compiler locates its runtime, prelude, standard modules, and
+The installed compiler locates its runtime, builtin, standard modules, and
 documentation relative to its installation prefix. CMake install rules honor
 `DESTDIR` for staged installations. See
 [`doc/INSTALLATION.md`](doc/INSTALLATION.md) for the complete installed layout,
@@ -66,7 +66,7 @@ No environment activation is needed. The manifest schema is in
 | --- | --- |
 | `src/` | Compiler front end, LLVM IR generator, command-line driver, and runtime |
 | `include/` | Runtime C headers and compiler headers |
-| `prelude/` | Built-in `String` class source |
+| `builtin/` | Built-in `String` class source |
 | `stdlib/` | Versioned standard-library packages |
 | `tests/` | Compiler tests and Simple source fixtures |
 | `doc/` | User documentation |

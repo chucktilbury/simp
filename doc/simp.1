@@ -24,7 +24,7 @@ top\-level
 block when an executable is produced.
 .PP
 The compiler is relocatable: it locates its runtime library, runtime headers,
-String prelude, and standard modules relative to its own executable, so an
+String builtin, and standard modules relative to its own executable, so an
 installed tree may be moved as a unit.
 .SH OPTIONS
 .TP
@@ -62,7 +62,7 @@ and symbol table are printed to standard output.
 .TP
 .B \-\-print\-paths
 Print the resolved executable, prefix, runtime directory and library, include
-directory, prelude, project root, project module root and its source, standard
+directory, builtin, project root, project module root and its source, standard
 module directory, deprecated compatibility roots, module registry, and the
 .B clang
 executable, then exit successfully. No input is required.
@@ -197,7 +197,7 @@ project module root.
 .B SIMP_HOME
 Installation prefix used instead of the executable location.
 .TP
-.BR SIMP_RUNTIME_DIR ", " SIMP_INCLUDE_DIR ", " SIMP_PRELUDE_DIR ", " SIMP_STDLIB_MODULE_DIR
+.BR SIMP_RUNTIME_DIR ", " SIMP_INCLUDE_DIR ", " SIMP_BUILTIN_DIR ", " SIMP_STDLIB_MODULE_DIR
 Override individual resource directories; each takes precedence over
 .BR SIMP_HOME .
 .TP
@@ -223,8 +223,8 @@ The garbage\-collected runtime linked into every executable.
 .I include/simp/
 Runtime C headers used by inline C shims.
 .TP
-.I share/simp/prelude/String.simp
-The String prelude.
+.I share/simp/builtin/String.simp
+The String builtin.
 .TP
 .I share/simp/modules/
 Standard modules.

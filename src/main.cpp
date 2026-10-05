@@ -289,9 +289,9 @@ void writeResolvedPaths(std::ostream& output, const std::string& prefix,
            << '\n';
     output << prefix << "include directory: " << describePath(resources.includeDirectory)
            << '\n';
-    output << prefix << "prelude directory: " << describePath(resources.preludeDirectory)
+    output << prefix << "builtin directory: " << describePath(resources.builtinDirectory)
            << '\n';
-    output << prefix << "prelude source: " << describePath(resources.preludeSource) << '\n';
+    output << prefix << "builtin source: " << describePath(resources.builtinSource) << '\n';
     output << prefix << "project root: " << describePath(modules.projectRoot) << '\n';
     output << prefix << "project module root: " << describePath(modules.projectModuleRoot)
            << '\n';
@@ -759,7 +759,7 @@ int main(int argc, char** argv) {
         }
         frontendTimer.emplace(verbosity, "semantic analysis");
         simp::SemanticAnalyzer semanticAnalyzer;
-        semanticAnalyzer.setPreludeSource(resources.preludeSource);
+        semanticAnalyzer.setBuiltinSource(resources.builtinSource);
         semanticAnalyzer.analyze(program);
         frontendTimer.reset();
         if (dump) {

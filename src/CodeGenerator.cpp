@@ -81,7 +81,7 @@ bool CodeGenerator::isBufferType(const std::string& type) const {
     return type == "buffer";
 }
 
-// `strg` is lowered to the prelude `String` class before reaching the backend.
+// `strg` is lowered to the builtin `String` class before reaching the backend.
 bool CodeGenerator::isStringType(const std::string& type) const {
     return type == "String";
 }

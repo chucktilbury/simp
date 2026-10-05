@@ -45,8 +45,8 @@ const TestGroupRegistration registration{6, {
              require(paths.runtimeLibrary.parent_path() == paths.runtimeDirectory.path,
                      "the runtime library should live in the runtime directory");
              requirePath(paths.includeDirectory.path, "/opt/simp/include", "include dir");
-             requirePath(paths.preludeSource, "/opt/simp/share/simp/prelude/String.simp",
-                         "prelude source");
+             requirePath(paths.builtinSource, "/opt/simp/share/simp/builtin/String.simp",
+                         "builtin source");
              requirePath(paths.standardModuleDirectory.path, "/opt/simp/share/simp/modules",
                          "standard modules");
          }},
@@ -56,7 +56,7 @@ const TestGroupRegistration registration{6, {
                  environmentOf({{"SIMP_HOME", "/home/me/simp/"},
                                 {"SIMP_RUNTIME_DIR", "/runtime"},
                                 {"SIMP_INCLUDE_DIR", "/headers"},
-                                {"SIMP_PRELUDE_DIR", "/prelude"},
+                                {"SIMP_BUILTIN_DIR", "/builtin"},
                                 {"SIMP_STDLIB_MODULE_DIR", "/stdlib"}}));
              require(paths.prefix && paths.prefix->origin == "SIMP_HOME",
                      "SIMP_HOME should replace the executable prefix");
@@ -64,7 +64,9 @@ const TestGroupRegistration registration{6, {
              require(paths.runtimeDirectory.origin == "SIMP_RUNTIME_DIR",
                      "runtime origin should name its variable");
              requirePath(paths.includeDirectory.path, "/headers", "include override");
-             requirePath(paths.preludeSource, "/prelude/String.simp", "prelude override");
+             requirePath(paths.builtinSource, "/builtin/String.simp", "builtin override");
+             require(paths.builtinDirectory.origin == "SIMP_BUILTIN_DIR",
+                     "builtin origin should name its variable");
              requirePath(paths.standardModuleDirectory.path, "/stdlib", "stdlib override");
 
              const auto home = simp::resolveResourcePaths(
@@ -73,6 +75,10 @@ const TestGroupRegistration registration{6, {
                          "SIMP_HOME runtime dir");
              require(home.runtimeDirectory.origin == "SIMP_HOME",
                      "SIMP_HOME-relative resources should report SIMP_HOME");
+             requirePath(home.builtinSource, "/home/me/simp/share/simp/builtin/String.simp",
+                         "SIMP_HOME builtin source");
+             require(home.builtinDirectory.origin == "SIMP_HOME",
+                     "SIMP_HOME-relative builtins should report SIMP_HOME");
          }},
         {"an unknown executable without overrides is an explicit error", [] {
              try {

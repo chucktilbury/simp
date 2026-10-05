@@ -749,8 +749,8 @@ statements.
 - The double-quoted `\e` escape produces the ESC byte (`0x1b`). Other supported
   escapes are `\n`, `\r`, `\t`, `\\`, and `\"`; single-quoted strings preserve
   backslashes literally.
-- `strg` aliases the real, inheritable prelude class `String`
-  (`prelude/String.simp`). Literals and formatted expressions create
+- `strg` aliases the real, inheritable builtin class `String`
+  (`builtin/String.simp`). Literals and formatted expressions create
   fresh objects; assignments and arguments share object identity.
   `==`/`!=` compare identity, while `.equals(other)` compares exact bytes.
 - A private `buffer _bytes` owns UTF-8 bytes; `length` reads its byte count.
@@ -1734,19 +1734,19 @@ broader CLI should continue toward:
 
 The compiler is relocatable. It locates its runtime archive
 (`<prefix>/lib/simp`), runtime C headers (`<prefix>/include/simp`), String
-prelude (`<prefix>/share/simp/prelude`), and standard modules
+builtin (`<prefix>/share/simp/builtin`), and standard modules
 (`<prefix>/share/simp/modules`) relative to its own executable; the developer
 build stages the same shape in the source tree. `SIMP_RUNTIME_DIR`,
-`SIMP_INCLUDE_DIR`, `SIMP_PRELUDE_DIR`, and `SIMP_STDLIB_MODULE_DIR` override
+`SIMP_INCLUDE_DIR`, `SIMP_BUILTIN_DIR`, and `SIMP_STDLIB_MODULE_DIR` override
 individual resources, `SIMP_HOME` overrides the prefix, and `CC` overrides the
 Clang driver. `simp --print-paths` reports the resolved locations.
-In the repository source tree, the String prelude lives in `prelude/String.simp`
+In the repository source tree, the String builtin lives in `builtin/String.simp`
 and standard-library modules originate under `stdlib/`
 (`stdlib/<name>/<version>/simp-package.toml`), while `include/` contains only
 C runtime headers and C++ compiler headers. `stdlib/` is deliberately named
 differently from `modules/` so compiling a `.simp` source at the repo root does
-not treat it as the project module root. CMake stages `prelude/` into
-`share/simp/prelude/` and `stdlib/` into `share/simp/modules/`.
+not treat it as the project module root. CMake stages `builtin/` into
+`share/simp/builtin/` and `stdlib/` into `share/simp/modules/`.
 
 The eventual ecosystem should include a usable package manager and an IDE.
 The compiler supports `-g` for DWARF source-line and local-variable debugging

@@ -11,7 +11,7 @@ file(MAKE_DIRECTORY "${project_directory}")
 set(compiler_environment
     --unset=SIMP_MODULE_DIR --unset=SIMP_PACKAGE_PATH --unset=SIMP_MODULE_REGISTRY
     --unset=SIMP_HOME --unset=SIMP_RUNTIME_DIR --unset=SIMP_INCLUDE_DIR
-    --unset=SIMP_PRELUDE_DIR --unset=SIMP_STDLIB_MODULE_DIR)
+    --unset=SIMP_BUILTIN_DIR --unset=SIMP_STDLIB_MODULE_DIR)
 if(DEFINED MODULE_REGISTRY)
     list(APPEND compiler_environment "SIMP_MODULE_REGISTRY=${MODULE_REGISTRY}")
 endif()

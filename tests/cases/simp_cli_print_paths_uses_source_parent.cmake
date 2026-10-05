@@ -10,8 +10,8 @@ prefix: ]==]
     [==[runtime library: [^
 ]+/simp/libsimp_runtime\.a
 include directory: ]==]
-    [==[prelude source: [^
-]+/simp/prelude/String\.simp
+    [==[builtin source: [^
+]+/simp/builtin/String\.simp
 project root: <PROJECT_DIR> \(parent of first source input\)
 project module root: <PROJECT_DIR>/modules \(default <project-root>/modules\)
 module selection file: <PROJECT_DIR>/modules/modules\.toml \[not found\] \(project module selection\)

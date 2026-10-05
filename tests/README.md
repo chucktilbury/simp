@@ -53,3 +53,8 @@ Focused C++ structural assertions belong in a `test_*_cases.cpp` group using
 Command-line integration fixtures live under `functional/cli/`; the shared
 runner accepts a `CASE` selector so each scenario has an independent CTest
 result.
+
+The install-layout tests stage with `DESTDIR`, relocate an installed prefix,
+and exercise installed package imports, `simpkg init`, and automatic `String`
+availability and inheritance. They also move `share/simp/builtin/` out of the
+prefix to verify `SIMP_BUILTIN_DIR` lookup and missing-resource diagnostics.

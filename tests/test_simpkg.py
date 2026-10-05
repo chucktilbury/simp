@@ -195,6 +195,33 @@ class SimpkgTest(unittest.TestCase):
             self.assertEqual(len(entry["sha256"]), 64)
         verified = self.simpkg("install")
         self.assertEqual(verified.returncode, 0, verified.stderr)
+        
+    def test_init_allowlists_installed_standard_modules_and_documents_string(self) -> None:
+        policy = (self.project / "modules" / "modules.toml").read_text(encoding="utf-8")
+        self.assertIn('math = ["0.1.0"]', policy)
+        self.assertIn('system = ["0.1.0"]', policy)
+        self.assertIn("String is provided by the compiler builtin/runtime", policy)
+        self.assertNotIn("\nString =", policy)
+        source = self.project / "string.simp"
+        source.write_text(
+            "class Text : String { Text() { super String() } }\n"
+            "start {\n"
+            "String value = Text()\n"
+            'value.append("built in")\n'
+            "print(value)\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        executable = self.project / "string-program"
+        compiled = run(
+            [str(self.args.compiler), str(source), "-o", str(executable)],
+            cwd=self.project,
+            env=self.base_environment,
+        )
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+        result = run([str(executable)], cwd=self.project, env=self.base_environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "built in")
 
     def test_init_does_not_overwrite_existing_policy(self) -> None:
         policy_path = self.project / "simpkg.toml"

@@ -39,8 +39,8 @@ struct ResourcePaths {
     ResolvedPath runtimeDirectory;
     std::filesystem::path runtimeLibrary;
     ResolvedPath includeDirectory;
-    ResolvedPath preludeDirectory;
-    std::filesystem::path preludeSource;
+    ResolvedPath builtinDirectory;
+    std::filesystem::path builtinSource;
     ResolvedPath standardModuleDirectory;
 };
 
@@ -80,7 +80,7 @@ std::filesystem::path installPrefixForExecutable(const std::filesystem::path& ex
 
 /**
  * Resolves compiler resources. Resource-specific variables (SIMP_RUNTIME_DIR,
- * SIMP_INCLUDE_DIR, SIMP_PRELUDE_DIR, SIMP_STDLIB_MODULE_DIR) take precedence,
+ * SIMP_INCLUDE_DIR, SIMP_BUILTIN_DIR, SIMP_STDLIB_MODULE_DIR) take precedence,
  * then SIMP_HOME as an installation prefix, then the executable-relative prefix.
  * Throws std::runtime_error when a resource needs the executable-relative
  * prefix but the executable location is unknown.
