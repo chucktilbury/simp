@@ -1,17 +1,1 @@
-ancestor
-root
-virtual failure
-virtual cleanup
-virtual failure
-automatic virtual caught
-automatic virtual failure
-ancestor
-root
-left
-right
-virtual cleanup
-diamond
-42
-42
-root destroyed
-ancestor destroyed
+ancestorrootvirtual failurevirtual cleanupvirtual failureautomatic virtual caughtautomatic virtual failureancestorrootleftrightvirtual cleanupdiamond4242root destroyedancestor destroyed

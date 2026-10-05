@@ -59,7 +59,7 @@ execute_process(
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr
 )
-if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42\n" OR NOT stderr STREQUAL "")
+if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42" OR NOT stderr STREQUAL "")
     message(FATAL_ERROR
         "Search-path program result was unexpected "
         "(result ${result}, stdout '${stdout}', stderr '${stderr}')")
@@ -94,7 +94,7 @@ execute_process(
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr
 )
-if(NOT result EQUAL 0 OR NOT stdout STREQUAL "7\n" OR NOT stderr STREQUAL "")
+if(NOT result EQUAL 0 OR NOT stdout STREQUAL "7" OR NOT stderr STREQUAL "")
     message(FATAL_ERROR
         "Includer-relative precedence result was unexpected "
         "(result ${result}, stdout '${stdout}', stderr '${stderr}')")

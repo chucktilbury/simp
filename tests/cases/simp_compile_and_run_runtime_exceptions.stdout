@@ -1,17 +1,1 @@
-caught raise
-finally after exception
-1
-finally after success
-caught method raise
-caught constructor raise
-caught destructor raise
-caught destroyed after destructor raise
-finally after handler error
-caught handler raise
-2
-caught finally raise
-caught repeated destruction
-caught destroyed object
-caught null reference
-caught division by zero
-caught conditional raise
+caught raisefinally after exception1finally after successcaught method raisecaught constructor raisecaught destructor raisecaught destroyed after destructor raisefinally after handler errorcaught handler raise2caught finally raisecaught repeated destructioncaught destroyed objectcaught null referencecaught division by zerocaught conditional raise

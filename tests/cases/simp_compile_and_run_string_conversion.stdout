@@ -1,13 +1,1 @@
-42
--17
-255
-3.14
-5
-150
-18446744073709551615
-string does not contain a valid integer
-string does not contain a valid integer
-string does not contain a valid integer
-string integer value is out of range
-string does not contain a valid unsigned integer
-null reference
+42-172553.14515018446744073709551615string does not contain a valid integerstring does not contain a valid integerstring does not contain a valid integerstring integer value is out of rangestring does not contain a valid unsigned integernull reference

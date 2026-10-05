@@ -1,6 +1,1 @@
-before constructor exceptions
-caught direct constructor raise
-typed constructor failure
-base constructor failure
-generic constructor failure
-after constructor exceptions
+before constructor exceptionscaught direct constructor raisetyped constructor failurebase constructor failuregeneric constructor failureafter constructor exceptions

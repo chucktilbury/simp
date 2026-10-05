@@ -56,7 +56,6 @@ void CodeGenerator::emitPrint(const Statement& statement) {
         const auto value = emitExpression(expression);
         emitPrintValue(value, statement.location);
     }
-    emitStringBytes("\n");
 }
 
 void CodeGenerator::emitPrintValue(const Value& value, const SourceLocation& location) {

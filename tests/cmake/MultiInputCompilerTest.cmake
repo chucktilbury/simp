@@ -37,7 +37,7 @@ execute_process(
     COMMAND "${executable}"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )
-if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42\n")
+if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42")
     message(FATAL_ERROR "Multi-source program result was '${stdout}': ${stderr}")
 endif()
 endif()
@@ -63,7 +63,7 @@ execute_process(
     COMMAND "${object_executable}"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )
-if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42\n")
+if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42")
     message(FATAL_ERROR "Object-only linked program result was '${stdout}': ${stderr}")
 endif()
 endif()
@@ -95,7 +95,7 @@ execute_process(
     COMMAND "${mixed_executable}"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )
-if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42\n")
+if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42")
     message(FATAL_ERROR "Mixed source/object result was '${stdout}': ${stderr}")
 endif()
 endif()
@@ -124,7 +124,7 @@ execute_process(
     COMMAND "${library_executable}"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )
-if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42\n")
+if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42")
     message(FATAL_ERROR "Library-linked program result was '${stdout}': ${stderr}")
 endif()
 endif()
@@ -155,7 +155,7 @@ execute_process(
     COMMAND "${import_executable}"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )
-if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42\n")
+if(NOT result EQUAL 0 OR NOT stdout STREQUAL "42")
     message(FATAL_ERROR "Imported-module object result was '${stdout}': ${stderr}")
 endif()
 endif()

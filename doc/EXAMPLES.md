@@ -16,7 +16,8 @@ start {
 }
 ```
 
-This prints `this is 42`, `0000002A`, `ASCII: A`, and `literal {}`.
+This writes `this is 42`, `0000002A`, `ASCII: A`, and `literal {}` with no
+implicit line breaks.
 `c` accepts only ASCII 0..127. See the language reference for the supported
 specifier subset.
 
@@ -34,7 +35,7 @@ specifier subset.
 ./bin/simp tests/functional/positive/positive_string_format.simp \
   -o bin/positive_string_format
 ./bin/positive_string_format
-# Prints café and a blank line, then "value: 42" and "sum 21 21".
+# Writes "café\nvalue: 42sum 21 21"; print adds no implicit line breaks.
 
 ./bin/simp tests/functional/positive/positive_class_counter.simp \
   -o bin/positive_class_counter

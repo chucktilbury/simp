@@ -207,7 +207,7 @@ start {
 }
 ```
 
-This prints `3`, then `40`, on separate lines.
+This writes `340`; `print` does not add line breaks.
 
 ## Expressions and operators
 
@@ -298,8 +298,8 @@ The old string-literal-call syntax is rejected, not an alias.
 
 `print(value)` retains scalar/string/type/dynamic printing. `print("literal")`
 prints the literal unchanged, including braces. `print("value: {}", value)`
-formats with the same rules as `format`, then prints the completed result and
-a newline; formatting failure emits no partial output.
+formats with the same rules as `format`, then writes the completed result
+without adding a newline; formatting failure emits no partial output.
 
 An optional `:` introduces this deliberately limited, C++20-inspired subset,
 not full `std::format` compatibility:

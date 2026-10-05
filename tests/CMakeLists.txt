@@ -108,7 +108,7 @@ add_test(NAME simp_default_output_uses_working_directory
         "-DWORKING_DIRECTORY=${CMAKE_CURRENT_BINARY_DIR}/default_output_working_directory"
         "-DOUTPUT_NAME=positive_integer_output"
         "-DIR_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/default_output_working_directory/explicit.ll"
-        "-DEXPECTED_OUTPUT=42\n"
+        "-DEXPECTED_OUTPUT=42"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DefaultOutputDirectoryTest.cmake"
 )
 add_test(NAME simp_cli_accepts_program

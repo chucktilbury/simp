@@ -1,11 +1,1 @@
-qualified clause matched
-ordered clause matched
-finally after matched clause
-later typed clause matched
-catch-all matched
-rethrow preserved
-rethrow preserved
-1
-division by zero
-null caught as Exception
-bounds caught as Exception
+qualified clause matchedordered clause matchedfinally after matched clauselater typed clause matchedcatch-all matchedrethrow preservedrethrow preserved1division by zeronull caught as Exceptionbounds caught as Exception

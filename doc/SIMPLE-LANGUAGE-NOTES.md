@@ -787,7 +787,7 @@ statements.
   Arguments are evaluated once in source order. Positional arity and named
   argument matching are checked at compile time. Scalars, strings, type values
   and dynamic values format; other class objects show `<object>`. `{{` and
-  `}}` escape literal braces, and `print` adds a newline.
+  `}}` escape literal braces. `print` writes its value without adding a newline.
 - Templates are compile-time literals, not dynamic strings. Multi-argument
   `print(template, values...)` assembles a managed String before output;
   `print("literal {}")` prints braces unchanged. The old literal suffix is
