@@ -24,8 +24,18 @@ const TestGroupRegistration registration{1, {
                          program.imports.front().alias == "Net",
                      "import module name or alias missing from AST");
          }},
-        {"import requires an alias", [] {
-             expectDiagnostic("import network\nstart {}", "expected 'as' after module name");
+        {"import without an alias defers its binding to the package export", [] {
+             simp::Lexer lexer("import network\nstart {}", "import.simp");
+             const auto program = simp::Parser(lexer.tokenize()).parseProgram();
+             require(program.imports.size() == 1 &&
+                         program.imports.front().moduleName == "network" &&
+                         program.imports.front().alias.empty(),
+                     "an omitted alias must be resolved from the manifest export");
+             std::ostringstream output;
+             simp::dumpAst(program, output);
+             require(output.str().find("Import [network]\n") != std::string::npos,
+                     "AST output must not invent an empty explicit alias");
+             expectDiagnostic("import network as\nstart {}", "expected import alias");
          }},
         {"import is rejected in declaration and function bodies", [] {
              expectDiagnostic("namespace Hidden { import network as Net }\nstart {}",

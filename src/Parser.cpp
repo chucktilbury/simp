@@ -331,10 +331,12 @@ Program Parser::parseModule() {
 ImportDeclaration Parser::parseImport() {
     const auto keyword = consume(TokenType::Import, "'import'");
     const auto module = consume(TokenType::Identifier, "module name");
-    consume(TokenType::As, "'as' after module name");
-    const auto alias = consume(TokenType::Identifier, "import alias");
+    std::string alias;
+    if (match(TokenType::As)) {
+        alias = consume(TokenType::Identifier, "import alias").text;
+    }
     consumeStatementTerminator();
-    return {module.text, alias.text, {}, {}, false, keyword.location};
+    return {module.text, alias, {}, {}, false, keyword.location};
 }
 
 std::string Parser::parseQualifiedIdentifier(const char* expectation) {

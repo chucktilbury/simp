@@ -574,16 +574,30 @@ start {
 
 ## Imports, packages, and textual inclusion
 
-`import Name as Alias` resolves a module or package through the module
-registry and makes its exported namespace itself available through the alias:
+`import Name` resolves a package and exposes its declared exported namespace
+(or exported class) under the export's own name. For example, `import system`
+exposes `System.Process`, `System.File`, and `System.System`; it does not guess
+a namespace from the lowercase package identifier. `import Name as Alias`
+makes that same export available through the alias:
 the alias replaces the package's namespace prefix. For example,
 `import time as T` exposes `Clock` as `T.Clock`, not `T.Time.Clock`.
 Standard-library classes are instance-based: construct the class before
 calling an instance method, as in `Sys.Process().exit(0)`, rather than using
 a static-style call such as `Sys.Process.exit(0)`.
 Imports are top-level only and imported module source cannot define `start`.
-Package manifests and package APIs are documented in [STDLIB.md](STDLIB.md).
-An optional `modules.toml` in the canonical project module root can restrict
+Duplicate bindings, conflicts with local declarations, and namespaces shared
+by different packages are diagnosed; use explicit aliases to choose local
+binding names (aliases do not make conflicting package definitions compatible).
+The `String` prelude remains implicit and does not need an import.
+Package manifests are documented in [PACKAGES.md](PACKAGES.md) and package
+APIs in [STDLIB.md](STDLIB.md).
+
+New projects use the direct dependency manifest `simpkg.toml` and the generated
+exact graph `simpkg.lock`. `simpkg add OWNER/REPO --yes` resolves and installs
+the full graph; compilation then needs no environment activation and never
+fetches code. Compilation validates lock freshness and package integrity.
+Legacy projects without that manifest can use an optional `modules.toml`
+in the canonical project module root to restrict
 importable packages and select exact versions in preference order:
 
 ```toml
@@ -614,9 +628,9 @@ includes do not create an isolated module namespace. See
 
 ```simp
 // Complete program (requires an installed/bundled `system` package).
-import system as Sys
+import system
 start {
-    Sys.Process().exit(0)
+    System.Process().exit(0)
 }
 ```
 

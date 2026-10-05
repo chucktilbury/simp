@@ -77,8 +77,10 @@ Imports resolve packages through these module roots, in order:
 
 1. The project root selected with `-M DIR`/`--module-dir DIR`, otherwise
    `SIMP_MODULE_DIR`, otherwise `<project-root>/modules`. The project root is
-   the directory containing the first Simple source input (or the current
-   directory when no source is supplied). A missing default module directory
+   the nearest ancestor of the first Simple source input containing
+   `simpkg.toml` or a `modules` directory (starting at the current directory
+   when no source is supplied). Without a marker it is the source parent.
+   A missing default module directory
    is skipped; a selected but missing directory is an error.
 2. The standard modules shipped with the compiler, normally under
    `<prefix>/share/simp/modules`, configurable with `SIMP_STDLIB_MODULE_DIR`.
@@ -95,9 +97,22 @@ in the [standard library docs](STDLIB.md) and
 [`stdlib/README.md`](../stdlib/README.md); exact CLI behavior is in
 [simp(1)](simp.1).
 
+Selecting a locked project's `modules` directory, implicitly or explicitly,
+uses the adjacent `simpkg.lock`. A different explicit `-M` or environment
+directory selects that directory's policy instead; it does not combine it with
+the source project's lock. `-M` takes precedence over `SIMP_MODULE_DIR`.
+
 ### Project module version selection
 
-Place an optional `modules.toml` in the canonical project module root: the
+New projects use `simpkg.toml` for direct dependencies and generated
+`simpkg.lock` for the complete exact graph. The compiler checks the lock schema,
+manifest fingerprint, dependency pins, and hashes of packages used by the
+compilation. It never accesses the network. Missing, stale, or invalid locks
+are errors, not invitations to fall back to an installed version. Both
+`simpkg.toml` and `modules/modules.toml` in one project are an ambiguous
+configuration and are rejected. See [the package schema](PACKAGES.md).
+
+For legacy projects without `simpkg.toml`, place an optional `modules.toml` in the canonical project module root: the
 directory selected by `-M DIR`/`--module-dir DIR`, `SIMP_MODULE_DIR`, or the
 default `<project-root>/modules`. When present, it is a strict package
 allowlist and ordered version preference for imports from every package root,
@@ -121,7 +136,7 @@ newest-version selection are not supported while this file exists. Legacy
 registry-only modules also cannot be resolved under this policy because they
 do not provide the package manifests needed to enforce exact versions.
 
-When `modules.toml` is absent, existing package and deprecated registry
+When both the new manifest and `modules.toml` are absent, existing package and deprecated registry
 resolution behavior is retained for compatibility with current projects.
 `simp --print-paths` shows the policy file location, and verbose compilation
 reports the selected module versions.
@@ -139,36 +154,54 @@ Start a project from its root:
 mkdir hello-simp
 cd hello-simp
 simpkg init
-simpkg add OWNER/REPO
-eval "$(simpkg env)"
+simpkg add OWNER/REPO --yes
 simp path/to/app.simp
 ```
 
-`simpkg init [PROJECT_DIR]` creates `PROJECT_DIR/modules/modules.toml` (or
-`./modules/modules.toml`) with the exact versions of the installed standard
-modules. It refuses to overwrite an existing configuration. The compiler's
+`simpkg init [PROJECT_DIR]` creates `simpkg.toml`, `simpkg.lock`, and the
+`modules` directory, locking the installed standard modules locally without
+network access. It refuses to overwrite existing configuration. The compiler's
 `String` prelude/runtime is built in and available by default; it is not an
 ordinary imported module and is not listed in the allowlist.
 
-`simpkg add OWNER/REPO [VERSION]` obtains a package from that GitHub
+`simpkg add OWNER/REPO [VERSION] --yes` obtains a package from that GitHub
 repository, using Git's configured authentication for private repositories
 that the user can access. With no version it picks the highest stable SemVer
 tag; with a version it checks out that exact SemVer tag (including a
 prerelease, if requested). It validates
-`simp-package.toml` and the package source, then installs into
-`modules/<package-name>/<version>/`. Existing installed versions are never
-replaced. The selected exact version is moved to the front of that package's
-ordered `modules.toml` version array, with prior fallback versions and other
-module entries retained. Run `simpkg list` to inspect the project allowlist
-and installed selections.
+`simp-package.toml` and the package source, resolves all exact transitive
+dependencies, and installs into `modules/<package-name>/<version>/`. It saves
+the direct dependency in `simpkg.toml` and generates the complete graph in
+`simpkg.lock`, including repository, tag, commit, content digest, and edges.
+Existing versions are never overwritten: different contents at an existing
+destination are an integrity error. Run `simpkg list` to inspect selections.
 
 GitHub `OWNER/REPO` is a direct repository shortcut, not a package catalog:
-there is no central index, name lookup, or automatic dependency repository
-mapping. Dependencies in package manifests remain exact `=VERSION` constraints
-enforced by the compiler. `simpkg add` will report when a required dependency
-is not both installed and allowed; install it explicitly from its GitHub
-`OWNER/REPO`, add its exact version to `modules.toml`, and retry. Packages do
-not trigger arbitrary transitive network fetches.
+there is no central index or guessed repository lookup. A dependency's
+repository must be declared in its package's `[sources]` table or explicitly
+mapped in the project's `[sources]` table. Bundled packages are resolved
+locally. Missing mappings and conflicting exact pins fail explicitly. Ranges,
+branches, arbitrary URLs, install scripts, and automatic builds are not
+supported.
+
+Before network access, `simpkg` prints the requested plan and requires explicit
+confirmation, or `--yes` for noninteractive use. Each declared repository is
+shown before it is contacted; `--yes` authorizes the declared transitive
+repositories too. Without consent, redirected/noninteractive input fails
+without fetching. `--dry-run` shows the known plan without network access;
+`--dry-run --yes` may fetch metadata and resolve the full graph, but does not
+install or modify project files. A full resolved graph is printed before
+installation. Review untrusted repositories before granting consent: fetched
+source can contain native bindings used during later compilation.
+
+`simpkg install --yes` restores a committed lockfile's exact commits and
+verifies hashes, rather than trusting potentially moved tags. With no lock it
+resolves the direct manifest. Commit both manifest and lock; do not hand-edit
+the lock or maintain transitive version arrays. `add`, `install`, and `list`
+locate the project from nested working directories. After `add` or `install`,
+ordinary `simp src/nested/app.simp` is compile-ready with no environment eval.
+Legacy projects without `simpkg.toml` retain their old policy and explicit
+dependency installation contract.
 
 `simpkg env` prints POSIX shell exports; it does not modify the parent shell.
 Evaluate the output from the project root as shown above. It reads optional
@@ -189,7 +222,7 @@ be selected with `simpkg env --preferences FILE`; `simpkg` never creates or
 edits preference files. Environment names must be valid shell variable names,
 and `SIMP_MODULE_DIR` is reserved for the activated project.
 
-The compiler uses the explicitly activated `SIMP_MODULE_DIR` for packages
-regardless of the source file's directory. Without activation, its documented
-project root is the directory containing the first source input; therefore,
-run `simpkg env` from the project root before compiling nested source files.
+`simpkg env` remains an optional way to apply user preferences or deliberately
+activate a module-directory override. It is not required for normal compilation,
+including sources nested beneath the project root. An inherited override still
+takes precedence; unset `SIMP_MODULE_DIR` to return to source-based discovery.

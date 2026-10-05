@@ -95,8 +95,10 @@ const ResourcePaths& processResourcePaths();
 /**
  * Resolves the module search configuration. The project module root comes from
  * -M/--module-dir, then SIMP_MODULE_DIR, then <project-root>/modules where the
- * project root is the parent of the first source input (or the current
- * directory without sources).
+ * project root is the nearest ancestor of the first source input containing
+ * simpkg.toml or modules (starting at the current directory without sources).
+ * With no marker, the source parent/current directory is used. Locked projects
+ * use simpkg.lock; simultaneous legacy and new policies are errors.
  */
 ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
                                            const ResourcePaths& resources,

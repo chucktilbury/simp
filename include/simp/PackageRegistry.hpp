@@ -35,6 +35,8 @@ struct PackageResolution {
 struct ModuleVersionPolicy {
     std::filesystem::path path;
     std::map<std::string, std::vector<std::string>> versions;
+    std::map<std::string, std::map<std::string, std::string>> lockedPackages;
+    std::map<std::string, std::vector<std::string>> lockedDependencies;
 };
 
 /// Returns no policy when the file does not exist; malformed files are errors.

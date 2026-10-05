@@ -45,10 +45,19 @@ The installed compiler locates its runtime, prelude, standard modules, and
 documentation relative to its installation prefix. CMake install rules honor
 `DESTDIR` for staged installations. See
 [`doc/INSTALLATION.md`](doc/INSTALLATION.md) for the complete installed layout,
-resource overrides, package search order, and the optional
-[`modules.toml` version policy](doc/INSTALLATION.md#project-module-version-selection).
-The `simpkg` project package manager and its GitHub install, environment
-activation, and dependency limitations are documented in
+resource overrides, package search order, and
+[project version policies](doc/INSTALLATION.md#project-module-version-selection).
+The `simpkg` package manager provides direct dependencies, a reproducible
+lockfile, and complete dependency installation with explicit network consent:
+
+```sh
+simpkg init
+simpkg add OWNER/REPO --yes
+simp src/app.simp
+```
+
+No environment activation is needed. The manifest schema is in
+[`doc/PACKAGES.md`](doc/PACKAGES.md), and command behavior is documented in
 [`doc/INSTALLATION.md`](doc/INSTALLATION.md#project-package-manager-simpkg).
 
 ## Repository layout

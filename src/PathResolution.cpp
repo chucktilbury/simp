@@ -218,6 +218,18 @@ ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
         paths.projectRoot = {absoluteFrom(request.sourcePaths.front()).parent_path(),
                              "parent of first source input"};
     }
+    for (auto candidate = paths.projectRoot.path; !candidate.empty();) {
+        if (std::filesystem::exists(candidate / "simpkg.toml") ||
+            std::filesystem::is_directory(candidate / "modules")) {
+            if (candidate != paths.projectRoot.path) {
+                paths.projectRoot = {candidate, "nearest source ancestor with simpkg.toml or modules"};
+            }
+            break;
+        }
+        const auto parent = candidate.parent_path();
+        if (parent == candidate) break;
+        candidate = parent;
+    }
     if (request.moduleDirectoryOption) {
         paths.projectModuleRoot = {absoluteFrom(*request.moduleDirectoryOption),
                                    "-M/--module-dir"};
@@ -231,6 +243,20 @@ ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
     }
     paths.moduleSelectionFile = {paths.projectModuleRoot.path / "modules.toml",
                                  "project module selection"};
+    const auto manifest = paths.projectModuleRoot.path.parent_path() / "simpkg.toml";
+    if (paths.projectModuleRoot.path.filename() == "modules" &&
+        std::filesystem::exists(manifest)) {
+        if (std::filesystem::exists(paths.moduleSelectionFile.path)) {
+            throw std::runtime_error(
+                "ambiguous project configuration: simpkg.toml and modules/modules.toml; "
+                "remove the legacy policy before using the locked project");
+        }
+        paths.moduleSelectionFile = {manifest.parent_path() / "simpkg.lock",
+                                     "locked project module selection"};
+        if (!std::filesystem::is_regular_file(paths.moduleSelectionFile.path)) {
+            throw std::runtime_error("missing simpkg.lock; run 'simpkg install --yes'");
+        }
+    }
     paths.standardModuleRoot = resources.standardModuleDirectory;
     for (const auto& option : request.packagePathOptions) {
         if (option.empty()) continue;
