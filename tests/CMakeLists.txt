@@ -67,6 +67,13 @@ set_target_properties(simp_gc_runtime_tests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
 )
 add_test(NAME simp_gc_runtime_lifecycle COMMAND simp_gc_runtime_tests)
+add_test(NAME simp_callbacks
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_callbacks.py"
+        --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
+        --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+        --fixture "${CMAKE_CURRENT_SOURCE_DIR}/functional/cli/callbacks/native.c"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/callbacks"
+        "--sanitize=${SIMP_SANITIZER_LIST}")
 add_test(NAME simpkg_cli
     COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/test_simpkg.py"

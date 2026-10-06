@@ -729,6 +729,8 @@ std::string CodeGenerator::generate(const Program& program,
            << "declare void @simp_gc_push_tagged_or_abort(ptr, ptr, ptr, i64)\n"
            << "declare void @simp_gc_pop_or_abort(ptr)\n"
            << "declare ptr @simp_gc_alloc(ptr)\n"
+           << "declare ptr @simp_callback_receiver(ptr)\n"
+           << "declare ptr @simp_callback_code(ptr)\n"
            << "declare ptr @simp_gc_alloc_array(i64)\n"
            << "declare void @simp_array_resize(ptr, i64, ptr, i64, i64, i64)\n"
            << "declare void @simp_array_append(ptr, ptr, ptr, i64, i64, i64)\n"

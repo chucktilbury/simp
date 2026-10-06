@@ -226,8 +226,24 @@ OutOfLineMethodDefinition Parser::parseOutOfLineMethodDefinition() {
 }
 
 std::string Parser::parseType(bool allowVoid) {
+    const NestingGuard nesting(*this);
     std::string type;
-    if (match(TokenType::Int)) type = "int";
+    if (match(TokenType::CallbackType)) {
+        consume(TokenType::Less, "'<' after callback");
+        type = "callback<" + parseType(true);
+        consume(TokenType::LeftParen, "'(' before callback parameter types");
+        type += "(";
+        if (!check(TokenType::RightParen)) {
+            do {
+                if (type.back() != '(') type += ",";
+                type += parseType();
+            } while (match(TokenType::Comma));
+        }
+        consume(TokenType::RightParen, "')' after callback parameter types");
+        consume(TokenType::Greater, "'>' after callback signature");
+        type += ")>";
+    }
+    else if (match(TokenType::Int)) type = "int";
     else if (match(TokenType::Bool)) type = "bool";
     else if (match(TokenType::FloatType)) type = "float";
     else if (match(TokenType::Unsigned)) type = "unsigned";

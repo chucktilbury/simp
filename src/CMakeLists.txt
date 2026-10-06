@@ -78,6 +78,7 @@ set(SIMP_SOURCE_INCLUDE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../include/simp")
 set(SIMP_SOURCE_BUILTIN_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../builtin")
 set(SIMP_SOURCE_STDLIB_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib")
 set(SIMP_RUNTIME_HEADERS
+    "${SIMP_SOURCE_INCLUDE_DIRECTORY}/Callbacks.h"
     "${SIMP_SOURCE_INCLUDE_DIRECTORY}/Stdlib.h"
     "${SIMP_SOURCE_INCLUDE_DIRECTORY}/RuntimeDemoShims.h"
     "${SIMP_SOURCE_INCLUDE_DIRECTORY}/RuntimeGc.h"
@@ -143,6 +144,7 @@ add_library(simp_frontend
     Ast.cpp
     CommandLine.cpp
     CodeGenerator.cpp
+    CodeGeneratorCallbacks.cpp
     CodeGeneratorDebug.cpp
     CodeGeneratorDispatch.cpp
     CodeGeneratorExceptions.cpp

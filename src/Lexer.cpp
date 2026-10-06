@@ -94,6 +94,7 @@ const char* tokenTypeName(TokenType type) noexcept {
     case TokenType::HandleType: return "'handle'";
     case TokenType::AnyType: return "'any'";
     case TokenType::TypeType: return "'type'";
+    case TokenType::CallbackType: return "'callback'";
     case TokenType::Class: return "'class'";
     case TokenType::Namespace: return "'namespace'";
     case TokenType::Include: return "'include'";
@@ -327,6 +328,7 @@ Token Lexer::scanIdentifierOrInteger() {
         {"list", TokenType::ListType}, {"dict", TokenType::DictType},
         {"buffer", TokenType::BufferType}, {"handle", TokenType::HandleType},
         {"any", TokenType::AnyType}, {"type", TokenType::TypeType},
+        {"callback", TokenType::CallbackType},
         {"if", TokenType::If},
         {"else", TokenType::Else}, {"while", TokenType::While},
         {"do", TokenType::Do}, {"for", TokenType::For},

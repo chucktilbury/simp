@@ -87,6 +87,9 @@ private:
                                      const std::vector<Statement>& initializers);
     void emitLoopTransfer(bool isBreak, const SourceLocation& location);
     Value emitExpression(const Expression& expression, const std::string& expectedType = {});
+    Value emitBoundMethod(const Expression& expression);
+    Value emitCallbackCall(const Expression& expression);
+    std::string emitCallbackBridge(const std::string& type);
     Value emitIntegerExpression(const Expression& expression);
     Value emitArithmeticOperation(const std::string& operation,
                                   const SourceLocation& location,
@@ -161,6 +164,8 @@ private:
     std::size_t methodSlot(const ClassDeclaration& owner, const std::string& name) const;
     std::size_t methodSlot(const ClassDeclaration& owner, const std::string& name,
                            const std::string& signature) const;
+    std::string emitMethodCode(const Value& receiver, const ClassDeclaration& owner,
+                               const std::string& name, const std::string& signature);
     std::string declaringClass(const MethodDeclaration& method) const;
     std::string emitAddress(const Binding& binding, const SourceLocation& location);
     std::string llvmType(const std::string& type) const;

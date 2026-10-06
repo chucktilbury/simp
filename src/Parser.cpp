@@ -50,6 +50,18 @@ bool Parser::match(TokenType type) {
 bool Parser::startsOutOfLineDefinition() const {
     std::size_t afterType = current_;
     switch (current().type) {
+    case TokenType::CallbackType: {
+        ++afterType;
+        std::size_t depth = 0;
+        for (; afterType < tokens_.size(); ++afterType) {
+            if (tokens_[afterType].type == TokenType::Less) ++depth;
+            if (tokens_[afterType].type == TokenType::Greater && --depth == 0) {
+                ++afterType;
+                break;
+            }
+        }
+        break;
+    }
     case TokenType::Identifier:
         ++afterType;
         while (afterType + 1 < tokens_.size() &&
@@ -441,7 +453,8 @@ Statement Parser::parseStatement() {
         check(TokenType::StrgType) || check(TokenType::ListType) ||
         check(TokenType::DictType) || check(TokenType::BufferType) ||
         check(TokenType::HandleType) || check(TokenType::AnyType) ||
-        check(TokenType::TypeType) || check(TokenType::Void)) {
+        check(TokenType::TypeType) || check(TokenType::CallbackType) ||
+        check(TokenType::Void)) {
         return parseDeclaration();
     }
     if (check(TokenType::Identifier) || check(TokenType::LeftParen)) {
@@ -915,6 +928,8 @@ std::unique_ptr<Expression> Parser::parseRelational() {
 }
 
 std::string Parser::parseTypeTestName(const std::string& operatorName) {
+    if (check(TokenType::CallbackType))
+        error(current(), "callback type tests and casts are not supported; use a typed declaration");
     if (check(TokenType::Identifier)) {
         return parseQualifiedIdentifier("type name after 'is'");
     }
@@ -1270,9 +1285,7 @@ std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> exp
             validateFormatString(*expression);
             continue;
         }
-        if (check(TokenType::LeftParen) &&
-            (expression->kind == ExpressionKind::Identifier ||
-             expression->kind == ExpressionKind::Member)) {
+        if (check(TokenType::LeftParen)) {
             ++current_;
             const bool constructorCall = expression->kind == ExpressionKind::Identifier;
             auto call = std::make_unique<Expression>();

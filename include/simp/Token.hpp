@@ -30,6 +30,7 @@ enum class TokenType {
     HandleType,
     AnyType,
     TypeType,
+    CallbackType,
     Class,
     Namespace,
     Include,
