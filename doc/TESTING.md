@@ -83,3 +83,24 @@ they cannot carry test markers. The extractor refuses unmarked complete
 programs rather than silently skipping new ones. Design-note fragments without
 entry points are not executable tests. The inline C example's numeric output
 comment has been corrected from `3.0` to the actual default rendering `3`.
+
+## Continuous integration
+
+`.github/workflows/tests.yml` runs the full suite on `ubuntu-latest` for both
+default and ASan+UBSan builds on pushes and pull requests. Both use Clang and
+build-local staging, with no downloaded Simple packages or network tests.
+Package-manager integration tests use local Git repositories.
+
+On Ubuntu, the same prerequisites can be installed with:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y build-essential cmake clang llvm python3 git gdb
+```
+
+LLVM supplies `opt` and `llvm-dwarfdump` for IR and debug-info checks; the
+compiler itself does not link the LLVM C++ API. Python must be at least 3.11
+(as supplied by current Ubuntu). `scripts/setup` is an optional developer
+shell helper, not a dependency installer. Mirror CI with the commands above,
+`-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++`, and a private
+`HOME`/`XDG_CONFIG_HOME` when invoking CTest.

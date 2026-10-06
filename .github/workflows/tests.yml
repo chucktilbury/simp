@@ -1,0 +1,49 @@
+name: Compiler and runtime tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.configuration }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [default, sanitizers]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake clang llvm python3 git gdb
+      - name: Configure
+        shell: bash
+        run: |
+          flags=()
+          if [[ "${{ matrix.configuration }}" == sanitizers ]]; then
+            flags+=('-DSIMP_SANITIZE=address;undefined')
+          fi
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DSIMP_STAGE_PREFIX="$PWD/build/stage" "${flags[@]}"
+      - name: Build
+        run: cmake --build build -j4
+      - name: Test
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/simp-home" "$RUNNER_TEMP/simp-config"
+          HOME="$RUNNER_TEMP/simp-home" XDG_CONFIG_HOME="$RUNNER_TEMP/simp-config" \
+            ctest --test-dir build --output-on-failure -j4
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.configuration }}
+          path: build/Testing/Temporary/
