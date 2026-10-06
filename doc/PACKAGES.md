@@ -40,9 +40,13 @@ compiler prelude, not a package entry.
 
 Commit `simpkg.toml` and `simpkg.lock`. To change a direct pin, use `add`, or edit
 the manifest, remove the stale lock, and resolve with `simpkg install --yes`.
-`add` rejects an already stale lock before contacting any repository.
-Do not mix `simpkg.toml` with the legacy `modules/modules.toml`. Legacy projects
-without the new manifest retain their existing registry/version policy.
+`add` rejects an already stale lock before contacting any repository. The compiler
+always reads the lock from the discovered source project; `-M` and
+`SIMP_MODULE_DIR` only add higher-priority package storage roots. A root can
+satisfy a locked package only with the exact locked version, dependency edges,
+and content hash. The lock remains the import allowlist. Legacy
+`modules/modules.toml`, registry, and compatibility path workflows are removed;
+create a manifest/lock project and declare dependencies with `simpkg`.
 
 ## Published package: `simp-package.toml`
 

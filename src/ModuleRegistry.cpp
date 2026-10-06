@@ -9,11 +9,8 @@
 #include <algorithm>
 #include <fstream>
 #include <iterator>
-#include <map>
 #include <set>
-#include <sstream>
 #include <unordered_map>
-#include <unordered_set>
 
 namespace simp {
 namespace {
@@ -25,84 +22,9 @@ struct RegistryEntry {
     std::vector<std::string> dependencyVersions;
     std::string exportKind;
     std::string exportName;
-    bool fromLegacyRegistry = false;
 };
 
 using Registry = std::unordered_map<std::string, RegistryEntry>;
-
-bool identifier(const std::string& value) {
-    const auto isStart = [](char character) {
-        return (character >= 'a' && character <= 'z') ||
-               (character >= 'A' && character <= 'Z') || character == '_';
-    };
-    const auto isPart = [&isStart](char character) {
-        return isStart(character) || (character >= '0' && character <= '9');
-    };
-    if (value.empty() || !isStart(value.front())) {
-        return false;
-    }
-    for (const char character : value) {
-        if (!isPart(character)) return false;
-    }
-    return true;
-}
-
-std::vector<std::string> split(const std::string& value, char delimiter) {
-    std::vector<std::string> parts;
-    std::stringstream stream(value);
-    std::string part;
-    while (std::getline(stream, part, delimiter)) parts.push_back(part);
-    if (!value.empty() && value.back() == delimiter) parts.emplace_back();
-    return parts;
-}
-
-Registry readRegistry(const std::filesystem::path& path) {
-    std::ifstream input(path);
-    if (!input) {
-        if (!std::filesystem::exists(path)) return {};
-        throw std::runtime_error("cannot open module registry: " + path.string());
-    }
-    Registry registry;
-    std::string line;
-    std::size_t lineNumber = 0;
-    while (std::getline(input, line)) {
-        ++lineNumber;
-        if (line.empty() || line.front() == '#') continue;
-        const auto columns = split(line, '\t');
-        if (columns.size() != 6 || !identifier(columns[0]) || columns[1].empty() ||
-            columns[2].empty() || (columns[4] != "class" && columns[4] != "namespace") ||
-            !identifier(columns[5])) {
-            throw std::runtime_error(path.string() + ":" + std::to_string(lineNumber) +
-                                     ": expected six tab-separated fields: "
-                                     "module, source, version, dependencies, export-kind, export-name");
-        }
-        RegistryEntry entry;
-        entry.fromLegacyRegistry = true;
-        entry.name = columns[0];
-        entry.sourcePath = columns[1];
-        if (entry.sourcePath.is_relative()) entry.sourcePath = path.parent_path() / entry.sourcePath;
-        entry.version = columns[2];
-        entry.exportKind = columns[4];
-        entry.exportName = columns[5];
-        if (!columns[3].empty()) {
-            for (const auto& dependency : split(columns[3], ',')) {
-                const auto separator = dependency.find('=');
-                if (separator == std::string::npos || separator == 0 ||
-                    separator + 1 == dependency.size()) {
-                    throw std::runtime_error(
-                        path.string() + ":" + std::to_string(lineNumber) +
-                        ": dependencies must be comma-separated name=version pairs");
-                }
-                entry.dependencyVersions.push_back(dependency);
-            }
-        }
-        if (!registry.emplace(entry.name, std::move(entry)).second) {
-            throw std::runtime_error(path.string() + ":" + std::to_string(lineNumber) +
-                                     ": duplicate module name");
-        }
-    }
-    return registry;
-}
 
 std::string describeSearchedPath(const ResolvedPath& path, bool directory) {
     std::error_code error;
@@ -115,13 +37,11 @@ std::string describeSearchedPath(const ResolvedPath& path, bool directory) {
 std::string missingModuleMessage(const std::string& moduleName,
                                  const ModuleLoadOptions& options) {
     std::string message = "module '" + moduleName +
-                           "' is not registered in any module root or module registry; "
-                           "expected <module-root>/" +
+                           "' was not found in any package module root; expected <module-root>/" +
                            moduleName + "/<version>/simp-package.toml\nsearched module roots:";
     for (const auto& root : options.packageSearchRoots) {
         message += "\n" + describeSearchedPath(root, true);
     }
-    message += "\nsearched module registry:\n" + describeSearchedPath(options.registry, false);
     return message;
 }
 
@@ -135,25 +55,18 @@ struct ModuleSource {
 
 ModuleLoadResult loadImportedModules(Program& program,
                                      const ModuleLoadOptions& options) {
-    const auto policy = readModuleVersionPolicy(options.moduleSelectionFile);
+    const auto policy = readModuleVersionPolicy(options.projectLockFile);
     ModuleLoadResult result;
     result.versionPolicyActive = policy.has_value();
     if (program.imports.empty()) return result;
-    auto registry = readRegistry(options.registry.path);
-    std::unordered_set<std::string> legacyRegistryModules;
-    legacyRegistryModules.reserve(registry.size());
-    for (const auto& [name, entry] : registry) {
-        static_cast<void>(entry);
-        legacyRegistryModules.insert(name);
-    }
+    Registry registry;
     std::vector<std::string> rootNames;
     rootNames.reserve(program.imports.size());
     for (const auto& import : program.imports) rootNames.push_back(import.moduleName);
     std::vector<std::filesystem::path> searchRoots;
     searchRoots.reserve(options.packageSearchRoots.size());
     for (const auto& root : options.packageSearchRoots) searchRoots.push_back(root.path);
-    auto packages = resolvePackages(rootNames, searchRoots, policy,
-                                    legacyRegistryModules);
+    auto packages = resolvePackages(rootNames, searchRoots, policy);
     const auto addPackageEntries = [&registry](const PackageResolution& resolution) {
         for (const auto& [name, package] : resolution.packages) {
             RegistryEntry entry;
@@ -192,8 +105,7 @@ ModuleLoadResult loadImportedModules(Program& program,
             }
         }
         if (packages.packages.find(import.moduleName) == packages.packages.end()) {
-            const auto additional = resolvePackages({import.moduleName}, searchRoots, policy,
-                                                    legacyRegistryModules);
+            const auto additional = resolvePackages({import.moduleName}, searchRoots, policy);
             for (const auto& [name, package] : additional.packages) {
                 const auto existing = packages.packages.find(name);
                 if (existing != packages.packages.end() &&
@@ -286,13 +198,6 @@ ModuleLoadResult loadImportedModules(Program& program,
             }
             for (auto& definition : module.program.outOfLineMethods) {
                 definition.moduleName = import.moduleName;
-            }
-            if (entryData.fromLegacyRegistry) {
-                result.warnings.push_back(
-                    "module '" + import.moduleName +
-                    "' was resolved through the deprecated module registry '" +
-                    options.registry.path.string() + "'; publish it as <module-root>/" +
-                    import.moduleName + "/" + entryData.version + "/simp-package.toml");
             }
             modules.emplace(import.moduleName, std::move(module));
             for (auto& nestedImport : modules.at(import.moduleName).program.imports) {

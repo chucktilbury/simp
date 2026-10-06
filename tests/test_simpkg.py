@@ -73,6 +73,14 @@ class SimpkgTest(unittest.TestCase):
         self.git_log = self.root / "git.log"
         self.base_environment["SIMPKG_TEST_GIT_LOG"] = str(self.git_log)
         self.base_environment.pop("XDG_CONFIG_HOME", None)
+        for name in (
+            "SIMP_HOME",
+            "SIMP_MODULE_DIR",
+            "SIMP_PACKAGE_PATH",
+            "SIMP_MODULE_REGISTRY",
+            "SIMP_STDLIB_MODULE_DIR",
+        ):
+            self.base_environment.pop(name, None)
         self.base_environment["HOME"] = str(self.root / "home")
         Path(self.base_environment["HOME"]).mkdir()
         self.init_project()
@@ -99,14 +107,6 @@ class SimpkgTest(unittest.TestCase):
     def init_project(self) -> None:
         result = self.simpkg("init")
         self.assertEqual(result.returncode, 0, result.stderr)
-
-    def legacy_project(self) -> None:
-        (self.project / "simpkg.toml").unlink()
-        (self.project / "simpkg.lock").unlink()
-        (self.project / "modules/modules.toml").write_text(
-            '[modules]\nmath = ["0.1.0"]\nsystem = ["0.1.0"]\n',
-            encoding="utf-8",
-        )
 
     def lock(self) -> dict:
         return tomllib.loads((self.project / "simpkg.lock").read_text())
@@ -302,8 +302,7 @@ class SimpkgTest(unittest.TestCase):
             self.assertFalse((invalid / "simpkg.toml").exists())
             self.assertFalse((invalid / "simpkg.lock").exists())
 
-    def test_add_explicit_and_highest_stable_versions_preserves_fallback_order(self) -> None:
-        self.legacy_project()
+    def test_add_records_exact_pin_and_selects_highest_stable_when_unspecified(self) -> None:
         self.make_remote(
             "greeting",
             {
@@ -312,26 +311,19 @@ class SimpkgTest(unittest.TestCase):
                 "3.0.0-rc.1": self.manifest(version="3.0.0-rc.1"),
             },
         )
-        policy_path = self.project / "modules" / "modules.toml"
-        policy_path.write_text(
-            '[modules]\ngreeting = ["9.0.0", "8.0.0"]\nmath = ["0.1.0"]\n',
-            encoding="utf-8",
-        )
         explicit = self.simpkg("add", "acme/greeting", "1.0.0", "--yes")
         self.assertEqual(explicit.returncode, 0, explicit.stderr)
+        explicit_manifest = self.project_manifest()
+        self.assertEqual(explicit_manifest["dependencies"]["greeting"]["version"], "=1.0.0")
         implicit = self.simpkg("add", "acme/greeting", "--yes")
         self.assertEqual(implicit.returncode, 0, implicit.stderr)
         self.assertTrue((self.project / "modules/greeting/1.0.0/greeting.simp").is_file())
         self.assertTrue((self.project / "modules/greeting/2.0.0/greeting.simp").is_file())
-        policy = policy_path.read_text(encoding="utf-8")
-        self.assertIn('greeting = ["2.0.0", "1.0.0", "9.0.0", "8.0.0"]', policy)
-        self.assertIn('math = ["0.1.0"]', policy)
+        self.assertEqual(self.project_manifest()["dependencies"]["greeting"]["version"], "=2.0.0")
         prerelease = self.simpkg("add", "acme/greeting", "3.0.0-rc.1", "--yes")
         self.assertEqual(prerelease.returncode, 0, prerelease.stderr)
-        self.assertIn(
-            'greeting = ["3.0.0-rc.1", "2.0.0", "1.0.0", "9.0.0", "8.0.0"]',
-            policy_path.read_text(encoding="utf-8"),
-        )
+        self.assertEqual(self.project_manifest()["dependencies"]["greeting"]["version"],
+                         "=3.0.0-rc.1")
 
     def test_add_rejects_invalid_manifests(self) -> None:
         cases = [
@@ -356,7 +348,6 @@ class SimpkgTest(unittest.TestCase):
                 )
 
     def test_add_duplicate_version_does_not_clobber_existing_files(self) -> None:
-        self.legacy_project()
         self.make_remote("greeting", {"1.0.0": self.manifest()})
         installed = self.project / "modules/greeting/1.0.0"
         installed.mkdir(parents=True)
@@ -368,8 +359,8 @@ class SimpkgTest(unittest.TestCase):
         sentinel = installed / "keep.txt"
         sentinel.write_text("keep me", encoding="utf-8")
         result = self.simpkg("add", "acme/greeting", "1.0.0", "--yes")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("already installed", result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("integrity mismatch", result.stderr)
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep me")
 
     def test_failed_clone_cleans_temporary_checkout(self) -> None:
@@ -380,7 +371,6 @@ class SimpkgTest(unittest.TestCase):
         self.assertEqual(list((self.project / "modules").glob("missing")), [])
 
     def test_dependency_must_be_installed_and_allowed_before_install(self) -> None:
-        self.legacy_project()
         self.make_remote(
             "dependent",
             {
@@ -392,7 +382,7 @@ class SimpkgTest(unittest.TestCase):
         )
         result = self.simpkg("add", "acme/dependent", "1.0.0", "--yes")
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("required dependency missing = 1.0.0 is not allowed", result.stderr)
+        self.assertIn("unmapped dependency missing=1.0.0", result.stderr)
         self.assertFalse((self.project / "modules/dependent").exists())
 
     def test_network_requires_consent_and_offline_dry_run_does_not_fetch(self) -> None:
@@ -410,10 +400,6 @@ class SimpkgTest(unittest.TestCase):
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("consent", result.stderr)
                 self.assertFalse(self.git_log.exists())
-        self.legacy_project()
-        result = self.simpkg("add", "acme/unknown")
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse(self.git_log.exists())
 
     def create_graph(self) -> None:
         self.make_remote("leaf", {"1.0.0": self.manifest(name="leaf")})
@@ -653,7 +639,7 @@ class SimpkgTest(unittest.TestCase):
             self.assertIn("greeting", result.stdout if command == "list" else self.simpkg("list", cwd=nested).stdout)
         self.assertFalse((nested / "modules").exists())
         env = self.simpkg("env", cwd=nested)
-        self.assertIn(str(self.project / "modules"), env.stdout)
+        self.assertNotIn("SIMP_MODULE_DIR", env.stdout)
 
     def test_symlinks_and_existing_untracked_content_are_rejected(self) -> None:
         self.make_remote("greeting", {"1.0.0": self.manifest()})
@@ -800,7 +786,7 @@ class SimpkgTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         shell = (
             'eval "$("$1" env)"; '
-            'printf "%s\\0%s" "$CUSTOM_VALUE" "$SIMP_MODULE_DIR"'
+            'printf "%s" "$CUSTOM_VALUE"'
         )
         activated = run(
             ["sh", "-c", shell, "sh", str(self.args.simpkg)],
@@ -810,10 +796,10 @@ class SimpkgTest(unittest.TestCase):
         self.assertEqual(activated.returncode, 0, activated.stderr)
         self.assertEqual(
             activated.stdout.encode(),
-            value.encode() + b"\0" + str(self.project / "modules").encode(),
+            value.encode(),
         )
 
-    def test_env_explicit_preferences_and_project_module_root_override_existing_value(self) -> None:
+    def test_env_explicit_preferences_emit_configured_environment(self) -> None:
         preferences = self.root / "custom.toml"
         preferences.write_text('[environment]\nCUSTOM_VALUE = "loaded"\n', encoding="utf-8")
         result = self.simpkg(
@@ -824,21 +810,17 @@ class SimpkgTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("export CUSTOM_VALUE='loaded'", result.stdout)
-        self.assertIn(
-            f"export SIMP_MODULE_DIR='{self.project / 'modules'}'",
-            result.stdout,
-        )
+        self.assertNotIn("SIMP_MODULE_DIR", result.stdout)
         self.assertFalse((self.root / "not-created.toml").exists())
         missing = self.simpkg("env", "--preferences", str(self.root / "not-created.toml"))
         self.assertNotEqual(missing.returncode, 0)
         self.assertIn("does not exist", missing.stderr)
 
-    def test_env_rejects_invalid_preferences_and_reserved_module_root(self) -> None:
+    def test_env_rejects_invalid_preferences_and_allows_module_root_override(self) -> None:
         cases = [
             ("[environment\n", "cannot read TOML"),
             ('[environment]\nVALUE = 42\n', "must be a string"),
             ('[environment]\n"BAD-NAME" = "x"\n', "invalid environment variable name"),
-            ('[environment]\nSIMP_MODULE_DIR = "/tmp/other"\n', "reserved"),
         ]
         for index, (content, error) in enumerate(cases):
             with self.subTest(error=error):
@@ -847,6 +829,12 @@ class SimpkgTest(unittest.TestCase):
                 result = self.simpkg("env", "--preferences", str(path))
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(error, result.stderr)
+        override = self.root / "module-root.toml"
+        override.write_text('[environment]\nSIMP_MODULE_DIR = "/tmp/modules"\n',
+                            encoding="utf-8")
+        result = self.simpkg("env", "--preferences", str(override))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("export SIMP_MODULE_DIR='/tmp/modules'", result.stdout)
 
     def test_env_uses_default_home_config_path(self) -> None:
         preferences = Path(self.base_environment["HOME"]) / ".config/simp/preferences.toml"
@@ -873,7 +861,7 @@ class SimpkgTest(unittest.TestCase):
                      cwd=self.root, env=environment)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_compiler_unaliased_class_export_and_explicit_policy_overrides(self) -> None:
+    def test_compiler_storage_overrides_cannot_relocate_or_bypass_project_lock(self) -> None:
         self.make_remote("greeting", {"1.0.0": self.manifest()})
         added = self.simpkg("add", "acme/greeting", "1.0.0", "--yes")
         self.assertEqual(added.returncode, 0, added.stderr)
@@ -886,20 +874,87 @@ class SimpkgTest(unittest.TestCase):
         self.assertEqual(default.returncode, 0, default.stdout + default.stderr)
         independent = self.root / "independent-modules"
         independent.mkdir()
-        (independent / "modules.toml").write_text('[modules]\ngreeting = ["1.0.0"]\n')
         shutil.copytree(self.project / "modules/greeting", independent / "greeting")
         lock_path = self.project / "simpkg.lock"
-        lock_path.write_text(lock_path.read_text().replace("schema = 1", "schema = 2"))
+        valid_lock = lock_path.read_text()
+        lock_path.write_text(valid_lock.replace("schema = 1", "schema = 2"))
         overridden_env = {**environment, "SIMP_MODULE_DIR": str(independent)}
         from_env = run([compiler, "--check-only", str(source)], cwd=self.root, env=overridden_env)
-        self.assertEqual(from_env.returncode, 0, from_env.stdout + from_env.stderr)
+        self.assertNotEqual(from_env.returncode, 0)
+        self.assertIn("schema", from_env.stdout + from_env.stderr)
         from_flag = run([compiler, "--check-only", "-M", str(independent), str(source)],
                         cwd=self.root, env=environment)
-        self.assertEqual(from_flag.returncode, 0, from_flag.stdout + from_flag.stderr)
-        project_policy = run([compiler, "--check-only", "-M", str(self.project / "modules"), str(source)],
-                             cwd=self.root, env=overridden_env)
-        self.assertNotEqual(project_policy.returncode, 0)
-        self.assertIn("schema", project_policy.stdout + project_policy.stderr)
+        self.assertNotEqual(from_flag.returncode, 0)
+        self.assertIn("schema", from_flag.stdout + from_flag.stderr)
+        lock_path.write_text(valid_lock)
+        override_hash = independent / "greeting/1.0.0/greeting.simp"
+        override_hash.write_text("class Greeter { int answer() { return 99 } }\n")
+        hash_failure = run([compiler, "--check-only", "-M", str(independent), str(source)],
+                           cwd=self.root, env=environment)
+        self.assertNotEqual(hash_failure.returncode, 0)
+        self.assertIn("integrity mismatch", hash_failure.stdout + hash_failure.stderr)
+
+    def test_user_package_root_satisfies_only_matching_locked_content(self) -> None:
+        module = self.script_module()
+        self.make_remote("greeting", {"1.0.0": self.manifest()})
+        added = self.simpkg("add", "acme/greeting", "1.0.0", "--yes")
+        self.assertEqual(added.returncode, 0, added.stderr)
+        package = self.project / "modules/greeting/1.0.0"
+        user_root = Path(self.base_environment["HOME"]) / ".config/simp/modules"
+        user_package = user_root / "greeting/1.0.0"
+        user_package.parent.mkdir(parents=True)
+        shutil.copytree(package, user_package)
+        shutil.rmtree(package)
+        with mock.patch.dict(os.environ, self.base_environment, clear=True):
+            self.assertEqual(
+                module.inspect_installed(self.project, self.lock()["packages"]), []
+            )
+        source = self.project / "home-app.simp"
+        source.write_text("import greeting\nstart { print(Greeter().answer()) }\n")
+        compiled = run([str(self.args.compiler), "--check-only", str(source)],
+                       cwd=self.root, env=self.base_environment)
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+        (user_package / "greeting.simp").write_text("class Greeter {}\n")
+        with mock.patch.dict(os.environ, self.base_environment, clear=True):
+            with self.assertRaisesRegex(module.SimpkgError, "integrity mismatch"):
+                module.inspect_installed(self.project, self.lock()["packages"])
+
+    def test_locked_install_does_not_skip_higher_precedence_version_conflict(self) -> None:
+        module = self.script_module()
+        self.make_remote("greeting", {"1.0.0": self.manifest()})
+        added = self.simpkg("add", "acme/greeting", "1.0.0", "--yes")
+        self.assertEqual(added.returncode, 0, added.stderr)
+        locked_package = self.project / "modules/greeting/1.0.0"
+        user_package = Path(self.base_environment["HOME"]) / ".config/simp/modules/greeting/1.0.0"
+        user_package.parent.mkdir(parents=True)
+        shutil.copytree(locked_package, user_package)
+        shutil.rmtree(locked_package.parent)
+        environment_root = self.root / "environment-modules"
+        conflicting = environment_root / "greeting/2.0.0"
+        conflicting.parent.mkdir(parents=True)
+        shutil.copytree(user_package, conflicting)
+        manifest = conflicting / "simp-package.toml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                'version = "1.0.0"', 'version = "2.0.0"', 1
+            ),
+            encoding="utf-8",
+        )
+        environment = {
+            **self.base_environment,
+            "SIMP_MODULE_DIR": str(environment_root),
+        }
+        with mock.patch.dict(os.environ, environment, clear=True):
+            packages = self.lock()["packages"]
+            self.assertIn("greeting", module.inspect_installed(self.project, packages))
+
+    def test_legacy_project_configuration_reports_migration(self) -> None:
+        legacy = self.root / "legacy-project"
+        (legacy / "modules").mkdir(parents=True)
+        (legacy / "modules/modules.toml").write_text("[modules]\n")
+        result = self.simpkg("list", cwd=legacy)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("legacy modules.toml projects are no longer supported", result.stderr)
 
     def test_compiler_graph_rejects_default_namespace_collision(self) -> None:
         namespace = "namespace Shared { class Greeter { int answer() { return 42 } } }\n"

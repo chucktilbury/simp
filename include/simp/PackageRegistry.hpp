@@ -5,7 +5,6 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace simp {
@@ -46,7 +45,6 @@ std::optional<ModuleVersionPolicy> readModuleVersionPolicy(
 PackageResolution resolvePackages(
     const std::vector<std::string>& rootNames,
     const std::vector<std::filesystem::path>& searchRoots,
-    const std::optional<ModuleVersionPolicy>& policy = std::nullopt,
-    const std::unordered_set<std::string>& legacyRegistryModules = {});
+    const std::optional<ModuleVersionPolicy>& policy = std::nullopt);
 
 } // namespace simp

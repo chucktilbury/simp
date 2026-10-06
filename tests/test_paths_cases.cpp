@@ -3,6 +3,8 @@
 #include "simp/PathResolution.hpp"
 
 #include <filesystem>
+#include <chrono>
+#include <fstream>
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -31,7 +33,39 @@ void requirePath(const std::filesystem::path& actual, const std::string& expecte
 }
 
 std::filesystem::path missingDirectory() {
-    return std::filesystem::temp_directory_path() / "simp-path-tests-missing-directory";
+    return std::filesystem::temp_directory_path() /
+           ("simp-path-tests-missing-" +
+            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+}
+
+class ProjectFixture {
+public:
+    ProjectFixture() : root(std::filesystem::temp_directory_path() /
+                            ("simp-path-project-" +
+                             std::to_string(std::chrono::steady_clock::now()
+                                                .time_since_epoch().count()))) {
+        std::filesystem::create_directories(root / "src/nested");
+        std::filesystem::create_directories(root / "modules");
+        std::ofstream(root / "simpkg.toml") << "schema = 1\n";
+        std::ofstream(root / "simpkg.lock") << "schema = 1\n";
+        std::ofstream(root / "src/nested/main.simp") << "start {}\n";
+    }
+    ~ProjectFixture() {
+        std::error_code error;
+        std::filesystem::remove_all(root, error);
+    }
+    std::filesystem::path root;
+};
+
+void expectFailure(const std::function<void()>& action, const std::string& expected) {
+    try {
+        action();
+    } catch (const std::runtime_error& error) {
+        require(std::string(error.what()).find(expected) != std::string::npos,
+                "expected '" + expected + "', got: " + error.what());
+        return;
+    }
+    throw std::runtime_error("expected error: " + expected);
 }
 
 const TestGroupRegistration registration{6, {
@@ -101,64 +135,91 @@ const TestGroupRegistration registration{6, {
              requirePath(simp::installPrefixForExecutable("/opt/x/other/simp", nested),
                          "/opt/x", "unmatched bindir falls back to the parent");
          }},
-        {"module roots prefer -M, then SIMP_MODULE_DIR, then the source parent", [] {
+        {"package roots use CLI, project, environment, user, and installation precedence", [] {
              const auto resources = simp::resolveResourcePaths(
                  std::filesystem::path("/opt/simp/bin/simp"), testLayout(), environmentOf({}));
+             ProjectFixture project;
              simp::ModuleSearchRequest request;
-             request.sourcePaths = {"app/main.simp", "lib/other.simp"};
-             request.currentDirectory = "/work";
-             auto paths = simp::resolveModuleSearchPaths(request, resources, environmentOf({}));
-             requirePath(paths.projectRoot.path, "/work/app", "project root");
-             requirePath(paths.projectModuleRoot.path, "/work/app/modules", "default root");
-             requirePath(paths.moduleSelectionFile.path, "/work/app/modules/modules.toml",
-                         "default module selection file");
-             require(!paths.projectModuleRootExplicit && paths.deprecationWarnings.empty(),
-                     "the default root should be implicit and warning-free");
-             requirePath(paths.registry.path, "/work/simp-modules.tsv", "default registry");
-
-             const auto environment = environmentOf({{"SIMP_MODULE_DIR", "/env/modules"}});
-             paths = simp::resolveModuleSearchPaths(request, resources, environment);
-             requirePath(paths.projectModuleRoot.path, "/env/modules", "environment root");
-             requirePath(paths.moduleSelectionFile.path, "/env/modules/modules.toml",
-                         "environment module selection file");
-             require(paths.projectModuleRoot.origin == "SIMP_MODULE_DIR",
-                     "environment root origin");
-
-             request.moduleDirectoryOption = "deps";
-             paths = simp::resolveModuleSearchPaths(request, resources, environment);
-             requirePath(paths.projectModuleRoot.path, "/work/deps", "command-line root");
-             requirePath(paths.moduleSelectionFile.path, "/work/deps/modules.toml",
-                         "command-line module selection file");
-             require(paths.projectModuleRoot.origin == "-M/--module-dir",
-                     "command-line root origin");
-
-             request = {};
-             request.currentDirectory = "/work";
-             paths = simp::resolveModuleSearchPaths(request, resources, environmentOf({}));
-             requirePath(paths.projectModuleRoot.path, "/work/modules",
-                         "without sources the current directory is the project root");
-         }},
-        {"compatibility roots follow canonical roots and warn", [] {
-             const auto resources = simp::resolveResourcePaths(
-                 std::filesystem::path("/opt/simp/bin/simp"), testLayout(), environmentOf({}));
-             simp::ModuleSearchRequest request;
-             request.sourcePaths = {"/src/main.simp"};
-             request.currentDirectory = "/work";
-             request.packagePathOptions = {"old", "/src/modules"};
+             request.sourcePaths = {(project.root / "src/nested/main.simp").string()};
+             request.currentDirectory = project.root / "src/nested";
+             request.moduleDirectoryOption = "cli-modules";
              const auto paths = simp::resolveModuleSearchPaths(
                  request, resources,
-                 environmentOf({{"SIMP_PACKAGE_PATH", "/a::/b"},
-                                {"SIMP_MODULE_REGISTRY", "registry.tsv"}}));
-             require(paths.deprecationWarnings.size() == 2,
-                     "both deprecated sources should warn");
+                 environmentOf({{"SIMP_MODULE_DIR", "env-modules"},
+                                {"XDG_CONFIG_HOME", "/user/config"}}));
+             requirePath(paths.projectRoot.path, project.root.string(), "discovered project");
+             requirePath(paths.projectModuleRoot.path, (project.root / "modules").string(),
+                         "project package root");
+             requirePath(paths.projectLockFile.path, (project.root / "simpkg.lock").string(),
+                         "manifest lock remains project-scoped");
+             requirePath(paths.commandLineModuleRoot->path,
+                         (project.root / "src/nested/cli-modules").string(), "CLI root");
+             requirePath(paths.environmentModuleRoot->path,
+                         (project.root / "src/nested/env-modules").string(), "environment root");
+             requirePath(paths.userModuleRoot->path, "/user/config/simp/modules", "user root");
              const auto roots = paths.packageRoots();
              std::vector<std::filesystem::path> rootPaths;
              for (const auto& root : roots) rootPaths.push_back(root.path);
              require(rootPaths == std::vector<std::filesystem::path>{
-                                      "/src/modules", "/opt/simp/share/simp/modules",
-                                      "/work/old", "/a", "/b"},
-                     "roots should be ordered project, standard, compatibility and deduped");
-             requirePath(paths.registry.path, "/work/registry.tsv", "registry override");
+                                      project.root / "src/nested/cli-modules",
+                                      project.root / "modules",
+                                      project.root / "src/nested/env-modules",
+                                      "/user/config/simp/modules",
+                                      "/opt/simp/share/simp/modules"},
+                     "package roots must follow increasing precedence");
+             require(paths.projectLockFile.path != paths.commandLineModuleRoot->path /
+                                                               "simpkg.lock",
+                     "CLI storage roots must not relocate project configuration");
+         }},
+        {"project discovery works for absolute sources and missing explicit roots fail", [] {
+             const auto resources = simp::resolveResourcePaths(
+                 std::filesystem::path("/opt/simp/bin/simp"), testLayout(), environmentOf({}));
+             ProjectFixture project;
+             simp::ModuleSearchRequest request;
+             request.sourcePaths = {(project.root / "src/nested/main.simp").string()};
+             request.currentDirectory = "/unrelated";
+             const auto paths = simp::resolveModuleSearchPaths(request, resources, environmentOf({}));
+             requirePath(paths.projectRoot.path, project.root.string(),
+                         "absolute source ancestor discovery");
+             request.moduleDirectoryOption = missingDirectory().string();
+             expectFailure(
+                 [&] {
+                     simp::validateModuleSearchPaths(simp::resolveModuleSearchPaths(
+                         request, resources, environmentOf({{"SIMP_MODULE_DIR", "/missing/env"}})));
+                 },
+                 "-M/--module-dir");
+             request.moduleDirectoryOption.reset();
+             expectFailure(
+                 [&] {
+                     simp::validateModuleSearchPaths(simp::resolveModuleSearchPaths(
+                         request, resources, environmentOf({{"SIMP_MODULE_DIR", "/missing/env"}})));
+                 },
+                 "SIMP_MODULE_DIR");
+         }},
+        {"legacy package lookup and non-absolute XDG paths are rejected", [] {
+             const auto resources = simp::resolveResourcePaths(
+                 std::filesystem::path("/opt/simp/bin/simp"), testLayout(), environmentOf({}));
+             simp::ModuleSearchRequest request;
+             request.currentDirectory = "/work";
+             expectFailure(
+                 [&] {
+                     simp::resolveModuleSearchPaths(
+                         request, resources, environmentOf({{"SIMP_PACKAGE_PATH", "/old"}}));
+                 },
+                 "SIMP_PACKAGE_PATH is no longer supported");
+             expectFailure(
+                 [&] {
+                     simp::resolveModuleSearchPaths(
+                         request, resources,
+                         environmentOf({{"SIMP_MODULE_REGISTRY", "/old/registry.tsv"}}));
+                 },
+                 "SIMP_MODULE_REGISTRY is no longer supported");
+             expectFailure(
+                 [&] {
+                     simp::resolveModuleSearchPaths(
+                         request, resources, environmentOf({{"XDG_CONFIG_HOME", "relative"}}));
+                 },
+                 "XDG_CONFIG_HOME must be an absolute path");
          }},
         {"only explicitly selected missing module roots are errors", [] {
              const auto resources = simp::resolveResourcePaths(

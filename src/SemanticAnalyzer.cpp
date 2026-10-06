@@ -379,7 +379,7 @@ void SemanticAnalyzer::analyze(Program& program) {
         if (import.exportedName.empty()) {
             throw DiagnosticError(import.location,
                                   "import '" + import.moduleName +
-                                      "' was not resolved through the module registry");
+                                      "' was not resolved to an installed package");
         }
         auto& aliases = importAliases_[import.importerModule];
         if (!aliases.emplace(import.alias,

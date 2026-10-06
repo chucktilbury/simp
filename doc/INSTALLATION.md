@@ -69,7 +69,7 @@ overridden with `SIMP_RUNTIME_DIR`, `SIMP_INCLUDE_DIR`, `SIMP_BUILTIN_DIR`, or
 `SIMP_STDLIB_MODULE_DIR` individually, or with `SIMP_HOME` for the prefix.
 `CC` selects the compiler-driver executable in place of the configured Clang
 driver. Use `simp --print-paths` to inspect the resolved executable, resources,
-module roots, registry, and Clang executable.
+every package root and its precedence, project lock location, and Clang executable.
 
 The former `prelude/` source directory, `share/simp/prelude/` resource path,
 and `SIMP_PRELUDE_DIR` override have been replaced by `builtin/`,
@@ -80,77 +80,59 @@ names the directory containing `String.simp`, not a project package root.
 
 ## Project module search
 
-Imports resolve packages through these module roots, in order:
+The compiler discovers project configuration separately from package storage.
+The project root is the nearest ancestor of the first Simple source input
+containing `simpkg.toml` or a `modules` directory; without a marker it is the
+source parent. With no source input, discovery starts at the current directory.
+This source-based discovery is the same for relative and absolute source paths.
+The manifest and adjacent `simpkg.lock` remain at that root regardless of
+package-root overrides.
 
-1. The project root selected with `-M DIR`/`--module-dir DIR`, otherwise
-   `SIMP_MODULE_DIR`, otherwise `<project-root>/modules`. The project root is
-   the nearest ancestor of the first Simple source input containing
-   `simpkg.toml` or a `modules` directory (starting at the current directory
-   when no source is supplied). Without a marker it is the source parent.
-   A missing default module directory
-   is skipped; a selected but missing directory is an error.
-2. The standard modules shipped with the compiler, normally under
+Package imports use ordered first-match lookup through these roots:
+
+1. `-M DIR`/`--module-dir DIR`, when provided.
+2. `<project-root>/modules`.
+3. `SIMP_MODULE_DIR`, when set.
+4. The user package root `<config-home>/simp/modules`, normally
+   `~/.config/simp/modules`. If `XDG_CONFIG_HOME` is set, it is used as
+   `<XDG_CONFIG_HOME>/simp/modules` and must be absolute.
+5. Standard modules shipped with the compiler, normally
    `<prefix>/share/simp/modules`, configurable with `SIMP_STDLIB_MODULE_DIR`.
-3. Deprecated compatibility roots from `--package-path` and then
-   `SIMP_PACKAGE_PATH`.
-4. The deprecated tab-separated module registry, selected by
-   `SIMP_MODULE_REGISTRY` (default `./simp-modules.tsv`).
 
 The first root containing a package shadows lower-priority roots, and version
-selection occurs only among versions in that root. `-M` and
-`SIMP_MODULE_DIR` set the project package root; `-p`/`--path` sets the
-separate textual `include` search path. Package layout and APIs are described
-in the [standard library docs](STDLIB.md) and
+selection occurs only among versions in that root. Project and home roots are
+optional fallbacks when missing; explicit `-M` and `SIMP_MODULE_DIR` roots must
+exist for compilation. `-M` and `SIMP_MODULE_DIR` add storage roots; they never
+move or replace the discovered project's manifest or lock. `-p`/`--path` sets
+the separate textual `include` search path. Package layout and APIs are
+described in the [standard library docs](STDLIB.md) and
 [`stdlib/README.md`](../stdlib/README.md); exact CLI behavior is in
 [simp(1)](simp.1).
 
-Selecting a locked project's `modules` directory, implicitly or explicitly,
-uses the adjacent `simpkg.lock`. A different explicit `-M` or environment
-directory selects that directory's policy instead; it does not combine it with
-the source project's lock. `-M` takes precedence over `SIMP_MODULE_DIR`.
-
-### Project module version selection
+### Locked project dependencies
 
 New projects use `simpkg.toml` for direct dependencies and generated
 `simpkg.lock` for the complete exact graph. The compiler checks the lock schema,
 manifest fingerprint, dependency pins, and hashes of packages used by the
 compilation. It never accesses the network. Missing, stale, or invalid locks
-are errors, not invitations to fall back to an installed version. Both
-`simpkg.toml` and `modules/modules.toml` in one project are an ambiguous
-configuration and are rejected. See [the package schema](PACKAGES.md).
+are errors, not invitations to fall back to another version or root. A storage
+override can satisfy a lock only when the locked package name, exact version,
+dependency edges, and content hash match; a conflicting or invalid higher
+root is reported rather than bypassed. Imports not listed in the lock are
+rejected. `-M` and `SIMP_MODULE_DIR` do not select another project's policy.
+See [the package schema](PACKAGES.md).
 
-For legacy projects without `simpkg.toml`, place an optional `modules.toml` in the canonical project module root: the
-directory selected by `-M DIR`/`--module-dir DIR`, `SIMP_MODULE_DIR`, or the
-default `<project-root>/modules`. When present, it is a strict package
-allowlist and ordered version preference for imports from every package root,
-including the bundled standard modules:
-
-```toml
-[modules]
-geometry = ["1.2.3", "1.1.0"]
-system = ["0.1.0"]
-```
-
-Each value must be a nonempty, single-line array of distinct exact SemVer
-strings; only the `[modules]` table is supported.
-Versions are checked in order, and the first version installed in the
-established highest-priority root wins. A later listed version is tried only
-when an earlier version is absent; malformed installed packages and exact
-dependency-pin conflicts are errors, not reasons to fall back. If no listed
-version is installed, compilation reports the versions searched. Unlisted
-direct or transitive packages are not found. Version ranges and automatic
-newest-version selection are not supported while this file exists. Legacy
-registry-only modules also cannot be resolved under this policy because they
-do not provide the package manifests needed to enforce exact versions.
-
-When both the new manifest and `modules.toml` are absent, existing package and deprecated registry
-resolution behavior is retained for compatibility with current projects.
-`simp --print-paths` shows the policy file location, and verbose compilation
-reports the selected module versions.
+The previous `--package-path`, `SIMP_PACKAGE_PATH`, `SIMP_MODULE_REGISTRY`,
+`./simp-modules.tsv`, and `modules/modules.toml` lookup/policy mechanisms have
+been removed. They have no compatibility aliases or fallback behavior.
+Compiler diagnostics identify legacy inputs when found; migrate projects to
+`simpkg.toml` and `simpkg.lock` with `simpkg init`, then declare and install
+dependencies with `simpkg add`/`simpkg install`. `simp --print-paths` reports
+the project lock and every applicable package root with its origin and order.
 
 ## Project package manager (`simpkg`)
 
-`simpkg` is a small project-environment and GitHub package installer. The
+`simpkg` is a small project manager and GitHub package installer. The
 compiler remains responsible for compiling and building programs; `simpkg`
 does not run programs or implement compiler build logic. It is installed beside
 `simp` and uses the standard modules shipped with that same installation.
@@ -211,8 +193,8 @@ Legacy projects without `simpkg.toml` retain their old policy and explicit
 dependency installation contract.
 
 `simpkg env` prints POSIX shell exports; it does not modify the parent shell.
-Evaluate the output from the project root as shown above. It reads optional
-user preferences from `$XDG_CONFIG_HOME/simp/preferences.toml`, or
+It reads optional user preferences from
+`$XDG_CONFIG_HOME/simp/preferences.toml`, or
 `~/.config/simp/preferences.toml` when `XDG_CONFIG_HOME` is unset. Create the
 file yourself if desired; only `[environment]` string values are supported:
 
@@ -222,14 +204,10 @@ CC = "clang"
 MY_BUILD_SETTING = "debug"
 ```
 
-Then `eval "$(simpkg env)"` applies those values in the current shell and sets
-`SIMP_MODULE_DIR` to the current project's `modules` directory, regardless of
-any `SIMP_MODULE_DIR` inherited from elsewhere. An alternate existing file can
-be selected with `simpkg env --preferences FILE`; `simpkg` never creates or
-edits preference files. Environment names must be valid shell variable names,
-and `SIMP_MODULE_DIR` is reserved for the activated project.
-
-`simpkg env` remains an optional way to apply user preferences or deliberately
-activate a module-directory override. It is not required for normal compilation,
-including sources nested beneath the project root. An inherited override still
-takes precedence; unset `SIMP_MODULE_DIR` to return to source-based discovery.
+Then `eval "$(simpkg env)"` applies those values in the current shell. An
+alternate existing file can be selected with `simpkg env --preferences FILE`;
+`simpkg` never creates or edits preference files. Environment names must be
+valid shell variable names. Package lookup needs no activation: source-based
+project discovery works from nested directories and for absolute source paths.
+User packages installed at `<config-home>/simp/modules` are searched after
+project packages and before installation defaults.

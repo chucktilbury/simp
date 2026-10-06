@@ -110,9 +110,11 @@ std::vector<ResolvedPath> ModuleSearchPaths::packageRoots() const {
     const auto add = [&roots, &seen](const ResolvedPath& root) {
         if (seen.insert(root.path.string()).second) roots.push_back(root);
     };
+    if (commandLineModuleRoot) add(*commandLineModuleRoot);
     add(projectModuleRoot);
+    if (environmentModuleRoot) add(*environmentModuleRoot);
+    if (userModuleRoot) add(*userModuleRoot);
     add(standardModuleRoot);
-    for (const auto& root : compatibilityRoots) add(root);
     return roots;
 }
 
@@ -230,70 +232,84 @@ ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
         if (parent == candidate) break;
         candidate = parent;
     }
-    if (request.moduleDirectoryOption) {
-        paths.projectModuleRoot = {absoluteFrom(*request.moduleDirectoryOption),
-                                   "-M/--module-dir"};
-        paths.projectModuleRootExplicit = true;
-    } else if (const auto moduleDirectory = environment("SIMP_MODULE_DIR")) {
-        paths.projectModuleRoot = {absoluteFrom(*moduleDirectory), "SIMP_MODULE_DIR"};
-        paths.projectModuleRootExplicit = true;
-    } else {
-        paths.projectModuleRoot = {paths.projectRoot.path / "modules",
-                                   "default <project-root>/modules"};
+    if (const auto legacyPackagePath = environment("SIMP_PACKAGE_PATH")) {
+        static_cast<void>(legacyPackagePath);
+        throw std::runtime_error(
+            "SIMP_PACKAGE_PATH is no longer supported; use SIMP_MODULE_DIR or -M/--module-dir");
     }
-    paths.moduleSelectionFile = {paths.projectModuleRoot.path / "modules.toml",
-                                 "project module selection"};
-    const auto manifest = paths.projectModuleRoot.path.parent_path() / "simpkg.toml";
-    if (paths.projectModuleRoot.path.filename() == "modules" &&
-        std::filesystem::exists(manifest)) {
-        if (std::filesystem::exists(paths.moduleSelectionFile.path)) {
-            throw std::runtime_error(
-                "ambiguous project configuration: simpkg.toml and modules/modules.toml; "
-                "remove the legacy policy before using the locked project");
+    if (environment("SIMP_MODULE_REGISTRY")) {
+        throw std::runtime_error(
+            "SIMP_MODULE_REGISTRY is no longer supported; publish packages with "
+            "simp-package.toml and install them with simpkg");
+    }
+    paths.projectModuleRoot = {paths.projectRoot.path / "modules",
+                               "project <project-root>/modules"};
+    if (request.moduleDirectoryOption) {
+        paths.commandLineModuleRoot = {
+            absoluteFrom(*request.moduleDirectoryOption), "-M/--module-dir"};
+    }
+    if (const auto moduleDirectory = environment("SIMP_MODULE_DIR")) {
+        paths.environmentModuleRoot =
+            ResolvedPath{absoluteFrom(*moduleDirectory), "SIMP_MODULE_DIR"};
+    }
+    std::optional<std::filesystem::path> configDirectory;
+    std::string userRootOrigin;
+    if (const auto xdgConfigHome = environment("XDG_CONFIG_HOME")) {
+        const std::filesystem::path configured(*xdgConfigHome);
+        if (!configured.is_absolute()) {
+            throw std::runtime_error("XDG_CONFIG_HOME must be an absolute path");
         }
-        paths.moduleSelectionFile = {manifest.parent_path() / "simpkg.lock",
-                                     "locked project module selection"};
-        if (!std::filesystem::is_regular_file(paths.moduleSelectionFile.path)) {
-            throw std::runtime_error("missing simpkg.lock; run 'simpkg install --yes'");
-        }
+        configDirectory = configured;
+        userRootOrigin = "XDG_CONFIG_HOME/simp/modules";
+    } else if (const auto home = environment("HOME")) {
+        configDirectory = std::filesystem::path(*home) / ".config";
+        userRootOrigin = "HOME/.config/simp/modules";
+    }
+    if (configDirectory) {
+        paths.userModuleRoot = ResolvedPath{*configDirectory / "simp" / "modules",
+                                            userRootOrigin};
     }
     paths.standardModuleRoot = resources.standardModuleDirectory;
-    for (const auto& option : request.packagePathOptions) {
-        if (option.empty()) continue;
-        paths.compatibilityRoots.push_back(
-            {absoluteFrom(option), "--package-path, deprecated"});
+    paths.projectLockFile = {paths.projectRoot.path / "simpkg.lock", "project lock"};
+    const auto manifest = paths.projectRoot.path / "simpkg.toml";
+    const auto legacyPolicy = paths.projectRoot.path / "modules" / "modules.toml";
+    if (std::filesystem::exists(legacyPolicy)) {
+        throw std::runtime_error(
+            "legacy modules/modules.toml is no longer supported; migrate the project "
+            "to simpkg.toml and simpkg.lock with 'simpkg init'");
     }
-    if (!request.packagePathOptions.empty()) {
-        paths.deprecationWarnings.push_back(
-            "--package-path is deprecated; place packages under the project module root "
-            "(-M/--module-dir, SIMP_MODULE_DIR, or <project-root>/modules)");
+    if (std::filesystem::exists(paths.projectRoot.path / "simpkg.lock") &&
+        !std::filesystem::exists(manifest)) {
+        throw std::runtime_error("simpkg.lock exists without simpkg.toml in project " +
+                                 paths.projectRoot.path.string());
     }
-    if (const auto packagePath = environment("SIMP_PACKAGE_PATH")) {
-        for (const auto& entry : splitPathList(*packagePath)) {
-            if (entry.empty()) continue;
-            paths.compatibilityRoots.push_back(
-                {absoluteFrom(entry), "SIMP_PACKAGE_PATH, deprecated"});
+    if (std::filesystem::exists(manifest) &&
+        !std::filesystem::is_regular_file(paths.projectLockFile.path)) {
+        throw std::runtime_error("missing simpkg.lock; run 'simpkg install --yes'");
+    }
+    for (const auto& legacyRegistry : {currentDirectory / "simp-modules.tsv",
+                                       paths.projectRoot.path / "simp-modules.tsv"}) {
+        if (std::filesystem::exists(legacyRegistry)) {
+            throw std::runtime_error(
+                "simp-modules.tsv registries are no longer supported; publish packages "
+                "with simp-package.toml and install them with simpkg");
         }
-        paths.deprecationWarnings.push_back(
-            "SIMP_PACKAGE_PATH is deprecated; use SIMP_MODULE_DIR or -M/--module-dir");
-    }
-    if (const auto registry = environment("SIMP_MODULE_REGISTRY")) {
-        paths.registry = {absoluteFrom(*registry), "SIMP_MODULE_REGISTRY, deprecated"};
-    } else {
-        paths.registry = {currentDirectory / "simp-modules.tsv",
-                          "default ./simp-modules.tsv, deprecated"};
     }
     return paths;
 }
 
 void validateModuleSearchPaths(const ModuleSearchPaths& paths) {
-    if (!paths.projectModuleRootExplicit) return;
-    std::error_code error;
-    if (!std::filesystem::is_directory(paths.projectModuleRoot.path, error)) {
-        throw std::runtime_error("module directory from " + paths.projectModuleRoot.origin +
-                                 " does not exist or is not a directory: " +
-                                 paths.projectModuleRoot.path.string());
-    }
+    const auto validate = [](const std::optional<ResolvedPath>& root) {
+        if (!root) return;
+        std::error_code error;
+        if (!std::filesystem::is_directory(root->path, error)) {
+            throw std::runtime_error("module directory from " + root->origin +
+                                     " does not exist or is not a directory: " +
+                                     root->path.string());
+        }
+    };
+    validate(paths.commandLineModuleRoot);
+    validate(paths.environmentModuleRoot);
 }
 
 } // namespace simp

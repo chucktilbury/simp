@@ -13,7 +13,7 @@ set(main "${work}/main.simp")
 set(executable "${work}/combined executable")
 set(ir "${work}/combined.ll")
 foreach(fixture IN ITEMS helper.simp main.simp native.simp native.c module.simp
-        simp-modules.tsv import.simp second-start.simp no-start.simp
+        import.simp second-start.simp no-start.simp
         duplicate-a.simp duplicate-b.simp)
     configure_file("${FIXTURES}/${fixture}" "${work}/${fixture}" COPYONLY)
 endforeach()
@@ -131,13 +131,18 @@ endif()
 
 if(CASE STREQUAL "all" OR CASE STREQUAL "module")
 set(module_source "${work}/module.simp")
-set(module_registry "${work}/simp-modules.tsv")
+set(module_root "${work}/modules/multi_module/1.0.0")
+file(MAKE_DIRECTORY "${module_root}")
+configure_file("${module_source}" "${module_root}/module.simp" COPYONLY)
+file(WRITE "${module_root}/simp-package.toml"
+    "[package]\nname = \"multi_module\"\nversion = \"1.0.0\"\n"
+    "source = \"module.simp\"\nexport = \"class:Imported\"\n")
 set(import_source "${work}/import.simp")
 set(import_object "${work}/import.o")
 set(import_executable "${work}/import executable")
 execute_process(
-    COMMAND "${CMAKE_COMMAND}" -E env "SIMP_MODULE_REGISTRY=${module_registry}"
-            "CC=${CLANG}" "${COMPILER}" -c "${import_source}" -o "${import_object}"
+    COMMAND "${CMAKE_COMMAND}" -E env "CC=${CLANG}"
+            "${COMPILER}" -c "${import_source}" -o "${import_object}"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )
 if(NOT result EQUAL 0 OR NOT EXISTS "${import_object}")

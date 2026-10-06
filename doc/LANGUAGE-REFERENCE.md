@@ -615,28 +615,13 @@ APIs in [STDLIB.md](STDLIB.md).
 New projects use the direct dependency manifest `simpkg.toml` and the generated
 exact graph `simpkg.lock`. `simpkg add OWNER/REPO --yes` resolves and installs
 the full graph; compilation then needs no environment activation and never
-fetches code. Compilation validates lock freshness and package integrity.
-Legacy projects without that manifest can use an optional `modules.toml`
-in the canonical project module root to restrict
-importable packages and select exact versions in preference order:
-
-```toml
-[modules]
-geometry = ["1.2.3", "1.1.0"]
-system = ["0.1.0"]
-```
-
-When present, the file is a strict allowlist for direct and transitive
-packages, including standard-library packages. Each value must be a nonempty
-single-line array of distinct exact SemVer strings; only the `[modules]` table
-is supported. The first configured version installed in the highest-priority
-root is selected; a later version is tried only when
-an earlier one is absent. Exact dependency pins remain constraints and
-conflict rather than causing fallback. Malformed installed packages do not
-trigger fallback. When the policy file is absent, existing version and
-registry resolution behavior is preserved. See
-[project module version selection](INSTALLATION.md#project-module-version-selection)
-for the root-selection and compatibility details.
+fetches code. Compilation validates lock freshness, exact dependencies, and
+package integrity. The lock is discovered from the source project's root and
+cannot be relocated by package storage overrides. See
+[project module search](INSTALLATION.md#project-module-search) for the ordered
+CLI, project, environment, user, and installation package roots. The legacy
+`modules.toml`, tab-separated registry, `--package-path`, and
+`SIMP_PACKAGE_PATH` lookup mechanisms are no longer supported.
 See `import-declaration` and `module`.
 
 `include "relative/path.simp"` textually inserts source before parsing. It is

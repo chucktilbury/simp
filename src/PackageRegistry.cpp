@@ -631,10 +631,8 @@ ModuleVersionPolicy readLockedPolicy(const std::filesystem::path& path) {
 class Resolver {
 public:
     explicit Resolver(const std::vector<std::filesystem::path>& roots,
-                      const std::optional<ModuleVersionPolicy>& policy,
-                      const std::unordered_set<std::string>& legacyRegistryModules)
-        : roots_(roots), policy_(policy),
-          legacyRegistryModules_(legacyRegistryModules) {}
+                      const std::optional<ModuleVersionPolicy>& policy)
+        : roots_(roots), policy_(policy) {}
 
     PackageResolution resolve(const std::vector<std::string>& requested) {
         std::vector<std::string> packageRoots;
@@ -709,9 +707,26 @@ private:
                  !error && it != end; it.increment(error)) {
                 if (!it->is_directory()) continue;
                 const auto manifestPath = it->path() / "simp-package.toml";
+                const bool manifestExists = std::filesystem::exists(manifestPath, error);
+                if (error) {
+                    throw std::runtime_error("cannot inspect package candidate: " +
+                                             it->path().string() + ": " +
+                                             error.message());
+                }
+                if (!manifestExists) {
+                    throw std::runtime_error(
+                        "invalid package candidate at " + it->path().string() +
+                        ": missing simp-package.toml");
+                }
                 if (!std::filesystem::is_regular_file(manifestPath, error)) {
-                    error.clear();
-                    continue;
+                    if (error) {
+                        throw std::runtime_error("cannot inspect package candidate: " +
+                                                 it->path().string() + ": " +
+                                                 error.message());
+                    }
+                    throw std::runtime_error(
+                        "invalid package candidate at " + it->path().string() +
+                        ": missing simp-package.toml");
                 }
                 auto manifest = readManifest(manifestPath, it->path());
                 if (manifest.name != name ||
@@ -785,13 +800,6 @@ private:
                 }
             }
             if (selected == nullptr) {
-                if (candidates.empty() && legacyRegistryModules_.count(name) != 0) {
-                    throw std::runtime_error(
-                        "module '" + name +
-                        "' is available only through the deprecated registry, which does "
-                        "not support exact package manifests required by " +
-                        policy_->path.string());
-                }
                 std::string searched;
                 for (std::size_t index = 0; index < configured->second.size(); ++index) {
                     if (index != 0) searched += ", ";
@@ -810,28 +818,24 @@ private:
             if (!requiredVersion.empty() && selected->version != requiredVersion) {
                 throw std::runtime_error(
                     "package dependency constraint conflict for '" + name +
-                    "': " + (policy_->path.filename() == "simpkg.lock"
-                                 ? std::string("simpkg.lock") : std::string("modules.toml")) +
-                    " selects version '" + selected->version +
+                    "': simpkg.lock selects version '" + selected->version +
                     "' (first installed configured version), but an exact dependency "
                     "requires '" + requiredVersion + "'");
             }
-            if (policy_->path.filename() == "simpkg.lock") {
-                const auto& entry = policy_->lockedPackages.at(name);
-                if (packageTreeSha256(selected->packageRoot) != entry.at("sha256")) {
-                    throw std::runtime_error("package integrity mismatch for '" + name +
-                                             "' at " + selected->packageRoot.string() +
-                                             "; refusing to compile modified locked code");
-                }
-                std::vector<std::string> dependencies;
-                for (const auto& dependency : selected->dependencies) {
-                    dependencies.push_back(dependency.name + "=" + dependency.version);
-                }
-                auto locked = policy_->lockedDependencies.at(name);
-                std::sort(locked.begin(), locked.end());
-                if (locked != dependencies) {
-                    throw std::runtime_error("locked dependency graph mismatch for '" + name + "'");
-                }
+            const auto& entry = policy_->lockedPackages.at(name);
+            if (packageTreeSha256(selected->packageRoot) != entry.at("sha256")) {
+                throw std::runtime_error("package integrity mismatch for '" + name +
+                                         "' at " + selected->packageRoot.string() +
+                                         "; refusing to compile modified locked code");
+            }
+            std::vector<std::string> dependencies;
+            for (const auto& dependency : selected->dependencies) {
+                dependencies.push_back(dependency.name + "=" + dependency.version);
+            }
+            auto locked = policy_->lockedDependencies.at(name);
+            std::sort(locked.begin(), locked.end());
+            if (locked != dependencies) {
+                throw std::runtime_error("locked dependency graph mismatch for '" + name + "'");
             }
             return *selected;
         }
@@ -907,7 +911,6 @@ private:
 
     const std::vector<std::filesystem::path>& roots_;
     const std::optional<ModuleVersionPolicy>& policy_;
-    const std::unordered_set<std::string>& legacyRegistryModules_;
     std::unordered_map<std::string, std::vector<PackageManifest>> candidates_;
 };
 
@@ -918,112 +921,28 @@ std::optional<ModuleVersionPolicy> readModuleVersionPolicy(
     std::error_code error;
     if (!std::filesystem::exists(path, error)) {
         if (error) {
-            throw std::runtime_error("cannot inspect module selection file '" +
+            throw std::runtime_error("cannot inspect project lock '" +
                                      path.string() + "': " + error.message());
         }
         return std::nullopt;
     }
     if (!std::filesystem::is_regular_file(path, error) || error) {
-        throw std::runtime_error("module selection file is not a regular file: " +
+        throw std::runtime_error("project lock is not a regular file: " +
                                  path.string());
     }
-    if (path.filename() == "simpkg.lock") return readLockedPolicy(path);
-    std::ifstream input(path);
-    if (!input) {
-        throw std::runtime_error("cannot open module selection file: " + path.string());
+    if (path.filename() != "simpkg.lock") {
+        throw std::runtime_error(path.string() +
+                                 ": legacy modules.toml package policies are no longer "
+                                 "supported; use simpkg.toml and simpkg.lock");
     }
-
-    ModuleVersionPolicy policy;
-    policy.path = path;
-    std::set<std::string> seen;
-    bool hasModulesTable = false;
-    std::string section;
-    std::string line;
-    std::size_t lineNumber = 0;
-    while (std::getline(input, line)) {
-        ++lineNumber;
-        line = trim(uncomment(line));
-        if (line.empty()) continue;
-        if (line.front() == '[' && line.back() == ']') {
-            section = trim(line.substr(1, line.size() - 2));
-            if (section != "modules") {
-                throw std::runtime_error(path.string() + ":" +
-                                         std::to_string(lineNumber) +
-                                         ": unsupported table [" + section +
-                                         "]; only [modules] is supported");
-            }
-            if (hasModulesTable) {
-                throw std::runtime_error(path.string() + ":" +
-                                         std::to_string(lineNumber) +
-                                         ": duplicate table [modules]");
-            }
-            hasModulesTable = true;
-            continue;
-        }
-        const auto equals = line.find('=');
-        if (section != "modules" || equals == std::string::npos) {
-            throw std::runtime_error(path.string() + ":" +
-                                     std::to_string(lineNumber) +
-                                     ": expected a module version array inside [modules]");
-        }
-        const auto name = trim(line.substr(0, equals));
-        const auto value = trim(line.substr(equals + 1));
-        if (!bareKey(name) || !identifier(name)) {
-            throw std::runtime_error(path.string() + ":" +
-                                     std::to_string(lineNumber) +
-                                     ": module names must be Simple identifiers");
-        }
-        if (!seen.insert(name).second) {
-            throw std::runtime_error(path.string() + ":" +
-                                     std::to_string(lineNumber) +
-                                     ": duplicate module key '" + name + "'");
-        }
-        if (!value.empty() && value.front() == '[' &&
-            (value.size() < 2 || value.back() != ']')) {
-            throw std::runtime_error(path.string() + ":" +
-                                     std::to_string(lineNumber) +
-                                     ": module version arrays must be single-line");
-        }
-        const auto versions = parseStringArray(value, path, lineNumber);
-        if (versions.empty()) {
-            throw std::runtime_error(path.string() + ":" +
-                                     std::to_string(lineNumber) +
-                                     ": module '" + name +
-                                     "' must have a nonempty version array");
-        }
-        std::set<std::string> uniqueVersions;
-        for (const auto& versionText : versions) {
-            Version version;
-            if (!parseVersion(versionText, version)) {
-                throw std::runtime_error(
-                    path.string() + ":" + std::to_string(lineNumber) +
-                    ": module '" + name + "' has invalid exact SemVer version '" +
-                    versionText + "'");
-            }
-            if (!uniqueVersions.insert(versionText).second) {
-                throw std::runtime_error(
-                    path.string() + ":" + std::to_string(lineNumber) +
-                    ": module '" + name + "' repeats version '" + versionText +
-                    "' in its selection array");
-            }
-        }
-        policy.versions.emplace(name, versions);
-    }
-    if (input.bad()) {
-        throw std::runtime_error("cannot read module selection file: " + path.string());
-    }
-    if (!hasModulesTable) {
-        throw std::runtime_error(path.string() + ": missing required [modules] table");
-    }
-    return policy;
+    return readLockedPolicy(path);
 }
 
 PackageResolution resolvePackages(
     const std::vector<std::string>& rootNames,
     const std::vector<std::filesystem::path>& searchRoots,
-    const std::optional<ModuleVersionPolicy>& policy,
-    const std::unordered_set<std::string>& legacyRegistryModules) {
-    return Resolver(searchRoots, policy, legacyRegistryModules).resolve(rootNames);
+    const std::optional<ModuleVersionPolicy>& policy) {
+    return Resolver(searchRoots, policy).resolve(rootNames);
 }
 
 } // namespace simp

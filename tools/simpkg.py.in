@@ -20,6 +20,7 @@ import tomllib
 STDLIB_DIRECTORY = (
     Path(__file__).resolve().parent / "@SIMPKG_STDLIB_RELATIVE_PATH@"
 ).resolve()
+PREFIX_STDLIB_RELATIVE_PATH = Path("@SIMPKG_PREFIX_STDLIB_RELATIVE_PATH@")
 VERSION_PATTERN = re.compile(
     r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
     r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
@@ -192,32 +193,6 @@ def read_manifest(package_root: Path, *, check_directory_version: bool = True) -
     }
 
 
-def load_policy(path: Path, *, required: bool) -> dict[str, list[str]]:
-    if not path.exists():
-        if required:
-            raise SimpkgError(f"{path} does not exist; run 'simpkg init' first")
-        return {}
-    document = read_toml(path)
-    if set(document) != {"modules"} or not isinstance(document["modules"], dict):
-        raise SimpkgError(f"{path}: expected only a [modules] table")
-    versions: dict[str, list[str]] = {}
-    for name, entries in document["modules"].items():
-        if not valid_identifier(name):
-            raise SimpkgError(f"{path}: invalid module name {name!r}")
-        if not isinstance(entries, list) or not entries:
-            raise SimpkgError(f"{path}: module {name!r} must have a non-empty version array")
-        checked: list[str] = []
-        for version in entries:
-            if not isinstance(version, str):
-                raise SimpkgError(f"{path}: module {name!r} versions must be strings")
-            version_parts(version)
-            if version in checked:
-                raise SimpkgError(f"{path}: module {name!r} repeats version {version!r}")
-            checked.append(version)
-        versions[name] = checked
-    return versions
-
-
 def quote_toml_string(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
@@ -237,6 +212,30 @@ def render_policy(versions: dict[str, list[str]], *, include_string_note: bool =
         for name, values in versions.items()
     )
     return "\n".join(lines) + "\n"
+
+
+def standard_modules_directory() -> Path:
+    configured = os.environ.get("SIMP_STDLIB_MODULE_DIR")
+    if configured:
+        return Path(configured).expanduser().resolve()
+    prefix = os.environ.get("SIMP_HOME")
+    if prefix:
+        return (Path(prefix).expanduser() / PREFIX_STDLIB_RELATIVE_PATH).resolve()
+    return STDLIB_DIRECTORY
+
+
+def user_modules_directory() -> Path | None:
+    config_home = os.environ.get("XDG_CONFIG_HOME")
+    if config_home:
+        root = Path(config_home).expanduser()
+        if not root.is_absolute():
+            raise SimpkgError("XDG_CONFIG_HOME must be an absolute path")
+    else:
+        home = os.environ.get("HOME")
+        if not home:
+            return None
+        root = Path(home).expanduser() / ".config"
+    return root / "simp" / "modules"
 
 
 def discover_standard_modules(root: Path) -> dict[str, list[str]]:
@@ -268,21 +267,23 @@ def discover_standard_modules(root: Path) -> dict[str, list[str]]:
     return modules
 
 
-def project_modules_directory(project: Path) -> Path:
-    return find_project(project) / "modules"
-
-
 def find_project(start: Path) -> Path:
     start = start.resolve()
     for candidate in (start, *start.parents):
-        if (candidate / "simpkg.toml").exists() or (candidate / "modules/modules.toml").exists():
+        legacy = candidate / "modules/modules.toml"
+        if legacy.exists():
+            raise SimpkgError(
+                f"{legacy}: legacy modules.toml projects are no longer supported; "
+                "migrate to simpkg.toml and simpkg.lock"
+            )
+        if (candidate / "simpkg.toml").exists() or (candidate / "modules").is_dir():
             return candidate
     return start
 
 
 def command_init(project_directory: str | None) -> None:
     project = find_project(Path(project_directory or Path.cwd()))
-    for path in (project / "simpkg.toml", project / "simpkg.lock", project / "modules/modules.toml"):
+    for path in (project / "simpkg.toml", project / "simpkg.lock"):
         if path.exists() or path.is_symlink():
             raise SimpkgError(f"refusing to overwrite existing configuration: {path}")
     project.mkdir(parents=True, exist_ok=True)
@@ -345,181 +346,6 @@ def stable_remote_versions(remote: str) -> list[str]:
         key=functools.cmp_to_key(compare_versions),
         reverse=True,
     )
-
-
-def validate_dependency_tree(
-    manifest: dict,
-    modules_directory: Path,
-    standard_directory: Path,
-    policy: dict[str, list[str]],
-    *,
-    visiting: set[tuple[str, str]] | None = None,
-) -> None:
-    active = visiting if visiting is not None else set()
-    for dependency, version in manifest["dependencies"].items():
-        if version not in policy.get(dependency, []):
-            raise SimpkgError(
-                f"required dependency {dependency} = {version} is not allowed by "
-                f"{modules_directory / 'modules.toml'}; install that exact package "
-                "from its GitHub OWNER/REPO with 'simpkg add OWNER/REPO VERSION', "
-                "then allow its exact version in modules.toml"
-            )
-        key = (dependency, version)
-        if key in active:
-            continue
-        installed_root: Path | None = None
-        for candidate_root in (modules_directory, standard_directory):
-            candidate = candidate_root / dependency / version
-            if candidate.is_dir() and (candidate / "simp-package.toml").is_file():
-                installed_root = candidate
-                break
-        if installed_root is None:
-            raise SimpkgError(
-                f"required dependency {dependency} = {version} is not installed; "
-                "install it from its GitHub OWNER/REPO with "
-                f"'simpkg add OWNER/REPO {version}', then retry"
-            )
-        dependency_manifest = read_manifest(installed_root)
-        if dependency_manifest["name"] != dependency or dependency_manifest["version"] != version:
-            raise SimpkgError(
-                f"installed dependency {dependency} = {version} has a mismatched manifest "
-                f"at {installed_root / 'simp-package.toml'}"
-            )
-        active.add(key)
-        validate_dependency_tree(
-            dependency_manifest,
-            modules_directory,
-            standard_directory,
-            policy,
-            visiting=active,
-        )
-        active.remove(key)
-
-
-def atomic_write_policy(path: Path, versions: dict[str, list[str]]) -> None:
-    content = render_policy(versions)
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            newline="\n",
-            dir=path.parent,
-            prefix=".modules.toml.",
-            delete=False,
-        ) as handle:
-            temporary_path = Path(handle.name)
-            handle.write(content)
-        os.replace(temporary_path, path)
-    except OSError as error:
-        if temporary_path is not None:
-            temporary_path.unlink(missing_ok=True)
-        raise SimpkgError(f"cannot update module allowlist {path}: {error}") from error
-
-
-def command_add_legacy(repository_input: str, requested_version: str | None) -> None:
-    owner, repository, remote = parse_github_repository(repository_input)
-    version = requested_version
-    if version is None:
-        version = stable_remote_versions(remote)[0]
-    else:
-        version_parts(version)
-
-    project_modules = project_modules_directory(Path.cwd())
-    if project_modules.is_symlink():
-        raise SimpkgError(f"unsafe project module directory: {project_modules}")
-    policy_path = project_modules / "modules.toml"
-    policy = load_policy(policy_path, required=True)
-    if not project_modules.is_dir():
-        raise SimpkgError(f"project module directory does not exist: {project_modules}")
-    project_modules = project_modules.resolve()
-
-    temporary_directory: Path | None = None
-    created_package_directory: Path | None = None
-    try:
-        temporary_directory = Path(
-            tempfile.mkdtemp(prefix=".simpkg-", dir=project_modules)
-        )
-        checkout = temporary_directory / "checkout"
-        run_git(
-            ["clone", "--quiet", "--no-checkout", remote, str(checkout)],
-            error_context=f"could not clone {owner}/{repository}",
-        )
-        run_git(
-            ["-C", str(checkout), "checkout", "--quiet", "--detach", f"refs/tags/{version}"],
-            error_context=f"could not check out tag {version!r} from {owner}/{repository}",
-        )
-        manifest = read_manifest(checkout, check_directory_version=False)
-        if manifest["version"] != version:
-            raise SimpkgError(
-                f"{checkout / 'simp-package.toml'} declares version "
-                f"{manifest['version']!r}, but selected tag is {version!r}"
-            )
-        validate_dependency_tree(
-            manifest, project_modules, STDLIB_DIRECTORY, policy
-        )
-        package_directory = project_modules / manifest["name"]
-        destination = check_destination(project_modules.parent, manifest["name"], version)
-        if destination.exists():
-            tree_digest(destination)
-            existing_manifest = read_manifest(destination)
-            if existing_manifest["name"] != manifest["name"] or existing_manifest["version"] != version:
-                raise SimpkgError(
-                    f"refusing to replace existing installed version at {destination}"
-                )
-            updated_policy = dict(policy)
-            updated_policy[manifest["name"]] = [
-                version,
-                *[
-                    prior
-                    for prior in policy.get(manifest["name"], [])
-                    if prior != version
-                ],
-            ]
-            atomic_write_policy(policy_path, updated_policy)
-            print(f"{manifest['name']} {version} is already installed; left it unchanged")
-            return
-
-        try:
-            package_directory.mkdir(parents=True, exist_ok=True)
-            created_package_directory = package_directory
-            shutil.rmtree(checkout / ".git", ignore_errors=False)
-            tree_digest(checkout)
-            destination.mkdir()
-            try:
-                shutil.copytree(checkout, destination, dirs_exist_ok=True)
-                installed_manifest = read_manifest(destination)
-                if installed_manifest != manifest:
-                    raise SimpkgError(
-                        f"installed package at {destination} does not match its checked-out manifest"
-                    )
-            except (OSError, SimpkgError):
-                shutil.rmtree(destination, ignore_errors=True)
-                raise
-        except FileExistsError as error:
-            raise SimpkgError(f"refusing to replace existing installed version at {destination}") from error
-        except OSError as error:
-            raise SimpkgError(f"cannot install package into {destination}: {error}") from error
-
-        updated_policy = dict(policy)
-        updated_policy[manifest["name"]] = [
-            version,
-            *[
-                prior
-                for prior in policy.get(manifest["name"], [])
-                if prior != version
-            ],
-        ]
-        atomic_write_policy(policy_path, updated_policy)
-        print(f"Installed {manifest['name']} {version} from {owner}/{repository}")
-    finally:
-        if temporary_directory is not None:
-            shutil.rmtree(temporary_directory, ignore_errors=True)
-        if created_package_directory is not None:
-            try:
-                created_package_directory.rmdir()
-            except OSError:
-                pass
 
 
 def read_sources(value: object, context: str) -> dict[str, str]:
@@ -609,12 +435,13 @@ def package_record(manifest: dict, repo: str, commit: str, digest: str) -> dict:
 
 def builtin_packages() -> dict:
     packages = {}
-    for name, versions in discover_standard_modules(STDLIB_DIRECTORY).items():
+    standard_modules = standard_modules_directory()
+    for name, versions in discover_standard_modules(standard_modules).items():
         stable = [version for version in versions if version_parts(version)[1] is None]
         if not stable:
             raise SimpkgError(f"bundled module {name} has no stable SemVer version")
         version = stable[0]
-        root = STDLIB_DIRECTORY / name / version
+        root = standard_modules / name / version
         packages[name] = package_record(read_manifest(root), "builtin", "builtin", tree_digest(root))
     return packages
 
@@ -805,7 +632,7 @@ def resolve_graph(document: dict, workspace: Path, *, seed: tuple[str, dict, Pat
         if builtin:
             if repo is not None:
                 raise SimpkgError(f"repository conflict for bundled module {name}")
-            manifest = read_manifest(STDLIB_DIRECTORY / name / version)
+            manifest = read_manifest(standard_modules_directory() / name / version)
         else:
             if any(package_name(key) == name for key in packages):
                 raise SimpkgError(f"exact version conflict for bundled module {name}")
@@ -874,6 +701,31 @@ def check_destination(project: Path, name: str, version: str) -> Path:
     return destination
 
 
+def package_search_roots(project: Path) -> list[Path]:
+    roots = [project / "modules"]
+    environment_root = os.environ.get("SIMP_MODULE_DIR")
+    if environment_root:
+        resolved_environment_root = Path(environment_root).expanduser().resolve()
+        if not resolved_environment_root.is_dir():
+            raise SimpkgError(
+                f"module directory from SIMP_MODULE_DIR does not exist or is not a "
+                f"directory: {resolved_environment_root}"
+            )
+        roots.append(resolved_environment_root)
+    user_root = user_modules_directory()
+    if user_root is not None:
+        roots.append(user_root)
+    roots.append(standard_modules_directory())
+    unique: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        resolved = root.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(resolved)
+    return unique
+
+
 def verify_package(root: Path, name: str, entry: dict) -> None:
     if tree_digest(root) != entry["sha256"]:
         raise SimpkgError(f"integrity mismatch at {root}; refusing to overwrite existing content")
@@ -886,16 +738,35 @@ def verify_package(root: Path, name: str, entry: dict) -> None:
 
 def inspect_installed(project: Path, packages: dict) -> list[str]:
     missing = []
+    roots = package_search_roots(project)
     for key, entry in sorted(packages.items()):
         name = package_name(key)
-        if entry["repo"] == "builtin":
-            verify_package(STDLIB_DIRECTORY / name / entry["version"], name, entry)
+        selected = None
+        selected_versions = []
+        for root in roots:
+            package_directory = root / name
+            if not package_directory.is_dir():
+                continue
+            versions = sorted(path for path in package_directory.iterdir() if path.is_dir())
+            if not versions:
+                continue
+            for version_directory in versions:
+                if version_directory.name == entry["version"]:
+                    continue
+                manifest = read_manifest(version_directory)
+                if manifest["name"] != name:
+                    raise SimpkgError(
+                        f"{version_directory / 'simp-package.toml'}: package name "
+                        f"{manifest['name']!r} does not match directory {name!r}"
+                    )
+            selected = package_directory / entry["version"]
+            break
+        if selected is None:
+            missing.append(key)
+        elif not selected.is_dir():
+            missing.append(key)
         else:
-            destination = check_destination(project, name, entry["version"])
-            if destination.exists():
-                verify_package(destination, name, entry)
-            else:
-                missing.append(key)
+            verify_package(selected, name, entry)
     return missing
 
 
@@ -962,17 +833,14 @@ def command_add(repository: str, version: str | None, yes: bool, dry_run: bool) 
         version_parts(version)
     project = find_project(Path.cwd())
     print(f"Initial plan: add {repository} {version or '(highest stable tag)'}; resolve exact dependencies and install graph.")
-    document = read_project(project) if (project / "simpkg.toml").exists() else None
-    if document is not None and (project / "simpkg.lock").exists():
+    if not (project / "simpkg.toml").is_file():
+        raise SimpkgError(
+            f"no simpkg.toml found in {project}; run 'simpkg init' before adding packages"
+        )
+    document = read_project(project)
+    if (project / "simpkg.lock").exists():
         inspect_installed(project, read_lock(project, document))
     if not consent(yes, dry_run):
-        return
-    if document is None:
-        if dry_run:
-            _, _, remote = parse_github_repository(repository)
-            print(f"Legacy plan: {repository} {version or stable_remote_versions(remote)[0]}")
-            return
-        command_add_legacy(repository, version)
         return
     if version is None:
         _, _, remote = parse_github_repository(repository)
@@ -1063,10 +931,6 @@ def command_env(explicit_preferences: str | None) -> None:
         for name, value in environment.items():
             if ENVIRONMENT_NAME_PATTERN.fullmatch(name) is None:
                 raise SimpkgError(f"{path}: invalid environment variable name {name!r}")
-            if name == "SIMP_MODULE_DIR":
-                raise SimpkgError(
-                    f"{path}: SIMP_MODULE_DIR is reserved for the activated project"
-                )
             if not isinstance(value, str):
                 raise SimpkgError(
                     f"{path}: environment value {name!r} must be a string"
@@ -1079,28 +943,19 @@ def command_env(explicit_preferences: str | None) -> None:
 
     for name, value in preferences.items():
         print(f"export {name}={shell_quote(value)}")
-    print(f"export SIMP_MODULE_DIR={shell_quote(str(project_modules_directory(Path.cwd())))}")
 
 
 def command_list() -> None:
     project = find_project(Path.cwd())
-    modules_directory = project / "modules"
-    if (project / "simpkg.toml").exists():
-        document = read_project(project)
-        packages = read_lock(project, document)
-        missing = inspect_installed(project, packages)
-        for key, entry in sorted(packages.items()):
-            print(f"{package_name(key)}: locked {entry['version']}; {'not installed' if key in missing else 'installed'}; {entry['repo']}")
-        return
-    policy = load_policy(modules_directory / "modules.toml", required=True)
-    for name, versions in policy.items():
-        installed = [
-            version
-            for version in versions
-            if (modules_directory / name / version / "simp-package.toml").is_file()
-        ]
-        selected = installed[0] if installed else "not installed"
-        print(f"{name}: selected {selected}; allowed {', '.join(versions)}")
+    if not (project / "simpkg.toml").is_file():
+        raise SimpkgError(
+            f"no simpkg.toml found in {project}; run 'simpkg init' to create a locked project"
+        )
+    document = read_project(project)
+    packages = read_lock(project, document)
+    missing = inspect_installed(project, packages)
+    for key, entry in sorted(packages.items()):
+        print(f"{package_name(key)}: locked {entry['version']}; {'not installed' if key in missing else 'installed'}; {entry['repo']}")
 
 
 def parse_arguments() -> argparse.Namespace:

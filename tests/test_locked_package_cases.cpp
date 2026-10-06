@@ -95,31 +95,35 @@ const TestGroupRegistration registration{8, {
         const auto paths = project.paths();
         require(paths.projectRoot.path == project.root &&
                     paths.projectModuleRoot.path == project.root / "modules" &&
-                    paths.moduleSelectionFile.path == project.root / "simpkg.lock",
+                    paths.projectLockFile.path == project.root / "simpkg.lock",
                 "nested source did not discover the project lock");
-        const auto policy = simp::readModuleVersionPolicy(paths.moduleSelectionFile.path);
+        const auto policy = simp::readModuleVersionPolicy(paths.projectLockFile.path);
         const auto graph = simp::resolvePackages({"sample"}, {project.root / "modules"}, policy);
         require(graph.packages.at("sample").version == "1.0.0",
                 "compiler did not use the exact locked version");
     }},
-    {"explicit module overrides select their own policy rather than a source project lock", [] {
+    {"storage overrides do not relocate project lock discovery", [] {
         Project project;
         const auto option = project.paths("alternate", "/environment");
-        require(option.projectModuleRoot.path == project.root / "alternate" &&
-                    option.moduleSelectionFile.path == project.root / "alternate/modules.toml",
-                "-M must override environment and project configuration");
+        require(option.commandLineModuleRoot &&
+                    option.commandLineModuleRoot->path == project.root / "alternate" &&
+                    option.projectLockFile.path == project.root / "simpkg.lock",
+                "-M must add a higher-priority storage root without moving the lock");
         const auto environment = project.paths(std::nullopt, "/environment");
-        require(environment.projectModuleRoot.path == "/environment" &&
-                    environment.moduleSelectionFile.path == "/environment/modules.toml",
-                "environment must override source project configuration");
-        const auto explicitProject = project.paths("modules");
-        require(explicitProject.moduleSelectionFile.path == project.root / "simpkg.lock",
-                "explicitly selecting project/modules must retain its lock");
+        require(environment.environmentModuleRoot &&
+                    environment.environmentModuleRoot->path == "/environment" &&
+                    environment.projectLockFile.path == project.root / "simpkg.lock",
+                "environment roots must not move project configuration");
+        const auto roots = option.packageRoots();
+        require(roots.size() >= 3 && roots[0].path == project.root / "alternate" &&
+                    roots[1].path == project.root / "modules" &&
+                    roots[2].path == "/environment",
+                "package roots should put CLI before project before environment");
     }},
-    {"locked projects reject dual configuration and missing locks instead of falling back", [] {
+    {"legacy module policies and missing locks fail with migration diagnostics", [] {
         Project project;
         Project::write(project.root / "modules/modules.toml", "[modules]\n");
-        failure([&] { project.paths(); }, "ambiguous project configuration");
+        failure([&] { project.paths(); }, "legacy modules/modules.toml is no longer supported");
         std::filesystem::remove(project.root / "modules/modules.toml");
         std::filesystem::remove(project.root / "simpkg.lock");
         failure([&] { project.paths(); }, "missing simpkg.lock");

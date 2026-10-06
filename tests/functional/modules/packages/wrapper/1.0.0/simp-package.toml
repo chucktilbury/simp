@@ -1,0 +1,8 @@
+[package]
+name = "wrapper"
+version = "1.0.0"
+source = "wrapper.simp"
+export = "class:Wrapper"
+
+[dependencies]
+greeting = "=1.2.0"

@@ -62,8 +62,8 @@ and symbol table are printed to standard output.
 .TP
 .B \-\-print\-paths
 Print the resolved executable, prefix, runtime directory and library, include
-directory, builtin, project root, project module root and its source, standard
-module directory, deprecated compatibility roots, module registry, and the
+directory, builtin, discovered project root and lock, every package root with
+its origin and precedence, and the
 .B clang
 executable, then exit successfully. No input is required.
 .TP
@@ -91,13 +91,10 @@ Add directories to the textual include search path.
 Limit nested textual includes (default 16).
 .TP
 .BR \-M ", " \-\-module\-dir " \fIdir\fR"
-Use
+Add
 .I dir
-as the project module root. The directory must exist.
-.TP
-.BI \-\-package\-path " dir\fR[:\fIdir\fR...]"
-Deprecated. Add compatibility package roots searched after the project and
-standard module roots. A warning is printed when used.
+as the highest-priority package storage root. The directory must exist; it does
+not relocate the discovered project's manifest or lock.
 .TP
 .BR \-L ", " \-\-library\-path " \fIdir\fR"
 Add a linker search directory.
@@ -110,89 +107,70 @@ An
 .B import
 resolves a package from
 .IR root / name / version /simp\-package.toml .
-Module roots are searched in this order:
+Package roots are searched in this order:
 .IP 1. 4
-The project module root:
-.B \-M
-if given, otherwise
-.BR SIMP_MODULE_DIR ,
-otherwise
-.IR project\-root /modules ,
-where the project root is the nearest source ancestor containing simpkg.toml
-or a modules directory (starting at the current directory without source input).
-Without a marker, the source parent is used. A missing default root
-is not an error.
+The CLI root given by
+.BR \-M .
 .IP 2. 4
-The standard module directory shipped with the compiler.
+The discovered project's
+.IR project\-root /modules
+directory. Project discovery starts at the first source parent (or current
+directory without source input) and selects the nearest ancestor containing
+.I simpkg.toml
+or a
+.I modules
+directory. Without a marker, the source parent is used.
 .IP 3. 4
-Deprecated compatibility roots from
-.B \-\-package\-path
-and then
-.BR SIMP_PACKAGE_PATH .
+The environment root
+.BR SIMP_MODULE_DIR .
 .IP 4. 4
-The deprecated tab\-separated registry
-.RB ( SIMP_MODULE_REGISTRY ,
-default
-.IR ./simp\-modules.tsv ).
-A warning is printed whenever a module is resolved through it. Package
-manifests take precedence over registry entries.
+The user root
+.IR <config\-home>/simp/modules ,
+normally
+.IR ~/.config/simp/modules .
+When
+.B XDG_CONFIG_HOME
+is set, it is used as the config home and must be absolute.
+.IP 5. 4
+The standard module directory shipped with the compiler, normally
+.IR <prefix>/share/simp/modules .
 .PP
 The first module root containing a package shadows lower\-priority roots. Without
-a project selection policy, the highest stable version is selected only from
-the versions in that root.
+a project lock, the highest stable version is selected only from the versions
+in that root. The CLI and environment roots must exist; absent project and user
+roots are optional.
 .PP
 New projects use simpkg.toml for direct dependencies and simpkg.lock for the
-complete exact graph. Selecting such a project's modules directory uses the
-adjacent lock, including when selected explicitly with \-M or SIMP_MODULE_DIR.
-Selecting another directory instead uses that directory's policy.
+complete exact graph. The manifest and lock are always discovered from the
+source project and cannot be relocated by \-M or SIMP_MODULE_DIR.
 The compiler checks the lock schema, manifest freshness, selected package
 contents, and graph edges without network access. Missing or invalid locks
-are errors. Combining simpkg.toml with modules/modules.toml is rejected.
+are errors. Imports absent from the lock are rejected. A package found in an
+override root must match the locked version, edges, and content hash; an invalid
+higher\-priority candidate is not silently bypassed.
 Use simpkg init, simpkg add OWNER/REPO \-\-yes, and simpkg install \-\-yes;
 ordinary compilation does not require evaluating simpkg env.
 .PP
-For legacy projects without simpkg.toml, an optional
-.I modules.toml
-in the canonical project module root (selected by
-.BR \-M ,
-.BR SIMP_MODULE_DIR ,
-or the default
-.IR project\-root /modules )
-contains a strict package allowlist and ordered exact-version preferences:
-.nf
-[modules]
-geometry = ["1.2.3", "1.1.0"]
-system = ["0.1.0"]
-.fi
-.PP
-Each entry must be a nonempty, single-line array of distinct exact SemVer
-strings; only the [modules] table is supported. The first configured version
-installed in the highest-priority root is selected;
-a later version is tried only when an earlier one is absent. Unlisted direct
-and transitive packages are not found, including standard modules unless
-listed. Exact dependency pins remain constraints and conflict rather than
-causing fallback. Malformed installed packages also fail without fallback.
-Legacy registry-only modules are unsupported while the policy is active.
-When neither simpkg.toml nor
-.I modules.toml
-is present, existing version-selection and registry behavior is retained.
+The legacy \-\-package\-path, SIMP_PACKAGE_PATH, SIMP_MODULE_REGISTRY,
+./simp-modules.tsv, and modules/modules.toml mechanisms are removed.
 .PP
 An unaliased import binds the manifest's declared export name; import system
 exposes System.Process. An explicit import system as Sys exposes Sys.Process
 instead. Colliding bindings are errors. String remains an implicit prelude.
 .PP
 When a module cannot be found, the diagnostic lists every module root and
-registry searched.
+its origin.
 .SH ENVIRONMENT
 .TP
 .B SIMP_MODULE_DIR
-Project module root when
-.B \-M
-is not given.
+Additional package storage root searched after the discovered project root and
+before user and installation roots. A set but missing directory is an error.
 .TP
-.B modules.toml
-Optional strict module allowlist and ordered version policy at the selected
-project module root.
+.B XDG_CONFIG_HOME
+Absolute user config directory; user packages are searched in
+.IR $XDG_CONFIG_HOME/simp/modules .
+Defaults to
+.IR ~/.config/simp/modules .
 .TP
 .B SIMP_HOME
 Installation prefix used instead of the executable location.
@@ -204,10 +182,6 @@ Override individual resource directories; each takes precedence over
 .B CC
 C compiler driver used instead of the configured
 .BR clang .
-.TP
-.BR SIMP_PACKAGE_PATH ", " SIMP_MODULE_REGISTRY
-Deprecated compatibility module sources; see
-.BR MODULES .
 .SH FILES
 Paths are relative to the installation prefix (the parent of the
 .I bin

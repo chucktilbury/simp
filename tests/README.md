@@ -23,15 +23,17 @@ newline. For a rejected program, set `CASE_EXPECTED_DIAGNOSTIC` to the expected
 diagnostic regular expression. Optional flags include
 `CASE_REQUIRE_GC_ROOTS`, `CASE_REQUIRE_VIRTUAL_DISPATCH`,
 `CASE_EXPECT_WARNING`, `CASE_EXPECT_RUNTIME_FAILURE`,
-`CASE_EXPECT_RUNTIME_DIAGNOSTIC`, and `CASE_MODULE_REGISTRY`.
+and `CASE_EXPECT_RUNTIME_DIAGNOSTIC`.
 
 Module tests set `CASE_MODULE_ROOT` to a fixture directory under
 `functional/modules/`, copied into a private module root. Set
 `CASE_MODULE_ROOT_SOURCE` to choose how the root is selected: `cli` (the
-default, via `-M`), `env`, `default`, `stdlib`, or the deprecated
-`package-path`/`package-env`. `CASE_MODULE_ROOT_MISSING` leaves the selected
-root absent. `CASE_MODULE_DECOY` copies a fixture into lower-priority roots to
-verify that root precedence is respected.
+default, via `-M`), `env`, `default`, `home`, or `stdlib`.
+`CASE_MODULE_ROOT_MISSING` leaves the selected root absent.
+`CASE_MODULE_DECOY` copies a fixture into lower-priority roots to verify
+precedence. `CASE_MODULE_PACKAGES` populates the discovered project's package directory
+from the shared package fixtures and compiles the source from that isolated
+project, keeping project lock discovery out of the developer's working tree.
 
 Other useful options are `CASE_ARGUMENTS`, `CASE_NO_RUN`,
 `CASE_NO_SOURCE`, `CASE_EXPECT_COMPILE_OUTPUT`, and
@@ -59,5 +61,6 @@ and exercise installed package imports, `simpkg init`, and automatic `String`
 availability and inheritance. They also move `share/simp/builtin/` out of the
 prefix to verify `SIMP_BUILTIN_DIR` lookup and missing-resource diagnostics.
 Initialized projects are checked for `simpkg.toml` and a generated `simpkg.lock`
-that locks standard modules without listing `String` as a package; no legacy
-`modules/modules.toml` is created.
+that locks standard modules without listing `String` as a package. Tests use
+isolated HOME/XDG directories and exercise home-package lookup without relying
+on the developer's configuration.

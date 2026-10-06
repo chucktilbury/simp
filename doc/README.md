@@ -4,7 +4,7 @@
 - [Grammar reference](GRAMMAR.md)
 - [Language reference](LANGUAGE-REFERENCE.md)
 - [Compiler build and installation](INSTALLATION.md)
-- [Project module version selection](INSTALLATION.md#project-module-version-selection)
+- [Project package search order and user module directory](INSTALLATION.md#project-module-search)
 - [Project package manager (`simpkg`)](INSTALLATION.md#project-package-manager-simpkg)
 - [Package manifests and lockfile schema](PACKAGES.md)
 - [Debugging Simple programs](DEBUGGING.md)

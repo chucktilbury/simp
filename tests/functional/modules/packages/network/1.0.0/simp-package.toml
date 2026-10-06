@@ -1,0 +1,5 @@
+[package]
+name = "network"
+version = "1.0.0"
+source = "network.simp"
+export = "namespace:Network"

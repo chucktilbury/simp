@@ -86,17 +86,9 @@ simp::CommandLine makeCommandLine() {
     moduleDirectory.longName = "module-dir";
     moduleDirectory.name = "module-dir";
     moduleDirectory.description =
-        "Use DIR as the project module root (default: <project-root>/modules)";
+        "Add DIR as the highest-priority package root";
     moduleDirectory.valueType = simp::CommandLineValueType::String;
     commandLine.addOption(std::move(moduleDirectory));
-
-    simp::CommandLineOption packagePaths;
-    packagePaths.longName = "package-path";
-    packagePaths.name = "package-path";
-    packagePaths.description = "Deprecated: add a compatibility package search root";
-    packagePaths.valueType = simp::CommandLineValueType::String;
-    packagePaths.list = true;
-    commandLine.addOption(std::move(packagePaths));
 
     simp::CommandLineOption traces;
     traces.shortName = 't';
@@ -293,19 +285,14 @@ void writeResolvedPaths(std::ostream& output, const std::string& prefix,
            << '\n';
     output << prefix << "builtin source: " << describePath(resources.builtinSource) << '\n';
     output << prefix << "project root: " << describePath(modules.projectRoot) << '\n';
-    output << prefix << "project module root: " << describePath(modules.projectModuleRoot)
+    output << prefix << "project package root: " << describePath(modules.projectModuleRoot)
            << '\n';
-    output << prefix << "module selection file: " << describePath(modules.moduleSelectionFile)
-           << '\n';
-    output << prefix << "standard modules: " << describePath(modules.standardModuleRoot)
-           << '\n';
-    if (modules.compatibilityRoots.empty()) {
-        output << prefix << "compatibility package roots: <none>\n";
+    output << prefix << "project lock: " << describePath(modules.projectLockFile) << '\n';
+    const auto packageRoots = modules.packageRoots();
+    for (std::size_t index = 0; index < packageRoots.size(); ++index) {
+        output << prefix << "package root [" << (index + 1) << "]: "
+               << describePath(packageRoots[index]) << '\n';
     }
-    for (const auto& root : modules.compatibilityRoots) {
-        output << prefix << "compatibility package root: " << describePath(root) << '\n';
-    }
-    output << prefix << "module registry: " << describePath(modules.registry) << '\n';
     const auto compiler = compilerExecutable();
     output << prefix << "clang: " << compiler.path.string() << " (" << compiler.origin
            << ")\n";
@@ -510,6 +497,12 @@ int main(int argc, char** argv) {
     std::vector<std::string> arguments;
     arguments.reserve(argc > 1 ? static_cast<std::size_t>(argc - 1) : 0);
     for (int index = 1; index < argc; ++index) arguments.emplace_back(argv[index]);
+    for (const auto& argument : arguments) {
+        if (argument == "--package-path" || argument.rfind("--package-path=", 0) == 0) {
+            std::cerr << "simp: --package-path is no longer supported; use -M/--module-dir\n";
+            return 2;
+        }
+    }
     try {
         commandLine.parse(arguments);
     } catch (const std::invalid_argument& error) {
@@ -655,7 +648,6 @@ int main(int argc, char** argv) {
             simp::configuredInstallLayout(), simp::processEnvironment);
         simp::ModuleSearchRequest moduleRequest;
         moduleRequest.moduleDirectoryOption = commandLine.value("module-dir");
-        moduleRequest.packagePathOptions = commandLine.values("package-path");
         moduleRequest.sourcePaths = sourcePaths;
         moduleRequest.currentDirectory = std::filesystem::current_path();
         moduleSearchPaths = simp::resolveModuleSearchPaths(moduleRequest, resources,
@@ -670,9 +662,6 @@ int main(int argc, char** argv) {
     }
     if (verbosity >= pathVerbosity) {
         writeResolvedPaths(std::cerr, "[paths] ", resources, moduleSearchPaths);
-    }
-    for (const auto& warning : moduleSearchPaths.deprecationWarnings) {
-        std::cerr << "simp: warning: " << warning << '\n';
     }
     BuildContext buildContext;
     buildContext.compiler = compilerExecutable().path;
@@ -745,17 +734,13 @@ int main(int argc, char** argv) {
         frontendTimer.emplace(verbosity, "load imported modules");
         simp::ModuleLoadOptions moduleOptions;
         moduleOptions.packageSearchRoots = moduleSearchPaths.packageRoots();
-        moduleOptions.moduleSelectionFile = moduleSearchPaths.moduleSelectionFile.path;
-        moduleOptions.registry = moduleSearchPaths.registry;
+        moduleOptions.projectLockFile = moduleSearchPaths.projectLockFile.path;
         const auto moduleLoad = simp::loadImportedModules(program, moduleOptions);
         if (verbose && moduleLoad.versionPolicyActive) {
             for (const auto& module : moduleLoad.modules) {
                 std::cerr << "[verbose] selected module " << module.name << '@'
                           << module.version << " from " << module.sourcePath << '\n';
             }
-        }
-        for (const auto& warning : moduleLoad.warnings) {
-            std::cerr << "simp: warning: " << warning << '\n';
         }
         frontendTimer.emplace(verbosity, "semantic analysis");
         simp::SemanticAnalyzer semanticAnalyzer;

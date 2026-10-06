@@ -46,7 +46,6 @@ struct ResourcePaths {
 
 struct ModuleSearchRequest {
     std::optional<std::string> moduleDirectoryOption;
-    std::vector<std::string> packagePathOptions;
     std::vector<std::string> sourcePaths;
     std::filesystem::path currentDirectory;
 };
@@ -54,14 +53,13 @@ struct ModuleSearchRequest {
 struct ModuleSearchPaths {
     ResolvedPath projectRoot;
     ResolvedPath projectModuleRoot;
-    ResolvedPath moduleSelectionFile;
-    bool projectModuleRootExplicit = false;
+    std::optional<ResolvedPath> commandLineModuleRoot;
+    std::optional<ResolvedPath> environmentModuleRoot;
+    std::optional<ResolvedPath> userModuleRoot;
+    ResolvedPath projectLockFile;
     ResolvedPath standardModuleRoot;
-    std::vector<ResolvedPath> compatibilityRoots;
-    ResolvedPath registry;
-    std::vector<std::string> deprecationWarnings;
 
-    /// Package roots in search order: project, standard, then compatibility.
+    /// Package roots in search order: CLI, project, environment, user, install.
     std::vector<ResolvedPath> packageRoots() const;
 };
 
@@ -93,12 +91,12 @@ ResourcePaths resolveResourcePaths(const std::optional<std::filesystem::path>& e
 const ResourcePaths& processResourcePaths();
 
 /**
- * Resolves the module search configuration. The project module root comes from
- * -M/--module-dir, then SIMP_MODULE_DIR, then <project-root>/modules where the
- * project root is the nearest ancestor of the first source input containing
+ * Resolves package storage roots independently from project configuration.
+ * simpkg.toml/simpkg.lock are always discovered from the source project;
+ * package roots are searched in CLI, project, environment, user, install order.
+ * The project root is the nearest ancestor of the first source input containing
  * simpkg.toml or modules (starting at the current directory without sources).
- * With no marker, the source parent/current directory is used. Locked projects
- * use simpkg.lock; simultaneous legacy and new policies are errors.
+ * With no marker, the source parent/current directory is used.
  */
 ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
                                            const ResourcePaths& resources,

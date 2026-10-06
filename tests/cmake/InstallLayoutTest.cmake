@@ -26,7 +26,9 @@ endforeach()
 set(clean_environment
     --unset=SIMP_HOME --unset=SIMP_RUNTIME_DIR --unset=SIMP_INCLUDE_DIR
     --unset=SIMP_BUILTIN_DIR --unset=SIMP_STDLIB_MODULE_DIR --unset=SIMP_MODULE_DIR
-    --unset=SIMP_PACKAGE_PATH --unset=SIMP_MODULE_REGISTRY --unset=DESTDIR)
+    --unset=SIMP_PACKAGE_PATH --unset=SIMP_MODULE_REGISTRY --unset=DESTDIR
+    "HOME=${work_directory}/home" "XDG_CONFIG_HOME=${work_directory}/xdg")
+file(MAKE_DIRECTORY "${work_directory}/home" "${work_directory}/xdg")
 
 function(run_checked description)
     execute_process(COMMAND ${ARGN}

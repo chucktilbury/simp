@@ -1,6 +1,0 @@
-set(CASE_NAME simp_module_selection_reports_missing_versions)
-set(CASE_FIXTURE positive_package_version_pins.simp)
-set(CASE_MODULE_ROOT packages)
-set(CASE_MODULE_POLICY policy/missing-shared.toml)
-set(CASE_MODULE_ROOT_SOURCE env)
-set(CASE_EXPECTED_DIAGNOSTIC "versions searched in order: \\[9.0.0\\]")

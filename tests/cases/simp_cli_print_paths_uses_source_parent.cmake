@@ -12,12 +12,12 @@ prefix: ]==]
 include directory: ]==]
     [==[builtin source: [^
 ]+/simp/builtin/String\.simp
-project root: <PROJECT_DIR> \(parent of first source input\)
-project module root: <PROJECT_DIR>/modules \(default <project-root>/modules\)
-module selection file: <PROJECT_DIR>/modules/modules\.toml \[not found\] \(project module selection\)
-standard modules: [^
+project root: <PROJECT_DIR> \(parent of first source input\)]==]
+    [==[project package root: <PROJECT_DIR>/modules \(project <project-root>/modules\)]==]
+    [==[project lock: <PROJECT_DIR>/simpkg\.lock \[not found\] \(project lock\)]==]
+    [==[package root \[1\]: <PROJECT_DIR>/modules \(project <project-root>/modules\)]==]
+    [==[package root \[2\]: <WORK_DIR>/xdg/simp/modules \[not found\] \(XDG_CONFIG_HOME/simp/modules\)]==]
+    [==[package root \[3\]: [^
 ]+/simp/modules \(executable-relative\)
-compatibility package roots: <none>
-module registry: <WORK_DIR>/simp-modules.tsv \[not found\] \(default ./simp-modules.tsv, deprecated\)
 clang: ]==])
 set(CASE_REJECT_COMPILE_OUTPUT [==[simp: built]==] [==[warning]==])

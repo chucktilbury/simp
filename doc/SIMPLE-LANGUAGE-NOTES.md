@@ -1165,7 +1165,7 @@ interchangeable.
   }
   ```
 
-- In this example, the `network` registry entry designates a top-level
+- In this example, the `network` package manifest designates a top-level
   namespace (for example, `Network`) that contains a nested `Http` namespace
   and a `Client` class. The alias `Net` refers to that namespace, so
   `Net.Http.Client()` constructs a `Client`; `get` is then called on the
@@ -1173,8 +1173,8 @@ interchangeable.
 - An import is a top-level declaration, interspersed with other top-level
   declarations before `start`; it is not permitted inside a namespace, class,
   or function body. It does not paste or compile source text at the import
-  site. `module_name` resolves first as a package and then through the legacy
-  module registry. A package or registry entry designates exactly one
+  site. `module_name` resolves as a versioned package. A package manifest
+  designates exactly one
   importable declaration from its Simple source: either a top-level class or
   a top-level namespace. The required `<symbol>` is bound in the importing
   file's scope directly to that class or namespace; it is not a bag of all
@@ -1200,42 +1200,29 @@ interchangeable.
 - A namespace declaration uses one identifier at a time; nested paths are
   written with physically nested blocks. These declarations create a Simple
   namespace path in the current compilation unit and do not consult the
-  registry or create an alias. `include "file.simp"` textually adds source to
+  package search roots or create an alias. `include "file.simp"` textually adds source to
   that unit, and included namespace blocks participate in its namespace
-  paths. In contrast, `import network as Net` resolves the package or legacy
-  module and binds only its designated class or namespace under `Net`; it does not
+  paths. In contrast, `import network as Net` resolves a versioned package and
+  binds only its designated class or namespace under `Net`; it does not
   textually merge source, import a generic export bag, or reopen a local
   namespace.
 - A binding-name collision in the same scope is an error, including a
   repeated import that would bind the same local name. Distinct aliases may
   refer to the same module.
 
-#### Module registry and compilation
+#### Package lookup and compilation
 
-- Legacy registry imports use a UTF-8, tab-separated file named
-  `simp-modules.tsv` in the compiler's current working directory. Set
-  `SIMP_MODULE_REGISTRY` to use a different registry path. Relative source
-  paths are resolved relative to the registry file. A package manifest takes
-  precedence over a legacy registry row with the same import name.
-- Each non-comment row has exactly six tab-separated fields:
-  `module-name`, `source-path`, `version`, `dependency-library-versions`,
-  `export-kind`, and `export-name`. Lines beginning with `#` and empty lines
-  are ignored. The module name and export name are identifiers; export kind
-  is `class` or `namespace`. Dependency library versions are a comma-separated
-  list of `name=version` pairs, or an empty field when there are none.
-- A legacy registry entry points to a Simple source file. The compiler parses
-  and analyzes that file as a declaration-only module (it cannot contain
-  `start`), emits a separate LLVM IR translation unit for its methods, and
-  links that IR with the importing program's IR. Legacy module imports are
-  resolved recursively. The registry's version and dependency-version strings
-  are metadata only; package manifests provide enforced package-level
-  constraints and native linker inputs. Registry-only modules are unsupported
-  when a project `modules.toml` policy is active.
-- The implementation performs registry/package lookup, designated-export
-  validation, alias-scoped qualified-name resolution, module IR
-  generation/linking, and diagnostics for malformed or missing entries.
-  Imported declarations remain module-owned and are not visible except
-  through their import aliases.
+- Imports resolve only versioned package directories containing
+  `simp-package.toml`; the removed `simp-modules.tsv` registry is not read.
+  Package manifests provide exact dependency constraints, designated exports,
+  and native linker inputs. Project locks restrict which packages can be
+  imported and validate exact versions, dependency edges, and content hashes.
+- The compiler parses and analyzes each imported package as a
+  declaration-only module (it cannot contain `start`), emits a separate LLVM
+  IR translation unit for its methods, and links that IR with the importing
+  program's IR. Package imports are resolved recursively. Imported declarations
+  remain module-owned and are visible through their declared exports and
+  import aliases.
 
 #### Package manifests, resolution, and native linking
 
@@ -1274,9 +1261,10 @@ interchangeable.
   must be exact `=VERSION` pins. Array values are single-line arrays of quoted
   strings. Unknown keys/tables, duplicate keys/tables, invalid versions,
   missing sources, and missing declared library directories are errors.
-- Package versions use SemVer 2.0.0. Without a project policy, a direct import
+- Package versions use SemVer 2.0.0. In an unlocked project, a direct import
   with no source-level version constraint selects the highest stable version
-  in the first module root containing that package. Exact
+  in the first module root containing that package. A locked project must
+  satisfy its lock and does not perform fallback selection. Exact
   dependency pins constrain that package name across the whole compilation;
   a unique dependency pin selects that version even if an unpinned direct
   import also names the package. Different exact pins for one package name,
@@ -1289,50 +1277,31 @@ interchangeable.
   with explicit network consent and installs all transitives. Compilation
   validates lock freshness, exact graph edges, and selected package hashes
   without network access. See [the schema and contract](PACKAGES.md).
-- For legacy projects without `simpkg.toml`, an optional `modules.toml` in the canonical project module root (chosen by
-  `-M`/`--module-dir`, `SIMP_MODULE_DIR`, or `<project-root>/modules`) enables
-  strict allowlist and ordered-version selection. Its supported form is a
-  single `[modules]` table mapping package identifiers to nonempty, single-line
-  arrays of distinct exact SemVer strings:
-
-  ```toml
-  [modules]
-  geometry = ["1.2.3", "1.1.0"]
-  system = ["0.1.0"]
-  ```
-
-  The first configured version installed in the established highest-priority
-  root is selected. A later version is tried only when an earlier version is
-  absent; malformed installed packages and conflicts with exact dependency
-  pins fail without fallback. If none of the configured versions is installed,
-  the diagnostic lists the versions searched. Unlisted direct and transitive
-  packages are not found, including bundled standard-library packages unless
-  listed. Registry-only resolution, version ranges, and automatic newest
-  version selection are unsupported while the policy is active. When the file
-  is absent, existing package and deprecated registry behavior is preserved.
-- Package module roots are checked in this order:
-  1. The canonical project module root, chosen as `-M DIR`/`--module-dir DIR`,
-     else `SIMP_MODULE_DIR`, else `<project-root>/modules`. The project root is
-     the nearest ancestor of the first `.simp` source input containing
-     `simpkg.toml` or a `modules` directory (starting at the current directory
-     without source input). Without a marker it is the source parent.
-     An explicitly selected root
-     that does not exist is an error; a missing default root is skipped.
-  2. The compiler's standard modules, `<prefix>/share/simp/modules`
+- Package roots use first-match lookup in this order:
+  1. The CLI root selected with `-M DIR`/`--module-dir DIR`.
+  2. `<project-root>/modules`.
+  3. `SIMP_MODULE_DIR`.
+  4. `<config-home>/simp/modules`, normally `~/.config/simp/modules`, or
+     `$XDG_CONFIG_HOME/simp/modules` when `XDG_CONFIG_HOME` is set.
+  5. The compiler's standard modules, `<prefix>/share/simp/modules`
      (overridable with `SIMP_STDLIB_MODULE_DIR` or `SIMP_HOME`).
-  3. Deprecated compatibility roots: repeated `--package-path DIR` values, left
-     to right, then `SIMP_PACKAGE_PATH` entries separated by `:`. Each source
-     produces a deprecation warning only when it is used.
-  The former implicit `./.simp/packages`, `$XDG_DATA_HOME/simp/packages`, and
-  `~/.local/share/simp/packages` roots are no longer searched. Roots are
-  normalized and deduplicated. The first root containing a package shadows
-  lower-priority roots, and version selection occurs only within that root.
-  A missing-module diagnostic lists every normalized root and registry
-  searched, with `[not found]` marking absent paths.
-- A locked project's canonical `modules` directory uses the adjacent
-  `simpkg.lock`. Selecting a different explicit module directory uses its
-  policy instead. Dual new/legacy configuration is an error, not a priority
-  guess; nested source builds do not require `eval "$(simpkg env)"`.
+  The project root is discovered from the first `.simp` source input, starting
+  at its parent and walking toward the filesystem root; without source input,
+  discovery starts at the current directory. It is the nearest ancestor with
+  `simpkg.toml` or a `modules` directory, or the source parent if there is no
+  marker. Explicit CLI/environment roots must exist; missing project and home
+  roots are optional. The first root containing a package shadows lower-priority
+  roots, and version selection occurs only within that root. `-M` and
+  `SIMP_MODULE_DIR` add storage roots; they never move the discovered manifest
+  or lock. A locked override is accepted only when exact package/version,
+  dependency edges, and content hash match; invalid higher-priority candidates
+  fail rather than falling through. `simp --print-paths` reports every root,
+  origin, and precedence.
+- The old `--package-path`, `SIMP_PACKAGE_PATH`, `SIMP_MODULE_REGISTRY`,
+  `./simp-modules.tsv`, and `modules/modules.toml` mechanisms have been
+  removed. There are no compatibility aliases or fallbacks. Migrate to
+  `simpkg.toml`/`simpkg.lock` with `simpkg init` and declare dependencies with
+  `simpkg add`.
 - `[link].libraries` contains library names without a `-l` prefix, and
   `[link].library-paths` provides package-relative directories. The compiler
   translates these to `-lNAME` and `-L DIR` arguments for its existing Clang
@@ -1349,13 +1318,6 @@ interchangeable.
   later through `simp program.o -o program` reads the adjacent sidecar;
   ordinary objects without one still use explicit `-L`/`-l` options. Keep the
   sidecar with the object when moving it.
-- `simp-modules.tsv` remains the final, deprecated compatibility catalog for
-  un-packaged modules and existing tests; it is consulted only after every
-  module root, and a warning is printed whenever an import resolves through
-  it. Its six-column format and `SIMP_MODULE_REGISTRY`
-  override are unchanged, and its historical version/dependency fields
-  remain unenforced metadata. Package manifests are the package source of
-  truth; the flat registry is not generated or rewritten by package loading.
 
 ## Runtime, destruction, garbage collection, and threads
 
@@ -1832,7 +1794,7 @@ The goal is to turn the requirements into stages, not to estimate Copilot credit
   matching out-of-line method bodies, and out-of-line method definitions that
   use `from "<symbol>"` for a C binding. Native bindings are still class
   methods; their C ABI receives the implicit `this` pointer first. The
-  compiler implements source-module registry lookup and import linking.
+  compiler resolves versioned source packages and generates/import-links their IR.
 - The listed module priorities, examples, testing expectations, source-size guidance, documentation expectations, and CLI/tooling goals are project requirements.
 - The grammar proposals must be reconciled with examples and priorities before becoming a specification.
 - `switch`/`case` will not be implemented; `if`/`else if`/`else` chains are the

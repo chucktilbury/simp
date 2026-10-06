@@ -1,6 +1,0 @@
-set(CASE_NAME simp_module_selection_rejects_unlisted)
-set(CASE_FIXTURE positive_package_version_pins.simp)
-set(CASE_MODULE_ROOT packages)
-set(CASE_MODULE_POLICY policy/unlisted-shared.toml)
-set(CASE_MODULE_ROOT_SOURCE cli)
-set(CASE_EXPECTED_DIAGNOSTIC "module 'shared' is not found: it is not listed")
