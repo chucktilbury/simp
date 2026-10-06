@@ -340,6 +340,29 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     endforeach()
 endif()
 
+set(example_directory "${CMAKE_CURRENT_SOURCE_DIR}/../examples")
+file(GLOB_RECURSE example_sources CONFIGURE_DEPENDS "${example_directory}/*.simp")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/examples.json")
+execute_process(COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
+    --examples "${example_directory}"
+    --manifest "${CMAKE_CURRENT_SOURCE_DIR}/examples.json" --list
+    OUTPUT_VARIABLE example_cases OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE example_result ERROR_VARIABLE example_error)
+if(NOT example_result EQUAL 0)
+    message(FATAL_ERROR "Example inventory check failed: ${example_error}")
+endif()
+foreach(example_case IN LISTS example_cases)
+    string(REPLACE "/" "_" example_name "${example_case}")
+    add_test(NAME "simp_example_${example_name}"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
+        --compiler "$<TARGET_FILE:simp>" --examples "${example_directory}"
+        --manifest "${CMAKE_CURRENT_SOURCE_DIR}/examples.json"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/examples" --case "${example_case}")
+    set_tests_properties("simp_example_${example_name}" PROPERTIES LABELS examples TIMEOUT 60)
+endforeach()
+
 if(SIMP_SANITIZE AND NOT SIMP_SANITIZE STREQUAL "OFF")
     get_property(simp_all_tests DIRECTORY PROPERTY TESTS)
     set_tests_properties(${simp_all_tests} PROPERTIES

@@ -1,12 +1,9 @@
 
 start {
 
-    handle fh ; initialized by simp_file_open() elsewhere
-    buffer c
+    ; Deliberately read beyond an empty buffer to demonstrate a runtime diagnostic.
+    buffer c = buffer(0)
     int ch
-    inline(handle fh, int c) {
-        *c = fgetc(*fh);
-    }
     ch = int(c[0]) ; << RT error: invalid buffer reference
     print(ch)
 }

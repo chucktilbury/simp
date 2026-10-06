@@ -17,7 +17,7 @@ class Foo {
     void pnum(int val) {
 
         inline(int val) {
-            printf("this is the %lu number\n", *val);
+            printf("this is the %lld number\n", (long long)*val);
         }
     }
 }

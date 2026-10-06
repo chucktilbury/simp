@@ -43,3 +43,21 @@ to avoid overwriting another configuration's compiler and runtime.
 
 The networking integration case exercises empty native strings; UBSan caught
 and now guards the zero-length `memchr` call on their null backing storage.
+
+## Repository examples
+
+`ctest --test-dir build -L examples --output-on-failure -j4` compiles every
+`examples/**/*.simp`. Each program runs in a temporary project with a private
+home directory, checked stdout, checked exit status, and checked stderr.
+`scanner.simp` receives the checked-in `input_test.txt` in its working directory
+and on stdin. The formerly empty module example now exports `Example.Answer`;
+a small importing driver compiles and runs it, checking its answer.
+
+`tests/examples.json` contains exact expectations; configuration fails if any
+example has no expectation or an expectation names a deleted example.
+`err.simp` handles a missing-file error and exits successfully; `test.simp`
+demonstrates a buffer-bounds runtime error and `unhandled_exception.simp`
+demonstrates an uncaught exception. The latter two must abort with the intended
+diagnostic, not a sanitizer failure. Broken string-call syntax in
+`virtual_base.simp` and the mismatched inline capture in `test.simp` have been
+updated to the current language.

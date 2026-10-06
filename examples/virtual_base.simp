@@ -125,8 +125,8 @@ start {
     print(format("read() from diamond: {}", diamond.read()))
 
     ; show that both sides of the diamond can access the value
-    print("expression with left and right: {}"
-            (diamond.Left.Root.read() + diamond.Right.Root.read() + root.read()))
+    print(format("expression with left and right: {}",
+            diamond.Left.Root.read() + diamond.Right.Root.read() + root.read()))
 
     ; construct the Payload
     diamond.Left.Root.item = Payload(50)
