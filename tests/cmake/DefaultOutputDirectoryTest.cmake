@@ -5,6 +5,8 @@ if(NOT DEFINED COMPILER OR NOT DEFINED SOURCE OR
         "COMPILER, SOURCE, WORKING_DIRECTORY, OUTPUT_NAME, IR_OUTPUT, and EXPECTED_OUTPUT are required")
 endif()
 
+# Start from an empty directory so artifacts from earlier runs cannot leak in.
+file(REMOVE_RECURSE "${WORKING_DIRECTORY}")
 file(MAKE_DIRECTORY "${WORKING_DIRECTORY}")
 set(executable "${WORKING_DIRECTORY}/${OUTPUT_NAME}")
 file(REMOVE "${executable}")
