@@ -7,6 +7,8 @@ set(work "${WORK_DIR}/include search path tests/${CASE}")
 set(source_directory "${work}/source")
 set(first_search_directory "${work}/first search directory")
 set(second_search_directory "${work}/second search directory")
+# Start from an empty directory so artifacts from earlier runs cannot leak in.
+file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${source_directory}" "${first_search_directory}" "${second_search_directory}")
 
 set(search_source "${source_directory}/search.simp")

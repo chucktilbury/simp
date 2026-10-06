@@ -7,6 +7,8 @@ if(NOT DEFINED CASE)
     set(CASE all)
 endif()
 set(work "${WORK_DIR}/multi input tests/${CASE}")
+# Start from an empty directory so artifacts from earlier runs cannot leak in.
+file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${work}")
 set(helper "${work}/helper.simp")
 set(main "${work}/main.simp")
