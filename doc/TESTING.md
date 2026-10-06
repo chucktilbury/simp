@@ -61,3 +61,25 @@ demonstrates an uncaught exception. The latter two must abort with the intended
 diagnostic, not a sanitizer failure. Broken string-call syntax in
 `virtual_base.simp` and the mismatched inline capture in `test.simp` have been
 updated to the current language.
+
+## Documentation programs
+
+`ctest --test-dir build -L documentation --output-on-failure` extracts and
+executes complete `simp`/`simple` fenced blocks from every `doc/*.md`.
+A block containing `start {` must include exactly one Simple comment:
+
+```text
+// test: {"stdout": "exact expected output\n"}
+```
+
+This is JSON: escape newlines and quotes, and include no implicit line breaks
+(`print` adds none). The marker is also the documented, machine-checked output.
+`<WORK_DIR>` in stdout expands to the isolated program working directory.
+Optional `fixture` names a checked-in project under `tests/doc_fixtures/`
+for examples that demonstrate external packages. Optional `stdin`, `exit`,
+and `diagnostic` use the same checks as repository examples.
+Explicit `// Fragment: reason` comments identify non-standalone snippets;
+they cannot carry test markers. The extractor refuses unmarked complete
+programs rather than silently skipping new ones. Design-note fragments without
+entry points are not executable tests. The inline C example's numeric output
+comment has been corrected from `3.0` to the actual default rendering `3`.

@@ -92,6 +92,7 @@ Package installation rejects symbolic links and special files.
 ```simp
 import geometry
 import geometry as G
+// test: {"stdout": "", "fixture": "geometry"}
 
 start {
     // Both bindings denote the declared namespace, not an extra package layer.

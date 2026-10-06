@@ -4,3 +4,5 @@
 /share/
 /lib64/
 /doc/out/
+__pycache__/
+*.pyc

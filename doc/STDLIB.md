@@ -10,6 +10,7 @@ package namespace; use the exported classes directly beneath it. For example,
 ```simp
 import system as Sys
 import math as MathLib
+// test: {"stdout": "true"}
 
 start {
     MathLib.Math math = MathLib.Math()
@@ -155,6 +156,7 @@ set `lastError()`.
 
 ```simp
 import system as Sys
+// test: {"stdout": "hello\n"}
 
 start {
     Sys.StandardIO io = Sys.System().io()
@@ -210,6 +212,7 @@ package does not report math-domain conditions through `System.lastError()`.
 
 ```simp
 import math as M
+// test: {"stdout": "true"}
 
 start {
     M.Math math = M.Math()
@@ -286,6 +289,7 @@ small parser, not a URL validator.
 
 ```simp
 import networking as Net
+// test: {"stdout": "true"}
 
 start {
     Net.Url address = Net.Url("https://example.test/path")
@@ -313,6 +317,7 @@ reported through `System.lastError()`.
 
 ```simp
 import time as T
+// test: {"stdout": "truetrue"}
 
 start {
     T.Clock clock = T.Clock()
@@ -353,6 +358,7 @@ unwaited child and releases captured data and descriptors.
 
 ```simp
 import process as P
+// test: {"stdout": "truetruetrue"}
 
 start {
     P.Process child = P.Process("/usr/bin/printf", ["hello"])
@@ -384,6 +390,7 @@ mode and do not report errors through `System.lastError()`.
 
 ```simp
 import terminal as Term
+// test: {"stdout": "true"}
 
 start {
     Term.Terminal terminal = Term.Terminal()
@@ -410,6 +417,7 @@ false for an invalid buffer or source failure. Failures set
 
 ```simp
 import random as R
+// test: {"stdout": "truetrue"}
 
 start {
     R.SecureRandom random = R.SecureRandom()
@@ -477,6 +485,7 @@ users have stopped.
 
 ```simp
 import synchronization as Sync
+// test: {"stdout": "truetruetrue"}
 
 start {
     Sync.Mutex lock = Sync.Mutex()
@@ -521,6 +530,7 @@ private runtime functions are not part of this facade.
 
 ```simp
 start {
+    // test: {"stdout": "<WORK_DIR>\n3"}
     float root = 0.0
     strg directory
     inline (float root, strg directory) {
@@ -528,7 +538,7 @@ start {
         *directory = simp_fs_get_cwd(NULL);
         printf("%s\n", simp_string_cstr(directory));
     }
-    print(root) // 3.0
+    print(root) // 3
 }
 ```
 

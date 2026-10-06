@@ -7,6 +7,7 @@ show the expected output or behavior:
 Formatting uses literal templates, not calls on string literals:
 
 ```simp
+// test: {"stdout": "this is 420000002AASCII: Aliteral {}"}
 start {
     strg message = format("this is {}", 42)
     print(message)

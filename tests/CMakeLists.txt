@@ -363,6 +363,13 @@ foreach(example_case IN LISTS example_cases)
     set_tests_properties("simp_example_${example_name}" PROPERTIES LABELS examples TIMEOUT 60)
 endforeach()
 
+add_test(NAME simp_documentation_programs
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_doc_programs.py"
+    --compiler "$<TARGET_FILE:simp>" --doc "${CMAKE_CURRENT_SOURCE_DIR}/../doc"
+    --fixtures "${CMAKE_CURRENT_SOURCE_DIR}/doc_fixtures"
+    --work "${CMAKE_CURRENT_BINARY_DIR}/doc-programs")
+set_tests_properties(simp_documentation_programs PROPERTIES LABELS documentation TIMEOUT 180)
+
 if(SIMP_SANITIZE AND NOT SIMP_SANITIZE STREQUAL "OFF")
     get_property(simp_all_tests DIRECTORY PROPERTY TESTS)
     set_tests_properties(${simp_all_tests} PROPERTIES

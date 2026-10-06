@@ -40,6 +40,7 @@ lines. Double quotes support `\e` (ESC, byte `0x1b`), `\n`, `\r`, `\t`,
 
 ```simp
 // Complete program: literal spellings and a formatted string.
+// test: {"stdout": "count=18, total=18, ratio=0.5"}
 start {
     int count = 0x12
     unsigned total = 0x12u
@@ -59,6 +60,7 @@ source files as one compilation unit, with exactly one `start` among them.
 
 ```simp
 // Complete program: executable statements live in start.
+// test: {"stdout": "Simple is running"}
 start {
     print("Simple is running")
 }
@@ -158,6 +160,7 @@ and `relational`.
 
 ```simp
 // Complete program: null locals, casts, and runtime type tests.
+// test: {"stdout": "no integer value"}
 start {
     int maybe = null
     if (maybe is int) {
@@ -196,6 +199,7 @@ arithmetic operators.
 
 ```simp
 // Complete program: an inner value shadows, rather than changes, the outer value.
+// test: {"stdout": "340"}
 start {
     int value = 40
     {
@@ -326,6 +330,7 @@ invalid UTF-8. See `format-expression` and `print-statement` in the grammar.
 
 ```simp
 // Complete program: arithmetic, logical operators, and formatting.
+// test: {"stdout": "answer=42"}
 start {
     int first = 20
     int second = 22
@@ -352,6 +357,7 @@ variable has type `String`. `break` and `continue` are valid only in loops.
 
 ```simp
 // Complete program: while, continue, and for-each.
+// test: {"stdout": "6"}
 start {
     list values = [2, 3, 4]
     int total = 0
@@ -388,6 +394,7 @@ constants, not an enum type:
 
 ```simp
 class Status {
+    // test: {"stdout": "12"}
     public:
     enum {
         READY = 10,
@@ -475,6 +482,7 @@ later statements, or mixed direct/protected sequences are rejected.
 
 ```simp
 class Foo {
+    // test: {"stdout": "caught the first timethis is the stringcaught the second time"}
     Foo() { raise(Exception("this is the string")) }
 }
 class Bar : Foo {
@@ -497,6 +505,7 @@ start {
 
 ```simp
 // Complete program: inheritance, construction, override, and dispatch.
+// test: {"stdout": "42"}
 class Meter {
     int value
     Meter(int initial) {
@@ -574,6 +583,7 @@ be in the same namespace scope as the class they define. See
 
 ```simp
 // Complete program: a class in a namespace.
+// test: {"stdout": "7"}
 namespace Geometry {
     class Point {
         int x
@@ -633,6 +643,7 @@ includes do not create an isolated module namespace. See
 
 ```simp
 // Complete program (requires an installed/bundled `system` package).
+// test: {"stdout": ""}
 import system
 start {
     System.Process().exit(0)
@@ -667,6 +678,7 @@ still cannot return.
 
 ```simp
 // Complete program: raising and catching a typed exception.
+// test: {"stdout": "brokenfinished"}
 class Problem : public Exception {
     Problem(String text) {
         super Exception(text)
@@ -699,6 +711,7 @@ Out-of-range indices and invalid conversions can raise exceptions. See
 
 ```simp
 // Complete program: basic string operations.
+// test: {"stdout": "Hello world11"}
 start {
     String text = "Hello"
     text.append(" world")
@@ -728,6 +741,7 @@ be stored in collections and passed through `any`. See `primary`,
 
 ```simp
 // Complete program: byte-buffer literals, access, and mutation.
+// test: {"stdout": "365"}
 start {
     buffer bytes = buffer[65, 66]
     bytes.append(67)
@@ -783,6 +797,7 @@ stable complexity guarantee. See `list-literal`, `dict-literal`,
 
 ```simp
 // Complete program: type-check and extract an indexed collection value.
+// test: {"stdout": "42"}
 start {
     list values = [42, "text"]
     if (values[0] is int) {
@@ -939,6 +954,7 @@ int result inline {
 
 ```simp
 class Counter {
+    // test: {"stdout": "101"}
     int count
     Counter() { count = 0 }
     void add(int count) {
