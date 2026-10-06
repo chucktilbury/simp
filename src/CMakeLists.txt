@@ -26,6 +26,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 include(GNUInstallDirs)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/Instrumentation.cmake")
 find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
 
 # The staged prefix mirrors the install layout so the compiler finds its
@@ -170,6 +171,7 @@ target_compile_definitions(simp PRIVATE
     SIMP_VERSION="${PROJECT_VERSION}"
     SIMP_CLANG_EXECUTABLE="${SIMP_CLANG_EXECUTABLE}"
     SIMP_TARGET_TRIPLE="${SIMP_TARGET_TRIPLE}"
+    SIMP_SANITIZER_LIST="${SIMP_SANITIZER_LIST}"
 )
 add_dependencies(simp simp_runtime)
 set_target_properties(simp PROPERTIES

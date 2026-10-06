@@ -1,0 +1,17 @@
+include_guard(GLOBAL)
+
+set(SIMP_SANITIZE "OFF" CACHE STRING "Sanitizers (OFF or address;undefined)")
+if(SIMP_SANITIZE AND NOT SIMP_SANITIZE STREQUAL "OFF")
+    if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang" OR
+       NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "SIMP_SANITIZE requires Clang for C and C++ (generated programs use Clang too)")
+    endif()
+    foreach(sanitizer IN LISTS SIMP_SANITIZE)
+        if(NOT sanitizer MATCHES "^(address|undefined)$")
+            message(FATAL_ERROR "Unsupported SIMP_SANITIZE entry: ${sanitizer}")
+        endif()
+    endforeach()
+    list(JOIN SIMP_SANITIZE "," SIMP_SANITIZER_LIST)
+    add_compile_options("-fsanitize=${SIMP_SANITIZER_LIST}" -fno-omit-frame-pointer -g)
+    add_link_options("-fsanitize=${SIMP_SANITIZER_LIST}")
+endif()

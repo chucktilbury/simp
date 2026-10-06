@@ -134,8 +134,12 @@ file(COPY "${relocated_prefix}/${INCLUDEDIR}/simp/Stdlib.h"
     DESTINATION "${project_directory}/public/simp")
 file(COPY "${SOURCE_DIR}/tests/functional/cli/inline_stdlib.c"
     DESTINATION "${project_directory}")
+set(instrumentation_flags)
+if(SANITIZER_LIST)
+    list(APPEND instrumentation_flags "-fsanitize=${SANITIZER_LIST}")
+endif()
 run_checked("standalone public C header"
-    "${CLANG}" -std=c11 -Wall -Wextra -Werror
+    "${CLANG}" ${instrumentation_flags} -std=c11 -Wall -Wextra -Werror
     "-I${project_directory}/public" "${project_directory}/inline_stdlib.c"
     "${relocated_prefix}/${LIBDIR}/simp/${RUNTIME_LIBRARY_NAME}"
     -lm -pthread -o "${project_directory}/public-api")

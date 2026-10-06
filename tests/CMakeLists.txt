@@ -10,6 +10,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(CMAKE_C_STANDARD_REQUIRED ON)
     set(CMAKE_C_EXTENSIONS OFF)
     enable_testing()
+    include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/Instrumentation.cmake")
     include(GNUInstallDirs)
     set(SIMP_STAGE_PREFIX "${CMAKE_CURRENT_BINARY_DIR}")
     set(SIMP_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bin")
@@ -333,7 +334,14 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "-DMANDIR=${CMAKE_INSTALL_MANDIR}"
                 "-DRUNTIME_LIBRARY_NAME=$<TARGET_FILE_NAME:simp_runtime>"
                 "-DCLANG=${SIMP_CLANG_EXECUTABLE}"
+                "-DSANITIZER_LIST=${SIMP_SANITIZER_LIST}"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallLayoutTest.cmake"
         )
     endforeach()
+endif()
+
+if(SIMP_SANITIZE AND NOT SIMP_SANITIZE STREQUAL "OFF")
+    get_property(simp_all_tests DIRECTORY PROPERTY TESTS)
+    set_tests_properties(${simp_all_tests} PROPERTIES
+        ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
 endif()

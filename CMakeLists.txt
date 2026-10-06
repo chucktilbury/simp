@@ -9,13 +9,14 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 include(GNUInstallDirs)
+include(cmake/Instrumentation.cmake)
 
 # Root builds stage a developer prefix in the source tree: <source>/bin/simp
 # finds its runtime, headers, builtin, and standard modules in sibling
 # directories with the same relative shape as an installed prefix.
-set(SIMP_STAGE_PREFIX "${CMAKE_SOURCE_DIR}")
-set(SIMP_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin")
-set(SIMP_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/lib")
+set(SIMP_STAGE_PREFIX "${CMAKE_SOURCE_DIR}" CACHE PATH "Developer resource staging prefix")
+set(SIMP_RUNTIME_OUTPUT_DIRECTORY "${SIMP_STAGE_PREFIX}/bin")
+set(SIMP_LIBRARY_OUTPUT_DIRECTORY "${SIMP_STAGE_PREFIX}/lib")
 
 find_program(SIMP_CLANG_EXECUTABLE NAMES clang)
 if(NOT SIMP_CLANG_EXECUTABLE)

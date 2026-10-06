@@ -310,6 +310,11 @@ void requireResource(const std::filesystem::path& path, const std::string& descr
 int runCompiler(const BuildContext& context, const std::vector<std::string>& arguments,
                 const std::string& operation) {
     std::string command = shellQuote(context.compiler.string());
+    if (std::string(SIMP_SANITIZER_LIST).size() != 0 &&
+        std::find(arguments.begin(), arguments.end(), "-r") == arguments.end()) {
+        command += " " + shellQuote("-fsanitize=" SIMP_SANITIZER_LIST);
+        command += " -fno-omit-frame-pointer -g";
+    }
     for (const auto& argument : arguments) command += " " + shellQuote(argument);
     if (context.verbosity >= pathVerbosity) std::cerr << "[command] " << command << '\n';
     const int status = std::system(command.c_str());

@@ -50,7 +50,7 @@ static char *copy_string_bytes(void *object) {
         simp_runtime_set_error(EOVERFLOW);
         return NULL;
     }
-    if (memchr(bytes, '\0', (size_t)length) != NULL) {
+    if (length != 0 && memchr(bytes, '\0', (size_t)length) != NULL) {
         simp_runtime_set_error(EINVAL);
         return NULL;
     }

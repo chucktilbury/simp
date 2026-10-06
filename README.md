@@ -32,6 +32,7 @@ See [`doc/simp.1`](doc/simp.1) for compiler options and
 The compiler's [test guide](tests/README.md) explains the functional fixtures
 and how to add cases; runnable language examples are in
 [`doc/EXAMPLES.md`](doc/EXAMPLES.md).
+See [testing infrastructure](doc/TESTING.md) for sanitizer configurations.
 
 ## Install
 

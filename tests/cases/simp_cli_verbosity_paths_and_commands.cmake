@@ -10,6 +10,7 @@ set(CASE_EXPECT_COMPILE_OUTPUT
     [==[\[paths\] project lock: <PROJECT_DIR>/simpkg\.lock \[not found\] \(project lock\)]==]
     [==[\[paths\] runtime library: [^
 ]+/simp/libsimp_runtime\.a]==]
-    [==[\[command\] '[^']+' '-Wno-override-module' [^
+    [==[\[command\] '[^']+' [^
+]*'-Wno-override-module' [^
 ]+/simp/libsimp_runtime\.a' '-lm' '-o' ']==])
 set(CASE_REJECT_COMPILE_OUTPUT [==[\[timing\]]==])
