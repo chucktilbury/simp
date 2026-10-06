@@ -1,0 +1,5 @@
+{
+  "friendly_name": "functional most-derived class must initialize non-defaultable virtual base",
+  "expected_diagnostic": "most-derived constructor must initialize virtual base 'A'",
+  "enabled": true
+}
