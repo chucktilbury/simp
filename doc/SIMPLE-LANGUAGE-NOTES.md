@@ -447,18 +447,26 @@ derived constructor body. A supported shared base is marked with
 `class Left : virtual Root` (the access and `virtual` modifiers may appear in
 either order); that virtual base may itself have bases, including other
 virtual bases.
-The most-derived constructor supplies arguments with a leading
-`super virtual Root(args)` or `virtual super Root(args)` statement.
-Initializers precede every `super Base(args)` call and follow the complete object's depth-first,
+Any class with virtual bases may initialize them using a leading
+`super virtual Root(args)` or `virtual super Root(args)` statement, including
+a class that is also used as a base class. These initializers precede every
+`super Base(args)` call and follow the complete object's depth-first,
 left-to-right virtual-base construction order. A virtual base's own virtual
-ancestors are initialized first. Each parameterized virtual base must have
-exactly one such initializer when that class is constructed as a complete
-object. Omitting an initializer is allowed for a virtual base with a
-zero-argument constructor, which is then invoked automatically. Duplicate
+ancestors are initialized first. At runtime, only the most-derived constructor
+initializes each virtual base subobject, exactly once. When an intermediate
+constructor runs for a base subobject, its virtual-base initializers are
+skipped, and their argument expressions are not evaluated. This means an
+intermediate class can both supply arguments when directly constructed and
+leave initialization to a more-derived class when used as a base.
+
+If the most-derived constructor omits a virtual-base initializer, that base's
+zero-argument constructor is invoked automatically. If it has no
+zero-argument constructor, construction of the complete class is rejected
+unless that constructor explicitly initializes the virtual base. Duplicate
 initializers, an unknown/non-virtual base, an incorrect argument count or type,
-or an initializer outside the leading constructor-initializer sequence
-is rejected. The initializer expression is checked in the declaring
-constructor's parameter/field scope.
+or an initializer outside the leading constructor-initializer sequence is
+rejected. Initializer expressions are checked in the declaring constructor's
+parameter/field scope.
 
 The sequence may be direct leading statements (unchanged), or the entire body
 of one leading `try`. A protected body contains only ordered initializers;
@@ -471,7 +479,7 @@ provably raise. Falling through, any nested/unreachable return, and relying
 only on a loop to terminate are rejected. `finally` runs normally on success,
 unmatched exceptions, rethrows, and replacement raises. Initializers cannot
 appear in handlers/cleanup or be split between direct and protected forms.
-Virtual-base ordering and most-derived initializer ownership are unchanged.
+Virtual-base ordering and most-derived-only initialization apply here as well.
 This restriction prevents a caught base failure from completing construction:
 the existing runtime construction stack remains active during local handling
 and marks the complete allocation failed when the exception escapes. Unwinding
@@ -482,17 +490,20 @@ Construction carries a hidden complete-object flag through constructor calls.
 The complete object's virtual-base constructors run once before direct
 non-virtual bases. Their order is a deterministic depth-first, left-to-right
 walk of declared base edges; a virtual base's own virtual ancestors are
-initialized before that virtual base. Repeated virtual paths are deduplicated
-by base class, while distinct non-virtual subobjects remain distinct. Only a
-class that is not used as a base by another class in the program may declare a
-virtual-base initializer; trying to initialize from an intermediate class is
-rejected. This keeps argument ownership statically unambiguous: only a
-most-derived class supplies them, and ordinary `super Base(...)` calls never
-forward them. A thrown exception during transitive virtual-base initialization
-fails construction and suppresses the partial object's destructor chain. As a
-result, a class that is also used as a base cannot separately provide
-parameterized virtual-base arguments when constructed on its own; that
-standalone construction is rejected if the required initializer is absent.
+initialized before that virtual base. Repeated virtual paths share one virtual
+subobject and are deduplicated by base class, while distinct non-virtual
+subobjects remain separate and are each constructed. Only the most-derived
+constructor's virtual-base initializer expressions run; ordinary
+`super Base(...)` calls pass the base-object flag and do not forward virtual
+initializers. A thrown exception during transitive virtual-base initialization
+fails construction and suppresses the partial object's destructor chain.
+
+Virtual inheritance is separate from virtual method dispatch. Virtual
+inheritance controls subobject identity across paths; virtual dispatch selects
+the runtime override and adjusts `this`. Destruction follows the same shared
+identity: each distinct non-virtual base subobject is destroyed in reverse
+construction order, then each shared virtual base (and its non-virtual bases)
+is destroyed exactly once in reverse virtual-base construction order.
 
 Multiple direct non-virtual bases are distinct subobjects in declared order.
 All qualified paths to a shared virtual base and its virtual ancestors, such as

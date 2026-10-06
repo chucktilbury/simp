@@ -914,17 +914,6 @@ void SemanticAnalyzer::analyzeMethod(const ClassDeclaration& owner,
                                           "virtual base initializers must precede direct base "
                                           "constructor calls");
                 }
-                const bool hasDerivedClass = std::any_of(
-                    classes_.begin(), classes_.end(),
-                    [this, &owner](const auto& entry) {
-                        return entry.first != owner.name &&
-                               isSubclassOf(entry.first, owner.name);
-                    });
-                if (hasDerivedClass) {
-                    throw DiagnosticError(
-                        statement.location,
-                        "virtual base initializers are only allowed in most-derived classes");
-                }
                 const auto found = std::find(virtualBases.begin(), virtualBases.end(),
                                              statement.name);
                 if (found == virtualBases.end()) {

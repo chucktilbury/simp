@@ -432,15 +432,35 @@ Ambiguous inherited fields/methods must be qualified through a base.
 Constructors initialize direct bases with `super Base(args)` as leading
 statements. Virtual bases use either `super virtual Base(args)` or
 `virtual super Base(args)`; the two forms have identical semantics. A dot is
-not allowed between these keywords or the base name. A derived class may
-override an inherited method with a compatible signature. Calls use the
-runtime object's method dispatch; there is no separate `virtual` method
-modifier.
+not allowed between these keywords or the base name. Virtual inheritance is
+distinct from virtual method dispatch: it shares a base subobject across
+inheritance paths, while virtual method dispatch selects an override at
+runtime. A non-virtual base is a separate subobject on each path.
+
+Only the most-derived constructor initializes the complete object's virtual
+bases. Every class that has virtual bases may declare `super virtual Base(...)`,
+even when it is also used as a base class, and may be constructed directly.
+When that constructor runs for a base subobject, its virtual-base initializers
+are skipped and their argument expressions are not evaluated. The
+most-derived constructor initializes each virtual base once; if it omits an
+initializer, that base's zero-argument constructor runs automatically. If the
+base has no zero-argument constructor, constructing the most-derived class
+without an explicit initializer is a compile-time error. Virtual bases are
+constructed before direct non-virtual bases in depth-first, left-to-right
+virtual-base order, with virtual ancestors before their descendants. A shared
+virtual base is destroyed once, after non-virtual bases, in reverse virtual
+construction order; repeated non-virtual base subobjects are each destroyed
+separately.
+
+A derived class may override an inherited method with a compatible signature.
+Calls use the runtime object's method dispatch; there is no separate `virtual`
+method modifier.
 
 A constructor may instead begin with a single `try` whose body consists only
 of its base initializers. Required direct bases must still be initialized
 exactly once in declared order; explicit virtual initializers precede them
-in virtual-base construction order and retain most-derived-only ownership.
+in virtual-base construction order and only initialize virtual bases when this
+constructor is running for the complete object.
 Automatic default virtual-base initialization also runs inside this `try`.
 Every `except` handler must raise or rethrow on every path (nested blocks,
 `if`/`else`, and `try` are supported); any `return`, including a nested or

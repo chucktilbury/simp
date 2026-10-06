@@ -77,10 +77,9 @@ const TestGroupRegistration registration{3, {
         expectValid(virtualBases +
             "class C: L { C() { try { super virtual V(1)\n super virtual W(2)\n"
             "super L() } except() { raise() } } }\nstart { C c() }");
-        expectDiagnostic(virtualBases +
+        expectValid(virtualBases +
             "class C: L { C() { try { super virtual V(1)\n super virtual W(2)\n"
-            "super L() } except() { raise() } } }\nclass D: C { D() { super C() } }\nstart {}",
-            "only allowed in most-derived classes");
+            "super L() } except() { raise() } } }\nclass D: C { D() { super C() } }\nstart {}");
         expectDiagnostic(virtualBases +
             "class C: L { C() { try { super virtual V(1)\n super virtual V(2)\n"
             "super L() } except() { raise() } } }\nstart {}",
