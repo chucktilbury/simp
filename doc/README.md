@@ -13,6 +13,7 @@
 - [Standard library reference](STDLIB.md)
 - [Standard library source layout and adding packages](../stdlib/README.md)
 - [Test suite and adding tests](../tests/README.md)
+- [Sanitizers, example checks, CI, coverage, and fuzzing](TESTING.md)
 - [Project overview, build, and install](../README.md)
 
 The language reference documents signed 64-bit `int` and unsigned 64-bit
