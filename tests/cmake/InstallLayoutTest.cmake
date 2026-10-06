@@ -201,6 +201,86 @@ if(NOT last_output STREQUAL expected_string_output)
     message(FATAL_ERROR "Installed String output differs:\n${last_output}")
 endif()
 
+# Resolve the installed SQL/SQLite packages into a fresh project lock, then
+# compile and execute a consumer using only the relocated installation.
+set(sqlite_project "${work_directory}/sqlite-project")
+file(MAKE_DIRECTORY "${sqlite_project}")
+run_checked("installed SQLite simpkg init" "${CMAKE_COMMAND}" -E env ${clean_environment}
+    "${relocated_prefix}/${BINDIR}/simpkg" init "${sqlite_project}")
+set(sqlite_source
+    "${SOURCE_DIR}/tests/functional/positive/positive_installed_sqlite_consumer.simp")
+get_filename_component(sqlite_fixture_name "${sqlite_source}" NAME)
+file(COPY "${sqlite_source}" DESTINATION "${sqlite_project}")
+run_checked("installed SQLite simpkg install" "${CMAKE_COMMAND}" -E chdir "${sqlite_project}"
+    "${CMAKE_COMMAND}" -E env ${clean_environment}
+    "${relocated_prefix}/${BINDIR}/simpkg" install --yes)
+file(READ "${sqlite_project}/simpkg.lock" sqlite_lock)
+if(NOT sqlite_lock MATCHES "(^|\n)sqlite = \\[\"0\\.1\\.0\"\\]"
+   OR NOT sqlite_lock MATCHES "(^|\n)sql = \\[\"0\\.1\\.0\"\\]"
+   OR NOT sqlite_lock MATCHES "dependencies = \\[\"sql=0\\.1\\.0\"\\]")
+    message(FATAL_ERROR "Installed SQLite project lock is missing its package graph:\n${sqlite_lock}")
+endif()
+set(sqlite_executable "${sqlite_project}/sqlite-consumer")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env ${clean_environment}
+        "${compiler}" -vv "${sqlite_fixture_name}" -o "${sqlite_executable}"
+    WORKING_DIRECTORY "${sqlite_project}"
+    RESULT_VARIABLE sqlite_compile_result OUTPUT_VARIABLE sqlite_compile_stdout
+    ERROR_VARIABLE sqlite_compile_stderr)
+if(NOT sqlite_compile_result EQUAL 0)
+    message(FATAL_ERROR
+        "Installed SQLite consumer failed to compile:\n${sqlite_compile_stdout}${sqlite_compile_stderr}")
+endif()
+require_no_tree_references("${sqlite_compile_stdout}${sqlite_compile_stderr}"
+    "Installed SQLite compilation")
+execute_process(COMMAND "${sqlite_executable}"
+    RESULT_VARIABLE sqlite_run_result OUTPUT_VARIABLE sqlite_output
+    ERROR_VARIABLE sqlite_run_stderr)
+file(STRINGS "${sqlite_source}" sqlite_assertions REGEX "^[ \t]*print\\(")
+list(LENGTH sqlite_assertions sqlite_assertion_count)
+string(REPEAT "true" ${sqlite_assertion_count} sqlite_expected_output)
+if(NOT sqlite_run_result EQUAL 0 OR NOT sqlite_output STREQUAL sqlite_expected_output)
+    message(FATAL_ERROR
+        "Installed SQLite consumer returned ${sqlite_run_result} with '${sqlite_output}':\n${sqlite_run_stderr}")
+endif()
+
+# A program with no SQLite import must not receive the SQLite package's native
+# link flags or a runtime dependency on libsqlite3.
+set(plain_project "${work_directory}/no-sqlite-project")
+file(MAKE_DIRECTORY "${plain_project}")
+set(plain_source "${plain_project}/no-sqlite.simp")
+file(WRITE "${plain_source}" "start {\n    print(true)\n}\n")
+set(plain_executable "${plain_project}/no-sqlite")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env ${clean_environment}
+        "${compiler}" -vv "${plain_source}" -o "${plain_executable}"
+    WORKING_DIRECTORY "${plain_project}"
+    RESULT_VARIABLE plain_compile_result OUTPUT_VARIABLE plain_compile_stdout
+    ERROR_VARIABLE plain_compile_stderr)
+if(NOT plain_compile_result EQUAL 0)
+    message(FATAL_ERROR
+        "No-SQLite application failed to compile:\n${plain_compile_stdout}${plain_compile_stderr}")
+endif()
+set(plain_link_output "${plain_compile_stdout}${plain_compile_stderr}")
+if(plain_link_output MATCHES "(-lsqlite3|libsimp_sqlite)")
+    message(FATAL_ERROR "No-SQLite application received SQLite link flags:\n${plain_link_output}")
+endif()
+run_checked("No-SQLite application" "${plain_executable}")
+if(NOT last_output STREQUAL "true")
+    message(FATAL_ERROR "No-SQLite application output differs: '${last_output}'")
+endif()
+find_program(LDD_EXECUTABLE ldd)
+if(LDD_EXECUTABLE)
+    execute_process(COMMAND "${LDD_EXECUTABLE}" "${plain_executable}"
+        RESULT_VARIABLE ldd_result OUTPUT_VARIABLE ldd_output ERROR_VARIABLE ldd_stderr)
+    if(NOT ldd_result EQUAL 0)
+        message(FATAL_ERROR "Could not inspect no-SQLite runtime dependencies:\n${ldd_stderr}")
+    endif()
+    if(ldd_output MATCHES "libsqlite3")
+        message(FATAL_ERROR "No-SQLite application has a SQLite runtime dependency:\n${ldd_output}")
+    endif()
+endif()
+
 # Remove the default resource so compilation can succeed only via the override.
 set(builtin_override "${work_directory}/custom-builtin")
 file(RENAME "${relocated_prefix}/${DATADIR}/simp/builtin" "${builtin_override}")
