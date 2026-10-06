@@ -100,6 +100,9 @@ function(expand_case_pattern output pattern)
 endfunction()
 
 function(check_compile_output text)
+    if(text MATCHES "AddressSanitizer|UndefinedBehaviorSanitizer|runtime error:")
+        message(FATAL_ERROR "Compiler sanitizer failure:\n${text}")
+    endif()
     foreach(expected IN LISTS EXPECT_COMPILE_OUTPUT)
         expand_case_pattern(expected_pattern "${expected}")
         if(NOT text MATCHES "${expected_pattern}")
@@ -399,6 +402,9 @@ execute_process(
     ERROR_VARIABLE run_stderr
     ${stdin_arguments}
 )
+if(run_stderr MATCHES "AddressSanitizer|UndefinedBehaviorSanitizer|runtime error:")
+    message(FATAL_ERROR "Program sanitizer failure:\n${run_stderr}")
+endif()
 if(DEFINED EXPECT_EXIT_CODE)
     if(NOT run_result EQUAL EXPECT_EXIT_CODE)
         message(FATAL_ERROR

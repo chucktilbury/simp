@@ -152,6 +152,9 @@ add_library(simp_frontend
     SourceLoader.cpp
 )
 target_link_libraries(simp_frontend PUBLIC simp_headers)
+if(SIMP_FUZZ)
+    target_compile_options(simp_frontend PRIVATE -fsanitize=fuzzer-no-link)
+endif()
 target_compile_definitions(simp_frontend PRIVATE
     SIMP_INSTALL_BINDIR="${SIMP_RELATIVE_BINDIR}"
     SIMP_INSTALL_LIBDIR="${SIMP_RELATIVE_LIBDIR}"

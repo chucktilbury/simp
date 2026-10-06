@@ -2,6 +2,10 @@ include_guard(GLOBAL)
 
 set(SIMP_SANITIZE "OFF" CACHE STRING "Sanitizers (OFF or address;undefined)")
 option(SIMP_COVERAGE "Enable Clang source-based coverage" OFF)
+option(SIMP_FUZZ "Build the Clang libFuzzer lexer/parser harness" OFF)
+if(SIMP_FUZZ AND NOT SIMP_SANITIZE STREQUAL "address;undefined")
+    message(FATAL_ERROR "SIMP_FUZZ requires -DSIMP_SANITIZE=address;undefined")
+endif()
 if(SIMP_COVERAGE)
     if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang" OR
        NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")

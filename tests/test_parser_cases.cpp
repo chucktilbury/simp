@@ -16,6 +16,71 @@ namespace {
 using namespace simp_test;
 
 const TestGroupRegistration registration{1, {
+        {"deep recursive syntax produces a nesting diagnostic", [] {
+             const auto rejected = [](const std::string& source) {
+                 try {
+                     simp::Lexer lexer(source, "nesting.simp");
+                     (void)simp::Parser(lexer.tokenize()).parseProgram(false);
+                 } catch (const simp::DiagnosticError& error) {
+                     require(std::string(error.what()).find("parser nesting exceeds 128") !=
+                                 std::string::npos,
+                             "deep syntax produced the wrong diagnostic");
+                     return;
+                 }
+                 throw std::runtime_error("deep syntax was not rejected");
+             };
+             rejected("start { print(" + std::string(4000, '(') + "1" +
+                      std::string(4000, ')') + ") }");
+             rejected("start { print(" + std::string(4000, '-') + "1) }");
+             rejected("start { print(" + std::string(4000, '!') + "true) }");
+             rejected("start {" + std::string(4000, '{') + std::string(4000, '}') + "}");
+             std::string namespaces;
+             std::string calls;
+             for (int index = 0; index < 1000; ++index) {
+                 namespaces += "namespace N {";
+                 calls += "f(";
+             }
+             rejected(namespaces + std::string(1000, '}'));
+             rejected("start { print(" + calls + "1" + std::string(1000, ')') + ") }");
+         }},
+        {"ordinary nested syntax remains accepted", [] {
+             simp::Lexer lexer("start { print(" + std::string(100, '(') + "1" +
+                               std::string(100, ')') + ") }", "nesting.simp");
+             (void)simp::Parser(lexer.tokenize()).parseProgram();
+         }},
+        {"flat expression and inline capture chains have bounded AST depth", [] {
+             std::string addition = "1";
+             std::string members = "value";
+             for (int index = 0; index < 7000; ++index) {
+                 addition += "+1";
+                 members += ".field";
+             }
+             const auto rejected = [](const std::string& source) {
+                 try {
+                     simp::Lexer lexer(source, "tree-depth.simp");
+                     (void)simp::Parser(lexer.tokenize()).parseProgram();
+                 } catch (const simp::DiagnosticError& error) {
+                     require(std::string(error.what()).find("expression tree depth exceeds 128") !=
+                                 std::string::npos,
+                             "deep expression tree produced the wrong diagnostic");
+                     return;
+                 }
+                 throw std::runtime_error("deep expression tree was not rejected");
+             };
+             rejected("start { print(" + addition + ") }");
+             rejected("start { print(" + members + ") }");
+             rejected("start { inline(int " + members + ") {} }");
+             std::string accepted = "1";
+             for (int index = 0; index < 127; ++index) accepted += "+1";
+             simp::Lexer lexer("start { print(" + accepted + ") }", "tree-depth.simp");
+             (void)simp::Parser(lexer.tokenize()).parseProgram();
+             rejected("start { print(" + accepted + "+1) }");
+             std::string wideList = "1";
+             for (int index = 0; index < 1000; ++index) wideList += ",1";
+             simp::Lexer wideLexer("start { list values = [" + wideList + "] }",
+                                   "wide-list.simp");
+             (void)simp::Parser(wideLexer.tokenize()).parseProgram();
+         }},
         {"top-level import syntax is represented in the AST", [] {
              simp::Lexer lexer("import network as Net\nstart {}", "import.simp");
              auto program = simp::Parser(lexer.tokenize()).parseProgram();

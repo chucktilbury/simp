@@ -35,7 +35,10 @@ CTest sets `ASAN_OPTIONS=detect_leaks=0:halt_on_error=1` and
 because the managed heap intentionally retains live objects until process exit
 (including exceptional exits); address and UB checks remain fatal, and no tests
 are excluded. Outside CTest, use those environment variables when running
-generated programs. Leak checking of the compiler alone can be enabled manually.
+generated programs. Frontend-only unit tests retain leak detection, as does
+the fuzz harness; leak checking of the compiler CLI can also be enabled manually.
+Integration drivers reject sanitizer output even in expected abort/exit cases,
+so a sanitizer crash cannot satisfy an intentional-failure expectation.
 
 `SIMP_STAGE_PREFIX` defaults to the source tree for the traditional `bin/simp`
 layout. Give instrumented builds a distinct prefix inside their build directory
@@ -132,3 +135,42 @@ and generated integration executables, restricted to `src/` C/C++ files.
 Hand-generated Simple LLVM IR has no C/C++ coverage source mapping.
 Processes that abort cannot flush all counters; their already-completed
 compiler invocations are still covered.
+
+## Lexer/parser fuzzing
+
+`SIMP_FUZZ=ON` adds `simp_fuzz_frontend`, using Clang's libFuzzer with
+ASan+UBSan. It requires `SIMP_SANITIZE=address;undefined`; both options are
+off by default. The front end is compiled with coverage-guided instrumentation,
+not just the harness. The harness lexes arbitrary bytes and parses programs or
+declaration-only modules; only `DiagnosticError` is treated as expected.
+It never expands includes, loads packages, compiles inline C, or runs generated
+code. Semantic analysis and the runtime are outside this fuzz target.
+
+```sh
+cmake -S . -B build-fuzz -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  '-DSIMP_SANITIZE=address;undefined' -DSIMP_FUZZ=ON \
+  -DSIMP_STAGE_PREFIX="$PWD/build-fuzz/stage"
+cmake --build build-fuzz -j4
+ctest --test-dir build-fuzz -L fuzz --output-on-failure
+python3 scripts/fuzz.py --fuzzer build-fuzz/stage/bin/simp_fuzz_frontend \
+  --fixtures tests/functional --work build-fuzz/fuzz --seconds 180
+```
+
+The smoke test runs at most 2,000 iterations or ten seconds. The longer script
+defaults to three minutes, a 16 KiB mutation limit, a five-second per-input
+timeout, and a 2 GiB RSS limit. All functional `.simp` fixtures seed a writable,
+deduplicated corpus under the selected build-local work directory. Mutations
+persist there for subsequent campaigns; crash/hang artifacts stay in
+`artifacts/`. Reproduce an artifact by passing its path directly to the fuzzer.
+Leak detection stays enabled here: unlike generated programs, the parser's AST
+and tokens should release all memory after each input.
+
+A deep-parenthesis stress seed exposed parser stack exhaustion. The parser
+now diagnoses excessive recursive nesting instead of overflowing; regressions
+cover parentheses, unary operators, nested blocks/namespaces, and nested calls.
+The campaign also includes these generated stress seeds.
+An additional long additive chain overflowed semantic normalization despite
+not nesting the parser. Expression tree depth is now validated during
+construction, including binary/member chains and inline capture paths, so the
+compiler diagnoses it before recursive analysis or destruction can overflow.

@@ -16,6 +16,17 @@ namespace simp {
 Parser::Parser(std::vector<Token> tokens, std::ostream* traceOutput)
     : tokens_(std::move(tokens)), traceOutput_(traceOutput) {}
 
+Parser::NestingGuard::NestingGuard(Parser& parser) : parser_(parser) {
+    if (parser_.nestingDepth_ >= maximumNesting) {
+        parser_.error(parser_.current(), "parser nesting exceeds 128");
+    }
+    ++parser_.nestingDepth_;
+}
+
+Parser::NestingGuard::~NestingGuard() {
+    --parser_.nestingDepth_;
+}
+
 const Token& Parser::current() const {
     return tokens_[current_];
 }
@@ -94,6 +105,17 @@ const Token& Parser::consume(TokenType type, const char* expectation) {
 
 [[noreturn]] void Parser::error(const Token& token, const std::string& message) const {
     throw DiagnosticError(token.location, message);
+}
+
+void Parser::validateExpressionDepth(const Expression& expression, std::size_t depth) const {
+    if (depth > maximumNesting) {
+        throw DiagnosticError(expression.location, "expression tree depth exceeds 128");
+    }
+    if (expression.left) validateExpressionDepth(*expression.left, depth + 1);
+    if (expression.right) validateExpressionDepth(*expression.right, depth + 1);
+    for (const auto& argument : expression.arguments) {
+        validateExpressionDepth(*argument, depth + 1);
+    }
 }
 
 void Parser::validateFormatString(Expression& format) const {
@@ -348,6 +370,7 @@ std::string Parser::parseQualifiedIdentifier(const char* expectation) {
 }
 
 void Parser::parseNamespace(Program& program) {
+    const NestingGuard nesting(*this);
     const auto keyword = consume(TokenType::Namespace, "'namespace'");
     const auto name = consume(TokenType::Identifier, "namespace name").text;
     skipNewlines();
@@ -383,6 +406,7 @@ void Parser::parseNamespace(Program& program) {
 }
 
 std::vector<Statement> Parser::parseBlock() {
+    const NestingGuard nesting(*this);
     skipNewlines();
     consume(TokenType::LeftBrace, "'{'");
     std::vector<Statement> statements;
@@ -495,6 +519,7 @@ Statement Parser::parseInlineC() {
                     member->value = next.text;
                     member->left = std::move(target);
                     target = std::move(member);
+                    validateExpressionDepth(*target);
                     captureName = next.text;
                 }
                 statement.inlineCaptures.push_back(
@@ -531,6 +556,7 @@ Statement Parser::parseDeclaration() {
             } while (match(TokenType::Comma));
         }
         consume(TokenType::RightParen, "')' after constructor arguments");
+        validateExpressionDepth(*constructor);
         statement.expressions.push_back(std::move(constructor));
     }
     if (check(TokenType::Inline)) {
@@ -795,7 +821,10 @@ Statement Parser::parseTry() {
 }
 
 std::unique_ptr<Expression> Parser::parseExpression() {
-    return parseOr();
+    const NestingGuard nesting(*this);
+    auto expression = parseOr();
+    validateExpressionDepth(*expression);
+    return expression;
 }
 
 std::unique_ptr<Expression> Parser::parseOr() {
@@ -808,6 +837,7 @@ std::unique_ptr<Expression> Parser::parseOr() {
         combined->value = "||";
         combined->left = std::move(expression);
         combined->right = parseAnd();
+        validateExpressionDepth(*combined);
         expression = std::move(combined);
     }
     return expression;
@@ -823,6 +853,7 @@ std::unique_ptr<Expression> Parser::parseAnd() {
         combined->value = "&&";
         combined->left = std::move(expression);
         combined->right = parseNot();
+        validateExpressionDepth(*combined);
         expression = std::move(combined);
     }
     return expression;
@@ -830,12 +861,14 @@ std::unique_ptr<Expression> Parser::parseAnd() {
 
 std::unique_ptr<Expression> Parser::parseNot() {
     if (check(TokenType::Bang)) {
+        const NestingGuard nesting(*this);
         const auto operation = tokens_[current_++];
         auto expression = std::make_unique<Expression>();
         expression->kind = ExpressionKind::Unary;
         expression->location = operation.location;
         expression->value = "!";
         expression->left = parseNot();
+        validateExpressionDepth(*expression);
         return expression;
     }
     return parseComparison();
@@ -851,6 +884,7 @@ std::unique_ptr<Expression> Parser::parseComparison() {
         combined->value = operation.text;
         combined->left = std::move(expression);
         combined->right = parseRelational();
+        validateExpressionDepth(*combined);
         expression = std::move(combined);
     }
     return expression;
@@ -874,6 +908,7 @@ std::unique_ptr<Expression> Parser::parseRelational() {
             combined->value = operation.text;
             combined->right = parseAddition();
         }
+        validateExpressionDepth(*combined);
         expression = std::move(combined);
     }
     return expression;
@@ -917,6 +952,7 @@ std::unique_ptr<Expression> Parser::parseAddition() {
         combined->value = operation.text;
         combined->left = std::move(expression);
         combined->right = parseMultiplication();
+        validateExpressionDepth(*combined);
         expression = std::move(combined);
     }
     return expression;
@@ -932,6 +968,7 @@ std::unique_ptr<Expression> Parser::parseMultiplication() {
         combined->value = operation.text;
         combined->left = std::move(expression);
         combined->right = parseUnary();
+        validateExpressionDepth(*combined);
         expression = std::move(combined);
     }
     return expression;
@@ -939,12 +976,14 @@ std::unique_ptr<Expression> Parser::parseMultiplication() {
 
 std::unique_ptr<Expression> Parser::parseUnary() {
     if (check(TokenType::Minus) || check(TokenType::Plus)) {
+        const NestingGuard nesting(*this);
         const auto operation = tokens_[current_++];
         auto expression = std::make_unique<Expression>();
         expression->kind = ExpressionKind::Unary;
         expression->location = operation.location;
         expression->value = operation.text;
         expression->left = parseUnary();
+        validateExpressionDepth(*expression);
         return expression;
     }
     return parsePostfix(parsePrimary());
@@ -1143,6 +1182,7 @@ std::unique_ptr<Expression> Parser::parseTypeName(const Token& token, std::strin
 
 std::unique_ptr<Expression> Parser::parsePostfix(std::unique_ptr<Expression> expression) {
     for (;;) {
+        validateExpressionDepth(*expression);
         if (match(TokenType::As)) {
             auto cast = std::make_unique<Expression>();
             cast->kind = ExpressionKind::ObjectCast;

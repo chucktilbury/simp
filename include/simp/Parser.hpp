@@ -21,6 +21,16 @@ public:
     Program parseModule();
 
 private:
+    class NestingGuard {
+    public:
+        explicit NestingGuard(Parser& parser);
+        ~NestingGuard();
+        NestingGuard(const NestingGuard&) = delete;
+        NestingGuard& operator=(const NestingGuard&) = delete;
+    private:
+        Parser& parser_;
+    };
+    static constexpr std::size_t maximumNesting = 128;
     const Token& current() const;
     const Token& previous() const;
     bool check(TokenType type) const;
@@ -31,6 +41,7 @@ private:
     const Token& consume(TokenType type, const char* expectation);
     [[noreturn]] void error(const Token& token, const std::string& message) const;
     void validateFormatString(Expression& format) const;
+    void validateExpressionDepth(const Expression& expression, std::size_t depth = 1) const;
     void parseFormatArguments(Expression& format);
     void trace(const char* action) const;
 
@@ -75,6 +86,7 @@ private:
 
     std::vector<Token> tokens_;
     std::size_t current_ = 0;
+    std::size_t nestingDepth_ = 0;
     std::ostream* traceOutput_ = nullptr;
     std::vector<std::string> namespacePath_;
     std::vector<Statement> pendingStatements_;

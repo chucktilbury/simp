@@ -371,6 +371,21 @@ add_test(NAME simp_documentation_programs
     --work "${CMAKE_CURRENT_BINARY_DIR}/doc-programs")
 set_tests_properties(simp_documentation_programs PROPERTIES LABELS documentation TIMEOUT 180)
 
+if(SIMP_FUZZ)
+    add_executable(simp_fuzz_frontend fuzz_frontend.cpp)
+    target_link_libraries(simp_fuzz_frontend PRIVATE simp_frontend)
+    target_compile_options(simp_fuzz_frontend PRIVATE -fsanitize=fuzzer)
+    target_link_options(simp_fuzz_frontend PRIVATE -fsanitize=fuzzer)
+    set_target_properties(simp_fuzz_frontend PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}")
+    add_test(NAME simp_fuzz_smoke
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/fuzz.py"
+            --fuzzer "$<TARGET_FILE:simp_fuzz_frontend>"
+            --fixtures "${CMAKE_CURRENT_SOURCE_DIR}/functional"
+            --work "${CMAKE_CURRENT_BINARY_DIR}/fuzz-smoke" --seconds 10 --runs 2000)
+    set_tests_properties(simp_fuzz_smoke PROPERTIES LABELS fuzz TIMEOUT 75)
+endif()
+
 set(simp_test_environment)
 if(SIMP_SANITIZE AND NOT SIMP_SANITIZE STREQUAL "OFF")
     list(APPEND simp_test_environment
@@ -400,4 +415,11 @@ endif()
 if(simp_test_environment)
     get_property(simp_all_tests DIRECTORY PROPERTY TESTS)
     set_tests_properties(${simp_all_tests} PROPERTIES ENVIRONMENT "${simp_test_environment}")
+endif()
+if(SIMP_SANITIZE AND NOT SIMP_SANITIZE STREQUAL "OFF")
+    set(frontend_test_environment "${simp_test_environment}")
+    list(REMOVE_ITEM frontend_test_environment "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1")
+    list(APPEND frontend_test_environment "ASAN_OPTIONS=detect_leaks=1:halt_on_error=1")
+    set_tests_properties(simp_unit_and_functional simp_command_line_parser PROPERTIES
+        ENVIRONMENT "${frontend_test_environment}")
 endif()

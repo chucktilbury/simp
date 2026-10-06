@@ -5,6 +5,15 @@ compiler. This manual describes the working subset: the C++17 compiler
 produces textual LLVM IR and invokes Clang to link the runtime. It is not a
 description of every feature proposed in the design notes.
 
+The parser limits recursive syntax nesting to 128 active levels, counting
+namespaces, statement blocks, expressions, and unary operators. Excessive
+nesting is a compile-time diagnostic, not a process crash. This protects the
+recursive parser from malformed or adversarial inputs; ordinary programs
+remain well below the limit.
+Expression trees are also limited to depth 128, including flat operator/member
+chains, to protect later recursive analysis and AST cleanup. Long shallow
+collections are not restricted by this depth limit.
+
 Grammar links below name productions in [GRAMMAR.md](GRAMMAR.md). Standard
 library package APIs are intentionally covered separately in
 [STDLIB.md](STDLIB.md).
