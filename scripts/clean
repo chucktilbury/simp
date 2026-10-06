@@ -1,2 +1,2 @@
 #!/usr/bin/env bash
-rm -rf bin/ build/ lib/ doc/out/
+rm -rf bin/ build/ lib/ doc/out/ share/
