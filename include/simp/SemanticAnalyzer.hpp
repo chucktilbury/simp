@@ -79,7 +79,9 @@ private:
     const MethodDeclaration* selectOverload(
         const std::vector<const MethodDeclaration*>& candidates,
         const std::vector<std::unique_ptr<Expression>>& arguments,
-        const std::vector<std::string>& argumentTypes, bool& ambiguous) const;
+        const std::vector<std::string>& argumentTypes, bool& ambiguous);
+    std::string overloadArgumentType(Expression& argument,
+        const std::vector<const MethodDeclaration*>& candidates, std::size_t index);
     int conversionRank(const std::string& target, const std::string& source,
                        const Expression& argument) const;
     std::size_t countMethods(const ClassDeclaration& declaration,

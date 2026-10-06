@@ -31,6 +31,11 @@ Simple `int` parameters and results in these APIs are signed 64-bit values;
 the [language reference](LANGUAGE-REFERENCE.md#native-bindings-for-library-authors)
 describes their C/LLVM ABI representations.
 
+For native APIs accepting a function pointer plus user context, the installed
+`<simp/Callbacks.h>` facade provides retained registrations and generated typed
+adapters. See [CALLBACKS.md](CALLBACKS.md) for exact signatures, disconnection,
+rooting, owner-thread restrictions, and the fail-fast exception boundary.
+
 ## `system`
 
 Import with `import system` to use `System`, or `import system as Sys`;
@@ -425,16 +430,17 @@ database SQL syntax portability from the shared value API.
 ```simp
 import sqlite as SQLite
 import sql as SQL
+// test: {"stdout": ""}
 
 start {
-    SQL.Connection database = SQLite.Connection("example.db")
+    SQL.Connection database = SQLite.Connection(":memory:")
     if (!database.isOpen()) {
         print(database.error())
     } else {
         if (!database.execute("CREATE TABLE IF NOT EXISTS sample (value)")) {
             print(database.error())
         } else {
-            SQLite.Statement insert = database.prepare("INSERT INTO sample VALUES (?)")
+            SQL.Statement insert = database.prepare("INSERT INTO sample VALUES (?)")
             if (insert == null) {
                 print(database.error())
             } else {

@@ -1608,7 +1608,15 @@ Remaining module priorities include:
 5. Regular expressions.
 6. Datetime.
 
-More modules are expected. The first GTK milestone should support callbacks and event handlers, not merely window/widget construction.
+More modules are expected. Typed bound-instance-method callbacks are implemented
+as `callback<R(P1,P2)>`, captured with `object.method` and invoked as ordinary
+callable values. They retain their receiver through precise GC and preserve
+virtual dispatch. The installed native context/adapter bridge supports C APIs
+with explicit user data, with owner-thread-only invocation and fail-fast
+exception containment. See [CALLBACKS.md](CALLBACKS.md) for syntax, null/equality
+rules, ABI, lifetime, and limitations. This does not implement GTK; the first GTK
+package milestone can use this bridge for callbacks and event handlers rather
+than merely window/widget construction.
 
 ### Out-of-line methods and native C bindings (prototype milestone)
 

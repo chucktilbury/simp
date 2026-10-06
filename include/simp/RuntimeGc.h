@@ -8,6 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "simp/Stdlib.h"
+#include "simp/Callbacks.h"
 
 #ifdef __cplusplus
 extern "C" {

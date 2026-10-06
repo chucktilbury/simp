@@ -9,6 +9,29 @@
 
 namespace simp {
 
+std::unique_ptr<Expression> cloneExpression(const Expression& expression) {
+    auto copy = std::make_unique<Expression>();
+    copy->kind = expression.kind;
+    copy->location = expression.location;
+    copy->typeLocation = expression.typeLocation;
+    copy->value = expression.value;
+    copy->sliceHasStart = expression.sliceHasStart;
+    copy->sliceHasEnd = expression.sliceHasEnd;
+    copy->sliceHasStep = expression.sliceHasStep;
+    copy->resolvedSignature = expression.resolvedSignature;
+    copy->resolvedType = expression.resolvedType;
+    if (expression.left) copy->left = cloneExpression(*expression.left);
+    if (expression.right) copy->right = cloneExpression(*expression.right);
+    for (const auto& argument : expression.arguments)
+        copy->arguments.push_back(cloneExpression(*argument));
+    copy->argumentNames = expression.argumentNames;
+    copy->argumentNameLocations = expression.argumentNameLocations;
+    copy->formatSegments = expression.formatSegments;
+    copy->formatArgumentIndices = expression.formatArgumentIndices;
+    copy->formatSpecs = expression.formatSpecs;
+    return copy;
+}
+
 ClassDeclaration makeBuiltinExceptionClass() {
     ClassDeclaration declaration;
     declaration.name = "Exception";
@@ -53,6 +76,8 @@ void indent(std::ostream& output, int depth) {
 
 const char* expressionName(ExpressionKind kind) {
     switch (kind) {
+    case ExpressionKind::BoundMethod: return "BoundMethod";
+    case ExpressionKind::CallbackCall: return "CallbackCall";
     case ExpressionKind::Integer: return "Integer";
     case ExpressionKind::Unsigned: return "Unsigned";
     case ExpressionKind::Float: return "Float";

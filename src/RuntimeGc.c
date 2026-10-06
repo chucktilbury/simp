@@ -324,6 +324,8 @@ typedef struct SimpThreadRegistration {
 static pthread_mutex_t simp_gil = PTHREAD_MUTEX_INITIALIZER;
 static SimpThreadRegistration *thread_registry = NULL;
 static _Thread_local SimpThreadRegistration *self_registration = NULL;
+static _Thread_local int gil_held = 0;
+static void callback_thread_exit_check(void);
 
 void simp_runtime_thread_enter(void) {
     pthread_mutex_lock(&simp_gil);
@@ -335,27 +337,203 @@ void simp_runtime_thread_enter(void) {
     entry->next = thread_registry;
     thread_registry = entry;
     self_registration = entry;
+    gil_held = 1;
 }
 
 void simp_runtime_thread_exit(void) {
     if (self_registration == NULL || root_frame != NULL) abort();
+    callback_thread_exit_check();
     SimpThreadRegistration **link = &thread_registry;
     while (*link != NULL && *link != self_registration) link = &(*link)->next;
     if (*link == NULL) abort();
     *link = self_registration->next;
     free(self_registration);
     self_registration = NULL;
+    gil_held = 0;
     pthread_mutex_unlock(&simp_gil);
 }
 
 void simp_runtime_gil_release(void) {
     if (self_registration == NULL) abort();
+    gil_held = 0;
     pthread_mutex_unlock(&simp_gil);
 }
 
 void simp_runtime_gil_acquire(void) {
     pthread_mutex_lock(&simp_gil);
     if (self_registration == NULL) abort();
+    gil_held = 1;
+}
+
+typedef struct SimpCallback {
+    const SimpClassMeta *metadata;
+    void *receiver;
+    void *code;
+    SimpCallbackAdapter adapter;
+    SimpCallbackInvoker invoker;
+    const char *signature;
+    uint64_t argument_count;
+    const uint8_t *managed_arguments;
+} SimpCallback;
+
+struct SimpCallbackContext {
+    struct SimpCallbackContext *next;
+    SimpCallback *callback;
+    pthread_t owner;
+    uint64_t in_flight;
+    int released;
+};
+
+static SimpCallbackContext *callback_contexts = NULL;
+static HeapNode *find_object(const void *object);
+static HeapNode *find_containing_object(const void *object);
+static const uint64_t callback_references[] = { offsetof(SimpCallback, receiver) };
+static const SimpClassMeta callback_metadata = {
+    "callback", 8, 0, NULL, 0, sizeof(SimpCallback), 1, callback_references,
+    NULL, 0, NULL, 0, NULL
+};
+
+static _Noreturn void callback_fatal(const char *message) {
+    fprintf(stderr, "Simple native callback error: %s\n", message);
+    abort();
+}
+
+static void callback_thread_exit_check(void) {
+    for (SimpCallbackContext *context = callback_contexts; context; context = context->next)
+        if (pthread_equal(context->owner, pthread_self()))
+            callback_fatal("owner thread exits with undisposed callback registrations");
+}
+
+static void callback_thread_check(void) {
+    if (self_registration == NULL || !gil_held)
+        callback_fatal("requires a registered Simple thread holding the runtime lock");
+}
+
+static void callback_context_check(SimpCallbackContext *context) {
+    /* Check TLS before reading shared GC/context state on a foreign thread. */
+    callback_thread_check();
+    if (context == NULL || !pthread_equal(context->owner, pthread_self()))
+        callback_fatal("foreign-thread invocation is not supported");
+    if (context->released) callback_fatal("registration has been released");
+}
+
+void *simp_callback_new(void *receiver, void *code, SimpCallbackAdapter adapter,
+                        SimpCallbackInvoker invoker, const char *signature,
+                        uint64_t argument_count, const uint8_t *managed_arguments) {
+    simp_gc_require_alive(receiver, "<callback>", 10, 0, 0);
+    if (receiver == NULL)
+        simp_exception_raise("null callback receiver", 22, "<callback>", 10, 0, 0);
+    if (find_containing_object(receiver)->destroyed)
+        simp_exception_raise("object has been destroyed", 25, "<callback>", 10, 0, 0);
+    SimpCallback *callback = simp_gc_alloc(&callback_metadata);
+    callback->receiver = receiver;
+    callback->code = code;
+    callback->adapter = adapter;
+    callback->invoker = invoker;
+    callback->signature = signature;
+    callback->argument_count = argument_count;
+    callback->managed_arguments = managed_arguments;
+    return callback;
+}
+
+void *simp_callback_receiver(void *value) {
+    if (value == NULL)
+        simp_exception_raise("null callback invocation", 24, "<callback>", 10, 0, 0);
+    simp_gc_require_alive(value, "<callback>", 10, 0, 0);
+    SimpCallback *callback = value;
+    simp_gc_require_alive(callback->receiver, "<callback>", 10, 0, 0);
+    if (find_containing_object(callback->receiver)->destroyed)
+        simp_exception_raise("object has been destroyed", 25, "<callback>", 10, 0, 0);
+    return callback->receiver;
+}
+
+void *simp_callback_code(void *value) {
+    (void)simp_callback_receiver(value);
+    return ((SimpCallback *)value)->code;
+}
+
+SimpCallbackContext *simp_callback_acquire(void *value, const char *signature) {
+    callback_thread_check();
+    if (value == NULL || signature == NULL) callback_fatal("null callback or signature");
+    HeapNode *node = find_object(value);
+    if (node == NULL || *(const SimpClassMeta **)value != &callback_metadata)
+        callback_fatal("not a callback value");
+    SimpCallback *callback = value;
+    if (strcmp(signature, callback->signature) != 0) callback_fatal("signature mismatch");
+    SimpCallbackContext *context = calloc(1, sizeof(*context));
+    if (context == NULL) callback_fatal("allocation failed");
+    context->callback = callback;
+    context->owner = pthread_self();
+    context->next = callback_contexts;
+    callback_contexts = context;
+    return context;
+}
+
+SimpCallbackAdapter simp_callback_adapter(SimpCallbackContext *context) {
+    callback_context_check(context);
+    return context->callback->adapter;
+}
+
+const char *simp_callback_signature(SimpCallbackContext *context) {
+    callback_context_check(context);
+    return context->callback->signature;
+}
+
+void simp_callback_release(SimpCallbackContext *context) {
+    callback_context_check(context);
+    if (context->in_flight) callback_fatal("cannot release an in-flight registration");
+    context->released = 1;
+    context->callback = NULL;
+}
+
+void simp_callback_dispose(SimpCallbackContext *context) {
+    callback_thread_check();
+    if (context == NULL || !pthread_equal(context->owner, pthread_self()) ||
+        !context->released || context->in_flight)
+        callback_fatal("dispose requires an idle released owner-thread registration");
+    SimpCallbackContext **link = &callback_contexts;
+    while (*link != NULL && *link != context) link = &(*link)->next;
+    if (*link == NULL) callback_fatal("unknown registration");
+    *link = context->next;
+    free(context);
+}
+
+void simp_callback_context_invoke(SimpCallbackContext *context, const char *signature,
+                                  const SimpCallbackArgument *arguments,
+                                  SimpCallbackArgument *result) {
+    callback_context_check(context);
+    SimpCallback *callback = context->callback;
+    if (signature == NULL || strcmp(signature, callback->signature) != 0)
+        callback_fatal("adapter signature mismatch");
+    if ((callback->argument_count && arguments == NULL) || result == NULL)
+        callback_fatal("invalid argument/result storage");
+    ++context->in_flight;
+    SimpExceptionFrame *boundary = malloc(sizeof(*boundary));
+    if (boundary == NULL) callback_fatal("allocation failed");
+    simp_exception_frame_init(boundary);
+    simp_exception_push(boundary);
+    if (setjmp(boundary->buffer) != 0) {
+        fputs("Simple native callback error: uncaught Simple exception: ", stderr);
+        if (boundary->message) fwrite(boundary->message, 1, boundary->message_length, stderr);
+        fputc('\n', stderr);
+        print_trace(boundary->trace);
+        abort();
+    }
+    void **slots = calloc((size_t)callback->argument_count + 1, sizeof(*slots));
+    if (slots == NULL) callback_fatal("allocation failed");
+    uint64_t count = 1;
+    slots[0] = &callback;
+    for (uint64_t index = 0; index < callback->argument_count; ++index) {
+        if (callback->managed_arguments[index]) slots[count++] = (void *)&arguments[index].pointer;
+    }
+    SimpRootFrame roots;
+    simp_gc_push_or_abort(&roots, slots, count);
+    callback->invoker(callback, arguments, result);
+    simp_gc_pop_or_abort(&roots);
+    free(slots);
+    simp_exception_pop(boundary);
+    free(boundary);
+    --context->in_flight;
 }
 
 static const SimpClassMeta array_metadata = {
@@ -1086,6 +1264,8 @@ static HeapNode **allocate_worklist(void) {
 }
 
 static void mark_roots(HeapNode **worklist, size_t *work_count) {
+    for (SimpCallbackContext *context = callback_contexts; context; context = context->next)
+        if (!context->released) mark_object(context->callback, worklist, work_count);
     /* Scan every registered Simple thread's root-frame chain, not just the
      * collecting thread's. This is race-free because only one Simple
      * thread ever runs managed code at a time (see the "Threads" note in

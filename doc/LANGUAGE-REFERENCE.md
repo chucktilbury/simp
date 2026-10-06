@@ -77,6 +77,26 @@ start {
 
 ## Types and values
 
+`callback<R(P1,P2)>` declares a bound-instance-method callable signature.
+Capture with `object.method` (no invocation parentheses), then call the value
+with `action(arguments)`. Callback locals, fields, parameters, and results
+are supported with exact signature checking, contextual overload selection,
+virtual dispatch, and receiver GC retention. Null/default, equality, unsupported
+dynamic operations, and the installed C bridge are specified in
+[Bound-method callbacks](CALLBACKS.md).
+
+```simp
+// test: {"stdout": "42"}
+class Worker {
+    int answer(int value) { return value + 2 }
+}
+start {
+    Worker worker = Worker()
+    callback<int(int)> action = worker.answer
+    print(action(40))
+}
+```
+
 The built-in types are:
 
 | Type | Values and behavior |

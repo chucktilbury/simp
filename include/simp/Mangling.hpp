@@ -16,6 +16,7 @@
 #define SIMP_MANGLING_HPP
 
 #include "simp/Ast.hpp"
+#include "simp/CallbackType.hpp"
 
 #include <string>
 #include <vector>
@@ -24,6 +25,7 @@ namespace simp {
 
 /// Encodes one parameter type as a short, unambiguous code.
 inline std::string mangleTypeCode(const std::string& type) {
+    if (isCallbackType(type)) return callbackSymbol(type);
     if (type == "int") return "i";
     if (type == "unsigned") return "u";
     if (type == "float") return "f";

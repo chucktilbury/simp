@@ -1,0 +1,166 @@
+# Bound-method callbacks and the native bridge
+
+`callback<R(P1,P2)>` is a nullable, GC-managed callable value. `R` is a
+declared return type (including `void`); `P1` and `P2` are declared parameter
+types, without names. Zero parameters use `callback<R()>`. Nested callback
+types are allowed. `any` and `type` descriptors are not supported in signatures.
+`strg` and `String` denote the same signature type.
+
+```simp
+// test: {"stdout": "42"}
+class Counter {
+    int base
+    Counter(int initial) { base = initial }
+    int add(int value) { return base + value }
+}
+class Apply {
+    int run(callback<int(int)> action, int value) { return action(value) }
+}
+start {
+    Counter counter(40)
+    callback<int(int)> action = counter.add
+    print(Apply().run(action, 2))
+}
+```
+
+Omitting `()` captures the bound method rather than calling it. Capture evaluates
+the receiver exactly once and checks it for null and destruction. A callback
+retains the receiver, including a secondary or virtual base view, through GC.
+Dispatch uses the receiver's virtual table, including overrides, rather than a
+public method symbol. Explicit destruction still invalidates invocation; holding
+a callback does not make destruction reversible. Simple invocation propagates
+exceptions normally.
+
+Callbacks can be stored in locals and fields, passed, returned, and invoked.
+Callback fields initially hold null; locals must be initialized before use, as
+with other locals. Null assignment/comparison is allowed; null invocation raises
+a catchable exception. Equality requires identical signatures and compares
+callback **value identity**: copying a value preserves identity, but two separate
+captures of the same method create different values. No signature covariance,
+implicit conversion, or cast is provided. `type(action)` returns its canonical
+signature (or `null` for a null value). `is` tests and checked casts involving
+callbacks, printing callbacks, and storing them in dynamic lists/dicts are
+diagnosed as unsupported. No anonymous functions, lexical closures, free-function
+captures, destructor captures, or unbound member pointers are provided.
+
+An expected callback type selects an exactly matching method overload, including
+parameter **and return** types. Overloaded receiving methods/constructors provide
+candidate signature contexts; if more than one candidate remains viable, the
+call is ambiguous. Access and inheritance-path checks apply at capture.
+
+## Installed C API
+
+Include `<simp/Callbacks.h>`. The header is installed and staged alongside
+`<simp/Stdlib.h>`; its functions are supplied by `libsimp_runtime`. Native-bound
+callback parameters/results use a single opaque `void *`, just like managed
+class references. Inline captures receive `void **`, the address of the
+callback's rooted Simple slot. Do not dereference a callback's private layout or
+call Simple method symbols from C.
+
+`simp_callback_acquire(callback, signature)` creates a retained registration.
+The signature string is **canonical**, e.g. `callback<int(int)>`,
+`callback<String(String)>`, or `callback<Model.Cell(Model.Cell)>`, with no
+spaces. Namespace/import aliases must be expanded to the declared namespace.
+An incorrect signature is a fatal native-boundary error, not a function-pointer
+cast. `simp_callback_signature(context)` returns the immutable canonical string.
+
+`simp_callback_adapter(context)` returns a function pointer that must be converted
+to its **exact** signature:
+
+```c
+#include <simp/Callbacks.h>
+
+typedef int64_t (*OnValue)(SimpCallbackContext *, int64_t);
+
+/* Called by a native-bound method or inline shim on a Simple thread. */
+SimpCallbackContext *context =
+    simp_callback_acquire(callback, "callback<int(int)>");
+OnValue function = (OnValue)simp_callback_adapter(context);
+int64_t answer = function(context, 42);
+/* Disconnect the C API's registration before releasing the retained root. */
+simp_callback_release(context);
+/* Dispose only when the C library can no longer use the context pointer. */
+simp_callback_dispose(context);
+```
+
+The generated adapter's ABI is `R(SimpCallbackContext *, P1, P2, ...)`.
+`int` is `int64_t`, `unsigned` is `uint64_t`, `float` is `double`, `bool` is
+C `_Bool`, and managed references/handles are `void *`. A `void` result really
+returns C `void`. Parameters keep their order. Use a small statically compiled
+C forwarding function for APIs placing `void *user_data` last or otherwise
+reordering it; it calls this exact adapter with context first. APIs that accept
+only a bare function pointer are unsupported. Adapters are compiled per signature,
+not dynamically generated executable per-object trampolines.
+
+The same API works in a hermetic inline shim:
+
+```simp
+// test: {"stdout": "42"}
+class Worker {
+    int add(int value) { return value + 2 }
+}
+start {
+    Worker worker = Worker()
+    callback<int(int)> action = worker.add
+    int result = 0
+    inline(callback<int(int)> action, int result) {
+        SimpCallbackContext *context =
+            simp_callback_acquire(*action, "callback<int(int)>");
+        typedef int64_t (*OnValue)(SimpCallbackContext *, int64_t);
+        OnValue function = (OnValue)simp_callback_adapter(context);
+        *result = function(context, 40);
+        simp_callback_release(context);
+        simp_callback_dispose(context);
+    }
+    print(result)
+}
+```
+
+Alternatively, `simp_callback_context_invoke(context, signature, arguments,
+result)` invokes through the same boundary using an array of
+`SimpCallbackArgument` unions: `integer`, `unsigned_integer`, `floating`,
+`boolean`, or `pointer`, according to the signature. Pass non-null result storage
+even for void; it is not written in that case. A zero-argument call may pass null
+arguments. This low-level API requires exactly the signature's argument count
+and union members, just as a C function call requires its exact argument types.
+
+## Lifetime, rooting, and boundary policy
+
+Acquisition roots the callback and its captured receiver until release, even
+after all Simple locals/fields referring to them go out of scope. Managed native
+arguments are rooted throughout invocation, including allocations and reentry.
+Managed results are borrowed: immediately store them in a captured/rooted Simple
+slot before another allocating runtime call. Native pointers alone are not roots.
+
+The C library owns neither the callback nor the context's storage. Disconnect
+first, then release. Release during any invocation of that registration is
+rejected. Release removes its GC root but keeps a tombstone: invocation, adapter
+lookup, signature lookup, and repeated release after release explicitly abort
+instead of using a dangling receiver. Disposal frees the tombstone and requires
+an idle, released registration. **No pointer may be used after disposal**; C
+code must guarantee disconnection and completion before disposing. Always release
+and dispose registrations before their owner thread exits; exiting with an
+undisposed registration is a fatal error. Different acquisitions
+are independent registrations.
+
+All registration operations and invocation require the acquiring Simple thread,
+registered with the runtime and currently holding its managed-code lock. Foreign
+threads, including another registered Simple thread, are rejected with an
+explicit fatal diagnostic before executing managed code. Do not invoke while a
+native primitive has released the runtime lock. Same-thread synchronous reentry
+is supported: nested invocations have independent exception/root frames and
+in-flight counts. No GTK package or foreign-thread scheduler is implied.
+
+**Exception policy: fail-fast.** Adapter entry installs an existing runtime
+exception boundary inside the bridge. An exception escaping the Simple callback
+is caught there, prints `Simple native callback error: uncaught Simple exception`
+and its message/stack, and calls `abort()`. No `longjmp` or unwinding crosses the
+calling C library's frames, no default native return value is fabricated, and an
+outer Simple `except` cannot catch that boundary failure. Signature/lifetime/thread
+violations likewise print a native callback error and abort. Exceptions caught
+inside the callback behave normally. Use Simple code to handle recoverable
+errors and return an explicit application-level error result.
+
+The hermetic fixture in `tests/functional/cli/callbacks/native.c` demonstrates
+actual compilation/linking, retention, disconnection, reentry, and rejected
+foreign-thread invocation without GTK.

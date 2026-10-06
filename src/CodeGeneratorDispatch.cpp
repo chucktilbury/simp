@@ -11,6 +11,29 @@
 
 namespace simp {
 
+std::string CodeGenerator::emitMethodCode(
+    const Value& receiver, const ClassDeclaration& owner,
+    const std::string& name, const std::string& signature) {
+    const auto metadata = newTemporary();
+    const auto tableAddress = newTemporary();
+    const auto table = newTemporary();
+    const auto entry = newTemporary();
+    const auto functionAddress = newTemporary();
+    const auto function = newTemporary();
+    instructions_ += "  " + metadata + " = load ptr, ptr " + receiver.operand + "\n"
+                     "  " + tableAddress +
+                     " = getelementptr inbounds %SimpleClassMeta, ptr " + metadata +
+                     ", i32 0, i32 3\n"
+                     "  " + table + " = load ptr, ptr " + tableAddress + "\n"
+                     "  " + entry + " = getelementptr inbounds %SimpleMethodMeta, ptr " +
+                     table + ", i64 " + std::to_string(methodSlot(owner, name, signature)) + "\n"
+                     "  " + functionAddress +
+                     " = getelementptr inbounds %SimpleMethodMeta, ptr " + entry +
+                     ", i32 0, i32 2\n"
+                     "  " + function + " = load ptr, ptr " + functionAddress + "\n";
+    return function;
+}
+
 const MethodDeclaration* CodeGenerator::findMethod(const ClassDeclaration& owner,
                                                     const std::string& name) const {
     std::unordered_set<std::string> seenVirtual;

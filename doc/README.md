@@ -3,6 +3,7 @@
 - [Simple language notes](SIMPLE-LANGUAGE-NOTES.md)
 - [Grammar reference](GRAMMAR.md)
 - [Language reference](LANGUAGE-REFERENCE.md)
+- [Bound-method callbacks and native callback ABI](CALLBACKS.md)
 - [Compiler build and installation](INSTALLATION.md)
 - [Project package search order and user module directory](INSTALLATION.md#project-module-search)
 - [Project package manager (`simpkg`)](INSTALLATION.md#project-package-manager-simpkg)

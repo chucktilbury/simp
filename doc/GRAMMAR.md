@@ -61,7 +61,7 @@ OPERATOR        ::= "+=" | "-=" | "*=" | "/=" | "%="
                   | "=" | "==" | "!=" | "<" | "<=" | ">" | ">=" ;
 ```
 
-The reserved words are `start`, `int`, `bool`, `float`, `unsigned`, `strg`,
+The reserved words are `start`, `int`, `bool`, `float`, `unsigned`, `strg`, `callback`,
 `list`, `dict`, `buffer`, `handle`, `any`, `type`, `class`,
 `namespace`, `include`, `inline`, `import`, `as`, `public`, `protected`,
 `private`, `virtual`, `super`, `null`, `true`, `false`, `return`, `void`,
@@ -174,7 +174,9 @@ out-of-line-definition
 return-type         ::= type | "void" ;
 parameter-list      ::= "(", [ parameter, { ",", parameter } ], ")" ;
 parameter           ::= type, IDENT ;
-type                ::= primitive-type | QUALIFIED_IDENT ;
+type                ::= primitive-type | QUALIFIED_IDENT | callback-type ;
+callback-type       ::= "callback", "<", return-type, "(",
+                        [ type, { ",", type } ], ")", ">" ;
 primitive-type      ::= "int" | "bool" | "float" | "unsigned" | "strg"
                       | "list" | "dict" | "buffer"
                       | "handle" | "any" | "type" ;
@@ -185,6 +187,11 @@ include-directive   ::= "include", DOUBLE_STRING, terminator ;
 `destroy` is an in-class declaration form, not a general method signature: it
 must be followed by a block and has no return type or parameter list.
 Destructors cannot be declared without a body or defined out of line.
+Callback signatures have unnamed parameter types. A member expression without
+invocation parentheses captures an instance method when it resolves to a method
+rather than a field; the expected callback type resolves overloads. A call's
+callee may also be a typed callback value. See [CALLBACKS.md](CALLBACKS.md) for
+the semantic restrictions and native ABI.
 `enum` is contextual to the class-member production above; it does not
 introduce a named enum type or a top-level declaration.
 
@@ -351,16 +358,20 @@ type-value          ::= "strg" | "list" | "dict"
                       | "buffer"                      (* only when not followed by "(" or "[" *) ;
 ```
 
-The `postfix` shorthand has these implementation constraints: a call suffix
-is accepted only after an identifier or member expression; an identifier
-call is initially a constructor call, while a member call is a method call.
+The `postfix` shorthand accepts a call suffix after any value expression.
+An identifier call is initially parsed as construction and resolves instead
+to invocation when it names a callback variable or field. A member call
+resolves to a method call or callback-field invocation. A returned callback
+can be invoked directly, as in `object.capture()(argument)`; attempting to
+call any non-callable value is diagnosed.
 An `as` suffix accepts a supported non-void target and a value with a valid
 checked-extraction source type. It binds at postfix precedence and can be
 repeated.
 Parenthesize the cast before member access, as in
 `(items[index] as model.Foo).method()`, because dotted names after `as` are
 parsed as qualified class names. Scalar conversion retains `int(value)` and
-the other scalar type-name call forms; `Foo(value)` is always construction.
+the other scalar type-name call forms; `Foo(value)` constructs a class unless
+`Foo` resolves to a callback value.
 Name resolution may recognize a dotted qualified class construction. A
 member expression such as `Base.field` or `Left.Root.method(args)` inside a
 class method, constructor, or destructor may instead receive an implicit
@@ -373,16 +384,15 @@ class-qualified constant reads are not static fields or static method calls.
 Local/parameter and field receiver names take precedence over implicit base
 qualification; namespace/import class lookup otherwise follows ordinary
 lexical rules. Type-valued name resolution is unchanged. A
-`method-call-statement` must parse to a method-call AST node; a bare
+`method-call-statement` must resolve to a method- or callback-call AST node; a bare
 constructor call is not accepted as a statement. Identifier- and
 parenthesis-started expressions are routed through statement parsing;
 parenthesized receivers such as `(items[0] as Foo).method()` are valid
 standalone calls, including calls returning `void`. Parenthesizing a noncall
 does not make it a valid expression statement. Declaration and assignment
 recognition still applies before the method-call-only check.
-Calls cannot be chained
-directly after a call or constructor-call node, although member and index
-suffixes can follow. The `format` expression requires a literal template,
+Member, index, and callable invocation suffixes may follow a call.
+The `format` expression requires a literal template,
 returns `strg`, and accepts either
 positional expressions or named `IDENT=expression` arguments, never both.
 Positional `{}` placeholders match positional arguments in order. Named

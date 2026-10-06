@@ -21,7 +21,7 @@ enum class ExpressionKind {
     Integer, Unsigned, Float, Boolean, String, FormatString, Identifier, ImplicitThis,
     Unary, Binary, Member, EnumConstant, Call,
     ConstructorCall, BufferConstructor, Null, ArrayLiteral, MapLiteral, Index, Slice, Cast,
-    ObjectCast, TypeTest, TypeOf, TypeName, BufferLiteral
+    ObjectCast, TypeTest, TypeOf, TypeName, BufferLiteral, BoundMethod, CallbackCall
 };
 
 struct FormatSpec {
@@ -43,6 +43,7 @@ struct Expression {
     // overload's mangled parameter suffix here, so code generation reuses the
     // same resolution instead of repeating it.
     std::string resolvedSignature;
+    std::string resolvedType;
     std::unique_ptr<Expression> left;
     std::unique_ptr<Expression> right;
     std::vector<std::unique_ptr<Expression>> arguments;
@@ -52,6 +53,8 @@ struct Expression {
     std::vector<std::size_t> formatArgumentIndices;
     std::vector<FormatSpec> formatSpecs;
 };
+
+std::unique_ptr<Expression> cloneExpression(const Expression& expression);
 
 enum class StatementKind {
     Declaration, Assignment, Print, If, While, DoWhile, Block, Return, Expression,
