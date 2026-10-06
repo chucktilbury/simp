@@ -1,6 +1,15 @@
 include_guard(GLOBAL)
 
 set(SIMP_SANITIZE "OFF" CACHE STRING "Sanitizers (OFF or address;undefined)")
+option(SIMP_COVERAGE "Enable Clang source-based coverage" OFF)
+if(SIMP_COVERAGE)
+    if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang" OR
+       NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        message(FATAL_ERROR "SIMP_COVERAGE requires Clang for C and C++")
+    endif()
+    add_compile_options(-fprofile-instr-generate -fcoverage-mapping -g)
+    add_link_options(-fprofile-instr-generate)
+endif()
 if(SIMP_SANITIZE AND NOT SIMP_SANITIZE STREQUAL "OFF")
     if(NOT CMAKE_C_COMPILER_ID MATCHES "Clang" OR
        NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")

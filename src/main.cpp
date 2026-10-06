@@ -310,6 +310,10 @@ void requireResource(const std::filesystem::path& path, const std::string& descr
 int runCompiler(const BuildContext& context, const std::vector<std::string>& arguments,
                 const std::string& operation) {
     std::string command = shellQuote(context.compiler.string());
+    if (SIMP_COVERAGE &&
+        std::find(arguments.begin(), arguments.end(), "-r") == arguments.end()) {
+        command += " -fprofile-instr-generate -fcoverage-mapping";
+    }
     if (std::string(SIMP_SANITIZER_LIST).size() != 0 &&
         std::find(arguments.begin(), arguments.end(), "-r") == arguments.end()) {
         command += " " + shellQuote("-fsanitize=" SIMP_SANITIZER_LIST);

@@ -104,3 +104,31 @@ compiler itself does not link the LLVM C++ API. Python must be at least 3.11
 shell helper, not a dependency installer. Mirror CI with the commands above,
 `-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++`, and a private
 `HOME`/`XDG_CONFIG_HOME` when invoking CTest.
+
+## Coverage
+
+`SIMP_COVERAGE=ON` enables Clang's source-based coverage for native C/C++,
+including the runtime linked into generated executables and inline C shims.
+It defaults to `OFF` and requires matching Clang, `llvm-profdata`, and
+`llvm-cov` versions (Ubuntu's `clang llvm` packages). No gcovr/lcov dependency
+is needed.
+
+```sh
+cmake -S . -B build-coverage -DCMAKE_BUILD_TYPE=Debug \
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DSIMP_COVERAGE=ON -DSIMP_STAGE_PREFIX="$PWD/build-coverage/stage"
+cmake --build build-coverage -j4
+cmake --build build-coverage --target coverage
+```
+
+The `coverage` target clears only its raw profiles, runs the full CTest suite,
+then writes `coverage/summary.txt`, `coverage/coverage.json`, and
+`coverage/html/index.html` below the build directory. CTest gives every
+process/module its own profile filename so concurrent compiler/program runs
+do not overwrite one another. `scripts/coverage.py` also accepts explicit
+`--build`, `--source`, and repeated `--binary` arguments to report existing
+profiles without rerunning tests. Reports combine compiler, native unit tests,
+and generated integration executables, restricted to `src/` C/C++ files.
+Hand-generated Simple LLVM IR has no C/C++ coverage source mapping.
+Processes that abort cannot flush all counters; their already-completed
+compiler invocations are still covered.

@@ -135,6 +135,9 @@ file(COPY "${relocated_prefix}/${INCLUDEDIR}/simp/Stdlib.h"
 file(COPY "${SOURCE_DIR}/tests/functional/cli/inline_stdlib.c"
     DESTINATION "${project_directory}")
 set(instrumentation_flags)
+if(COVERAGE)
+    list(APPEND instrumentation_flags -fprofile-instr-generate -fcoverage-mapping)
+endif()
 if(SANITIZER_LIST)
     list(APPEND instrumentation_flags "-fsanitize=${SANITIZER_LIST}")
 endif()

@@ -335,6 +335,7 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
                 "-DRUNTIME_LIBRARY_NAME=$<TARGET_FILE_NAME:simp_runtime>"
                 "-DCLANG=${SIMP_CLANG_EXECUTABLE}"
                 "-DSANITIZER_LIST=${SIMP_SANITIZER_LIST}"
+                "-DCOVERAGE=${SIMP_COVERAGE}"
                 -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallLayoutTest.cmake"
         )
     endforeach()
@@ -370,8 +371,33 @@ add_test(NAME simp_documentation_programs
     --work "${CMAKE_CURRENT_BINARY_DIR}/doc-programs")
 set_tests_properties(simp_documentation_programs PROPERTIES LABELS documentation TIMEOUT 180)
 
+set(simp_test_environment)
 if(SIMP_SANITIZE AND NOT SIMP_SANITIZE STREQUAL "OFF")
+    list(APPEND simp_test_environment
+        "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1"
+        "UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+endif()
+if(SIMP_COVERAGE)
+    find_program(SIMP_LLVM_PROFDATA NAMES llvm-profdata)
+    find_program(SIMP_LLVM_COV NAMES llvm-cov)
+    if(NOT SIMP_LLVM_PROFDATA OR NOT SIMP_LLVM_COV)
+        message(FATAL_ERROR "SIMP_COVERAGE requires llvm-profdata and llvm-cov")
+    endif()
+    set(profile_directory "${CMAKE_BINARY_DIR}/coverage/profiles")
+    file(MAKE_DIRECTORY "${profile_directory}")
+    list(APPEND simp_test_environment
+        "LLVM_PROFILE_FILE=${profile_directory}/%p-%m.profraw")
+    add_custom_target(coverage
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/../scripts/coverage.py"
+            --build "${CMAKE_BINARY_DIR}" --source "${CMAKE_CURRENT_SOURCE_DIR}/../src"
+            --profdata "${SIMP_LLVM_PROFDATA}" --cov "${SIMP_LLVM_COV}"
+            --binary "$<TARGET_FILE:simp>" --binary "$<TARGET_FILE:simp_tests>"
+            --binary "$<TARGET_FILE:simp_command_line_tests>"
+            --binary "$<TARGET_FILE:simp_gc_runtime_tests>" --run-tests
+        DEPENDS simp simp_tests simp_command_line_tests simp_gc_runtime_tests
+        USES_TERMINAL VERBATIM)
+endif()
+if(simp_test_environment)
     get_property(simp_all_tests DIRECTORY PROPERTY TESTS)
-    set_tests_properties(${simp_all_tests} PROPERTIES
-        ENVIRONMENT "ASAN_OPTIONS=detect_leaks=0:halt_on_error=1;UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1")
+    set_tests_properties(${simp_all_tests} PROPERTIES ENVIRONMENT "${simp_test_environment}")
 endif()

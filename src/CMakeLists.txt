@@ -172,6 +172,7 @@ target_compile_definitions(simp PRIVATE
     SIMP_CLANG_EXECUTABLE="${SIMP_CLANG_EXECUTABLE}"
     SIMP_TARGET_TRIPLE="${SIMP_TARGET_TRIPLE}"
     SIMP_SANITIZER_LIST="${SIMP_SANITIZER_LIST}"
+    SIMP_COVERAGE=$<BOOL:${SIMP_COVERAGE}>
 )
 add_dependencies(simp simp_runtime)
 set_target_properties(simp PROPERTIES
