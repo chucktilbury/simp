@@ -894,6 +894,107 @@ class SimpkgTest(unittest.TestCase):
         self.assertNotEqual(hash_failure.returncode, 0)
         self.assertIn("integrity mismatch", hash_failure.stdout + hash_failure.stderr)
 
+    def test_compiler_runs_package_from_home_when_xdg_is_unset(self) -> None:
+        project = self.root / "home-lookup-project"
+        (project / "modules").mkdir(parents=True)
+        source = project / "app.simp"
+        source.write_text("import greeting\nstart { print(Greeter().answer()) }\n")
+        package = Path(self.base_environment["HOME"]) / ".config/simp/modules/greeting/1.0.0"
+        package.mkdir(parents=True)
+        (package / "simp-package.toml").write_text(self.manifest())
+        (package / "greeting.simp").write_text(
+            "class Greeter { int answer() { return 73 } }\n"
+        )
+        installation = self.root / "empty-installation-modules"
+        installation.mkdir()
+        environment = {
+            **self.base_environment,
+            "SIMP_STDLIB_MODULE_DIR": str(installation),
+        }
+        environment.pop("XDG_CONFIG_HOME", None)
+        executable = self.root / "home-lookup-app"
+        compiled = run(
+            [str(self.args.compiler), str(source), "-o", str(executable)],
+            cwd=self.root,
+            env=environment,
+        )
+        self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+        executed = run([str(executable)], cwd=self.root, env=environment)
+        self.assertEqual(executed.returncode, 0, executed.stdout + executed.stderr)
+        self.assertEqual(executed.stdout, "73")
+
+    def test_compiler_five_root_collisions_select_each_precedence_level(self) -> None:
+        project = self.root / "precedence-project"
+        nested = project / "src/nested"
+        nested.mkdir(parents=True)
+        source = nested / "app.simp"
+        source.write_text("import greeting\nstart { print(Greeter().answer()) }\n")
+        config_home = self.root / "precedence-config"
+        roots = [
+            self.root / "cli-modules",
+            project / "modules",
+            self.root / "environment-modules",
+            config_home / "simp/modules",
+            self.root / "installation-modules",
+        ]
+        for value, root in enumerate(roots, start=1):
+            package = root / "greeting/1.0.0"
+            package.mkdir(parents=True)
+            (package / "simp-package.toml").write_text(self.manifest())
+            (package / "greeting.simp").write_text(
+                f"class Greeter {{ int answer() {{ return {value} }} }}\n"
+            )
+        environment = {
+            **self.base_environment,
+            "XDG_CONFIG_HOME": str(config_home),
+            "SIMP_MODULE_DIR": str(roots[2]),
+            "SIMP_STDLIB_MODULE_DIR": str(roots[4]),
+        }
+        executable = self.root / "precedence-app"
+        for index, origin in enumerate(("CLI", "project", "environment", "home", "installation")):
+            with self.subTest(selected=origin):
+                arguments = ["-M", str(roots[0])] if index == 0 else []
+                compiled = run(
+                    [str(self.args.compiler), *arguments, str(source), "-o", str(executable)],
+                    cwd=self.root,
+                    env=environment,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stdout + compiled.stderr)
+                executed = run([str(executable)], cwd=self.root, env=environment)
+                self.assertEqual(executed.returncode, 0, executed.stdout + executed.stderr)
+                self.assertEqual(executed.stdout, str(index + 1))
+            shutil.rmtree(roots[index] / "greeting")
+
+    def test_compiler_rejects_legacy_registry_files_in_cwd_and_discovered_project(self) -> None:
+        project = self.root / "registry-project"
+        (project / "modules").mkdir(parents=True)
+        nested = project / "src/nested"
+        nested.mkdir(parents=True)
+        source = nested / "app.simp"
+        source.write_text("start { print(1) }\n")
+        cwd = self.root / "registry-cwd"
+        cwd.mkdir()
+        command = [str(self.args.compiler), "--check-only", str(source)]
+        baseline = run(command, cwd=cwd, env=self.base_environment)
+        self.assertEqual(baseline.returncode, 0, baseline.stdout + baseline.stderr)
+        for origin, directory in (("cwd", cwd), ("discovered project", project)):
+            with self.subTest(registry=origin):
+                registry = directory / "simp-modules.tsv"
+                registry.write_text("greeting\t1.0.0\tgreeting.simp\tclass\tGreeter\t\n")
+                try:
+                    rejected = run(command, cwd=cwd, env=self.base_environment)
+                    self.assertNotEqual(rejected.returncode, 0)
+                    self.assertIn(
+                        "simp-modules.tsv registries are no longer supported",
+                        rejected.stdout + rejected.stderr,
+                    )
+                    self.assertIn(
+                        "simp-package.toml",
+                        rejected.stdout + rejected.stderr,
+                    )
+                finally:
+                    registry.unlink()
+
     def test_user_package_root_satisfies_only_matching_locked_content(self) -> None:
         module = self.script_module()
         self.make_remote("greeting", {"1.0.0": self.manifest()})
