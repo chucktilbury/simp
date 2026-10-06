@@ -88,6 +88,7 @@ file(GLOB_RECURSE SIMP_STDLIB_SOURCES CONFIGURE_DEPENDS
     "${SIMP_SOURCE_STDLIB_DIRECTORY}/*")
 
 find_package(Threads REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 include(CheckIncludeFile)
 check_include_file(unistd.h SIMP_HAVE_UNISTD_H)
@@ -125,6 +126,18 @@ add_custom_target(simp_resources ALL
     COMMENT "Staging simp builtin, runtime headers, and module directories"
     VERBATIM
 )
+
+set(SIMP_SQLITE_PACKAGE_LIBRARY_DIRECTORY
+    "${SIMP_STAGE_MODULE_DIRECTORY}/sqlite/0.1.0/lib")
+file(MAKE_DIRECTORY "${SIMP_SQLITE_PACKAGE_LIBRARY_DIRECTORY}")
+add_library(simp_sqlite_native STATIC
+    "${SIMP_SOURCE_STDLIB_DIRECTORY}/sqlite/0.1.0/native/sqlite.c")
+target_link_libraries(simp_sqlite_native PRIVATE simp_headers SQLite::SQLite3)
+set_target_properties(simp_sqlite_native PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${SIMP_SQLITE_PACKAGE_LIBRARY_DIRECTORY}"
+    OUTPUT_NAME simp_sqlite
+)
+add_dependencies(simp_resources simp_sqlite_native)
 
 add_library(simp_frontend
     Ast.cpp
@@ -197,4 +210,5 @@ install(TARGETS simp_runtime
 )
 install(FILES ${SIMP_RUNTIME_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/simp")
 install(FILES ${SIMP_BUILTIN_SOURCES} DESTINATION "${CMAKE_INSTALL_DATADIR}/simp/builtin")
-install(DIRECTORY "${SIMP_SOURCE_STDLIB_DIRECTORY}/" DESTINATION "${CMAKE_INSTALL_DATADIR}/simp/modules")
+install(DIRECTORY "${SIMP_STAGE_MODULE_DIRECTORY}/"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/simp/modules")

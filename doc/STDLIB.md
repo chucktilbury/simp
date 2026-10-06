@@ -327,6 +327,136 @@ start {
 }
 ```
 
+## `sql` and `sqlite`
+
+`import sql as SQL` provides the backend-neutral tagged `SQL.Value` type.
+It has exactly five variants: SQL NULL (the zero-argument `Value()`),
+signed 64-bit integer (`Value(int)`), 64-bit real (`Value(float)`), text
+(`Value(String)`), and blob (`Value(buffer)`). NULL is an explicit value; it
+is never represented by an absent value, zero, or empty string. A null
+`String` or `buffer` cannot be used to construct the text/blob variants.
+`kind()` returns 0 through 4 for NULL, integer, real, text, and blob
+respectively; `isNull()` tests NULL. The `asInteger()`, `asReal()`, `asText()`,
+and `asBlob()` accessors are exact-type checked and raise `Exception` on a
+mismatch; they do not coerce or provide implicit conversions.
+
+`SQL.Connection`, `SQL.Statement`, and `SQL.Transaction` define the shared
+database API. A concrete backend subclasses these classes and overrides their
+methods; assigning the backend object to the SQL base type retains runtime
+dispatch. The methods on the base types raise an exception if a backend does
+not override them. Simple does not enforce abstract methods at compile time.
+This API does not make SQL syntax or backend behavior portable.
+
+The shared class signatures are:
+
+```text
+Connection: bool isOpen(), String error(), bool execute(String sql),
+            Statement prepare(String sql), Transaction beginTransaction(),
+            bool close()
+Statement:  String error(), bool bind(int oneBasedIndex, Value value),
+            bool step(), bool hasRow(), bool isDone(), bool failed(),
+            Value value(int zeroBasedColumnIndex), bool close()
+Transaction: bool isActive(), bool commit(), bool rollback(), bool close()
+```
+
+`import sqlite as SQLite` provides:
+
+```text
+Connection(String path)
+bool isOpen()
+String Statement.error()
+bool execute(String sql)
+Statement prepare(String sql)
+bool setBusyTimeout(int milliseconds)
+Transaction beginTransaction()
+bool close()
+
+String error()
+bool bind(int oneBasedIndex, SQL.Value value)
+bool step()
+bool hasRow()
+bool isDone()
+bool failed()
+SQL.Value value(int zeroBasedColumnIndex)
+bool close()
+
+Transaction.isActive()
+bool commit()
+bool rollback()
+bool close()
+```
+
+The SQLite package uses the system SQLite library. Its native shim is built and
+staged by CMake and linked with `sqlite3`; a SQLite development header/library
+must be available when configuring and linking. `Connection` opens or creates a
+read/write database. SQLite's empty path opens a temporary database that
+SQLite deletes when the connection closes. Check `isOpen()` after construction
+and inspect `error()` on failures. `execute` runs raw SQL (including PRAGMAs) and returns `false`
+with the connection error available on failure. Use `prepare` and `bind` for
+values originating outside trusted SQL text; binding is parameterized and
+does not interpolate values. `prepare` accepts one statement, with trailing
+whitespace only. A preparation failure returns null and sets `Connection.error()`.
+
+Bind indexes start at 1; result column indexes start at 0. Binding uses the
+same five `SQL.Value` variants, including explicit NULL. `step()` returns true
+for a row and false for either completion or error; check `isDone()` and
+`failed()` to distinguish them, and inspect `Statement.error()` on failure.
+After completion or error, additional `step()` calls return false without
+calling SQLite again; in particular, a completed DML statement is not rerun.
+`value()` is valid only while `hasRow()` is true. SQLite values are tagged
+from each result's runtime storage class (`sqlite3_column_type`), not the
+column's declared affinity. Text and blob bytes are copied before returning.
+Statements must be explicitly closed/finalized; close each connection as well.
+Closing a connection with live statements or an active transaction returns
+false, preserves the connection, and reports the SQLite error; finalize
+statements and finish transactions before retrying. The native backend retains
+connection ownership for each live statement and transaction, so a transaction
+cannot retain a dangling connection pointer even if raw SQL ends it with
+`ROLLBACK`; the transaction then reports inactive and releases its reference.
+A transaction begins with `BEGIN IMMEDIATE`; explicitly commit or roll it
+back. `Transaction.close()` rolls back an active transaction. Connection,
+statement, and transaction wrappers also release their native ownership in
+their language destructor as a GC fallback; explicit close remains the
+deterministic lifecycle.
+
+Busy timeout and PRAGMA execution are SQLite-specific. Do not infer cross-
+database SQL syntax portability from the shared value API.
+
+```simp
+import sqlite as SQLite
+import sql as SQL
+
+start {
+    SQL.Connection database = SQLite.Connection("example.db")
+    if (!database.isOpen()) {
+        print(database.error())
+    } else {
+        if (!database.execute("CREATE TABLE IF NOT EXISTS sample (value)")) {
+            print(database.error())
+        } else {
+            SQLite.Statement insert = database.prepare("INSERT INTO sample VALUES (?)")
+            if (insert == null) {
+                print(database.error())
+            } else {
+                if (!insert.bind(1, SQL.Value("parameterized text"))) {
+                    print(insert.error())
+                } else {
+                    insert.step()
+                    if (insert.failed()) { print(insert.error()) }
+                }
+                insert.close()
+            }
+        }
+        if (!database.close()) { print(database.error()) }
+    }
+}
+```
+
+This example deliberately uses the backend-neutral `SQL.Connection`,
+`SQL.Statement`, and `SQL.Transaction` types for ordinary operations; only
+SQLite-specific settings such as `setBusyTimeout` require the concrete
+`SQLite.Connection` type.
+
 ## `process`
 
 Import with `import process as P`; the alias names the package namespace, so

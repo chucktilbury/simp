@@ -1,0 +1,5 @@
+[package]
+name = "sql"
+version = "0.1.0"
+source = "sql.simp"
+export = "namespace:SQL"
