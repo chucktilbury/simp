@@ -53,13 +53,14 @@ The optional suite is enabled explicitly, never as a silently skipped display
 test:
 
 ```sh
-cmake -S . -B build-gtk -DSIMP_GTK=ON -DSIMP_GTK_SOURCEVIEW=ON \
+cmake -S . -B build-gtk -DSIMP_GTK=ON -DSIMP_GTK_SOURCEVIEW=ON -DSIMP_GTK_TESTS=ON \
   -DSIMP_STAGE_PREFIX="$PWD/build-gtk/stage"
 cmake --build build-gtk -j4
-ctest --test-dir build-gtk -R '^(simp_gtk|simp_callbacks|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts)$' --output-on-failure -V
+cmake --build build-gtk --target tweed -j4
+ctest --test-dir build-gtk -R '^(simp_gtk|simp_callbacks|simp_tweed_binary|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts)$' --output-on-failure -V
 ```
 
-Configuration requires `pkg-config`, GTK 4 and GtkSourceView 5 development
+This explicit test configuration requires `pkg-config`, GTK 4 and GtkSourceView 5 development
 files, Xvfb, and `dbus-daemon` (`pkg-config libgtk-4-dev
 libgtksourceview-5-dev xvfb dbus-daemon` on Debian/Ubuntu).
 A local Xvfb executable can
@@ -90,6 +91,13 @@ The editor example test exercises the Tweed language definition, text-buffer
 editing/search, undo/redo, document/tab behavior and file operations. The
 shortcut test covers defaults, user mappings and conflicts. Run the complete
 configured suite with `ctest --test-dir build-gtk --output-on-failure`.
+`simp_tweed_binary` runs the actual `tweed` target output with the same bounded
+editor fixture, private Xvfb and session bus; its `simp_tweed_build` CTest
+fixture builds the target first. GUI options default to installed development
+dependencies on fresh configurations; the explicit options above ensure this
+test configuration fails rather than becoming compiler-only.
+The build fixture also checks nanosecond output timestamps on a second
+invocation so an unchanged target cannot silently recompile or relink.
 
 For sanitizer coverage, add `-DSIMP_GTK=ON` and `SIMP_XVFB_EXECUTABLE` if needed
 to the sanitizer build above, then run the same selector. Address/UB checks
@@ -111,8 +119,8 @@ a small importing driver compiles and runs it, checking its answer.
 example has no expectation or an expectation names a deleted example.
 `gtk.simp` explicitly requires optional GTK: it is registered only with
 `SIMP_GTK=ON`, and runs with `--test` on the headless fixture. Without that
-argument the example is interactive. The default example suite needs no GTK;
-the inventory still validates optional examples.
+argument the example is interactive. Compiler-only configurations need no GTK;
+their inventory still validates optional examples.
 `err.simp` handles a missing-file error and exits successfully; `test.simp`
 demonstrates a buffer-bounds runtime error and `unhandled_exception.simp`
 demonstrates an uncaught exception. The latter two must abort with the intended

@@ -40,6 +40,10 @@ endif()
 if(NOT DEFINED SIMP_LIBRARY_OUTPUT_DIRECTORY)
     set(SIMP_LIBRARY_OUTPUT_DIRECTORY "${SIMP_STAGE_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
 endif()
+if("${SIMP_RUNTIME_OUTPUT_DIRECTORY};${SIMP_LIBRARY_OUTPUT_DIRECTORY}" MATCHES "[ \t]")
+    # GNU ld depfiles do not escape spaces; retain CMake's explicit link dependencies.
+    set(CMAKE_LINK_DEPENDS_USE_LINKER FALSE)
+endif()
 
 # Resource locations are compiled in only as paths relative to the prefix.
 foreach(simp_install_kind BINDIR LIBDIR INCLUDEDIR DATADIR)
@@ -122,13 +126,6 @@ if(NOT simp_source_include_real STREQUAL simp_stage_include_real)
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${SIMP_RUNTIME_HEADERS}
                 "${SIMP_STAGE_INCLUDE_DIRECTORY}/")
 endif()
-add_custom_target(simp_resources ALL
-    ${simp_stage_commands}
-    DEPENDS ${SIMP_BUILTIN_SOURCES} ${SIMP_RUNTIME_HEADERS} ${SIMP_STDLIB_SOURCES}
-    COMMENT "Staging simp builtin, runtime headers, and module directories"
-    VERBATIM
-)
-
 set(SIMP_SQLITE_PACKAGE_LIBRARY_DIRECTORY
     "${SIMP_STAGE_MODULE_DIRECTORY}/sqlite/0.1.0/lib")
 file(MAKE_DIRECTORY "${SIMP_SQLITE_PACKAGE_LIBRARY_DIRECTORY}")
@@ -139,10 +136,17 @@ set_target_properties(simp_sqlite_native PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${SIMP_SQLITE_PACKAGE_LIBRARY_DIRECTORY}"
     OUTPUT_NAME simp_sqlite
 )
-add_dependencies(simp_resources simp_sqlite_native)
-
-option(SIMP_GTK "Build the optional GTK 4 interface package and headless tests" OFF)
-option(SIMP_GTK_SOURCEVIEW "Build the optional GtkSourceView editor package" OFF)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
+    pkg_check_modules(GTK_SOURCEVIEW QUIET IMPORTED_TARGET gtksourceview-5)
+endif()
+option(SIMP_GTK "Build the GTK 4 interface package (default: detect installed dependencies)" ${GTK4_FOUND})
+set(simp_sourceview_default OFF)
+if(SIMP_GTK AND GTK_SOURCEVIEW_FOUND)
+    set(simp_sourceview_default ON)
+endif()
+option(SIMP_GTK_SOURCEVIEW "Build the GtkSourceView editor package (default: detect installed dependencies)" ${simp_sourceview_default})
 if(SIMP_GTK_SOURCEVIEW AND NOT SIMP_GTK)
     message(FATAL_ERROR "SIMP_GTK_SOURCEVIEW requires SIMP_GTK=ON")
 endif()
@@ -164,15 +168,12 @@ if(SIMP_GTK)
         configure_file(
             "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/simp-package-sourceview.toml.in"
             "${SIMP_GTK_SOURCEVIEW_MANIFEST}" @ONLY)
-        add_custom_target(simp_sourceview_package ALL
+        list(APPEND simp_stage_commands
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "${SIMP_GTK_SOURCEVIEW_MANIFEST}"
-                "${SIMP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/simp-package.toml"
-            DEPENDS simp_resources
-            COMMENT "Staging GtkSourceView link metadata"
-            VERBATIM)
+                "${SIMP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/simp-package.toml")
     else()
-        add_custom_command(TARGET simp_resources POST_BUILD
+        list(APPEND simp_stage_commands
             COMMAND "${CMAKE_COMMAND}" -E remove_directory
                 "${SIMP_STAGE_MODULE_DIRECTORY}/sourceview")
     endif()
@@ -180,19 +181,51 @@ if(SIMP_GTK)
     set_target_properties(simp_gtk_native PROPERTIES
         ARCHIVE_OUTPUT_DIRECTORY "${SIMP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/lib"
         OUTPUT_NAME simp_gtk)
-    add_dependencies(simp_resources simp_gtk_native)
     message(STATUS "GTK 4 interface enabled; GTK links only into importing applications")
     if(SIMP_GTK_SOURCEVIEW)
         message(STATUS "GtkSourceView editor package enabled")
     endif()
 else()
     # Do not advertise an unusable source-only package in a non-GTK prefix.
-    add_custom_command(TARGET simp_resources POST_BUILD
+    list(APPEND simp_stage_commands
         COMMAND "${CMAKE_COMMAND}" -E remove_directory "${SIMP_STAGE_MODULE_DIRECTORY}/gtk")
-    add_custom_command(TARGET simp_resources POST_BUILD
+    list(APPEND simp_stage_commands
         COMMAND "${CMAKE_COMMAND}" -E remove_directory
             "${SIMP_STAGE_MODULE_DIRECTORY}/sourceview")
     message(STATUS "GTK 4 interface disabled (enable with -DSIMP_GTK=ON)")
+endif()
+
+set(simp_stage_outputs "${SIMP_STAGE_BUILTIN_DIRECTORY}/String.simp")
+if(NOT simp_source_include_real STREQUAL simp_stage_include_real)
+    foreach(header IN LISTS SIMP_RUNTIME_HEADERS)
+        get_filename_component(name "${header}" NAME)
+        list(APPEND simp_stage_outputs "${SIMP_STAGE_INCLUDE_DIRECTORY}/${name}")
+    endforeach()
+endif()
+foreach(source IN LISTS SIMP_STDLIB_SOURCES)
+    file(RELATIVE_PATH relative "${SIMP_SOURCE_STDLIB_DIRECTORY}" "${source}")
+    if((NOT SIMP_GTK AND relative MATCHES "^gtk/")
+       OR (NOT SIMP_GTK_SOURCEVIEW AND relative MATCHES "^sourceview/"))
+        continue()
+    endif()
+    list(APPEND simp_stage_outputs "${SIMP_STAGE_MODULE_DIRECTORY}/${relative}")
+endforeach()
+set(SIMP_RESOURCE_STAMP "${CMAKE_CURRENT_BINARY_DIR}/simp-resources.stamp")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/simp-resource-options.txt"
+    CONTENT "GTK=${SIMP_GTK}\nSOURCEVIEW=${SIMP_GTK_SOURCEVIEW}\n")
+add_custom_command(
+    OUTPUT "${SIMP_RESOURCE_STAMP}" ${simp_stage_outputs}
+    ${simp_stage_commands}
+    COMMAND "${CMAKE_COMMAND}" -E touch "${SIMP_RESOURCE_STAMP}"
+    DEPENDS ${SIMP_BUILTIN_SOURCES} ${SIMP_RUNTIME_HEADERS} ${SIMP_STDLIB_SOURCES}
+        ${SIMP_GTK_SOURCEVIEW_MANIFEST}
+        "${CMAKE_CURRENT_LIST_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/simp-resource-options.txt"
+    COMMENT "Staging simp builtin, runtime headers, and module directories"
+    VERBATIM)
+add_custom_target(simp_resources ALL DEPENDS "${SIMP_RESOURCE_STAMP}" ${simp_stage_outputs})
+add_dependencies(simp_resources simp_sqlite_native)
+if(SIMP_GTK)
+    add_dependencies(simp_resources simp_gtk_native)
 endif()
 
 add_library(simp_frontend
@@ -251,6 +284,7 @@ add_dependencies(simp simp_runtime)
 set_target_properties(simp PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
 )
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/Tweed.cmake")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(simp_frontend PRIVATE -Wall -Wextra -Wpedantic)

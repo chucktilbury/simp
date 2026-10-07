@@ -8,9 +8,12 @@ It is not a complete GTK binding or a generic GUI framework.
 
 ## Build and package linkage
 
-Configure with `-DSIMP_GTK=ON`. GTK 4 development files, `pkg-config`, Xvfb, and
-`dbus-daemon` are required for the configured headless tests. With the
-option off (the default), the GTK package is absent from staged/installed
+Fresh configurations enable `SIMP_GTK` when GTK 4 development files and
+`pkg-config` are available, and enable `SIMP_GTK_SOURCEVIEW` when GtkSourceView 5
+is also available. Explicit `ON` options require the corresponding dependencies.
+With `BUILD_TESTING=ON`, headless tests default to enabled when Xvfb and
+`dbus-daemon` are found; `SIMP_GTK_TESTS=ON` requires them explicitly.
+With `SIMP_GTK=OFF` and `SIMP_GTK_SOURCEVIEW=OFF`, the GTK package is absent from staged/installed
 standard modules. With it on, `lib/libsimp_gtk.a` resides inside
 `share/simp/modules/gtk/0.1.0/`, beside the source and manifest.
 

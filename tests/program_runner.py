@@ -29,17 +29,18 @@ def invoke(command: list[str], work: Path, env: dict[str, str],
 
 
 def check_program(compiler: Path, source: Path, work: Path, case: dict,
-                  env: dict[str, str]) -> None:
-    output = work / ("program.o" if case.get("object") else "program")
-    command = [str(compiler), str(source), "-o", str(output)]
-    if case.get("object"):
-        command.append("-c")
-    result = invoke(command, work, env)
-    diagnostic = case.get("compile_diagnostic")
-    if diagnostic:
-        assert result.returncode != 0 and diagnostic in result.stderr, result
-        return
-    assert result.returncode == 0, f"{source} failed compilation:\n{result.stderr}"
+                  env: dict[str, str], executable: Path | None = None) -> None:
+    output = executable or work / ("program.o" if case.get("object") else "program")
+    if executable is None:
+        command = [str(compiler), str(source), "-o", str(output)]
+        if case.get("object"):
+            command.append("-c")
+        result = invoke(command, work, env)
+        diagnostic = case.get("compile_diagnostic")
+        if diagnostic:
+            assert result.returncode != 0 and diagnostic in result.stderr, result
+            return
+        assert result.returncode == 0, f"{source} failed compilation:\n{result.stderr}"
     assert output.is_file(), f"No compiler output for {source}"
     if case.get("object"):
         return
