@@ -341,7 +341,7 @@ void simp_runtime_thread_enter(void) {
 }
 
 void simp_runtime_thread_exit(void) {
-    if (self_registration == NULL || root_frame != NULL) abort();
+    if (self_registration == NULL || !gil_held || root_frame != NULL) abort();
     callback_thread_exit_check();
     SimpThreadRegistration **link = &thread_registry;
     while (*link != NULL && *link != self_registration) link = &(*link)->next;
@@ -354,15 +354,31 @@ void simp_runtime_thread_exit(void) {
 }
 
 void simp_runtime_gil_release(void) {
-    if (self_registration == NULL) abort();
+    if (self_registration == NULL || !gil_held) abort();
     gil_held = 0;
     pthread_mutex_unlock(&simp_gil);
 }
 
 void simp_runtime_gil_acquire(void) {
+    if (self_registration == NULL || gil_held) abort();
     pthread_mutex_lock(&simp_gil);
-    if (self_registration == NULL) abort();
     gil_held = 1;
+}
+
+int simp_runtime_managed_enter(void) {
+    if (self_registration == NULL) {
+        fputs("Simple native reentry error: native reentry requires a registered thread\n", stderr);
+        abort();
+    }
+    if (gil_held) return 0;
+    simp_runtime_gil_acquire();
+    return 1;
+}
+
+void simp_runtime_managed_leave(int acquired) {
+    if (self_registration == NULL || !gil_held || (acquired != 0 && acquired != 1))
+        abort();
+    if (acquired) simp_runtime_gil_release();
 }
 
 typedef struct SimpCallback {
@@ -385,6 +401,11 @@ struct SimpCallbackContext {
 };
 
 static SimpCallbackContext *callback_contexts = NULL;
+struct SimpCallbackTransfer {
+    struct SimpCallbackTransfer *next;
+    SimpCallback *callback;
+};
+static SimpCallbackTransfer *callback_transfers = NULL;
 static HeapNode *find_object(const void *object);
 static HeapNode *find_containing_object(const void *object);
 static const uint64_t callback_references[] = { offsetof(SimpCallback, receiver) };
@@ -452,7 +473,7 @@ void *simp_callback_code(void *value) {
     return ((SimpCallback *)value)->code;
 }
 
-SimpCallbackContext *simp_callback_acquire(void *value, const char *signature) {
+static SimpCallback *callback_validate(void *value, const char *signature) {
     callback_thread_check();
     if (value == NULL || signature == NULL) callback_fatal("null callback or signature");
     HeapNode *node = find_object(value);
@@ -460,6 +481,11 @@ SimpCallbackContext *simp_callback_acquire(void *value, const char *signature) {
         callback_fatal("not a callback value");
     SimpCallback *callback = value;
     if (strcmp(signature, callback->signature) != 0) callback_fatal("signature mismatch");
+    return callback;
+}
+
+SimpCallbackContext *simp_callback_acquire(void *value, const char *signature) {
+    SimpCallback *callback = callback_validate(value, signature);
     SimpCallbackContext *context = calloc(1, sizeof(*context));
     if (context == NULL) callback_fatal("allocation failed");
     context->callback = callback;
@@ -467,6 +493,37 @@ SimpCallbackContext *simp_callback_acquire(void *value, const char *signature) {
     context->next = callback_contexts;
     callback_contexts = context;
     return context;
+}
+
+SimpCallbackTransfer *simp_callback_transfer_prepare(void *value, const char *signature) {
+    SimpCallback *callback = callback_validate(value, signature);
+    SimpCallbackTransfer *transfer = malloc(sizeof(*transfer));
+    if (transfer == NULL) callback_fatal("allocation failed");
+    transfer->callback = callback;
+    transfer->next = callback_transfers;
+    callback_transfers = transfer;
+    return transfer;
+}
+
+static void callback_transfer_remove(SimpCallbackTransfer *transfer) {
+    callback_thread_check();
+    SimpCallbackTransfer **link = &callback_transfers;
+    while (*link && *link != transfer) link = &(*link)->next;
+    if (*link == NULL) callback_fatal("unknown or consumed callback transfer");
+    *link = transfer->next;
+}
+
+SimpCallbackContext *simp_callback_transfer_accept(SimpCallbackTransfer *transfer) {
+    callback_transfer_remove(transfer);
+    SimpCallbackContext *context =
+        simp_callback_acquire(transfer->callback, transfer->callback->signature);
+    free(transfer);
+    return context;
+}
+
+void simp_callback_transfer_cancel(SimpCallbackTransfer *transfer) {
+    callback_transfer_remove(transfer);
+    free(transfer);
 }
 
 SimpCallbackAdapter simp_callback_adapter(SimpCallbackContext *context) {
@@ -1264,6 +1321,8 @@ static HeapNode **allocate_worklist(void) {
 }
 
 static void mark_roots(HeapNode **worklist, size_t *work_count) {
+    for (SimpCallbackTransfer *transfer = callback_transfers; transfer; transfer = transfer->next)
+        mark_object(transfer->callback, worklist, work_count);
     for (SimpCallbackContext *context = callback_contexts; context; context = context->next)
         if (!context->released) mark_object(context->callback, worklist, work_count);
     /* Scan every registered Simple thread's root-frame chain, not just the

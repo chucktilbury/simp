@@ -52,6 +52,10 @@ CMake stages and installs package contents automatically:
 - During installation, contents go to
   `${CMAKE_INSTALL_DATADIR}/simp/modules/`.
 
+The `gtk/0.1.0` source tree is optional: it is staged/installed only with
+`SIMP_GTK=ON`, together with its package-native archive. Its native directory
+is package implementation detail. See [the GTK foundation guide](../doc/GTK.md).
+
 ## Adding a package
 
 Create `stdlib/<package>/<semver>/`, add the manifest and source files, and

@@ -7,6 +7,7 @@ extern "C" {
 #endif
 
 typedef struct SimpCallbackContext SimpCallbackContext;
+typedef struct SimpCallbackTransfer SimpCallbackTransfer;
 typedef void (*SimpCallbackAdapter)(void);
 typedef union SimpCallbackArgument {
     int64_t integer;
@@ -28,6 +29,14 @@ void simp_callback_dispose(SimpCallbackContext *context);
 void simp_callback_context_invoke(SimpCallbackContext *context, const char *signature,
                                   const SimpCallbackArgument *arguments,
                                   SimpCallbackArgument *result);
+
+/* One-shot rooted transport, not an invocable registration. All operations
+ * require a registered thread holding the managed lock. Accept acquires a
+ * fresh registration owned by the accepting thread. Accept/cancel consume
+ * the transfer; the package must synchronize publication and consumption. */
+SimpCallbackTransfer *simp_callback_transfer_prepare(void *callback, const char *signature);
+SimpCallbackContext *simp_callback_transfer_accept(SimpCallbackTransfer *transfer);
+void simp_callback_transfer_cancel(SimpCallbackTransfer *transfer);
 
 /* Compiler-generated bridges; not Simple method symbols. */
 void *simp_callback_new(void *receiver, void *code, SimpCallbackAdapter adapter,

@@ -74,6 +74,26 @@ add_test(NAME simp_callbacks
         --fixture "${CMAKE_CURRENT_SOURCE_DIR}/functional/cli/callbacks/native.c"
         --work "${CMAKE_CURRENT_BINARY_DIR}/callbacks"
         "--sanitize=${SIMP_SANITIZER_LIST}")
+if(SIMP_GTK)
+    find_program(SIMP_XVFB_EXECUTABLE NAMES Xvfb)
+    if(NOT SIMP_XVFB_EXECUTABLE)
+        message(FATAL_ERROR "SIMP_GTK tests require Xvfb; install it or set SIMP_XVFB_EXECUTABLE")
+    endif()
+    set(gtk_install_arguments)
+    if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+        list(APPEND gtk_install_arguments --build "${CMAKE_BINARY_DIR}")
+    endif()
+    add_test(NAME simp_gtk
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_gtk.py"
+            --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
+            --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+            --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
+            --fixture "${CMAKE_CURRENT_SOURCE_DIR}/functional/cli/gtk/native.c"
+            --work "${CMAKE_CURRENT_BINARY_DIR}/gtk"
+            --xvfb "${SIMP_XVFB_EXECUTABLE}"
+            "--sanitize=${SIMP_SANITIZER_LIST}" ${gtk_install_arguments})
+    set_tests_properties(simp_gtk PROPERTIES LABELS gtk TIMEOUT 180)
+endif()
 add_test(NAME simpkg_cli
     COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/test_simpkg.py"

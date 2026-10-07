@@ -174,6 +174,12 @@ void simp_runtime_thread_enter(void);
 void simp_runtime_thread_exit(void);
 void simp_runtime_gil_release(void);
 void simp_runtime_gil_acquire(void);
+/* Native event callbacks on an already registered thread may arrive either
+ * during managed execution or with its lock suspended. Enter returns 1 if
+ * it acquired the lock, 0 for synchronous reentry. Leave restores that state.
+ * Never run managed code, touch GC roots, or mutate managed data outside it. */
+int simp_runtime_managed_enter(void);
+void simp_runtime_managed_leave(int acquired);
 void simp_runtime_init_args(int32_t argc, char **argv);
 
 int64_t simp_system_argc(void *self);

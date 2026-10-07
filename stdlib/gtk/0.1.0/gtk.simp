@@ -1,0 +1,17 @@
+namespace Gtk {
+    class Application {
+        void initialize()
+        void run()
+        void quit()
+        void shutdown()
+        int post(callback<void()> action)
+        bool cancel(int token)
+    }
+
+    void Application.initialize() from "simp_gtk_initialize"
+    void Application.run() from "simp_gtk_run"
+    void Application.quit() from "simp_gtk_quit"
+    void Application.shutdown() from "simp_gtk_shutdown"
+    int Application.post(callback<void()> action) from "simp_gtk_post"
+    bool Application.cancel(int token) from "simp_gtk_cancel"
+}

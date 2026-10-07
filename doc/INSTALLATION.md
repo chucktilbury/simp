@@ -36,6 +36,20 @@ cmake --build /tmp/simp-compiler-build
 The root build places the compiler and test executables in `bin/` and the
 front-end archive in `lib/libsimp_frontend.a`.
 
+## Optional GTK 4 foundation
+
+GTK is opt-in: `-DSIMP_GTK=ON` requires `pkg-config`, GTK 4 development files,
+and Xvfb for the configured real-GTK integration tests. On Debian/Ubuntu these
+are `pkg-config libgtk-4-dev xvfb`. Configuration fails if a dependency is
+missing; tests do not silently skip an unavailable display. Xvfb can be selected
+with `-DSIMP_XVFB_EXECUTABLE=/absolute/path/to/Xvfb`.
+
+The build stages/installs the `gtk/0.1.0` package and its native archive together.
+Its import metadata links GTK only into applications importing it, never the
+compiler or non-import programs. With the option off, no GTK package is staged
+or installed. Use a separate staging prefix for different configurations.
+See [GTK.md](GTK.md) for the minimal API and deliberately deferred widget layer.
+
 ## Install layout and relocation
 
 Configure the installation prefix, build, and install:

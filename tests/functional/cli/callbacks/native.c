@@ -77,3 +77,55 @@ void fixture_callback_unlocked(void *self, void *handle) {
     fixture_callback_invoke(NULL, handle, 1);
     simp_runtime_gil_acquire();
 }
+
+void *fixture_callback_transfer(void *self, void *callback) {
+    (void)self;
+    return simp_callback_transfer_prepare(callback, "callback<int(int)>");
+}
+
+void *fixture_callback_accept(void *self, void *transfer) {
+    (void)self;
+    Registration *registration = malloc(sizeof(*registration));
+    if (!registration) abort();
+    registration->context = simp_callback_transfer_accept(transfer);
+    registration->function = (IntCallback)simp_callback_adapter(registration->context);
+    return registration;
+}
+
+void fixture_callback_cancel(void *self, void *transfer) {
+    (void)self;
+    simp_callback_transfer_cancel(transfer);
+}
+
+static void *accept_on_worker(void *transfer) {
+    simp_runtime_thread_enter();
+    void *registration = fixture_callback_accept(NULL, transfer);
+    if (fixture_callback_invoke(NULL, registration, 40) != 42) abort();
+    fixture_callback_collect(NULL);
+    fixture_callback_release(NULL, registration);
+    fixture_callback_dispose(NULL, registration);
+    simp_runtime_thread_exit();
+    return NULL;
+}
+
+void fixture_callback_transfer_worker(void *self, void *transfer) {
+    (void)self;
+    pthread_t thread;
+    simp_runtime_gil_release();
+    if (pthread_create(&thread, NULL, accept_on_worker, transfer)) abort();
+    pthread_join(thread, NULL);
+    simp_runtime_gil_acquire();
+}
+
+static void *unregistered_enter(void *unused) {
+    (void)unused;
+    simp_runtime_managed_enter();
+    return NULL;
+}
+
+void fixture_callback_unregistered_enter(void *self) {
+    (void)self;
+    pthread_t thread;
+    if (pthread_create(&thread, NULL, unregistered_enter, NULL)) abort();
+    pthread_join(thread, NULL);
+}

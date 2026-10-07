@@ -47,6 +47,45 @@ to avoid overwriting another configuration's compiler and runtime.
 The networking integration case exercises empty native strings; UBSan caught
 and now guards the zero-length `memchr` call on their null backing storage.
 
+## Real GTK 4 foundation
+
+The optional suite is enabled explicitly, never as a silently skipped display
+test:
+
+```sh
+cmake -S . -B build-gtk -DSIMP_GTK=ON \
+  -DSIMP_STAGE_PREFIX="$PWD/build-gtk/stage"
+cmake --build build-gtk -j4
+ctest --test-dir build-gtk -R '^(simp_gtk|simp_callbacks)$' --output-on-failure -V
+```
+
+Configuration requires `pkg-config`, GTK 4 development files, and Xvfb
+(`pkg-config libgtk-4-dev xvfb` on Debian/Ubuntu). A local Xvfb executable can
+be supplied via `SIMP_XVFB_EXECUTABLE`; it must have its normal shared-library
+dependencies available. `test_gtk.py` starts a fresh Xvfb using `-displayfd`,
+checks readiness, uses a private HOME/configuration and GTK's Cairo renderer,
+and terminates that exact server process afterward. There is no dependence
+on the user's running desktop. Startup failure and missing display are failures.
+
+Ten Simple subprocess cases cover real clicked/changed/close-request signals,
+boolean responses, nested/synchronous emissions, GC inside callbacks, receiver
+retention, disconnect and widget destruction inside handlers, cancellation,
+shutdown from a handler, worker progress while the loop is idle, worker-to-GUI
+root transfer, and explicit misuse/exception aborts. The same test verifies compile-only object link sidecars, installs and runs
+scheduler and signal consumers, and checks absence of GTK linkage in non-import
+programs and the compiler. Fixtures live in `tests/functional/cli/gtk/`, not the
+public package.
+`simp_callbacks` separately checks one-shot transport roots, accept on another
+registered thread, cancellation, lock reentry and unregistered-thread rejection,
+as well as the pre-existing strict foreign-owner invocation failures.
+
+For sanitizer coverage, add `-DSIMP_GTK=ON` and `SIMP_XVFB_EXECUTABLE` if needed
+to the sanitizer build above, then run the same selector. Address/UB checks
+remain fatal. The existing generated-program leak policy (`detect_leaks=0`)
+also avoids reporting GTK/font/display process-global caches at exit; it is
+not a suppression of GTK memory access failures. No GTK tests are skipped,
+and external uninstrumented GTK libraries are not claimed to be instrumented.
+
 ## Repository examples
 
 `ctest --test-dir build -L examples --output-on-failure -j4` compiles every

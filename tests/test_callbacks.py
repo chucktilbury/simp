@@ -19,6 +19,11 @@ class Native {
     void foreign(handle registration)
     void registeredForeign(handle registration)
     void unlocked(handle registration)
+    handle transfer(callback<int(int)> cb)
+    handle accept(handle transfer)
+    void cancel(handle transfer)
+    void transferWorker(handle transfer)
+    void unregisteredEnter()
 }
 handle Native.register(callback<int(int)> cb) from "fixture_callback_register"
 int Native.invoke(handle registration, int value) from "fixture_callback_invoke"
@@ -28,6 +33,11 @@ void Native.collect() from "fixture_callback_collect"
 void Native.foreign(handle registration) from "fixture_callback_foreign"
 void Native.registeredForeign(handle registration) from "fixture_callback_registered_foreign"
 void Native.unlocked(handle registration) from "fixture_callback_unlocked"
+handle Native.transfer(callback<int(int)> cb) from "fixture_callback_transfer"
+handle Native.accept(handle transfer) from "fixture_callback_accept"
+void Native.cancel(handle transfer) from "fixture_callback_cancel"
+void Native.transferWorker(handle transfer) from "fixture_callback_transfer_worker"
+void Native.unregisteredEnter() from "fixture_callback_unregistered_enter"
 """
 
 
@@ -55,6 +65,61 @@ def main():
                         'static_assert(sizeof(SimpCallbackArgument) >= sizeof(void *));\n')
         assert result.returncode == 0, result.stderr
         cases = [
+            ("transfer_roots", NATIVE + """
+class Payload {
+    int run(int n) { return n + 2 }
+    destroy { print("disposed") }
+}
+class Factory {
+    handle prepare(Native n) { return n.transfer(Payload().run) }
+}
+start {
+    Native n = Native()
+    handle transfer = Factory().prepare(n)
+    n.collect()
+    handle context = n.accept(transfer)
+    n.collect()
+    print(n.invoke(context, 40))
+    n.release(context)
+    n.dispose(context)
+    n.collect()
+    transfer = Factory().prepare(n)
+    n.collect()
+    n.cancel(transfer)
+    n.collect()
+    transfer = Factory().prepare(n)
+    n.transferWorker(transfer)
+    n.collect()
+}
+""", "42disposeddisposeddisposed", None),
+            ("managed_reentry", """
+start {
+    inline() {
+        if (simp_runtime_managed_enter() != 0) abort();
+        simp_runtime_managed_leave(0);
+        simp_runtime_gil_release();
+        int acquired = simp_runtime_managed_enter();
+        if (acquired != 1 || simp_runtime_managed_enter() != 0) abort();
+        simp_gc_collect();
+        simp_runtime_managed_leave(0);
+        simp_runtime_managed_leave(acquired);
+        simp_runtime_gil_acquire();
+    }
+    print("reentered")
+}
+""", "reentered", None),
+            ("unregistered_reentry", NATIVE + """
+start { Native().unregisteredEnter() }
+""", "", "native reentry requires a registered thread"),
+            ("transfer_signature", """
+class Payload { void run() {} }
+start {
+    callback<void()> cb = Payload().run
+    inline(callback<void()> cb) {
+        simp_callback_transfer_prepare(*cb, "callback<int(int)>");
+    }
+}
+""", "", "signature mismatch"),
             ("native_abis", NATIVE + """
 class W {
     strg mixed(strg text, int i, unsigned u, float f, bool b,

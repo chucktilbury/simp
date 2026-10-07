@@ -149,7 +149,42 @@ threads, including another registered Simple thread, are rejected with an
 explicit fatal diagnostic before executing managed code. Do not invoke while a
 native primitive has released the runtime lock. Same-thread synchronous reentry
 is supported: nested invocations have independent exception/root frames and
-in-flight counts. No GTK package or foreign-thread scheduler is implied.
+in-flight counts. These generic registrations are not transferable. The optional
+[GTK foundation](GTK.md) adds a package-local GUI scheduler without weakening
+these checks.
+
+### Rooted one-shot transport and native loop reentry
+
+For package authors implementing a scheduler, `<simp/Callbacks.h>` also exposes
+the opaque `SimpCallbackTransfer`:
+
+```c
+SimpCallbackTransfer *transfer =
+    simp_callback_transfer_prepare(callback, "callback<void()>");
+/* Publish to the destination using package-owned synchronization. */
+SimpCallbackContext *context = simp_callback_transfer_accept(transfer);
+/* The destination now owns context; transfer was consumed. */
+```
+
+Prepare validates the canonical signature and roots the callback/receiver
+independently of the preparing thread's lifetime. Accept requires a registered
+Simple thread holding the managed lock and creates a new registration owned by
+that accepting thread. It consumes/frees the transfer, without any gap in root
+protection. `simp_callback_transfer_cancel(transfer)` consumes/frees it without
+invocation and removes its root. Prepare/accept/cancel all require the managed
+lock; the package is responsible for queue publication, single consumption,
+shutdown cleanup, and never using a consumed pointer. Transfers are not
+invocable adapters and do not change the ownership of existing registrations.
+
+`<simp/RuntimeGc.h>` provides `simp_runtime_managed_enter()` and
+`simp_runtime_managed_leave(acquired)` for native callbacks on **already
+registered** threads. Enter returns 1 if it acquires a suspended thread's lock,
+0 if synchronous reentry already holds it. Leave restores that exact state.
+Use strict `simp_runtime_gil_release()` / `simp_runtime_gil_acquire()` around
+native blocking waits; never execute Simple or mutate managed data/roots while
+suspended. The helpers neither register an unknown thread nor bypass callback
+owner checks. See the GTK package for an actual scheduler and typed forwarding
+implementation, not a generic permission to invoke from a foreign C thread.
 
 **Exception policy: fail-fast.** Adapter entry installs an existing runtime
 exception boundary inside the bridge. An exception escaping the Simple callback
