@@ -201,6 +201,34 @@ if(NOT last_output STREQUAL expected_string_output)
     message(FATAL_ERROR "Installed String output differs:\n${last_output}")
 endif()
 
+# Compile and run the asynchronous process consumer against only the relocated
+# installation's public process package and runtime library.
+set(process_project "${work_directory}/process-project")
+file(MAKE_DIRECTORY "${process_project}")
+file(COPY "${SOURCE_DIR}/tests/functional/positive/positive_stdlib_async_process.simp"
+    DESTINATION "${process_project}")
+set(process_executable "${process_project}/process-consumer")
+execute_process(
+    COMMAND "${CMAKE_COMMAND}" -E env ${clean_environment}
+        "${compiler}" -vv positive_stdlib_async_process.simp -o "${process_executable}"
+    WORKING_DIRECTORY "${process_project}"
+    RESULT_VARIABLE process_compile_result OUTPUT_VARIABLE process_compile_stdout
+    ERROR_VARIABLE process_compile_stderr)
+if(NOT process_compile_result EQUAL 0)
+    message(FATAL_ERROR
+        "Installed process consumer failed to compile:\n${process_compile_stdout}${process_compile_stderr}")
+endif()
+require_no_tree_references("${process_compile_stdout}${process_compile_stderr}"
+    "Installed process compilation")
+execute_process(COMMAND "${process_executable}" TIMEOUT 60
+    RESULT_VARIABLE process_run_result OUTPUT_VARIABLE process_output
+    ERROR_VARIABLE process_run_stderr)
+file(READ "${SOURCE_DIR}/tests/cases/simp_stdlib_async_process.stdout" expected_process_output)
+if(NOT process_run_result EQUAL 0 OR NOT process_output STREQUAL expected_process_output)
+    message(FATAL_ERROR
+        "Installed process consumer returned ${process_run_result} with '${process_output}':\n${process_run_stderr}")
+endif()
+
 # Resolve the installed SQL/SQLite packages into a fresh project lock, then
 # compile and execute a consumer using only the relocated installation.
 set(sqlite_project "${work_directory}/sqlite-project")

@@ -138,6 +138,25 @@ void *simp_process_stdout(void *self, void *process);
 void *simp_process_stderr(void *self, void *process);
 void simp_process_close(void *self, void *process);
 
+/* Asynchronous processes (POSIX). See doc/STDLIB.md "process". A handle must
+ * be closed exactly once; events returned by next must be released. */
+void *simp_process_async_start(void *self, void *executable, void *arguments,
+                               void *working_directory);
+void *simp_process_async_next(void *self, void *process, int64_t timeout_milliseconds);
+int64_t simp_process_async_event_kind(void *self, void *event);
+void *simp_process_async_event_data(void *self, void *event);
+void simp_process_async_event_release(void *self, void *event);
+int32_t simp_process_async_wait(void *self, void *process, int64_t timeout_milliseconds);
+int32_t simp_process_async_cancel(void *self, void *process, int64_t grace_milliseconds);
+int64_t simp_process_async_state(void *self, void *process);
+int64_t simp_process_async_exit_code(void *self, void *process);
+int64_t simp_process_async_signal(void *self, void *process);
+void *simp_process_async_error(void *self, void *process);
+void simp_process_async_shutdown(void *self, void *process);
+void simp_process_async_close(void *self, void *process);
+void *simp_process_text_decode(void *self, void *bytes);
+int64_t simp_process_text_incomplete_tail(void *self, void *bytes);
+
 void *simp_mutex_create(void *receiver);
 int32_t simp_mutex_lock(void *receiver, void *mutex);
 int32_t simp_mutex_unlock(void *receiver, void *mutex);

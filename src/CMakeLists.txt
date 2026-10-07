@@ -98,6 +98,7 @@ if(NOT SIMP_HAVE_UNISTD_H)
 endif()
 
 add_library(simp_runtime STATIC RuntimeGc.c RuntimeStdlib.c RuntimeOS.c RuntimeProcess.c
+    RuntimeProcessAsync.c
     RuntimeDemoShims.c RuntimeThreads.c)
 target_link_libraries(simp_runtime PUBLIC simp_headers Threads::Threads)
 set_target_properties(simp_runtime PROPERTIES

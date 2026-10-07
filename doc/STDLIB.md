@@ -563,6 +563,165 @@ start {
 }
 ```
 
+### Asynchronous processes
+
+`P.AsyncProcess` launches a child without blocking, streams its stdout and
+stderr separately while it runs, reports completion once, and supports
+cancellation. It is intended for tools such as an IDE running a compiler, and
+it does not require or use GTK. The existing `P.Process` API is unchanged.
+
+```text
+AsyncProcess(String executable, list arguments)
+AsyncProcess(String executable, list arguments, String workingDirectory)
+enum { RUNNING = 0, EXITED, SIGNALED, CANCELLED, LAUNCH_FAILED, WAIT_FAILED }
+bool started()
+ProcessEvent next(int timeoutMilliseconds)
+bool wait(int timeoutMilliseconds)
+bool finished()
+bool cancel(int graceMilliseconds)
+int state()
+int exitCode()
+int signal()
+String error()
+void close()
+
+ProcessEvent
+enum { STDOUT = 1, STDERR, COMPLETED }
+int kind()
+bool isStdout()
+bool isStderr()
+bool isCompleted()
+buffer data()
+
+OutputDecoder()
+String decode(buffer chunk)
+String finish()
+int pending()
+```
+
+**Launching.** `arguments` is the argv list after argv[0] and must contain only
+`String`s; the executable becomes argv[0] and is started directly with
+`posix_spawnp` (a name without `/` is searched in `PATH`). No shell is
+involved, so spaces, quotes, `$`, `;`, `|`, `*`, and empty strings are passed
+verbatim. A non-null `workingDirectory` becomes the child's current directory;
+a relative executable path containing `/` is then resolved from that
+directory. The child inherits the environment, reads stdin from `/dev/null`,
+starts with an empty signal mask and default dispositions for common job
+control/termination signals, and runs in its own process group.
+
+**Events.** A native pump thread per child drains both pipes continuously, so a
+child writing more than the pipe capacity to either stream never deadlocks,
+even if the caller is not reading yet. `next(timeout)` returns the next
+queued event, waiting up to `timeout` milliseconds (`-1` waits forever, `0`
+polls); it returns `null` on timeout, after the completion event was taken,
+or after `close()`. `STDOUT`/`STDERR` events carry a non-empty byte `buffer`
+containing exactly one pipe read (at most 64 KiB). Order is preserved within
+each stream; the relative order of stdout and stderr events reflects when the
+pump observed them and is not a guarantee about the child's write order.
+Chunk boundaries are arbitrary: they are not lines and may split a UTF-8
+character. Output is buffered without limit until consumed, so it is
+lossless; call `next` regularly for very chatty children. Exactly one
+`COMPLETED` event (with `data() == null`) is delivered, always last, after
+the child has been reaped and both streams reached end of file (or were
+abandoned by cancellation/close, below). Background processes started by the
+child that keep its stdout/stderr open therefore delay completion until they
+exit or the child is cancelled.
+
+**Text.** `data()` is the lossless form. Because `String`s must be valid UTF-8,
+use one `OutputDecoder` per stream for text: `decode(chunk)` returns all
+complete text and keeps an incomplete trailing UTF-8 sequence (at most three
+bytes, see `pending()`) for the next chunk; `finish()` flushes the remainder
+at end of stream. Invalid bytes, and a sequence still incomplete at `finish()`,
+become U+FFFD (one per maximal invalid subpart). NUL bytes are kept.
+
+**Completion and status.** `wait(timeout)` returns `true` once the child has
+completed, without consuming or discarding queued events, which remain
+available from `next`; `finished()` is `wait(0)`. Until completion, `state()`
+is `RUNNING`, `exitCode()` and `signal()` are `-1` and `0`. Afterwards:
+
+| `state()` | Meaning | `exitCode()` | `signal()` |
+|---|---|---|---|
+| `EXITED` | Normal exit, including nonzero status | exit status | `0` |
+| `SIGNALED` | Killed by a signal not sent by `cancel`/`close` | `-1` | signal number |
+| `CANCELLED` | `cancel`/`close` signalled the running child | as for exit/signal | e.g. `15` or `9` |
+| `LAUNCH_FAILED` | Could not start (missing executable, bad directory or arguments) | `-1` | `0` |
+| `WAIT_FAILED` | `waitpid` failed, for example while `SIGCHLD` is ignored | `-1` | `0` |
+
+`error()` is `""` unless a launch, wait, or output error occurred; launch
+failures look like `cannot start '<exe>': No such file or directory` or
+`cannot use working directory '<dir>': ...`, and also set
+`System.lastError()`. A launch failure still returns an object with
+`started() == false` whose only event is `COMPLETED`, and still needs
+`close()`. Stream read failures (`stdout read failed: ...`) and allocation
+failures (`stdout capture failed; output was discarded`) are reported through
+`error()` without changing the exit-based `state()`, so check `error()` when
+output completeness matters.
+
+**Cancellation.** `cancel(grace)` asks a running child to stop: with
+`grace > 0` it sends `SIGTERM` to the child's process group and escalates to
+`SIGKILL` after `grace` milliseconds; with `grace == 0` it sends `SIGKILL`
+immediately. A later cancel may shorten, never extend, the deadline. It
+returns `false` for a negative grace, after completion, or after `close()`.
+Cancellation is asynchronous: wait for completion with `wait` or `next`. If
+the child already exited but descendants still hold its output pipes,
+`cancel` sends no signal (the process group may have been reused) and the
+remaining output is abandoned about 250 ms later; the state then stays
+`EXITED`/`SIGNALED`. Signals are only sent before the child is reaped, so a
+recycled process ID is never signalled.
+
+**Cleanup.** Call `close()` exactly when you are done; it is idempotent and safe
+to call from several threads. If the child is still running it is killed
+immediately with `SIGKILL` (process group), reaped, its descriptors and
+queued output are released, and the pump thread is joined. Threads blocked in
+`next`/`wait` on the same object wake up (`next` returns `null`, `wait`
+returns `true`). After `close()`, `next` returns `null`, `wait` returns
+`true`, `cancel` returns `false`, and the status getters keep the final
+values. There is no finalizer: an object that becomes unreachable without
+`close()` leaks its child and native resources, and a running child is not
+killed when the program exits.
+
+**Threads.** This is a pull API with no callbacks. Use an object from any
+registered Simple thread; `next`, `wait`, and `close` release the runtime lock
+while blocking, so other Simple threads keep running. The pump thread never
+runs Simple code or touches managed memory. In a GTK program, read events on a
+worker thread and deliver UI updates with `Gtk.Application().post` (see
+[GTK.md](GTK.md)); do not block the GTK main loop in `next(-1)` or `wait(-1)`.
+
+Scope: POSIX hosts only (Linux/glibc and macOS spawn primitives); Windows is
+not supported. There is no stdin writing, environment override, or
+pseudo-terminal support.
+
+```simp
+import process as P
+// test: {"stdout": "out:hello\nerr:warning\n2true"}
+
+start {
+    P.AsyncProcess child = P.AsyncProcess("/bin/sh",
+        ["-c", "printf 'hello\\n'; printf 'warning\\n' >&2; exit 2"])
+    P.OutputDecoder outText = P.OutputDecoder()
+    P.OutputDecoder errText = P.OutputDecoder()
+    String out = ""
+    String err = ""
+    P.ProcessEvent event = child.next(-1)
+    while (event != null) {
+        if (event.isStdout()) {
+            out.append(outText.decode(event.data()))
+        }
+        if (event.isStderr()) {
+            err.append(errText.decode(event.data()))
+        }
+        event = child.next(-1)
+    }
+    out.append(outText.finish())
+    err.append(errText.finish())
+    print(format("out:{}", out))
+    print(format("err:{}", err))
+    print(child.exitCode())
+    print(child.state() == P.AsyncProcess.EXITED)
+    child.close()
+}
+```
+
 ## `terminal`
 
 Import with `import terminal as Term`; the alias names the package namespace,
@@ -695,8 +854,8 @@ The installed header **`simp/Stdlib.h`** is the supported application-facing
 C facade. Generated inline shims include it automatically and link the shipped
 runtime archive; no runtime implementation source or private object structures
 are needed. Simple package imports and class wrappers continue to work normally.
-The C facade reuses all 123 existing standard-package native bindings, plus
-`simp_string_cstr` and `simp_string_bytes` (125 exported functions total).
+The C facade reuses all 138 existing standard-package native bindings, plus
+`simp_string_cstr` and `simp_string_bytes` (140 exported functions total).
 Its declarations, not incidental declarations in `Runtime*.h`, define the
 supported C surface.
 
@@ -711,6 +870,7 @@ supported C surface.
 | `terminal`: Terminal | `simp_terminal_stdin_interactive`, `simp_terminal_stdout_interactive`, `simp_terminal_columns`, `simp_terminal_rows`, `simp_terminal_supports_color` |
 | `random`: SecureRandom | `simp_random_bytes`, `simp_random_fill` |
 | `process`: Process | `simp_process_spawn`, `wait`, `exit_code`, `stdout`, `stderr`, `close` (all with the `simp_process_` prefix) |
+| `process`: AsyncProcess, OutputDecoder | `simp_process_async_start`, `next`, `event_kind`, `event_data`, `event_release`, `wait`, `cancel`, `state`, `exit_code`, `signal`, `error`, `shutdown`, `close` (all with the `simp_process_async_` prefix), `simp_process_text_decode`, `simp_process_text_incomplete_tail`. Every non-null event handle from `next` must be passed to `event_release` once; call `close` once per started handle (it implies `shutdown`) |
 | `synchronization`: Mutex, Condition, Semaphore | All `simp_mutex_*`, `simp_condition_*`, and `simp_semaphore_*` declarations; `release` is the C counterpart of wrapper `close` |
 | String conversion for C | `simp_string_cstr` accepts a captured String slot; `simp_string_bytes` accepts a managed String object and returns borrowed bytes/length |
 
@@ -851,6 +1011,21 @@ int exitCode(handle process)
 String stdout(handle process)
 String stderr(handle process)
 void close(handle process)
+handle asyncStart(String executable, list arguments, String workingDirectory)
+handle asyncNext(handle process, int timeoutMilliseconds)
+int asyncEventKind(handle event)
+buffer asyncEventData(handle event)
+void asyncEventRelease(handle event)
+bool asyncWait(handle process, int timeoutMilliseconds)
+bool asyncCancel(handle process, int graceMilliseconds)
+int asyncState(handle process)
+int asyncExitCode(handle process)
+int asyncSignal(handle process)
+String asyncError(handle process)
+void asyncShutdown(handle process)
+void asyncClose(handle process)
+String textDecode(buffer bytes)
+int textIncompleteTail(buffer bytes)
 ```
 
 `Sync.Runtime` synchronization operations:
