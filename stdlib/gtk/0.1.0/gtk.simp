@@ -1,4 +1,35 @@
 namespace Gtk {
+    class Config {
+        String validate(String text)
+        String fileStatus(String path)
+        String value(String text, String section, String key)
+        String key(String text, String section, int index)
+        String quote(String text)
+        String merge(String original, String updates)
+        void save(String path, String text, String expected, callback<void(String)> result)
+    }
+    String Config.validate(String text) from "simp_gtk_config_validate"
+    String Config.fileStatus(String path) from "simp_gtk_config_file_status"
+    String Config.value(String text, String section, String key) from "simp_gtk_config_value"
+    String Config.key(String text, String section, int index) from "simp_gtk_config_key"
+    String Config.quote(String text) from "simp_gtk_config_quote"
+    String Config.merge(String original, String updates) from "simp_gtk_config_merge"
+    void Config.save(String path, String text, String expected, callback<void(String)> result)
+        from "simp_gtk_config_save"
+
+    class Keyboard {
+        String normalize(String trigger)
+        int record(Entry entry, callback<void(String)> result)
+        bool cancel(int token)
+    }
+    String Keyboard.normalize(String trigger) from "simp_gtk_keyboard_normalize"
+    int Keyboard.record(Entry entry, callback<void(String)> result) from "simp_gtk_keyboard_record"
+    bool Keyboard.cancel(int token) from "simp_gtk_keyboard_cancel"
+
+    class Font {
+        bool isMonospace(String family)
+    }
+    bool Font.isMonospace(String family) from "simp_gtk_font_is_monospace"
     class Application {
         private:
         void _create(String id)

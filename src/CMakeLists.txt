@@ -154,7 +154,8 @@ if(SIMP_GTK)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
     add_library(simp_gtk_native STATIC
-        "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/gtk.c")
+        "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/gtk.c"
+        "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/toml.c")
     target_link_libraries(simp_gtk_native PRIVATE simp_headers PkgConfig::GTK4 Threads::Threads)
     if(SIMP_GTK_SOURCEVIEW)
         pkg_check_modules(GTK_SOURCEVIEW REQUIRED IMPORTED_TARGET gtksourceview-5)

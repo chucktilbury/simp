@@ -324,6 +324,173 @@ void fixture_editor_collect(void *self) {
     simp_gc_collect();
 }
 
+static GtkWindow *preferences_window(void) {
+    GListModel *windows = gtk_window_get_toplevels();
+    for (guint i = 0; i < g_list_model_get_n_items(windows); ++i) {
+        GtkWindow *window = g_list_model_get_item(windows, i);
+        if (g_strcmp0(gtk_window_get_title(window), "Tweed Preferences") == 0) return window;
+        g_object_unref(window);
+    }
+    return NULL;
+}
+
+bool fixture_preferences_visible(void *self) {
+    (void)self;
+    GtkWindow *window = preferences_window();
+    bool visible = window && gtk_widget_get_visible(GTK_WIDGET(window)) &&
+                   !gtk_window_get_modal(window) &&
+                   gtk_window_get_transient_for(window) == editor_window();
+    g_clear_object(&window);
+    return visible;
+}
+
+bool fixture_preferences_click(void *self, void *label) {
+    (void)self;
+    const char *bytes;
+    uint64_t length;
+    simp_string_bytes(label, &bytes, &length);
+    char *text = g_strndup(bytes, length);
+    GtkWindow *window = preferences_window();
+    GtkWidget *button = window ? find_button(GTK_WIDGET(window), text) : NULL;
+    if (button) g_signal_emit_by_name(button, "clicked");
+    g_clear_object(&window);
+    g_free(text);
+    return button != NULL;
+}
+
+static GtkWidget *preference_command(GtkWidget *widget, const char *name) {
+    if (GTK_IS_LABEL(widget) && g_strcmp0(gtk_label_get_text(GTK_LABEL(widget)), name) == 0)
+        return gtk_widget_get_parent(gtk_widget_get_parent(widget));
+    for (GtkWidget *child = gtk_widget_get_first_child(widget); child;
+         child = gtk_widget_get_next_sibling(child)) {
+        GtkWidget *row = preference_command(child, name);
+        if (row) return row;
+    }
+    return NULL;
+}
+
+bool fixture_preferences_command_visible(void *self, void *name_text) {
+    (void)self;
+    const char *bytes;
+    uint64_t length;
+    simp_string_bytes(name_text, &bytes, &length);
+    char *name = g_strndup(bytes, length);
+    GtkWindow *window = preferences_window();
+    GtkWidget *row = window ? preference_command(GTK_WIDGET(window), name) : NULL;
+    bool visible = row && gtk_widget_get_visible(row);
+    g_free(name);
+    g_clear_object(&window);
+    return visible;
+}
+
+bool fixture_preferences_command_click(void *self, void *name_text, void *label_text) {
+    (void)self;
+    const char *bytes;
+    uint64_t length;
+    simp_string_bytes(name_text, &bytes, &length);
+    char *name = g_strndup(bytes, length);
+    simp_string_bytes(label_text, &bytes, &length);
+    char *label = g_strndup(bytes, length);
+    GtkWindow *window = preferences_window();
+    GtkWidget *row = window ? preference_command(GTK_WIDGET(window), name) : NULL;
+    GtkWidget *button = row ? find_button(row, label) : NULL;
+    if (button) g_signal_emit_by_name(button, "clicked");
+    g_free(name);
+    g_free(label);
+    g_clear_object(&window);
+    return button != NULL;
+}
+
+bool fixture_preferences_close(void *self) {
+    (void)self;
+    GtkWindow *window = preferences_window();
+    if (!window) return false;
+    gtk_window_close(window);
+    g_object_unref(window);
+    return true;
+}
+
+static bool preference_views(GtkWidget *widget, int size, int tabs, bool spaces,
+                             bool numbers, bool wrap, bool highlight, unsigned *count) {
+    if (GTK_SOURCE_IS_VIEW(widget)) {
+        ++*count;
+        GtkSourceView *view = GTK_SOURCE_VIEW(widget);
+        PangoContext *context = gtk_widget_get_pango_context(widget);
+        const PangoFontDescription *font = pango_context_get_font_description(context);
+        int dpi = 0;
+        g_object_get(gtk_widget_get_settings(widget), "gtk-xft-dpi", &dpi, NULL);
+        double resolution = dpi > 0 ? dpi / 1024.0 : 96.0;
+        int expected_size = pango_font_description_get_size_is_absolute(font) ?
+            (int)(size * resolution / 72.0 * PANGO_SCALE) : size * PANGO_SCALE;
+        bool valid = abs(pango_font_description_get_size(font) - expected_size) <= 1 &&
+               gtk_text_view_get_monospace(GTK_TEXT_VIEW(view)) &&
+               gtk_source_view_get_tab_width(view) == (guint)tabs &&
+               gtk_source_view_get_insert_spaces_instead_of_tabs(view) == spaces &&
+               gtk_source_view_get_show_line_numbers(view) == numbers &&
+               (gtk_text_view_get_wrap_mode(GTK_TEXT_VIEW(view)) != GTK_WRAP_NONE) == wrap &&
+               gtk_source_view_get_highlight_current_line(view) == highlight;
+        if (!valid)
+            g_printerr("View settings: size=%d (expected %d), tabs=%u, spaces=%d, numbers=%d, wrap=%d, highlight=%d\n",
+                       pango_font_description_get_size(font), expected_size,
+                       gtk_source_view_get_tab_width(view),
+                       gtk_source_view_get_insert_spaces_instead_of_tabs(view),
+                       gtk_source_view_get_show_line_numbers(view),
+                       gtk_text_view_get_wrap_mode(GTK_TEXT_VIEW(view)),
+                       gtk_source_view_get_highlight_current_line(view));
+        return valid;
+    }
+    for (GtkWidget *child = gtk_widget_get_first_child(widget); child;
+         child = gtk_widget_get_next_sibling(child))
+        if (!preference_views(child, size, tabs, spaces, numbers, wrap, highlight, count)) return false;
+    return true;
+}
+
+bool fixture_preferences_views(void *self, int64_t size, int64_t tabs, bool spaces,
+                               bool numbers, bool wrap, bool highlight) {
+    (void)self;
+    unsigned count = 0;
+    bool valid = preference_views(GTK_WIDGET(editor_window()), (int)size, (int)tabs,
+                                  spaces, numbers, wrap, highlight, &count);
+    return valid && count > 0;
+}
+
+bool fixture_preferences_record(void *self, void *trigger_text) {
+    (void)self;
+    const char *bytes;
+    uint64_t length;
+    simp_string_bytes(trigger_text, &bytes, &length);
+    char *text = g_strndup(bytes, length);
+    guint key = 0;
+    GdkModifierType modifiers = 0;
+    bool parsed = gtk_accelerator_parse(text, &key, &modifiers);
+    g_free(text);
+    GtkWindow *window = preferences_window();
+    GtkWidget *entry = window ? gtk_window_get_focus(window) : NULL;
+    bool handled = false;
+    if (parsed && entry) {
+        /* GtkEntry focuses its internal GtkText, but the recorder captures at Entry. */
+        while (entry && !GTK_IS_ENTRY(entry)) entry = gtk_widget_get_parent(entry);
+        GListModel *controllers = entry ? gtk_widget_observe_controllers(entry) : NULL;
+        for (guint i = 0; controllers && i < g_list_model_get_n_items(controllers); ++i) {
+            GtkEventController *controller = g_list_model_get_item(controllers, i);
+            if (GTK_IS_EVENT_CONTROLLER_KEY(controller)) {
+                gboolean accepted = FALSE;
+                g_signal_emit_by_name(controller, "key-pressed", key, 0, modifiers, &accepted);
+                handled = handled || accepted;
+            }
+            g_object_unref(controller);
+        }
+        g_clear_object(&controllers);
+    }
+    g_clear_object(&window);
+    return handled;
+}
+
+void fixture_preferences_tick(void *self) {
+    (void)self;
+    g_usleep(10000);
+}
+
 void fixture_editor_edit(void *self, void *text) {
     (void)self;
     simp_gtk_require_owner();

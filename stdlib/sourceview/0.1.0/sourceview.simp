@@ -39,6 +39,9 @@ namespace GtkSource {
         void _monospace(int token, bool monospace)
         bool _bindShortcut(int token, String trigger, callback<void()> action)
         bool _hasShortcut(int token, String trigger)
+        void _clearShortcuts(int token)
+        void _configure(int token, String font, int size, int tabs, bool spaces,
+                        bool numbers, bool wrap, bool highlight)
         int _changed(int token, callback<void()> action)
         int _cursorMoved(int token, callback<void()> action)
         public:
@@ -94,6 +97,11 @@ namespace GtkSource {
             return _bindShortcut(_widgetToken(), trigger, action)
         }
         bool hasShortcut(String trigger) { return _hasShortcut(_widgetToken(), trigger) }
+        void clearShortcuts() { _clearShortcuts(_widgetToken()) }
+        void configure(String font, int size, int tabs, bool spaces,
+                       bool numbers, bool wrap, bool highlight) {
+            _configure(_widgetToken(), font, size, tabs, spaces, numbers, wrap, highlight)
+        }
         int onChanged(callback<void()> action) {
             return _changed(_widgetToken(), action)
         }
@@ -138,6 +146,10 @@ namespace GtkSource {
         from "simp_gtk_source_view_bind_shortcut"
     bool View._hasShortcut(int token, String trigger)
         from "simp_gtk_source_view_has_shortcut"
+    void View._clearShortcuts(int token) from "simp_gtk_source_view_clear_shortcuts"
+    void View._configure(int token, String font, int size, int tabs, bool spaces,
+                         bool numbers, bool wrap, bool highlight)
+        from "simp_gtk_source_view_configure"
     int View._changed(int token, callback<void()> action)
         from "simp_gtk_source_view_changed"
     int View._cursorMoved(int token, callback<void()> action)

@@ -18,7 +18,7 @@ standard modules. With it on, `lib/libsimp_gtk.a` resides inside
 `share/simp/modules/gtk/0.1.0/`, beside the source and manifest.
 
 Package `[link]` metadata links importing applications with `simp_gtk`, `gtk-4`,
-`gio-2.0`, `gobject-2.0`, and `glib-2.0`. The compiler and non-import applications
+`gio-2.0`, `gobject-2.0`, `glib-2.0`, `pango-1.0`, and `pangocairo-1.0`. The compiler and non-import applications
 remain unlinked to GTK. Compile-only objects retain package link sidecars.
 Installed consumers use the normal `simpkg init` / `simpkg install` lock flow.
 GTK runtime libraries and a usable display are external requirements; they
@@ -48,6 +48,8 @@ exit and requires an active run; it does not pretend that closing was approved.
 or before running. It cancels pending posts, disconnects every signal, disposes
 all widgets (including detached widgets), and releases the native application.
 Native application release is kept safe while a run or emission is unwinding.
+Outstanding `Config.save` operations are drained before shutdown; their
+completion callbacks are suppressed during teardown and failures go to stderr.
 Reinitialization and nested runs are rejected.
 
 `Window.close()` sends GTK's close request and requires a realized/presented
@@ -112,8 +114,9 @@ embedded NULs, or invalid UTF-8. Getters return managed copies.
 `Window`, `TransientWindow` and `ScrolledWindow` have one child; remove it before
 attaching a replacement. `Window` is associated with the `Gtk.Application`;
 `TransientWindow` is a standalone top-level. `setTransientFor` establishes the
-native transient relationship, not managed ownership, so dispose transient
-windows explicitly. `Box` accepts multiple children. A child must be live and unparented;
+native transient relationship, with GTK destroy-with-parent enabled. Destroying
+the parent destroys the transient and releases its registrations; hiding it
+does not. `Box` accepts multiple children. A child must be live and unparented;
 windows cannot be children. Self-parenting, cycles, already-parented children,
 occupied single-child containers, and removing from the wrong parent are errors.
 GTK may internally insert a viewport in a scrolled window; the Simple ownership
@@ -221,6 +224,16 @@ one edit; query current state rather than counting emissions. Each returned
 connection token disconnects the whole grouped subscription. These methods
 share the normal GUI-thread lifetime rules.
 
+`configure(String font, int size, int tabs, bool spaces, bool numbers, bool wrap,
+bool highlight)` applies a per-view font family/point size, tab width,
+space insertion, line numbers, word/character wrapping, and current-line
+highlighting without replacing the buffer or language. It keeps monospace mode
+enabled. Size must be 6-72 and tabs 1-16; validate user input before calling it.
+`clearShortcuts()` removes all shortcuts installed through `bindShortcut`,
+including their callback roots, without changing GTK's native editing bindings.
+Removal/disposal during an active shortcut callback defers releasing that
+callback until invocation unwinds.
+
 Shortcut callbacks registered on a view may dispose that view, its window or
 the application, or shut down (for example a Close or Quit command). A binding
 released while its own callback is running is marked released and its receiver
@@ -279,6 +292,44 @@ The language protocol uses standard GtkSourceView 5 `.lang` files:
 `isText` returns false for data containing NUL bytes. Simple strings are always
 valid UTF-8, so `File.readAll` raises on undecodable input; applications should
 treat that as a binary/non-text file.
+
+## Preference support primitives
+
+`Gtk.Font().isMonospace(String family)` accepts the generic `monospace` and
+installed Pango monospace families, rejecting control characters and other
+families. It does not select an application-wide font.
+
+`Gtk.Keyboard().normalize(String trigger)` returns GTK's canonical spelling for
+one key-value trigger, or `""` for invalid/unsupported syntax (including compound
+alternative triggers). Use this result to compare conflicts.
+`int record(Gtk.Entry entry, callback<void(String)> result)` captures the next
+non-modifier key combination at the entry; Escape delivers `""`. The result
+does not change the entry itself. `bool cancel(int token)` disconnects and
+removes the recorder, and is safe inside its callback. It remains registered
+until cancelled, its entry is destroyed, or application shutdown; callers must
+cancel after receiving a result and coordinate which entry is recording.
+
+`Gtk.Config` exposes the small TOML/persistence primitives used by Tweed's
+Simple-written settings model, not a settings framework:
+
+| Operation | Result/contract |
+| --- | --- |
+| `String validate(String text)` | `""` for valid TOML; otherwise a parse/scalar error. Encoded NUL strings are unsupported. |
+| `String fileStatus(String path)` | `""` for an existing path, `missing` only for file-not-found, or an explicit stat/broken-symlink error. |
+| `String value(String text, String section, String key)` | After validation: `""` for absent, `s` plus decoded string, `i` plus decimal integer, `btrue`/`bfalse`, `t` for a table, `x` for another type. Empty section addresses the root. |
+| `String key(String text, String section, int index)` | Zero-based key enumeration; `""` at the end or for an absent table. |
+| `String quote(String text)` | A TOML-escaped basic string literal. |
+| `String merge(String original, String updates)` | Both inputs must be validated TOML; recursively overlays updates and serializes, preserving unrelated values but not comments/formatting. |
+| `void save(String path, String text, String expected, callback<void(String)> result)` | Asynchronously loads the local file, checks expected previous contents, then atomically replaces using its ETag where supported. Expected `""` allows a missing first-run file. Result is `""` on success, or an explicit I/O/concurrent-edit error. The caller creates the parent directory and bounds/validates the data. |
+
+Save callback roots and copied bytes survive asynchronous I/O. Shutdown drains
+pending operations without invoking their callbacks after teardown. These
+operations, except pure TOML conversion, share GTK's GUI-owner rules. The TOML
+parser is vendored MIT-licensed
+[tomlc99](https://github.com/cktan/tomlc99/tree/29076dfd095bbbbd50a3c1b2760d29f4b83e74ac)
+(`toml.c`/`toml.h`, with license headers retained); no runtime parser was
+available in the repository. The compiler's package-manifest-specific parser
+is not used as a general user-settings parser.
 
 ## Ownership, aliases, and disposal
 

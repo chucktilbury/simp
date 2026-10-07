@@ -7,7 +7,7 @@ package and a separate GtkSourceView-backed `sourceview` package. It provides
 File and Edit menus, native open/save-as file choosers, multiple notebook tabs,
 duplicate-path focusing, open/save/save-as, session
 recent files, dirty tab titles, close protection, undo/redo, find/replace,
-line/column status, and configurable GTK keyboard shortcuts. GTK's text view
+line/column status, a non-modal Preferences window, and configurable GTK keyboard shortcuts. GTK's text view
 provides ordinary selection, cursor navigation, and clipboard bindings.
 
 The editor's source adapter is `GtkSource.View`. It exposes managed multiline
@@ -90,7 +90,7 @@ explicitly rejected rather than interpreted as cancellation.
 **Recent** reopens the last unique file added to the session history.
 Command-line file arguments open tabs at startup.
 
-**Edit** offers Undo, Redo, Cut, Copy, Paste, Select All, Find, and Replace.
+**Edit** offers Undo, Redo, Cut, Copy, Paste, Select All, Find, Replace, and Preferences.
 Find and Replace open a separate, non-modal window transient for the editor.
 The Find window contains the query and Find next; Replace adds the replacement
 field and Replace next / Replace all. Closing the window hides it and preserves
@@ -129,10 +129,93 @@ Default shortcuts use GTK trigger notation: `<Control>s` saves,
 and `<Control><Shift>z` redoes. `<Control><Shift>s` opens Save As,
 `<Control>w` closes the active tab, and `<Control>q` requests Quit.
 `<Control>x`, `<Control>c`, `<Control>v`, and `<Control>a` perform Cut, Copy,
-Paste, and Select All. Menus and configurable shortcuts resolve to the same
-named command callbacks. To change or remove defaults, put a
-`tweed-shortcuts.conf` file in the editor's working directory. Each nonblank
-line maps one GTK trigger to one command:
+Paste, and Select All. `<Control>comma` opens Preferences. Menus and configurable
+shortcuts resolve to the same named command callbacks.
+
+## Preferences and settings
+
+**Edit > Preferences...** or **Ctrl+,** opens a non-modal window with Editor
+and Keyboard navigation on the left. Closing it hides it; reopening preserves
+the selected page. Settings are global: changes apply immediately to all open
+documents and to subsequently created/opened documents, without changing file
+contents, modified state, language detection, or search options.
+
+The **Editor** page controls an installed monospace font family (or the generic
+`monospace`), font size, tab width, insertion of spaces vs tabs, line numbers,
+wrapping, and current-line highlighting. Font names must be 1-128 UTF-8 bytes
+without control characters; proportional/unknown families are rejected.
+Font size is an integer **6-72 points**, and tab width is an integer **1-16
+columns**. Defaults are `monospace`, 12 pt, 4 columns, spaces, line numbers on,
+wrapping off, and current-line highlighting off. Changing tab width/insertion
+does not rewrite existing indentation.
+
+The **Keyboard** page searches named commands, displays their current GTK
+trigger strings, and permits editing or recording one key combination. Click
+**Record**, then press the combination; modifiers alone keep recording and
+Escape cancels. Starting another recording, switching categories, or hiding
+Preferences cancels the previous recorder. Invalid syntax and conflicts
+(compared using canonical GTK triggers, not raw spelling) show an error without
+replacing either command. **Disable** removes a binding; **Reset** restores one
+binding unless its default would conflict. Each section's **Reset to Defaults**
+requires **Confirm Reset**; **Cancel** changes nothing. Only document command
+shortcuts are configurable; GTK's ordinary text navigation remains native.
+
+Settings save automatically to
+`$XDG_CONFIG_HOME/tweed/settings.toml`, or
+`$HOME/.config/tweed/settings.toml` when XDG_CONFIG_HOME is unset/empty.
+The config root must be absolute. The settings file is user-editable UTF-8 TOML,
+with a 64 KiB limit and this version-1 schema:
+
+```toml
+version = 1
+
+[editor]
+font_family = "monospace"
+font_size = 12
+tab_width = 4
+insert_spaces = true
+line_numbers = true
+wrap = false
+highlight_current_line = false
+
+[keyboard]
+save = "<Control>s"
+close = "<Control>w"
+quit = "<Control>q"
+find = "<Control>f"
+replace = "<Control>h"
+preferences = "<Control>comma"
+```
+
+Editor keys are optional and use defaults when absent. Keyboard keys are
+command IDs (`new`, `open`, `save`, `save-as`, `close`, `quit`, `find`, `replace`,
+`undo`, `redo`, `cut`, `copy`, `paste`, `select-all`, `preferences`); omitted IDs
+use defaults and `""` explicitly disables one. Unknown keyboard commands are
+errors. A missing file is normal first-run behavior: no file is created until
+a valid setting changes.
+
+Malformed TOML, wrong types/ranges, invalid/conflicting shortcuts, read errors,
+unsupported/missing versions, and strings with encoded NULs are reported in a
+startup alert and Preferences. Valid entries still apply, invalid editor entries
+use defaults, and invalid/conflicting bindings are not installed. Automatic
+saving is disabled for that session, so the original file is not clobbered;
+repair it and restart. Preference edits can still apply for the current session.
+Write failures are displayed explicitly and never reported as saved.
+
+Saving uses asynchronous GIO atomic replacement on the local filesystem,
+with private file permissions, an expected-content check and an ETag check
+against concurrent edits. Changes arriving during a save are coalesced into
+the next save. Quit waits for the latest queued save; a write failure keeps
+Preferences available rather than claiming success. Unknown valid keys/tables
+outside the keyboard command map are retained. Serialization normalizes
+formatting and does not retain comments; nested unrelated tables/arrays may
+be emitted inline. External edits/removal require restarting before saving.
+
+### Legacy shortcut compatibility
+
+`tweed-shortcuts.conf` in the working directory is still supported when the
+TOML file is absent or has no `[keyboard]` table. Each nonblank line maps one
+GTK trigger to one command:
 
 ```text
 <Control>s=save
@@ -151,10 +234,20 @@ line maps one GTK trigger to one command:
 <Control>a=select-all
 ```
 
-Commands are `save`, `save-as`, `open`, `new`, `close`, `quit`, `find`, `replace`,
-`undo`, `redo`, `cut`, `copy`, `paste`, and `select-all`.
-Duplicate triggers, unknown commands, and unparseable triggers are reported in
-the status line rather than silently rebound.
+As before, a legacy file **replaces** the default shortcut map: commands omitted
+from it remain disabled. Preferences adds its new Ctrl+, binding only if the
+legacy map does not already use that trigger and does not configure Preferences
+itself. The menu always remains available. An existing TOML `[keyboard]` table is authoritative
+and the legacy file is ignored, even if malformed; missing TOML command keys
+then use built-in defaults, not legacy bindings.
+
+The first successful preferences edit saves the complete effective map
+(including disabled commands) into TOML, migrating without deleting or
+rewriting the legacy file. Subsequent starts use TOML. Duplicate triggers,
+duplicate command lines (multiple bindings for one command cannot be represented
+by this increment), unknown commands, empty legacy triggers, and invalid triggers
+are reported explicitly, and automatic migration/saving is disabled until
+repaired. A conflicting later legacy line never overrides the earlier command.
 
 ## Deliberately deferred
 
@@ -174,10 +267,13 @@ dialog controls and menu/shortcut commands use the same editor actions, so a
 future toolbar can reuse those actions.
 Any future in-process plugins should be treated as trusted code.
 
+Appearance, Files/session, Projects, Build, and LSP preference categories and
+project/file-type overrides are future work; no placeholder pages are installed.
+
 Run the editor-specific headless cases and existing GTK integration checks:
 
 ```sh
 ctest --test-dir build-tweed \
-  -R '^(simp_tweed_binary|simp_tweed_shortcuts|simp_editor_dialogs|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_gtk|simp_gtk_bindings)$' \
+  -R '^(simp_tweed_binary|simp_tweed_shortcuts|simp_tweed_preferences|simp_editor_dialogs|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_gtk|simp_gtk_bindings)$' \
   --output-on-failure
 ```

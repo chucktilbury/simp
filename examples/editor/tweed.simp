@@ -2,12 +2,434 @@ import gtk
 import sourceview
 import system
 
+class CommandBinding {
+    String id
+    String name
+    String defaultTrigger
+    String trigger
+    String normalized
+    bool valid
+    callback<void()> action
+    CommandBinding(String command, String label, String shortcut) {
+        id = command
+        name = label
+        defaultTrigger = shortcut
+        setTrigger(shortcut)
+    }
+    void setTrigger(String shortcut) {
+        trigger = shortcut
+        normalized = ""
+        if (!shortcut.equals("")) { normalized = Gtk.Keyboard().normalize(shortcut) }
+        valid = shortcut.equals("") || normalized.length > 0
+    }
+}
+
+class TweedSettings {
+    String fontFamily
+    int fontSize
+    int tabWidth
+    bool insertSpaces
+    bool lineNumbers
+    bool wrap
+    bool highlightLine
+    list commands
+    String path
+    String original
+    String errors
+    bool writable
+    bool legacyConflict
+    int shortcutRevision
+
+    TweedSettings() {
+        resetEditor()
+        commands = [
+            CommandBinding("new", "New document", "<Control>n"),
+            CommandBinding("open", "Open files", "<Control>o"),
+            CommandBinding("save", "Save", "<Control>s"),
+            CommandBinding("save-as", "Save as", "<Control><Shift>s"),
+            CommandBinding("close", "Close tab", "<Control>w"),
+            CommandBinding("quit", "Quit", "<Control>q"),
+            CommandBinding("find", "Find", "<Control>f"),
+            CommandBinding("replace", "Find and replace", "<Control>h"),
+            CommandBinding("undo", "Undo", "<Control>z"),
+            CommandBinding("redo", "Redo", "<Control><Shift>z"),
+            CommandBinding("cut", "Cut", "<Control>x"),
+            CommandBinding("copy", "Copy", "<Control>c"),
+            CommandBinding("paste", "Paste", "<Control>v"),
+            CommandBinding("select-all", "Select all", "<Control>a"),
+            CommandBinding("preferences", "Preferences", "<Control>comma")
+        ]
+        original = ""
+        errors = ""
+        writable = true
+        legacyConflict = false
+        shortcutRevision = 1
+        String configHome = System.Process().getEnv("XDG_CONFIG_HOME")
+        if (configHome.equals("")) {
+            configHome = System.FileSystem().join(System.Process().getEnv("HOME"), ".config")
+        }
+        path = System.FileSystem().join(configHome, "tweed/settings.toml")
+        if (!configHome.startsWith("/")) {
+            error("XDG_CONFIG_HOME (or HOME fallback) must be an absolute path")
+        }
+        load()
+    }
+
+    void resetEditor() {
+        fontFamily = "monospace"
+        fontSize = 12
+        tabWidth = 4
+        insertSpaces = true
+        lineNumbers = true
+        wrap = false
+        highlightLine = false
+    }
+
+    void error(String message) {
+        if (!errors.equals("")) { errors.append("\n") }
+        errors.append(message)
+        writable = false
+    }
+
+    CommandBinding command(String id) {
+        int i = 0
+        while (i < commands.length) {
+            CommandBinding binding = commands[i] as CommandBinding
+            if (binding.id.equals(id)) { return binding }
+            i = i + 1
+        }
+        return null
+    }
+
+    String bindingError(CommandBinding binding, String trigger) {
+        if (trigger.equals("")) { return "" }
+        String normalized = binding.normalized
+        if (!trigger.equals(binding.trigger)) { normalized = Gtk.Keyboard().normalize(trigger) }
+        if (normalized.equals("")) { return format("Invalid shortcut trigger: {}", trigger) }
+        int i = 0
+        while (i < commands.length) {
+            CommandBinding other = commands[i] as CommandBinding
+            if (other != binding && !other.trigger.equals("") &&
+                other.normalized.equals(normalized)) {
+                return format("Shortcut conflicts with {}: {}", other.name, trigger)
+            }
+            i = i + 1
+        }
+        return ""
+    }
+
+    void loadLegacy() {
+        String legacy = "tweed-shortcuts.conf"
+        String presence = Gtk.Config().fileStatus(legacy)
+        if (presence.equals("missing")) { return }
+        if (presence.length > 0) {
+            error(format("Could not read tweed-shortcuts.conf: {}", presence))
+            return
+        }
+        System.File file = System.File(legacy, "r")
+        if (!file.isOpen()) {
+            error("Could not read tweed-shortcuts.conf")
+            return
+        }
+        list lines = file.readLines()
+        String readError = System.System().lastError()
+        file.close()
+        if (!readError.equals("")) {
+            error(readError)
+            return
+        }
+        // Legacy files replaced the entire default map. Preserve that behavior.
+        int i = 0
+        while (i < commands.length) {
+            (commands[i] as CommandBinding).setTrigger("")
+            i = i + 1
+        }
+        i = 0
+        while (i < lines.length) {
+            String line = (lines[i] as String).trim()
+            if (!line.equals("")) {
+                list fields = line.split("=")
+                if (fields.length != 2) {
+                    error(format("Invalid shortcut config line {}", i + 1))
+                } else {
+                    CommandBinding binding = command((fields[1] as String).trim())
+                    String trigger = (fields[0] as String).trim()
+                    if (binding == null) {
+                        error(format("Unknown legacy shortcut command: {}", fields[1] as String))
+                    } else {
+                        String problem = bindingError(binding, trigger)
+                        if (trigger.length == 0) { problem = "Empty legacy shortcut trigger" }
+                        if (!problem.equals("")) {
+                            legacyConflict = true
+                            error(problem)
+                        } else {
+                            if (!binding.trigger.equals("")) {
+                                error(format("Duplicate legacy command: {}", binding.id))
+                            } else { binding.setTrigger(trigger) }
+                        }
+                    }
+                }
+            }
+            i = i + 1
+        }
+        CommandBinding preferences = command("preferences")
+        if (preferences.trigger.length == 0 && bindingError(preferences, preferences.defaultTrigger).length == 0) {
+            preferences.setTrigger(preferences.defaultTrigger)
+        }
+    }
+
+    String value(String section, String key) {
+        return Gtk.Config().value(original, section, key)
+    }
+
+    int integer(String key, int fallback, int minimum, int maximum) {
+        String raw = value("editor", key)
+        if (raw.equals("")) { return fallback }
+        if (raw.startsWith("i")) {
+            int number = raw.slice(1, raw.length).toInt()
+            if (number >= minimum && number <= maximum) { return number }
+        }
+        error(format("editor.{} must be an integer from {} to {}", key, minimum, maximum))
+        return fallback
+    }
+
+    bool boolean(String key, bool fallback) {
+        String raw = value("editor", key)
+        if (raw.equals("")) { return fallback }
+        if (raw.equals("btrue")) { return true }
+        if (raw.equals("bfalse")) { return false }
+        error(format("editor.{} must be a boolean", key))
+        return fallback
+    }
+
+    String fontError(String font) {
+        if (font.trim().equals("") || font.length > 128 || font.contains("\n") ||
+            font.contains("\r") || font.contains("\t")) {
+            return "Font family must be 1-128 characters, without control characters"
+        }
+        if (!Gtk.Font().isMonospace(font)) { return "Choose an installed monospace font family (or monospace)" }
+        return ""
+    }
+
+    void load() {
+        String presence = Gtk.Config().fileStatus(path)
+        if (presence.equals("missing")) {
+            loadLegacy()
+            return
+        }
+        if (presence.length > 0) {
+            error(format("Could not read settings: {}", presence))
+            return
+        }
+        if (!System.FileSystem().isFile(path) || System.FileSystem().fileSize(path) > 65536) {
+            error("Settings must be a regular TOML file no larger than 64 KiB")
+            return
+        }
+        System.File file = System.File(path, "r")
+        if (!file.isOpen()) {
+            error(format("Could not read settings: {}", System.System().lastError()))
+            return
+        }
+        try { original = file.readAll() }
+        except(Exception) as failure { error(failure.message) }
+        String readError = System.System().lastError()
+        file.close()
+        if (!readError.equals("")) { error(readError) }
+        if (!GtkSource.Content().isText(original)) {
+            error("Malformed settings TOML: embedded NUL bytes")
+            return
+        }
+        String malformed = Gtk.Config().validate(original)
+        if (!malformed.equals("")) {
+            error(format("Malformed settings TOML: {}", malformed))
+            return
+        }
+        if (!value("", "version").equals("i1")) {
+            error("Unsupported settings version: expected version = 1")
+            return
+        }
+        if (!value("", "editor").equals("") && !value("", "editor").equals("t")) {
+            error("editor must be a table")
+        }
+        if (!value("", "keyboard").equals("") && !value("", "keyboard").equals("t")) {
+            error("keyboard must be a table")
+        }
+        if (value("", "keyboard").equals("")) { loadLegacy() }
+        String font = value("editor", "font_family")
+        if (!font.equals("")) {
+            if (!font.startsWith("s")) { error("editor.font_family must be a string") }
+            else {
+                String name = font.slice(1, font.length)
+                String problem = fontError(name)
+                if (problem.equals("")) { fontFamily = name } else { error(problem) }
+            }
+        }
+        fontSize = integer("font_size", fontSize, 6, 72)
+        tabWidth = integer("tab_width", tabWidth, 1, 16)
+        insertSpaces = boolean("insert_spaces", insertSpaces)
+        lineNumbers = boolean("line_numbers", lineNumbers)
+        wrap = boolean("wrap", wrap)
+        highlightLine = boolean("highlight_current_line", highlightLine)
+        // Stage the complete map before checking conflicts, allowing swaps.
+        int i = 0
+        while (i < commands.length) {
+            CommandBinding binding = commands[i] as CommandBinding
+            String raw = value("keyboard", binding.id)
+            if (!raw.equals("")) {
+                if (!raw.startsWith("s")) { error(format("keyboard.{} must be a string", binding.id)) }
+                else { binding.setTrigger(raw.slice(1, raw.length)) }
+            }
+            i = i + 1
+        }
+        i = 0
+        while (i < commands.length) {
+            CommandBinding binding = commands[i] as CommandBinding
+            String problem = bindingError(binding, binding.trigger)
+            if (!problem.equals("")) {
+                binding.valid = false
+                error(problem)
+            }
+            i = i + 1
+        }
+        String key = Gtk.Config().key(original, "keyboard", 0)
+        i = 0
+        while (!key.equals("")) {
+            if (command(key) == null) { error(format("Unknown keyboard command: {}", key)) }
+            i = i + 1
+            key = Gtk.Config().key(original, "keyboard", i)
+        }
+    }
+
+    void resetKeyboard() {
+        int i = 0
+        while (i < commands.length) {
+            CommandBinding binding = commands[i] as CommandBinding
+            binding.setTrigger(binding.defaultTrigger)
+            i = i + 1
+        }
+    }
+
+    String serialize() {
+        String text = format("version = 1\n[editor]\nfont_family = {}\nfont_size = {}\ntab_width = {}\ninsert_spaces = {}\nline_numbers = {}\nwrap = {}\nhighlight_current_line = {}\n[keyboard]\n",
+            Gtk.Config().quote(fontFamily), fontSize, tabWidth, insertSpaces, lineNumbers, wrap, highlightLine)
+        int i = 0
+        while (i < commands.length) {
+            CommandBinding binding = commands[i] as CommandBinding
+            text.append(format("{} = {}\n", binding.id, Gtk.Config().quote(binding.trigger)))
+            i = i + 1
+        }
+        return Gtk.Config().merge(original, text)
+    }
+}
+
+class KeyboardPreference {
+    KeyboardPreference _self()
+    CommandBinding binding
+    TweedSettings settings
+    Gtk.Box row
+    Gtk.Label name
+    Gtk.Entry entry
+    Gtk.Button recordButton
+    Gtk.Button resetButton
+    Gtk.Button disableButton
+    Gtk.Label errorLabel
+    callback<void()> applied
+    callback<void()> prepareRecord
+    int recording
+    bool refreshing
+
+    KeyboardPreference(TweedSettings model, CommandBinding command, callback<void()> changed,
+                       callback<void()> prepare) {
+        settings = model
+        binding = command
+        applied = changed
+        prepareRecord = prepare
+        row = Gtk.Box(Gtk.Box.VERTICAL, 2)
+        Gtk.Box controls = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
+        name = Gtk.Label(binding.name)
+        entry = Gtk.Entry(binding.trigger)
+        recordButton = Gtk.Button("Record")
+        resetButton = Gtk.Button("Reset")
+        disableButton = Gtk.Button("Disable")
+        errorLabel = Gtk.Label("")
+        controls.append(name)
+        controls.append(entry)
+        controls.append(recordButton)
+        controls.append(resetButton)
+        controls.append(disableButton)
+        row.append(controls)
+        row.append(errorLabel)
+        entry.onChanged(_self().changedTrigger)
+        recordButton.onClicked(_self().record)
+        resetButton.onClicked(_self().reset)
+        disableButton.onClicked(_self().disable)
+    }
+
+    void changedTrigger(String text) {
+        if (refreshing) { return }
+        if (text.equals("")) {
+            errorLabel.setText("Use Disable to remove this binding")
+            return
+        }
+        String problem = settings.bindingError(binding, text)
+        errorLabel.setText(problem)
+        if (!problem.equals("")) { return }
+        binding.setTrigger(text)
+        applied()
+    }
+    void record() {
+        prepareRecord()
+        errorLabel.setText("Press shortcut; Escape cancels")
+        recording = Gtk.Keyboard().record(entry, _self().recorded)
+    }
+    void recorded(String trigger) {
+        cancelRecording()
+        if (!trigger.equals("")) { setTrigger(trigger) }
+    }
+    void cancelRecording() {
+        if (recording != 0) {
+            Gtk.Keyboard().cancel(recording)
+            recording = 0
+            errorLabel.setText("")
+        }
+    }
+    void reset() {
+        cancelRecording()
+        setTrigger(binding.defaultTrigger)
+    }
+    void disable() {
+        cancelRecording()
+        refreshing = true
+        entry.setText("")
+        refreshing = false
+        binding.setTrigger("")
+        errorLabel.setText("")
+        applied()
+    }
+    void setTrigger(String trigger) {
+        refreshing = true
+        entry.setText(trigger)
+        refreshing = false
+        changedTrigger(trigger)
+    }
+    void refresh() {
+        refreshing = true
+        cancelRecording()
+        entry.setText(binding.trigger)
+        errorLabel.setText("")
+        refreshing = false
+    }
+}
+
+KeyboardPreference KeyboardPreference._self() from "simp_gtk_self"
+
 class EditorDocument {
     GtkSource.View view
     Gtk.ScrolledWindow scroller
     String path
     list shortcuts
     bool shortcutConflict
+    int shortcutRevision
 
     EditorDocument(String filePath, String contents) {
         path = filePath
@@ -39,6 +461,34 @@ class EditorDocument {
 }
 
 class TweedEditor {
+    TweedEditor _self()
+    TweedSettings settings
+    Gtk.TransientWindow preferencesWindow
+    Gtk.Box editorPreferences
+    Gtk.Box keyboardPreferences
+    Gtk.Label preferencesMessage
+    Gtk.Entry fontEntry
+    Gtk.Entry sizeEntry
+    Gtk.Entry tabsEntry
+    Gtk.CheckButton spacesCheck
+    Gtk.CheckButton numbersCheck
+    Gtk.CheckButton wrapCheck
+    Gtk.CheckButton highlightCheck
+    Gtk.Entry commandSearch
+    list keyboardRows
+    Gtk.Box keyboardRowsBox
+    Gtk.Box resetChoices
+    Gtk.Button confirmResetButton
+    Gtk.Button cancelResetButton
+    String resetSection
+    bool refreshingPreferences
+    bool savePending
+    bool saveAgain
+    bool closeAfterSave
+    String savingText
+    String persistedText
+    int preferencesItem
+    callback<void()> preferencesAction
     Gtk.Window window
     Gtk.Box layout
     Gtk.MenuBar menu
@@ -130,6 +580,17 @@ class TweedEditor {
         fileDialog = null
         dialogDocument = null
         dialogClosing = false
+        settings = TweedSettings()
+        int commandIndex = 0
+        while (commandIndex < settings.commands.length) {
+            CommandBinding binding = settings.commands[commandIndex] as CommandBinding
+            binding.action = commandAction(binding.id)
+            commandIndex = commandIndex + 1
+        }
+        persistedText = settings.original
+        savePending = false
+        saveAgain = false
+        closeAfterSave = false
         window = Gtk.Window("Tweed Lang Editor")
         window.setDefaultSize(1000, 700)
         layout = Gtk.Box(Gtk.Box.VERTICAL, 5)
@@ -154,6 +615,7 @@ class TweedEditor {
         documentItems.append(menu.addItem(editMenu, "Select All", commandAction("select-all")))
         documentItems.append(menu.addItem(editMenu, "Find", commandAction("find")))
         documentItems.append(menu.addItem(editMenu, "Replace", commandAction("replace")))
+        preferencesItem = menu.addItem(editMenu, "Preferences...", commandAction("preferences"))
         searchWindow = Gtk.TransientWindow("Find")
         searchWindow.setDefaultSize(520, 150)
         searchWindow.setTransientFor(window)
@@ -218,6 +680,9 @@ class TweedEditor {
             newDocument()
         }
         window.present()
+        if (!settings.errors.equals("")) {
+            Gtk.AlertDialog().show(window, "Settings errors", format("{}\n{}\nAutomatic saving is disabled; repair the file and restart.", settings.path, settings.errors))
+        }
         if (process.argc() > 1 && process.arg(1).equals("--test")) {
             Gtk.Application().post(testAction)
         }
@@ -238,81 +703,340 @@ class TweedEditor {
         if (command.equals("copy")) { return copyAction }
         if (command.equals("paste")) { return pasteAction }
         if (command.equals("select-all")) { return selectAllAction }
+        if (command.equals("preferences")) { return preferencesAction }
         return null
     }
 
-    void bindCommand(EditorDocument document, String trigger, String command) {
-        bool conflict = false
-        int existingIndex = 0
-        while (existingIndex < document.shortcuts.length) {
-            if ((document.shortcuts[existingIndex] as String).equals(trigger)) {
-                conflict = true
+    void configureShortcuts(EditorDocument document) {
+        applyDocumentSettings(document)
+        document.view.onChanged(changedAction)
+        document.view.onCursorMoved(cursorAction)
+    }
+
+    void applyDocumentSettings(EditorDocument document) {
+        document.view.configure(settings.fontFamily, settings.fontSize, settings.tabWidth,
+            settings.insertSpaces, settings.lineNumbers, settings.wrap, settings.highlightLine)
+        if (document.shortcutRevision == settings.shortcutRevision) { return }
+        document.shortcutRevision = settings.shortcutRevision
+        document.view.clearShortcuts()
+        document.shortcuts = []
+        document.shortcutConflict = settings.legacyConflict
+        int i = 0
+        while (i < settings.commands.length) {
+            CommandBinding binding = settings.commands[i] as CommandBinding
+            if (binding.trigger.length > 0 && binding.valid) {
+                if (document.view.bindShortcut(binding.trigger, binding.action)) {
+                    document.shortcuts.append(binding.trigger)
+                } else {
+                    status.setText(format("Invalid shortcut trigger: {}", binding.trigger))
+                }
             }
-            existingIndex = existingIndex + 1
-        }
-        if (conflict) {
-            document.shortcutConflict = true
-            status.setText(format("Shortcut conflict: {}", trigger))
-            return
-        }
-        callback<void()> action = commandAction(command)
-        bool knownCommand = action != null
-        bool bound = false
-        if (knownCommand) {
-            bound = document.view.bindShortcut(trigger, action)
-        }
-        if (!knownCommand) {
-            status.setText(format("Unknown editor shortcut command: {}", command))
-        }
-        if (knownCommand && !bound) {
-            status.setText(format("Invalid GTK shortcut trigger: {}", trigger))
-        }
-        if (knownCommand && bound) {
-            document.shortcuts.append(trigger)
+            i = i + 1
         }
     }
 
-    void configureShortcuts(EditorDocument document) {
-        String configPath = "tweed-shortcuts.conf"
-        if (System.FileSystem().exists(configPath)) {
-            System.File config = System.File(configPath, "r")
-            if (!config.isOpen()) {
-                status.setText("Could not read tweed-shortcuts.conf")
-                return
+    void createPreferences() {
+        preferencesWindow = Gtk.TransientWindow("Tweed Preferences")
+        preferencesWindow.setTransientFor(window)
+        preferencesWindow.setDefaultSize(850, 600)
+        Gtk.Box root = Gtk.Box(Gtk.Box.VERTICAL, 8)
+        Gtk.Box content = Gtk.Box(Gtk.Box.HORIZONTAL, 12)
+        Gtk.Box categories = Gtk.Box(Gtk.Box.VERTICAL, 6)
+        Gtk.Button editorCategory = Gtk.Button("Editor")
+        Gtk.Button keyboardCategory = Gtk.Button("Keyboard")
+        categories.append(editorCategory)
+        categories.append(keyboardCategory)
+        editorCategory.onClicked(_self().showEditorPreferences)
+        keyboardCategory.onClicked(_self().showKeyboardPreferences)
+        content.append(categories)
+        Gtk.Box pages = Gtk.Box(Gtk.Box.VERTICAL, 8)
+        pages.setHExpand(true)
+        pages.setVExpand(true)
+        content.append(pages)
+        editorPreferences = Gtk.Box(Gtk.Box.VERTICAL, 6)
+        editorPreferences.append(Gtk.Label("Editor (global settings)"))
+        fontEntry = preferenceEntry(editorPreferences, "Monospace font family", settings.fontFamily)
+        sizeEntry = preferenceEntry(editorPreferences, "Font size (6-72 pt)", format("{}", settings.fontSize))
+        tabsEntry = preferenceEntry(editorPreferences, "Tab width (1-16 columns)", format("{}", settings.tabWidth))
+        spacesCheck = preferenceCheck("Insert spaces instead of tabs", settings.insertSpaces)
+        numbersCheck = preferenceCheck("Show line numbers", settings.lineNumbers)
+        wrapCheck = preferenceCheck("Wrap long lines", settings.wrap)
+        highlightCheck = preferenceCheck("Highlight current line", settings.highlightLine)
+        fontEntry.onChanged(_self().editorSettingChanged)
+        sizeEntry.onChanged(_self().editorSettingChanged)
+        tabsEntry.onChanged(_self().editorSettingChanged)
+        Gtk.Button editorReset = Gtk.Button("Reset Editor to Defaults")
+        editorReset.onClicked(_self().resetEditorPreferences)
+        editorPreferences.append(editorReset)
+        pages.append(editorPreferences)
+        keyboardPreferences = Gtk.Box(Gtk.Box.VERTICAL, 6)
+        commandSearch = Gtk.Entry("")
+        keyboardPreferences.append(Gtk.Label("Search commands; empty binding disables a command"))
+        keyboardPreferences.append(commandSearch)
+        commandSearch.onChanged(_self().filterCommands)
+        Gtk.ScrolledWindow scroll = Gtk.ScrolledWindow()
+        scroll.setVExpand(true)
+        keyboardRowsBox = Gtk.Box(Gtk.Box.VERTICAL, 4)
+        scroll.setChild(keyboardRowsBox)
+        keyboardRows = []
+        keyboardPreferences.append(scroll)
+        Gtk.Button keyboardReset = Gtk.Button("Reset Keyboard to Defaults")
+        keyboardReset.onClicked(_self().resetKeyboardPreferences)
+        keyboardPreferences.append(keyboardReset)
+        pages.append(keyboardPreferences)
+        keyboardPreferences.setVisible(false)
+        root.append(content)
+        preferencesMessage = Gtk.Label(settings.errors)
+        root.append(preferencesMessage)
+        root.append(Gtk.Label(format("Automatically saved to {}", settings.path)))
+        resetChoices = Gtk.Box(Gtk.Box.HORIZONTAL, 6)
+        resetChoices.append(Gtk.Label("Reset this section?"))
+        confirmResetButton = Gtk.Button("Confirm Reset")
+        cancelResetButton = Gtk.Button("Cancel")
+        confirmResetButton.onClicked(_self().confirmPreferencesReset)
+        cancelResetButton.onClicked(_self().cancelPreferencesReset)
+        resetChoices.append(confirmResetButton)
+        resetChoices.append(cancelResetButton)
+        root.append(resetChoices)
+        resetChoices.setVisible(false)
+        preferencesWindow.setChild(root)
+        preferencesWindow.onCloseRequest(_self().hidePreferences)
+        preferencesWindow.setVisible(false)
+    }
+
+    Gtk.Entry preferenceEntry(Gtk.Box page, String label, String text) {
+        Gtk.Box row = Gtk.Box(Gtk.Box.HORIZONTAL, 6)
+        row.append(Gtk.Label(label))
+        Gtk.Entry entry = Gtk.Entry(text)
+        entry.setHExpand(true)
+        row.append(entry)
+        page.append(row)
+        return entry
+    }
+
+    Gtk.CheckButton preferenceCheck(String label, bool active) {
+        Gtk.CheckButton check = Gtk.CheckButton(label)
+        check.setActive(active)
+        check.onToggled(_self().editorCheckChanged)
+        editorPreferences.append(check)
+        return check
+    }
+
+    void showPreferences() {
+        if (commandsBlocked()) { return }
+        if (preferencesWindow == null) { createPreferences() }
+        preferencesWindow.present()
+    }
+    bool hidePreferences() {
+        if (preferencesWindow == null || preferencesWindow.disposed()) { return true }
+        stopRecording()
+        cancelPreferencesReset()
+        preferencesWindow.setVisible(false)
+        return true
+    }
+    void stopRecording() {
+        int i = 0
+        while (i < keyboardRows.length) {
+            (keyboardRows[i] as KeyboardPreference).cancelRecording()
+            i = i + 1
+        }
+    }
+    void showEditorPreferences() {
+        hidePreferences()
+        editorPreferences.setVisible(true)
+        keyboardPreferences.setVisible(false)
+        preferencesWindow.present()
+    }
+    void showKeyboardPreferences() {
+        hidePreferences()
+        if (keyboardRows.length == 0) {
+            int i = 0
+            while (i < settings.commands.length) {
+                KeyboardPreference row = KeyboardPreference(settings, settings.commands[i] as CommandBinding,
+                    _self().keyboardSettingsChanged, _self().stopRecording)
+                keyboardRows.append(row)
+                keyboardRowsBox.append(row.row)
+                i = i + 1
             }
-            list lines = config.readLines()
-            config.close()
-            int index = 0
-            while (index < lines.length) {
-                list fields = (lines[index] as String).split("=")
-                if (fields.length == 2) {
-                    bindCommand(document, (fields[0] as String).trim(),
-                                (fields[1] as String).trim())
-                } else {
-                    if (!(lines[index] as String).trim().equals("")) {
-                        status.setText(format("Invalid shortcut config line {}", index + 1))
-                    }
-                }
-                index = index + 1
+        }
+        editorPreferences.setVisible(false)
+        keyboardPreferences.setVisible(true)
+        preferencesWindow.present()
+    }
+    void filterCommands(String query) {
+        int i = 0
+        while (i < keyboardRows.length) {
+            KeyboardPreference row = keyboardRows[i] as KeyboardPreference
+            row.row.setVisible(row.binding.name.toLower().contains(query.toLower()) ||
+                               row.binding.id.contains(query.toLower()))
+            i = i + 1
+        }
+    }
+    int preferenceNumber(String text, int minimum, int maximum) {
+        if (text.length == 0 || text.length > 2) { return -1 }
+        int i = 0
+        while (i < text.length) {
+            if (!"0123456789".contains(text.slice(i, i + 1))) { return -1 }
+            i = i + 1
+        }
+        int number = text.toInt()
+        if (number < minimum || number > maximum) { return -1 }
+        return number
+    }
+    void editorCheckChanged(bool active) { editorSettingChanged("") }
+    void editorSettingChanged(String text) {
+        if (refreshingPreferences) { return }
+        String problem = settings.fontError(fontEntry.text())
+        int size = preferenceNumber(sizeEntry.text(), 6, 72)
+        int tabs = preferenceNumber(tabsEntry.text(), 1, 16)
+        if (size < 0) { problem = "Font size must be an integer from 6 to 72" }
+        if (tabs < 0) { problem = "Tab width must be an integer from 1 to 16" }
+        if (!problem.equals("")) {
+            preferencesMessage.setText(problem)
+            return
+        }
+        settings.fontFamily = fontEntry.text()
+        settings.fontSize = size
+        settings.tabWidth = tabs
+        settings.insertSpaces = spacesCheck.active()
+        settings.lineNumbers = numbersCheck.active()
+        settings.wrap = wrapCheck.active()
+        settings.highlightLine = highlightCheck.active()
+        settingsChanged()
+    }
+    void resetEditorPreferences() {
+        resetSection = "Editor"
+        resetChoices.setVisible(true)
+    }
+    void resetKeyboardPreferences() {
+        resetSection = "Keyboard"
+        resetChoices.setVisible(true)
+    }
+    void cancelPreferencesReset() {
+        resetSection = ""
+        resetChoices.setVisible(false)
+    }
+    void confirmPreferencesReset() {
+        if (resetSection.equals("Editor")) {
+            settings.resetEditor()
+            refreshingPreferences = true
+            fontEntry.setText(settings.fontFamily)
+            sizeEntry.setText(format("{}", settings.fontSize))
+            tabsEntry.setText(format("{}", settings.tabWidth))
+            spacesCheck.setActive(settings.insertSpaces)
+            numbersCheck.setActive(settings.lineNumbers)
+            wrapCheck.setActive(settings.wrap)
+            highlightCheck.setActive(settings.highlightLine)
+            refreshingPreferences = false
+        }
+        if (resetSection.equals("Keyboard")) {
+            settings.resetKeyboard()
+            settings.shortcutRevision = settings.shortcutRevision + 1
+            int i = 0
+            while (i < keyboardRows.length) {
+                (keyboardRows[i] as KeyboardPreference).refresh()
+                i = i + 1
+            }
+        }
+        cancelPreferencesReset()
+        settingsChanged()
+    }
+    void settingsChanged() {
+        int i = 0
+        while (i < documents.length) {
+            applyDocumentSettings(documents[i] as EditorDocument)
+            i = i + 1
+        }
+        if (!settings.writable) {
+            preferencesMessage.setText(format("{}\nChanges apply for this session only; saving disabled.", settings.errors))
+            return
+        }
+        if (savePending) {
+            saveAgain = true
+            return
+        }
+        saveSettings()
+    }
+    void keyboardSettingsChanged() {
+        settings.shortcutRevision = settings.shortcutRevision + 1
+        settingsChanged()
+    }
+    bool saveSettings() {
+        String text = settings.serialize()
+        if (text.equals(persistedText)) { return true }
+        String directory = System.FileSystem().dirname(settings.path)
+        if (!makeSettingsDirectory(directory)) {
+            preferencesMessage.setText(format("Settings save failed: {}", System.System().lastError()))
+            return false
+        }
+        // Refuse to overwrite a file edited externally since the last load/save.
+        if (System.FileSystem().exists(settings.path)) {
+            if (!System.FileSystem().isFile(settings.path) ||
+                System.FileSystem().fileSize(settings.path) > 65536) {
+                preferencesMessage.setText("Settings save failed: current settings must be a regular file no larger than 64 KiB")
+                return false
+            }
+            System.File file = System.File(settings.path, "r")
+            if (!file.isOpen()) {
+                preferencesMessage.setText("Settings save failed: cannot read current settings")
+                return false
+            }
+            String disk = ""
+            try { disk = file.readAll() }
+            except(Exception) as failure {
+                file.close()
+                preferencesMessage.setText(format("Settings save failed: {}", failure.message))
+                return false
+            }
+            String readError = System.System().lastError()
+            file.close()
+            if (!readError.equals("") || !disk.equals(persistedText)) {
+                preferencesMessage.setText("Settings changed on disk; restart before saving preferences")
+                return false
             }
         } else {
-            bindCommand(document, "<Control>s", "save")
-            bindCommand(document, "<Control>o", "open")
-            bindCommand(document, "<Control>n", "new")
-            bindCommand(document, "<Control>f", "find")
-            bindCommand(document, "<Control>h", "replace")
-            bindCommand(document, "<Control>z", "undo")
-            bindCommand(document, "<Control><Shift>z", "redo")
-            bindCommand(document, "<Control><Shift>s", "save-as")
-            bindCommand(document, "<Control>w", "close")
-            bindCommand(document, "<Control>q", "quit")
-            bindCommand(document, "<Control>x", "cut")
-            bindCommand(document, "<Control>c", "copy")
-            bindCommand(document, "<Control>v", "paste")
-            bindCommand(document, "<Control>a", "select-all")
+            if (!persistedText.equals("")) {
+                preferencesMessage.setText("Settings removed on disk; restart before saving preferences")
+                return false
+            }
         }
-        document.view.onChanged(changedAction)
-        document.view.onCursorMoved(cursorAction)
+        savingText = text
+        savePending = true
+        preferencesMessage.setText("Saving settings...")
+        Gtk.Config().save(settings.path, text, persistedText, _self().settingsSaved)
+        return true
+    }
+    bool makeSettingsDirectory(String directory) {
+        if (System.FileSystem().isDir(directory)) { return true }
+        String parent = System.FileSystem().dirname(directory)
+        if (parent.equals(directory) || directory.equals("")) { return false }
+        if (!makeSettingsDirectory(parent)) { return false }
+        return System.FileSystem().mkdir(directory)
+    }
+    void settingsSaved(String error) {
+        savePending = false
+        if (!error.equals("")) {
+            preferencesMessage.setText(format("Settings save failed: {}", error))
+            saveAgain = false
+            closeAfterSave = false
+            preferencesWindow.present()
+            return
+        }
+        persistedText = savingText
+        settings.original = savingText
+        preferencesMessage.setText("Settings saved")
+        if (saveAgain) {
+            saveAgain = false
+            if (!saveSettings()) {
+                closeAfterSave = false
+                preferencesWindow.present()
+                return
+            }
+        }
+        if (closeAfterSave && !savePending) {
+            closeAfterSave = false
+            window.close()
+        }
     }
 
     void newDocument() {
@@ -858,8 +1582,13 @@ class TweedEditor {
     }
 
     bool requestClose() {
+        if (savePending) {
+            closeAfterSave = true
+            status.setText("Waiting for settings to save")
+            return true
+        }
         if (allowWindowClose) {
-            closeSearchDialog()
+            closePreferencesWindows()
             return false
         }
         if (fileDialog != null) {
@@ -882,6 +1611,14 @@ class TweedEditor {
             index = index + 1
         }
         return false
+    }
+
+    void closePreferencesWindows() {
+        closeSearchDialog()
+        if (preferencesWindow != null && !preferencesWindow.disposed()) {
+            hidePreferences()
+            preferencesWindow.dispose()
+        }
     }
 
     void closeCurrentDocument() {
@@ -1103,6 +1840,8 @@ class TweedEditor {
     }
 }
 
+TweedEditor TweedEditor._self() from "simp_gtk_self"
+
 start {
     Gtk.Application app = Gtk.Application("org.tweed.Editor")
     TweedEditor editor = TweedEditor()
@@ -1135,6 +1874,7 @@ start {
     editor.saveResultAction = editor.savedAs
     editor.closeAction = editor.requestClose
     editor.testAction = editor.test
+    editor.preferencesAction = editor.showPreferences
     app.onActivate(editor.activate)
     app.run()
     app.shutdown()

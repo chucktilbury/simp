@@ -455,6 +455,15 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --work "${CMAKE_CURRENT_BINARY_DIR}/editor-dialogs"
         --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
     set_tests_properties(simp_editor_dialogs PROPERTIES LABELS "examples;gtk" TIMEOUT 120)
+    add_test(NAME simp_tweed_preferences
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_tweed_preferences.py"
+        --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
+        --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+        --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
+        --source "${example_directory}/editor/tweed.simp"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/tweed-preferences"
+        --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
+    set_tests_properties(simp_tweed_preferences PROPERTIES LABELS "examples;gtk" TIMEOUT 180)
     add_test(NAME simp_editor_default_shortcuts
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
         --compiler "$<TARGET_FILE:simp>" --examples "${example_directory}"

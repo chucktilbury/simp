@@ -54,6 +54,7 @@ struct ShortcutBinding {
     WidgetRecord *owner;
     SimpCallbackContext *context;
     char *trigger;
+    GtkEventController *controller;
     unsigned active;
     bool release_pending;
     bool orphaned;
@@ -117,6 +118,7 @@ static GHashTable *registered_languages;
 static void widget_dispose(WidgetRecord *record);
 static void window_removed(GtkApplication *app, GtkWindow *window, gpointer data);
 static void dialog_finish(FileDialog *dialog, bool invoke);
+static void config_finish_shutdown(void);
 
 static _Noreturn void fatal(const char *message) {
     fprintf(stderr, "Simple GTK error: %s\n", message);
@@ -510,6 +512,7 @@ void simp_gtk_shutdown(void *self) {
     }
     for (WidgetRecord *record = widgets; record; record = record->next)
         widget_dispose(record);
+    config_finish_shutdown();
 #ifdef SIMP_GTK_SOURCEVIEW
     g_clear_object(&source_language_manager);
     g_clear_pointer(&registered_languages, g_hash_table_unref);
@@ -1147,6 +1150,7 @@ void simp_gtk_window_transient_for(void *self, int64_t token, int64_t parent) {
     if (!GTK_IS_WINDOW(window) || !GTK_IS_WINDOW(parent_window) || window == parent_window)
         fatal("transient parent and child must be distinct Windows");
     gtk_window_set_transient_for(GTK_WINDOW(window), GTK_WINDOW(parent_window));
+    gtk_window_set_destroy_with_parent(GTK_WINDOW(window), TRUE);
 }
 
 void simp_gtk_box_layout(void *self, int64_t token, int64_t orientation, int64_t spacing) {
@@ -1317,6 +1321,7 @@ bool simp_gtk_source_view_bind_shortcut(void *self, int64_t token, void *trigger
     if (!action) fatal("could not create GTK shortcut action");
     GtkShortcut *shortcut = gtk_shortcut_new(trigger, action);
     GtkEventController *controller = gtk_shortcut_controller_new();
+    binding->controller = controller;
     gtk_shortcut_controller_set_scope(GTK_SHORTCUT_CONTROLLER(controller),
                                       GTK_SHORTCUT_SCOPE_LOCAL);
     gtk_shortcut_controller_add_shortcut(GTK_SHORTCUT_CONTROLLER(controller), shortcut);
@@ -1417,6 +1422,59 @@ void simp_gtk_source_view_monospace(void *self, int64_t token, bool monospace) {
     GtkWidget *widget = widget_live(token);
     if (!GTK_SOURCE_IS_VIEW(widget)) fatal("operation requires GtkSourceView");
     gtk_text_view_set_monospace(GTK_TEXT_VIEW(widget), monospace);
+}
+
+void simp_gtk_source_view_clear_shortcuts(void *self, int64_t token) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    WidgetRecord *record = record_find(token);
+    while (record->shortcuts) {
+        ShortcutBinding *binding = record->shortcuts;
+        record->shortcuts = binding->next;
+        binding->owner = NULL;
+        shortcut_release(binding);
+        gtk_widget_remove_controller(widget, binding->controller);
+    }
+}
+
+void simp_gtk_source_view_configure(void *self, int64_t token, void *font_text,
+                                   int64_t size, int64_t tabs, bool spaces,
+                                   bool numbers, bool wrap, bool highlight) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    if (!GTK_SOURCE_IS_VIEW(widget)) fatal("operation requires GtkSourceView");
+    if (size < 6 || size > 72 || tabs < 1 || tabs > 16) fatal("invalid source view settings");
+    char *font = text_copy(font_text);
+    /* CSS quoting prevents a user-editable font name from injecting rules. */
+    GString *quoted = g_string_new("\"");
+    for (const char *p = font; *p; ++p) {
+        if (*p == '\\' || *p == '"') g_string_append_c(quoted, '\\');
+        g_string_append_c(quoted, *p);
+    }
+    g_string_append_c(quoted, '"');
+    char *css = g_strdup_printf("textview { font-family: %s; font-size: %" G_GINT64_FORMAT
+                               "pt; }", quoted->str, size);
+    const char *previous_css = g_object_get_data(G_OBJECT(widget), "simp-font-css");
+    if (g_strcmp0(previous_css, css) != 0) {
+        GtkCssProvider *provider = gtk_css_provider_new();
+        gtk_css_provider_load_from_data(provider, css, -1);
+        GtkStyleContext *context = gtk_widget_get_style_context(widget);
+        GtkCssProvider *previous = g_object_get_data(G_OBJECT(widget), "simp-font-provider");
+        if (previous) gtk_style_context_remove_provider(context, GTK_STYLE_PROVIDER(previous));
+        gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(provider),
+                                       GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+        g_object_set_data_full(G_OBJECT(widget), "simp-font-provider", provider, g_object_unref);
+        g_object_set_data_full(G_OBJECT(widget), "simp-font-css", g_strdup(css), g_free);
+    }
+    gtk_text_view_set_monospace(GTK_TEXT_VIEW(widget), TRUE);
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(widget), wrap ? GTK_WRAP_WORD_CHAR : GTK_WRAP_NONE);
+    gtk_source_view_set_tab_width(GTK_SOURCE_VIEW(widget), (guint)tabs);
+    gtk_source_view_set_insert_spaces_instead_of_tabs(GTK_SOURCE_VIEW(widget), spaces);
+    gtk_source_view_set_show_line_numbers(GTK_SOURCE_VIEW(widget), numbers);
+    gtk_source_view_set_highlight_current_line(GTK_SOURCE_VIEW(widget), highlight);
+    g_free(font);
+    g_free(css);
+    g_string_free(quoted, TRUE);
 }
 
 /* Search option bits shared with GtkSource.View in sourceview.simp. */
@@ -1758,3 +1816,5 @@ int64_t simp_gtk_checkbox_signal(void *self, void *source, void *callback) {
 int64_t simp_gtk_notebook_signal(void *self, void *source, void *callback) {
     return simp_gtk_widget_signal(self, source_token(source), 4, callback);
 }
+
+#include "gtk_config.c"
