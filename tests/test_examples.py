@@ -16,6 +16,7 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--compiler", type=Path)
+    parser.add_argument("--executable", type=Path)
     parser.add_argument("--work", type=Path)
     parser.add_argument("--case")
     parser.add_argument("--gtk", action="store_true")
@@ -61,7 +62,8 @@ def main() -> None:
             if case.get("requires") == "sourceview":
                 assert args.sourceview, "GtkSourceView example requires SIMP_GTK_SOURCEVIEW"
             with headless(args.xvfb, work, env) as gtk_env:
-                check_program(args.compiler.resolve(), source, project, case, gtk_env)
+                check_program(args.compiler.resolve(), source, project, case, gtk_env,
+                              args.executable.resolve() if args.executable else None)
         else:
             check_program(args.compiler.resolve(), source, project, case, env)
 

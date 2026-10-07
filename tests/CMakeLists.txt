@@ -76,10 +76,21 @@ add_test(NAME simp_callbacks
         "--sanitize=${SIMP_SANITIZER_LIST}")
 if(SIMP_GTK)
     find_program(SIMP_XVFB_EXECUTABLE NAMES Xvfb)
+    find_program(SIMP_DBUS_DAEMON_EXECUTABLE NAMES dbus-daemon)
+    set(simp_gtk_tests_default OFF)
+    if(SIMP_XVFB_EXECUTABLE AND SIMP_DBUS_DAEMON_EXECUTABLE)
+        set(simp_gtk_tests_default ON)
+    endif()
+    option(SIMP_GTK_TESTS "Enable headless GUI tests (default: detect installed test tools)"
+        ${simp_gtk_tests_default})
+    if(NOT SIMP_GTK_TESTS)
+        message(STATUS "Headless GUI tests disabled; set SIMP_GTK_TESTS=ON with Xvfb and dbus-daemon to require them. Tweed can still be built.")
+    endif()
+endif()
+if(SIMP_GTK AND SIMP_GTK_TESTS)
     if(NOT SIMP_XVFB_EXECUTABLE)
         message(FATAL_ERROR "SIMP_GTK tests require Xvfb; install it or set SIMP_XVFB_EXECUTABLE")
     endif()
-    find_program(SIMP_DBUS_DAEMON_EXECUTABLE NAMES dbus-daemon)
     if(NOT SIMP_DBUS_DAEMON_EXECUTABLE)
         message(FATAL_ERROR "SIMP_GTK tests require dbus-daemon")
     endif()
@@ -400,6 +411,24 @@ foreach(example_case IN LISTS example_cases)
     set_tests_properties("simp_example_${example_name}" PROPERTIES LABELS examples TIMEOUT 60)
 endforeach()
 if(SIMP_GTK_SOURCEVIEW)
+    get_target_property(SIMP_TWEED_EXECUTABLE tweed SIMP_EXECUTABLE)
+    add_test(NAME simp_tweed_build
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_tweed_build.py"
+        --build "${CMAKE_BINARY_DIR}" --cmake "${CMAKE_COMMAND}"
+        --executable "${SIMP_TWEED_EXECUTABLE}" --compiler "$<TARGET_FILE:simp>")
+    set_tests_properties(simp_tweed_build PROPERTIES
+        FIXTURES_SETUP tweed_binary LABELS build TIMEOUT 180)
+endif()
+if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
+    add_test(NAME simp_tweed_binary
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
+        --compiler "$<TARGET_FILE:simp>" --executable "${SIMP_TWEED_EXECUTABLE}"
+        --examples "${example_directory}"
+        --manifest "${CMAKE_CURRENT_SOURCE_DIR}/examples.json"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/tweed-binary"
+        --case "editor/tweed.simp" ${gtk_program_arguments})
+    set_tests_properties(simp_tweed_binary PROPERTIES
+        FIXTURES_REQUIRED tweed_binary LABELS "examples;gtk;build" TIMEOUT 60)
     add_test(NAME simp_editor_default_shortcuts
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
         --compiler "$<TARGET_FILE:simp>" --examples "${example_directory}"

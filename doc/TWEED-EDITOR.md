@@ -30,23 +30,34 @@ sudo apt install build-essential cmake clang python3 pkg-config \
   libgtk-4-dev libgtksourceview-5-dev xvfb dbus-daemon
 ```
 
-Build with the explicit GtkSourceView opt-in:
+Installed GUI development dependencies are detected on fresh configurations.
+Build the editor directly:
 
 ```sh
-cmake -S . -B build-tweed -DCMAKE_BUILD_TYPE=Debug \
-  -DSIMP_GTK=ON -DSIMP_GTK_SOURCEVIEW=ON \
-  -DSIMP_STAGE_PREFIX="$PWD/build-tweed/stage"
-cmake --build build-tweed -j4
-build-tweed/stage/bin/simp examples/editor/tweed.simp \
-  -o build-tweed/tweed-editor
-build-tweed/tweed-editor file1.simp file2.simp
+cmake -S . -B build-tweed -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug
+make -C build-tweed -j4 tweed
+./bin/tweed file1.simp file2.simp
 ```
 
-The `sourceview` package is staged and installed only with
-`-DSIMP_GTK_SOURCEVIEW=ON`, which requires `-DSIMP_GTK=ON`, GTK 4, and
-GtkSourceView 5 development files. Headless GTK/editor tests additionally
-require Xvfb and `dbus-daemon`. With both options disabled, ordinary compiler
-and non-GUI applications do not link GTK or GtkSourceView.
+Inside the configured Makefiles build directory, use `make tweed`; with any
+generator, use `cmake --build build-tweed --target tweed -j4`. The target builds
+the compiler and required support on a fresh build, generates a private package
+lock from staged modules, and compiles the editor only when its inputs change.
+An ordinary compiler build prepares the enabled peripheral support but does
+not compile the editor. The executable is `<source>/bin/tweed` by default;
+with `-DSIMP_STAGE_PREFIX=/absolute/prefix` it is `/absolute/prefix/bin/tweed`.
+No manual compiler invocation or package activation is needed. Tweed is not
+currently an install target.
+
+Headless tests require Xvfb and `dbus-daemon`; they default to enabled when
+those tools are present, otherwise configuration explicitly reports them
+disabled without blocking Tweed. Set `-DSIMP_GTK_TESTS=ON` to require them, or
+`-DBUILD_TESTING=OFF` to omit all tests. Compiler-only builds
+can set `-DSIMP_GTK=OFF -DSIMP_GTK_SOURCEVIEW=OFF`; their `tweed` target reports
+the missing support explicitly. To enable GUI support in an already configured
+compiler-only build, reconfigure with both options `ON`. Even with GUI packages
+enabled, the compiler and non-import applications do not link GTK or
+GtkSourceView. See [build and installation](INSTALLATION.md).
 
 Use the path field with **Open** or **Save As**; **Save** writes the active
 document to its current path. The **Recent** button reopens the last file opened
@@ -97,6 +108,6 @@ Run the editor-specific headless cases and existing GTK integration checks:
 
 ```sh
 ctest --test-dir build-tweed \
-  -R '^(simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_gtk)$' \
+  -R '^(simp_tweed_binary|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_gtk)$' \
   --output-on-failure
 ```

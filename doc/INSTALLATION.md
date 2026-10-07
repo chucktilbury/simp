@@ -28,7 +28,7 @@ configuration is optional. To build only the compiler outside the repository's
 in-tree build directory:
 
 ```sh
-cmake -S src -B /tmp/simp-compiler-build
+cmake -S src -B /tmp/simp-compiler-build -DSIMP_GTK=OFF -DSIMP_GTK_SOURCEVIEW=OFF
 cmake --build /tmp/simp-compiler-build
 ```
 
@@ -36,44 +36,66 @@ cmake --build /tmp/simp-compiler-build
 The root build places the compiler and test executables in `bin/` and the
 front-end archive in `lib/libsimp_frontend.a`.
 
-## Optional GTK 4 interface
+## Tweed editor and optional GTK packages
 
-GTK is opt-in: `-DSIMP_GTK=ON` requires `pkg-config`, GTK 4 development files,
-and Xvfb plus `dbus-daemon` for the configured real-GTK integration tests.
-On Debian/Ubuntu these are `pkg-config libgtk-4-dev xvfb dbus-daemon`.
-Configuration fails if a dependency is
-missing; tests do not silently skip an unavailable display. Xvfb can be selected
-with `-DSIMP_XVFB_EXECUTABLE=/absolute/path/to/Xvfb`.
+On a fresh configuration, CMake detects `pkg-config`, GTK 4 and GtkSourceView 5
+development files and defaults `SIMP_GTK` and `SIMP_GTK_SOURCEVIEW` to the
+available support. On Debian/Ubuntu the GUI development packages are
+`pkg-config libgtk-4-dev libgtksourceview-5-dev`. No packages are installed
+automatically. An ordinary compiler build (including `--target simp`) builds
+the enabled native package archives and stages their sources, manifests and
+language resources. GTK and GtkSourceView link only into importing applications,
+never into `simp` or non-GUI programs.
 
-The optional Tweed editor additionally uses GtkSourceView 5. Enable it with
-`-DSIMP_GTK_SOURCEVIEW=ON` (which also enables GTK). Install
-`libgtksourceview-5-dev` on Debian/Ubuntu. This option stages the separate
-`sourceview/0.1.0` package and its native support; ordinary compiler builds and
-applications that do not import these packages remain independent of GTK.
-Build and run the editor with:
+With those development dependencies installed, configure once and build Tweed:
 
 ```sh
-cmake -S . -B build-editor -DCMAKE_BUILD_TYPE=Debug \
-  -DSIMP_GTK=ON -DSIMP_GTK_SOURCEVIEW=ON \
-  -DSIMP_STAGE_PREFIX="$PWD/build-editor/stage"
-cmake --build build-editor -j4
-build-editor/stage/bin/simp examples/editor/tweed.simp \
-  -o build-editor/tweed-editor
-build-editor/tweed-editor file1.simp file2.simp
+cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug
+make -C build -j4 tweed
+./bin/tweed file1.simp file2.simp
 ```
 
-The editor documentation describes its current capabilities and limitations:
-[Tweed editor first iteration](TWEED-EDITOR.md).
+From inside `build/`, the target is simply `make tweed`. The generator-independent
+equivalent is `cmake --build build --target tweed -j4`. This works on a fresh
+build without first building the compiler. The output is `<source>/bin/tweed`
+by default, or `<SIMP_STAGE_PREFIX>/bin/tweed` with a custom staging prefix;
+standalone `src/` builds use their build directory as the prefix. The target
+generates a private source project and package lock under the build directory,
+using only this build's staged packages, not user HOME packages or environment
+resource overrides. Source/include, native archive, manifest, builtin and
+language-resource changes rebuild it; unchanged builds do not recompile it.
+The editor is built on demand, not by the default `all` target, and is not
+installed by `cmake --install`. See [Tweed editor](TWEED-EDITOR.md).
 
-The build stages/installs the `gtk/0.1.0` package and its native archive together.
-Its import metadata links GTK only into applications importing it, never the
-compiler or non-import programs. With the option off, no GTK package is staged
-or installed. Use a separate staging prefix for different configurations.
-With sourceview enabled, the staged GTK manifest also carries the GtkSourceView
-link dependency needed by the optional native editor package. See
-[GTK.md](GTK.md) for the widget API, application activation, and ownership.
-Optional GTK examples and documentation programs run under a fresh headless
-display and isolated session bus when this build option is enabled.
+For a deliberate compiler-only configuration, including on machines without
+GUI development files:
+
+```sh
+cmake -S . -B build-compiler -DSIMP_GTK=OFF -DSIMP_GTK_SOURCEVIEW=OFF
+cmake --build build-compiler --target simp -j4
+```
+
+`tweed` then fails with an explicit dependency/configuration diagnostic rather
+than claiming a successful editor build. Explicit `ON` options require their
+development dependencies and fail configuration if missing;
+`SIMP_GTK_SOURCEVIEW=ON` requires `SIMP_GTK=ON`. Defaults are cached: after
+installing GUI dependencies into an existing compiler-only configuration,
+reconfigure with both options `ON`.
+
+With GTK enabled and `BUILD_TESTING=ON` (the root-build default), headless GUI
+tests default to enabled when Xvfb and `dbus-daemon` are found
+(`xvfb dbus-daemon` on Debian/Ubuntu). Otherwise configuration explicitly
+reports that GUI tests are disabled; this does not block building Tweed.
+Set `-DSIMP_GTK_TESTS=ON` to require these tools and fail if missing, or use
+`-DBUILD_TESTING=OFF` to omit all tests. Enabled tests never silently skip
+missing fixtures. Xvfb can be selected with
+`-DSIMP_XVFB_EXECUTABLE=/absolute/path/to/Xvfb`. Each GUI test uses a private
+display and session bus.
+
+Disabled packages are absent from staging and installation. Use separate
+`SIMP_STAGE_PREFIX` directories for simultaneous different configurations.
+The enabled `gtk/0.1.0` manifest carries GtkSourceView link metadata when
+appropriate. See [GTK.md](GTK.md) for linkage, activation and ownership.
 
 ## Install layout and relocation
 
