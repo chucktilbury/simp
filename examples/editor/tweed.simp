@@ -14,6 +14,7 @@ class EditorDocument {
         shortcuts = []
         shortcutConflict = false
         view = GtkSource.View()
+        view.setLanguage(GtkSource.Content().languageFor(filePath))
         view.setText(contents)
         view.markSaved()
         scroller = Gtk.ScrolledWindow()
@@ -59,6 +60,12 @@ class TweedEditor {
     Gtk.Label status
     Gtk.Button findButton
     Gtk.Button replaceButton
+    Gtk.Button replaceAllButton
+    Gtk.CheckButton wholeWordsCheck
+    Gtk.CheckButton caseCheck
+    Gtk.CheckButton selectionCheck
+    list openFailures
+    bool collectingFailures
     Gtk.Box closeChoices
     Gtk.Button closeSaveButton
     Gtk.Button closeDiscardButton
@@ -83,6 +90,7 @@ class TweedEditor {
     callback<void()> closeCancelAction
     callback<void()> findAction
     callback<void()> replaceAction
+    callback<void()> replaceAllAction
     callback<void()> undoAction
     callback<void()> redoAction
     callback<void()> quitAction
@@ -92,7 +100,7 @@ class TweedEditor {
     callback<void()> selectAllAction
     callback<void()> showFindAction
     callback<void()> showReplaceAction
-    callback<void(String)> openResultAction
+    callback<void(list)> openResultAction
     callback<void(String)> saveResultAction
     callback<bool()> closeAction
     callback<void()> testAction
@@ -106,6 +114,8 @@ class TweedEditor {
         }
         documents = []
         recentFiles = []
+        openFailures = []
+        collectingFailures = false
         pendingCloseDocument = null
         pendingCloseAll = false
         allowWindowClose = false
@@ -142,10 +152,18 @@ class TweedEditor {
         replaceEntry = Gtk.Entry("")
         findButton = Gtk.Button("Find next")
         replaceButton = Gtk.Button("Replace next")
+        replaceAllButton = Gtk.Button("Replace all")
+        wholeWordsCheck = Gtk.CheckButton("Whole words")
+        caseCheck = Gtk.CheckButton("Case sensitive")
+        selectionCheck = Gtk.CheckButton("In selection")
         searchTools.append(findEntry)
         searchTools.append(findButton)
         searchTools.append(replaceEntry)
         searchTools.append(replaceButton)
+        searchTools.append(replaceAllButton)
+        searchTools.append(wholeWordsCheck)
+        searchTools.append(caseCheck)
+        searchTools.append(selectionCheck)
         notebook = Gtk.Notebook()
         notebook.setHExpand(true)
         notebook.setVExpand(true)
@@ -164,6 +182,7 @@ class TweedEditor {
         layout.append(status)
         findButton.onClicked(findAction)
         replaceButton.onClicked(replaceAction)
+        replaceAllButton.onClicked(replaceAllAction)
         closeSaveButton.onClicked(closeSaveAction)
         closeDiscardButton.onClicked(closeDiscardAction)
         closeCancelButton.onClicked(closeCancelAction)
@@ -290,12 +309,14 @@ class TweedEditor {
             return null
         }
         if (requestedPath.contains("://")) {
-            status.setText("Open failed: only local filesystem paths are supported")
+            reportOpenFailure(format("Open failed: {}: only local filesystem paths are supported",
+                                     requestedPath), false)
             return null
         }
         String absolutePath = System.FileSystem().absolutePath(requestedPath)
         if (absolutePath.equals("")) {
             showError("Open failed: ", requestedPath)
+            reportOpenFailure(status.text(), false)
             return null
         }
         int index = 0
@@ -308,19 +329,33 @@ class TweedEditor {
             index = index + 1
         }
         if (!System.FileSystem().isFile(absolutePath)) {
-            status.setText(format("Open failed: {} is not a regular file", requestedPath))
+            reportOpenFailure(format("Open failed: {} is not a regular file", requestedPath), false)
             return null
         }
         System.File input = System.File(absolutePath, "r")
         if (!input.isOpen()) {
             showError("Open failed: ", requestedPath)
+            reportOpenFailure(status.text(), false)
             return null
         }
-        String text = input.readAll()
-        String readError = System.System().lastError()
+        String text = ""
+        String readError = ""
+        bool binary = false
+        try {
+            text = input.readAll()
+            readError = System.System().lastError()
+        } except(Exception) as error {
+            readError = error.message
+            binary = readError.contains("UTF-8")
+        }
         input.close()
+        if (binary || (readError.equals("") && !GtkSource.Content().isText(text))) {
+            reportOpenFailure(format("Open failed: {} is not a text file (binary or not UTF-8)",
+                                     absolutePath), true)
+            return null
+        }
         if (!readError.equals("")) {
-            status.setText(format("Open failed: {}: {}", absolutePath, readError))
+            reportOpenFailure(format("Open failed: {}: {}", absolutePath, readError), false)
             return null
         }
         EditorDocument document = EditorDocument(absolutePath, text)
@@ -329,6 +364,19 @@ class TweedEditor {
         configureShortcuts(document)
         rememberRecent(absolutePath)
         return document
+    }
+
+    // Single opens report on the status line (and in a dialog for files that
+    // are not text); a chooser batch collects failures for one dialog.
+    void reportOpenFailure(String message, bool dialog) {
+        status.setText(message)
+        if (collectingFailures) {
+            openFailures.append(message)
+        } else {
+            if (dialog) {
+                Gtk.AlertDialog().show(window, "Could not open file", message)
+            }
+        }
     }
 
     void activateDocument(EditorDocument document) {
@@ -450,6 +498,9 @@ class TweedEditor {
                                   flushError, closeError))
             return false
         }
+        if (!document.path.equals(absoluteDestination)) {
+            document.view.setLanguage(GtkSource.Content().languageFor(absoluteDestination))
+        }
         document.path = absoluteDestination
         rememberRecent(absoluteDestination)
         document.view.markSaved()
@@ -465,13 +516,52 @@ class TweedEditor {
 
     void chooseOpen() {
         if (commandsBlocked()) { return }
-        fileDialog = Gtk.FileDialog(window, false, "", openResultAction)
+        String initialPath = ""
+        if (currentDocument() != null) {
+            initialPath = currentDocument().path
+        }
+        fileDialog = Gtk.FileDialog(window, initialPath, openResultAction)
         updateMenu()
     }
 
-    void opened(String path) {
+    void opened(list paths) {
         fileDialog = null
-        if (!path.equals("")) { openFile(path) }
+        openFailures = []
+        collectingFailures = true
+        EditorDocument last = null
+        int index = 0
+        while (index < paths.length) {
+            EditorDocument document = openDocument(paths[index] as String)
+            if (document != null) {
+                last = document
+            }
+            index = index + 1
+        }
+        collectingFailures = false
+        if (last != null) {
+            activateDocument(last)
+        }
+        if (openFailures.length > 0) {
+            String details = ""
+            index = 0
+            while (index < openFailures.length) {
+                if (index > 0) {
+                    details.append("\n")
+                }
+                details.append(openFailures[index] as String)
+                index = index + 1
+            }
+            String title = "Some files could not be opened"
+            if (openFailures.length == 1) {
+                title = "Could not open file"
+                status.setText(openFailures[0] as String)
+            } else {
+                status.setText(format("Open failed for {} of {} files", openFailures.length,
+                                      paths.length))
+            }
+            Gtk.AlertDialog().show(window, title, details)
+            openFailures = []
+        }
         updateMenu()
     }
 
@@ -521,13 +611,39 @@ class TweedEditor {
         recentFiles.append(path)
     }
 
-    void findNext() {
-        if (commandsBlocked()) { return }
+    int searchOptions() {
+        int options = 0
+        if (caseCheck.active()) {
+            options = options + GtkSource.View.CASE_SENSITIVE
+        }
+        if (wholeWordsCheck.active()) {
+            options = options + GtkSource.View.WHOLE_WORDS
+        }
+        if (selectionCheck.active()) {
+            options = options + GtkSource.View.IN_SELECTION
+        }
+        return options
+    }
+
+    EditorDocument searchDocument() {
+        if (commandsBlocked()) { return null }
         EditorDocument document = currentDocument()
+        if (document == null) {
+            return null
+        }
+        if (selectionCheck.active() && !document.view.hasSearchScope()) {
+            status.setText("In selection: select text, then press Find or Replace")
+            return null
+        }
+        return document
+    }
+
+    void findNext() {
+        EditorDocument document = searchDocument()
         if (document == null) {
             return
         }
-        if (!document.view.find(findEntry.text())) {
+        if (!document.view.findWith(findEntry.text(), searchOptions())) {
             status.setText("No match")
         } else {
             updateStatus()
@@ -535,15 +651,29 @@ class TweedEditor {
     }
 
     void replaceNext() {
-        if (commandsBlocked()) { return }
-        EditorDocument document = currentDocument()
+        EditorDocument document = searchDocument()
         if (document == null) {
             return
         }
-        if (!document.view.replaceNext(findEntry.text(), replaceEntry.text())) {
+        if (!document.view.replaceWith(findEntry.text(), replaceEntry.text(), searchOptions())) {
             status.setText("No match")
         } else {
             updateStatus()
+        }
+    }
+
+    void replaceAll() {
+        EditorDocument document = searchDocument()
+        if (document == null) {
+            return
+        }
+        int count = document.view.replaceAll(findEntry.text(), replaceEntry.text(),
+                                             searchOptions())
+        if (count == 0) {
+            status.setText("No match")
+        } else {
+            updateMenu()
+            status.setText(format("Replaced {} occurrences", count))
         }
     }
 
@@ -579,12 +709,32 @@ class TweedEditor {
         if (!commandsBlocked() && currentDocument() != null) { currentDocument().view.selectAll() }
     }
 
+    // Captures the selection as the "In selection" scope before focus moves
+    // to the search bar, and copies a single-line selection into Find.
+    void prepareSearch() {
+        EditorDocument document = currentDocument()
+        if (document == null) {
+            return
+        }
+        String selected = document.view.selectedText()
+        document.view.captureSearchScope()
+        if (!selected.equals("") && !selected.contains("\n")) {
+            findEntry.setText(selected)
+        }
+    }
+
     void showFind() {
-        if (!commandsBlocked()) { findEntry.focus() }
+        if (!commandsBlocked()) {
+            prepareSearch()
+            findEntry.focus()
+        }
     }
 
     void showReplace() {
-        if (!commandsBlocked()) { replaceEntry.focus() }
+        if (!commandsBlocked()) {
+            prepareSearch()
+            replaceEntry.focus()
+        }
     }
 
     void changed() {
@@ -727,6 +877,10 @@ class TweedEditor {
                     newDocument()
                 } else {
                     updateStatus()
+                    EditorDocument next = currentDocument()
+                    if (next != null && !pendingCloseAll) {
+                        next.view.focus()
+                    }
                 }
                 return
             }
@@ -849,7 +1003,8 @@ class TweedEditor {
             defaults = document.view.hasShortcut("<Control>s") && document.view.hasShortcut("<Control>o")
         }
         bool conflicted = document.shortcutConflict
-        bool highlighted = document.view.hasContextAt("keyword", 0) && document.view.hasContextAt("comment", 17) && document.view.hasContextAt("string", 39) && document.view.hasContextAt("number", 62)
+        bool plainText = GtkSource.Content().languageFor("notes.txt").equals("") && document.view.language().equals("tweed")
+        bool highlighted = plainText && document.view.hasContextAt("keyword", 0) && document.view.hasContextAt("comment", 17) && document.view.hasContextAt("string", 39) && document.view.hasContextAt("number", 62)
         bool searched = document.view.find("Tweed")
         bool replaced = document.view.replaceNext("Tweed", "Tweed Lang")
         bool dirtyBlocked = requestClose()
@@ -914,6 +1069,7 @@ start {
     editor.closeCancelAction = editor.cancelPendingClose
     editor.findAction = editor.findNext
     editor.replaceAction = editor.replaceNext
+    editor.replaceAllAction = editor.replaceAll
     editor.undoAction = editor.undoCurrent
     editor.redoAction = editor.redoCurrent
     editor.quitAction = editor.quit

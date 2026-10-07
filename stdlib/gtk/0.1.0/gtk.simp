@@ -177,18 +177,54 @@ namespace Gtk {
         void activateItem(int item) { _activate(_widgetToken(), item) }
     }
 
+    class FileSelection {
+        private:
+        list _paths
+        callback<void(list)> _result
+        public:
+        FileSelection(callback<void(list)> result) {
+            _paths = []
+            _result = result
+        }
+        void add(String path) {
+            if (!path.equals("")) {
+                _paths.append(path)
+                return
+            }
+            list paths = _paths
+            _paths = []
+            _result(paths)
+        }
+    }
+
     class FileDialog {
         private:
         int _token
+        FileSelection _selection
         int _create(int parent, bool save, String initialPath, callback<void(String)> result)
+        int _createMultiple(int parent, String initialPath, callback<void(String)> path)
         void _cancel(int token)
         bool _pending(int token)
         public:
         FileDialog(Window parent, bool save, String initialPath, callback<void(String)> result) {
             _token = _create(parent._widgetToken(), save, initialPath, result)
         }
+        FileDialog(Window parent, String initialPath, callback<void(list)> results) {
+            _selection = FileSelection(results)
+            _token = _createMultiple(parent._widgetToken(), initialPath, _selection.add)
+        }
         void cancel() { _cancel(_token) }
         bool pending() { return _pending(_token) }
+    }
+
+    class AlertDialog {
+        private:
+        void _show(int parent, String message, String detail)
+        public:
+        // Shows a modal error/information alert over parent; it closes itself.
+        void show(Window parent, String message, String detail) {
+            _show(parent._widgetToken(), message, detail)
+        }
     }
 
     class CheckButton : Widget {
@@ -278,6 +314,9 @@ namespace Gtk {
     void MenuBar._activate(int token, int item) from "simp_gtk_menu_item_activate"
     int FileDialog._create(int parent, bool save, String initialPath, callback<void(String)> result)
         from "simp_gtk_file_dialog_create"
+    int FileDialog._createMultiple(int parent, String initialPath, callback<void(String)> path)
+        from "simp_gtk_file_dialog_create_multiple"
+    void AlertDialog._show(int parent, String message, String detail) from "simp_gtk_alert_show"
     void FileDialog._cancel(int token) from "simp_gtk_file_dialog_cancel"
     bool FileDialog._pending(int token) from "simp_gtk_file_dialog_pending"
     void Widget._textSet(int token, String text) from "simp_gtk_widget_text_set"

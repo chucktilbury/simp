@@ -163,6 +163,24 @@ parent, or shut down. Native response cleanup completes before the Simple
 result handler runs, using a one-shot GUI idle dispatch; no nested main loop
 or blocking wait is used.
 
+```text
+Gtk.FileDialog(Window parent, String initialPath, callback<void(list)> results)
+```
+
+This open-only constructor enables multiple selection. Acceptance invokes
+`results` once with a list of every selected path or URI (in chooser order);
+cancellation invokes it once with an empty list. A file `initialPath` starts in
+that file's folder. Cancellation, disposal and shutdown rules are the same as
+for the single-result constructor.
+
+```text
+Gtk.AlertDialog().show(Window parent, String message, String detail)
+```
+
+`show` presents a modal `GtkAlertDialog`, transient for `parent`, with a primary
+message, secondary detail text and a single Close button. It returns
+immediately and needs no callback; the binding keeps no reference to the alert.
+
 ## Source editing
 
 Configure `-DSIMP_GTK_SOURCEVIEW=ON` together with GTK to enable `import sourceview`
@@ -196,6 +214,65 @@ notifications, which occur after GTK has updated its undo manager.
 one edit; query current state rather than counting emissions. Each returned
 connection token disconnects the whole grouped subscription. These methods
 share the normal GUI-thread lifetime rules.
+
+Shortcut callbacks registered on a view may dispose that view, its window or
+the application, or shut down (for example a Close or Quit command). A binding
+released while its own callback is running is marked released and its receiver
+root is dropped only after the callback returns; later activations are ignored.
+
+Search and replace take an option sum of `GtkSource.View.CASE_SENSITIVE`,
+`WHOLE_WORDS` and `IN_SELECTION` (0 is case-insensitive, substring, whole
+buffer; `find`/`replaceNext` are the zero-option forms):
+
+```text
+bool findWith(String query, int options)
+bool replaceWith(String query, String replacement, int options)
+int replaceAll(String query, String replacement, int options)
+bool captureSearchScope()
+bool hasSearchScope()
+String selectedText()
+```
+
+`findWith` selects the next match after the current selection, wrapping once.
+`replaceWith` replaces the selection when it is a match, otherwise finds and
+replaces the next one. `replaceAll` is a single undoable user action, never
+rescans inserted text, and returns the replacement count. Whole words require
+non-word characters (or buffer bounds) on both sides of a match. `IN_SELECTION`
+limits the search to the scope recorded by `captureSearchScope()`: the current
+selection is stored as text marks whose gravities keep the range covering
+replaced text as the buffer changes. Capturing with no selection clears the
+scope; a selection equal to the last match keeps the existing scope, so repeated
+Find does not shrink it. With `IN_SELECTION` but no scope, searches fail.
+
+### Language definitions
+
+Views start as plain text: no syntax highlighting. Line numbers, auto-indent
+and four-space indentation are independent of language.
+
+```text
+bool setLanguage(String id)          // "" selects plain text
+String language()                    // current id, "" when plain
+String GtkSource.Content().languageFor(String path)
+bool GtkSource.Content().isText(String data)
+```
+
+The language protocol uses standard GtkSourceView 5 `.lang` files:
+
+1. A language is registered by installing `<id>.lang` in the sourceview
+   package's `language-specs` directory (staged or installed). The file name
+   must equal the `id` attribute of its `<language>` element. Only ids found
+   in those directories are accepted; `setLanguage` returns false for others
+   and leaves the view unchanged.
+2. File association comes from the definition's `globs` and `mimetypes`
+   metadata, through GtkSourceView's language manager. `languageFor(path)`
+   matches the file name only (no content sniffing) and returns `""` for
+   untitled paths, unknown extensions, or unregistered languages.
+3. `tweed.lang` is the only shipped definition (`*.simp;*.tweed`). Supporting
+   another language means adding its `.lang` file; no code changes are needed.
+
+`isText` returns false for data containing NUL bytes. Simple strings are always
+valid UTF-8, so `File.readAll` raises on undecodable input; applications should
+treat that as a binary/non-text file.
 
 ## Ownership, aliases, and disposal
 

@@ -35,6 +35,14 @@ void F.assertMenu(int token) from "binding_assert_menu"
 void F.resize(int token, int width, int height) from "binding_resize"
 """
 
+SHORTCUT_NATIVE = """
+import sourceview
+class Keys {
+    bool press(int token, String trigger)
+}
+bool Keys.press(int token, String trigger) from "binding_shortcut"
+"""
+
 MENU = """
 class Handler {
     void action() { F().collect()
@@ -239,6 +247,70 @@ start {
 }
 """
 
+# Shortcut callbacks that dispose their own view (closing a tab) or the whole
+# window (quitting) must not release their in-flight callback registration.
+SHORTCUTS = """
+class Action {
+    Gtk.Window window
+    Gtk.Notebook notebook
+    Gtk.ScrolledWindow page
+    Action(Gtk.Window owner, Gtk.Notebook pages, Gtk.ScrolledWindow closing) {
+        window = owner
+        notebook = pages
+        page = closing
+    }
+    void run() {
+        if (page != null) {
+            notebook.remove(page)
+            page.dispose()
+            F().collect()
+            print("closed;")
+        } else {
+            window.dispose()
+            F().collect()
+            print("quit;")
+            Gtk.Application().quit()
+        }
+    }
+    void note()
+    destroy { note() }
+}
+void Action.note() from "binding_released"
+class UI {
+    Gtk.Window window
+    Gtk.Notebook notebook
+    Gtk.ScrolledWindow first
+    GtkSource.View firstView
+    GtkSource.View secondView
+    void activate() {
+        window = Gtk.Window("Shortcut bindings")
+        notebook = Gtk.Notebook()
+        window.setChild(notebook)
+        first = Gtk.ScrolledWindow()
+        firstView = GtkSource.View()
+        first.setChild(firstView.widget())
+        notebook.appendPage(first, "one")
+        Gtk.ScrolledWindow second = Gtk.ScrolledWindow()
+        secondView = GtkSource.View()
+        second.setChild(secondView.widget())
+        notebook.appendPage(second, "two")
+        print(firstView.bindShortcut("<Control>w", Action(window, notebook, first).run))
+        print(secondView.bindShortcut("<Control>q", Action(window, notebook, null).run))
+        window.present()
+        int closing = firstView._widgetToken()
+        print(Keys().press(closing, "<Control>w"))
+        print(Keys().press(secondView._widgetToken(), "<Control>q"))
+    }
+}
+start {
+    Gtk.Application app = Gtk.Application("org.simple.BindingShortcuts")
+    app.onActivate(UI().activate)
+    app.run()
+    F().collect()
+    print(F().receivers())
+}
+"""
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -282,6 +354,8 @@ def main():
              ("dialogs", dialog, expected_dialog)]
     if args.sourceview:
         cases.append(("allocation", SOURCEVIEW, "falsetruetruetruetruetruetruetruemultiline;grew;"))
+        cases.append(("shortcuts", SHORTCUT_NATIVE + SHORTCUTS,
+                      "truetrueclosed;truequit;true2"))
     with headless(args.xvfb, work, env) as env:
         for name, program, expected in cases:
             source = work / f"{name}.simp"

@@ -204,3 +204,41 @@ void binding_resize(void *self, int64_t token, int64_t width, int64_t height) {
     (void)self;
     gtk_window_set_default_size(GTK_WINDOW(widget_live(token)), (int)width, (int)height);
 }
+
+#ifdef SIMP_GTK_SOURCEVIEW
+/* Activates a bound shortcut through its real GtkShortcutController action,
+ * holding references the way GTK's key dispatch does. */
+bool binding_shortcut(void *self, int64_t token, void *trigger_text) {
+    (void)self;
+    GtkWidget *view = widget_live(token);
+    char *text = text_copy(trigger_text);
+    GtkShortcutTrigger *requested = gtk_shortcut_trigger_parse_string(text);
+    g_free(text);
+    assert(requested);
+    GtkShortcut *match = NULL;
+    GListModel *controllers = gtk_widget_observe_controllers(view);
+    for (guint i = 0; !match && i < g_list_model_get_n_items(controllers); ++i) {
+        GtkEventController *controller = g_list_model_get_item(controllers, i);
+        if (GTK_IS_SHORTCUT_CONTROLLER(controller)) {
+            GListModel *shortcuts = G_LIST_MODEL(controller);
+            for (guint j = 0; !match && j < g_list_model_get_n_items(shortcuts); ++j) {
+                GtkShortcut *shortcut = g_list_model_get_item(shortcuts, j);
+                if (gtk_shortcut_trigger_equal(gtk_shortcut_get_trigger(shortcut), requested))
+                    match = g_object_ref(shortcut);
+                g_object_unref(shortcut);
+            }
+        }
+        g_object_unref(controller);
+    }
+    g_object_unref(controllers);
+    g_object_unref(requested);
+    if (!match) return false;
+    g_object_ref(view);
+    bool activated = gtk_shortcut_action_activate(gtk_shortcut_get_action(match),
+                                                  GTK_SHORTCUT_ACTION_EXCLUSIVE, view,
+                                                  gtk_shortcut_get_arguments(match));
+    g_object_unref(match);
+    g_object_unref(view);
+    return activated;
+}
+#endif

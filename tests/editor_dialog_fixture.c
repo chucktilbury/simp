@@ -10,6 +10,8 @@ static int overwrite_response;
 static guint attempts;
 static guint automation;
 static guint selection_attempts;
+static char *many_folder;
+static guint many_count;
 static gboolean answer_chooser(gpointer unused);
 
 static GtkWindow *editor_window(void) {
@@ -60,6 +62,38 @@ static gboolean accept_file(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
+static GtkWidget *find_type(GtkWidget *widget, GType type) {
+    if (G_TYPE_CHECK_INSTANCE_TYPE(widget, type)) return widget;
+    for (GtkWidget *child = gtk_widget_get_first_child(widget); child;
+         child = gtk_widget_get_next_sibling(child)) {
+        GtkWidget *found = find_type(child, type);
+        if (found) return found;
+    }
+    return NULL;
+}
+
+/* Multi-select: select every entry of the chooser's file list, then accept. */
+static gboolean accept_many(gpointer data) {
+    GtkDialog *dialog = data;
+    if (++selection_attempts > 100) {
+        g_printerr("Chooser never listed %u files in %s\n", many_count, many_folder);
+        abort();
+    }
+    if (loading(GTK_WIDGET(dialog))) return G_SOURCE_CONTINUE;
+    GtkWidget *list = find_type(GTK_WIDGET(dialog), GTK_TYPE_COLUMN_VIEW);
+    if (!list) return G_SOURCE_CONTINUE;
+    GtkSelectionModel *model = gtk_column_view_get_model(GTK_COLUMN_VIEW(list));
+    if (!model || g_list_model_get_n_items(G_LIST_MODEL(model)) < many_count)
+        return G_SOURCE_CONTINUE;
+    gtk_selection_model_select_all(model);
+    GListModel *files = gtk_file_chooser_get_files(GTK_FILE_CHOOSER(dialog));
+    guint selected = g_list_model_get_n_items(files);
+    g_object_unref(files);
+    if (selected != many_count) return G_SOURCE_CONTINUE;
+    gtk_dialog_response(dialog, GTK_RESPONSE_ACCEPT);
+    return G_SOURCE_REMOVE;
+}
+
 static gboolean answer_overwrite(gpointer unused) {
     (void)unused;
     if (++attempts > 200) abort();
@@ -100,6 +134,15 @@ static gboolean answer_chooser(gpointer unused) {
         }
         if (chosen_response == GTK_RESPONSE_CANCEL) {
             gtk_dialog_response(GTK_DIALOG(window), GTK_RESPONSE_CANCEL);
+        } else if (many_folder) {
+            GtkFileChooser *chooser = GTK_FILE_CHOOSER(window);
+            if (!gtk_file_chooser_get_select_multiple(chooser)) abort();
+            GFile *folder = g_file_new_for_path(many_folder);
+            if (!gtk_file_chooser_set_current_folder(chooser, folder, NULL)) abort();
+            g_object_unref(folder);
+            selection_attempts = 0;
+            g_timeout_add_full(G_PRIORITY_DEFAULT, 500, accept_many,
+                               g_object_ref(window), g_object_unref);
         } else {
             GtkFileChooser *chooser = GTK_FILE_CHOOSER(window);
             GError *error = NULL;
@@ -147,11 +190,103 @@ void fixture_editor_choose(void *self, void *path, int64_t response, int64_t ove
     simp_string_bytes(path, &bytes, &length);
     g_free(chosen_path);
     chosen_path = g_strndup(bytes, length);
+    g_clear_pointer(&many_folder, g_free);
     chosen_response = response ? GTK_RESPONSE_ACCEPT : GTK_RESPONSE_CANCEL;
     overwrite_response = overwrite == 0 ? 0 :
                          overwrite > 0 ? GTK_RESPONSE_ACCEPT : GTK_RESPONSE_CANCEL;
     attempts = 0;
     automation = g_timeout_add(500, answer_chooser, NULL);
+}
+
+void fixture_editor_choose_many(void *self, void *folder, int64_t count) {
+    (void)self;
+    simp_gtk_require_owner();
+    if (automation) abort();
+    const char *bytes;
+    uint64_t length;
+    simp_string_bytes(folder, &bytes, &length);
+    g_free(many_folder);
+    many_folder = g_strndup(bytes, length);
+    many_count = (guint)count;
+    chosen_response = GTK_RESPONSE_ACCEPT;
+    overwrite_response = 0;
+    attempts = 0;
+    automation = g_timeout_add(500, answer_chooser, NULL);
+}
+
+static void label_text(GtkWidget *widget, GString *text) {
+    if (GTK_IS_LABEL(widget)) {
+        g_string_append(text, gtk_label_get_text(GTK_LABEL(widget)));
+        g_string_append_c(text, '\n');
+    }
+    for (GtkWidget *child = gtk_widget_get_first_child(widget); child;
+         child = gtk_widget_get_next_sibling(child))
+        label_text(child, text);
+}
+
+/* Finds a visible alert transient for the editor whose text contains every
+ * expected fragment, dismisses it with its button, and reports whether it was
+ * found. */
+bool fixture_editor_alert(void *self, void *expected) {
+    (void)self;
+    simp_gtk_require_owner();
+    const char *bytes;
+    uint64_t length;
+    simp_string_bytes(expected, &bytes, &length);
+    char *fragments_text = g_strndup(bytes, length);
+    char **fragments = g_strsplit(fragments_text, "|", -1);
+    GtkWindow *editor = editor_window();
+    GListModel *windows = gtk_window_get_toplevels();
+    bool found = false;
+    for (guint i = 0; i < g_list_model_get_n_items(windows) && !found; ++i) {
+        GtkWindow *window = g_list_model_get_item(windows, i);
+        if (window != editor && !GTK_IS_FILE_CHOOSER(window) &&
+            gtk_window_get_transient_for(window) == editor &&
+            gtk_widget_get_visible(GTK_WIDGET(window)) && gtk_window_get_modal(window)) {
+            GString *text = g_string_new(NULL);
+            label_text(GTK_WIDGET(window), text);
+            found = true;
+            for (char **fragment = fragments; *fragment; ++fragment)
+                if (!strstr(text->str, *fragment)) found = false;
+            if (!found) g_printerr("alert text: %s\n", text->str);
+            g_string_free(text, TRUE);
+            GtkWidget *button = find_type(GTK_WIDGET(window), GTK_TYPE_BUTTON);
+            if (found && button) g_signal_emit_by_name(button, "clicked");
+            else if (found) gtk_window_destroy(window);
+        }
+        g_object_unref(window);
+    }
+    g_strfreev(fragments);
+    g_free(fragments_text);
+    return found;
+}
+
+bool fixture_editor_alert_open(void *self) {
+    (void)self;
+    simp_gtk_require_owner();
+    GtkWindow *editor = editor_window();
+    GListModel *windows = gtk_window_get_toplevels();
+    bool open = false;
+    for (guint i = 0; i < g_list_model_get_n_items(windows); ++i) {
+        GtkWindow *window = g_list_model_get_item(windows, i);
+        if (window != editor && gtk_window_get_transient_for(window) == editor &&
+            gtk_widget_get_visible(GTK_WIDGET(window)))
+            open = true;
+        g_object_unref(window);
+    }
+    return open;
+}
+
+void fixture_editor_select(void *self, int64_t start, int64_t end) {
+    (void)self;
+    simp_gtk_require_owner();
+    GtkWidget *view = find_view(GTK_WIDGET(editor_window()));
+    if (!view) abort();
+    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
+    GtkTextIter from, to;
+    gtk_text_buffer_get_iter_at_offset(buffer, &from, (int)start);
+    gtk_text_buffer_get_iter_at_offset(buffer, &to, (int)end);
+    gtk_text_buffer_select_range(buffer, &from, &to);
 }
 
 void fixture_editor_collect(void *self) {
@@ -245,4 +380,5 @@ void fixture_editor_cleanup(void *self) {
     (void)self;
     if (automation) abort();
     g_clear_pointer(&chosen_path, g_free);
+    g_clear_pointer(&many_folder, g_free);
 }

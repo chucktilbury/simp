@@ -440,6 +440,21 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --case "editor/tweed.simp" ${gtk_program_arguments})
     set_tests_properties(simp_tweed_binary PROPERTIES
         FIXTURES_REQUIRED tweed_binary LABELS "examples;gtk;build" TIMEOUT 60)
+    add_test(NAME simp_tweed_shortcuts
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_tweed_shortcuts.py"
+        --executable "${SIMP_TWEED_EXECUTABLE}" --xvfb "${SIMP_XVFB_EXECUTABLE}"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/tweed-shortcuts")
+    set_tests_properties(simp_tweed_shortcuts PROPERTIES
+        FIXTURES_REQUIRED tweed_binary LABELS "examples;gtk" TIMEOUT 120)
+    add_test(NAME simp_editor_dialogs
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_editor_dialogs.py"
+        --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
+        --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+        --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
+        --source "${example_directory}/editor/tweed.simp"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/editor-dialogs"
+        --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
+    set_tests_properties(simp_editor_dialogs PROPERTIES LABELS "examples;gtk" TIMEOUT 120)
     add_test(NAME simp_editor_default_shortcuts
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
         --compiler "$<TARGET_FILE:simp>" --examples "${example_directory}"

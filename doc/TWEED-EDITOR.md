@@ -15,7 +15,13 @@ text buffers, undo/redo, modified state, cursor coordinates, search/replace,
 syntax-context queries, and shortcut registration while remaining attachable
 to existing `Gtk.Widget` containers. The `tweed` GtkSourceView language
 definition highlights Tweed Lang keywords/types, strings, comments, and
-numbers. Documents are represented separately from notebook pages; opening an
+numbers. Highlighting is enabled only for recognized source files: a document's
+language is chosen from its file name (`*.simp` and `*.tweed` select `tweed`),
+and untitled documents, `.txt` files, and other unrecognized names are plain
+text. Save As re-evaluates the language for the new name. Additional languages
+are added by installing a GtkSourceView `<id>.lang` definition in the
+sourceview package (see [GTK source editing](GTK.md#language-definitions));
+only Tweed is shipped. Documents are represented separately from notebook pages; opening an
 already-open path selects its existing tab. `openDocument(path)` returns the
 existing or newly opened document independently of selection, and
 `activateDocument(document)` selects its tab; a future Project Explorer can use
@@ -64,26 +70,46 @@ enabled, the compiler and non-import applications do not link GTK or
 GtkSourceView. See [build and installation](INSTALLATION.md).
 
 **File > New** creates an editable untitled tab. **Open...** uses a native GTK
-file chooser; selecting an already-open file focuses its existing tab.
+file chooser that allows selecting several files; each selected file is opened
+(an already-open file focuses its existing tab) and the last one becomes active.
+A failure for one file does not stop the others: the status line reports the
+failure (or `Open failed for N of M files`), and one error dialog lists every
+file that could not be opened. Binary files (containing NUL bytes) and files
+that are not valid UTF-8 are refused with a "not a text file" error dialog;
+they are never lossily decoded, and existing documents are unchanged.
 **Save** writes the active document to its current path, or opens **Save As...**
 for an untitled document. Save As asks for confirmation before replacing an
 existing file, and refuses a destination belonging to another open document.
 Cancelling a chooser or overwrite confirmation leaves files and document
 identities unchanged. Open/read/write/flush/close failures appear in the status
-line. The editor supports local filesystem paths; nonlocal chooser URIs are
+line; Open failures from the chooser or binary files also show a modal error
+dialog parented to the editor window. The editor supports local filesystem paths; nonlocal chooser URIs are
 explicitly rejected rather than interpreted as cancellation.
 **Recent** reopens the last unique file added to the session history.
 Command-line file arguments open tabs at startup.
 
 **Edit** offers Undo, Redo, Cut, Copy, Paste, Select All, Find, and Replace.
-Find and Replace focus their respective search-row fields; **Find next** and
-**Replace next** execute the entered query. Undo/Redo and Cut/Copy menu items
+Find and Replace focus their respective search-row fields. If text is selected
+on a single line, it replaces the Find query; otherwise the previous query is
+kept. **Find next** selects the next match after the current selection,
+wrapping around once; **Replace next** replaces the selected match (or the next
+one), and **Replace all** replaces every match in one undoable step and reports
+the count. The **Whole words**, **Case sensitive**, and **In selection** check
+boxes apply to all three. Searches are case-insensitive substring matches by
+default. The **In selection** scope is the selection active when Find or
+Replace (menu or shortcut) is invoked, and its bounds follow replacements; a
+selection that is just the last Find match keeps the existing scope, and
+invoking Find or Replace with no selection clears it. With **In selection**
+checked but no scope, the status line asks you to select text first. Undo/Redo and Cut/Copy menu items
 track the active buffer's undo/redo and selection state. File dialogs are modal,
 asynchronous, parented to the editor window, and cancelled on parent teardown;
 they do not run nested event loops.
 
-A modified tab is marked with `*`. **File > Close**, **Quit**, and a window-close
-request offer in-app **Save**, **Discard**, and **Cancel** controls. Saving an
+A modified tab is marked with `*`. **File > Close** (`<Control>w`) closes only
+the active tab; closing the last tab leaves the window open with a fresh
+untitled document. Only **Quit** (`<Control>q`) and a window-close request exit
+the editor. Close, Quit, and a window-close request offer in-app **Save**,
+**Discard**, and **Cancel** controls for modified documents. Saving an
 untitled document during close opens Save As; cancelling that chooser cancels
 the pending close without discarding changes. For a window close with several
 modified documents, Save handles them one at a time until all are saved.
@@ -141,6 +167,6 @@ Run the editor-specific headless cases and existing GTK integration checks:
 
 ```sh
 ctest --test-dir build-tweed \
-  -R '^(simp_tweed_binary|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_gtk)$' \
+  -R '^(simp_tweed_binary|simp_tweed_shortcuts|simp_editor_dialogs|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_gtk|simp_gtk_bindings)$' \
   --output-on-failure
 ```

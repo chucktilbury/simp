@@ -1,6 +1,14 @@
 import gtk
 
 namespace GtkSource {
+    // Classifies file names and contents for source editing.
+    class Content {
+        // Registered language id for a file name ("" means plain text).
+        String languageFor(String path)
+        // False for data that is not editable text (contains NUL bytes).
+        bool isText(String data)
+    }
+
     class View {
         private:
         Gtk.SourceViewWidget _widget
@@ -17,18 +25,27 @@ namespace GtkSource {
         void _focus(int token)
         bool _find(int token, String query)
         bool _replaceNext(int token, String query, String replacement)
+        bool _search(int token, String query, int options)
+        bool _replace(int token, String query, String replacement, int options)
+        int _replaceAll(int token, String query, String replacement, int options)
+        bool _captureScope(int token)
+        bool _hasScope(int token)
+        String _selectedText(int token)
+        String _languageId(int token)
         int _line(int token)
         int _column(int token)
         bool _hasContext(int token, String context, int offset)
-        void _language(int token, String language)
+        bool _language(int token, String language)
         bool _bindShortcut(int token, String trigger, callback<void()> action)
         bool _hasShortcut(int token, String trigger)
         int _changed(int token, callback<void()> action)
         int _cursorMoved(int token, callback<void()> action)
         public:
+        // Search option bits; add them together to combine options.
+        enum { CASE_SENSITIVE = 1, WHOLE_WORDS = 2, IN_SELECTION = 4 }
         View() {
             _widget = Gtk.SourceViewWidget()
-            _language(_widgetToken(), "tweed")
+            _language(_widgetToken(), "")
         }
         Gtk.SourceViewWidget widget() { return _widget }
         int _widgetToken() { return _widget.nativeToken() }
@@ -50,6 +67,20 @@ namespace GtkSource {
         bool replaceNext(String query, String replacement) {
             return _replaceNext(_widgetToken(), query, replacement)
         }
+        bool findWith(String query, int options) {
+            return _search(_widgetToken(), query, options)
+        }
+        bool replaceWith(String query, String replacement, int options) {
+            return _replace(_widgetToken(), query, replacement, options)
+        }
+        int replaceAll(String query, String replacement, int options) {
+            return _replaceAll(_widgetToken(), query, replacement, options)
+        }
+        bool captureSearchScope() { return _captureScope(_widgetToken()) }
+        bool hasSearchScope() { return _hasScope(_widgetToken()) }
+        String selectedText() { return _selectedText(_widgetToken()) }
+        bool setLanguage(String language) { return _language(_widgetToken(), language) }
+        String language() { return _languageId(_widgetToken()) }
         int line() { return _line(_widgetToken()) }
         int column() { return _column(_widgetToken()) }
         bool hasContextAt(String context, int offset) {
@@ -85,7 +116,18 @@ namespace GtkSource {
     int View._column(int token) from "simp_gtk_source_view_column"
     bool View._hasContext(int token, String context, int offset)
         from "simp_gtk_source_view_has_context"
-    void View._language(int token, String language) from "simp_gtk_source_view_language"
+    bool View._language(int token, String language) from "simp_gtk_source_view_language"
+    String View._languageId(int token) from "simp_gtk_source_view_language_id"
+    bool View._search(int token, String query, int options) from "simp_gtk_source_view_search"
+    bool View._replace(int token, String query, String replacement, int options)
+        from "simp_gtk_source_view_replace"
+    int View._replaceAll(int token, String query, String replacement, int options)
+        from "simp_gtk_source_view_replace_all"
+    bool View._captureScope(int token) from "simp_gtk_source_view_capture_scope"
+    bool View._hasScope(int token) from "simp_gtk_source_view_has_scope"
+    String View._selectedText(int token) from "simp_gtk_source_view_selected_text"
+    String Content.languageFor(String path) from "simp_gtk_source_language_for"
+    bool Content.isText(String data) from "simp_gtk_source_is_text"
     bool View._bindShortcut(int token, String trigger, callback<void()> action)
         from "simp_gtk_source_view_bind_shortcut"
     bool View._hasShortcut(int token, String trigger)

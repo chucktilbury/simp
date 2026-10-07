@@ -25,7 +25,8 @@ typedef struct FileDialog {
     GtkFileChooserNative *chooser;
     SimpCallbackContext *context;
     GSource *completion;
-    char *path;
+    GPtrArray *paths;
+    bool multiple;
 } FileDialog;
 
 typedef struct WidgetRecord {
@@ -44,12 +45,31 @@ typedef struct WidgetRecord {
 } WidgetRecord;
 
 #ifdef SIMP_GTK_SOURCEVIEW
+/* A shortcut callback may dispose its own view (closing a tab or the window).
+ * While `active` is nonzero, disposal only marks the binding: the callback
+ * registration is released, and an orphaned binding freed, when the outermost
+ * invocation unwinds. */
 struct ShortcutBinding {
     ShortcutBinding *next;
     WidgetRecord *owner;
     SimpCallbackContext *context;
     char *trigger;
+    unsigned active;
+    bool release_pending;
+    bool orphaned;
 };
+
+static void shortcut_release(ShortcutBinding *binding) {
+    if (!binding->context) return;
+    if (binding->active) {
+        binding->release_pending = true;
+        return;
+    }
+    simp_callback_release(binding->context);
+    simp_callback_dispose(binding->context);
+    binding->context = NULL;
+    binding->release_pending = false;
+}
 #endif
 
 typedef struct Connection {
@@ -91,10 +111,12 @@ static bool ran;
 static bool scheduler_hold;
 #ifdef SIMP_GTK_SOURCEVIEW
 static GtkSourceLanguageManager *source_language_manager;
+/* Language ids whose <id>.lang file is installed by the sourceview package. */
+static GHashTable *registered_languages;
 #endif
 static void widget_dispose(WidgetRecord *record);
 static void window_removed(GtkApplication *app, GtkWindow *window, gpointer data);
-static void dialog_finish(FileDialog *dialog, const char *path, bool invoke);
+static void dialog_finish(FileDialog *dialog, bool invoke);
 
 static _Noreturn void fatal(const char *message) {
     fprintf(stderr, "Simple GTK error: %s\n", message);
@@ -338,6 +360,18 @@ bool simp_gtk_disconnect(int64_t token) {
     return false;
 }
 
+#ifdef SIMP_GTK_SOURCEVIEW
+static void register_languages(const char *directory) {
+    GDir *dir = g_dir_open(directory, 0, NULL);
+    if (!dir) return;
+    for (const char *name; (name = g_dir_read_name(dir));) {
+        if (g_str_has_suffix(name, ".lang") && strlen(name) > 5)
+            g_hash_table_add(registered_languages, g_strndup(name, strlen(name) - 5));
+    }
+    g_dir_close(dir);
+}
+#endif
+
 static void application_initialize(const char *id, bool scheduler) {
     require_managed();
     if (initialized) fatal("application initialization is single-use");
@@ -354,6 +388,9 @@ static void application_initialize(const char *id, bool scheduler) {
     if (g_file_test(SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR, G_FILE_TEST_IS_DIR))
         g_ptr_array_add(paths, (gpointer)SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR);
     g_ptr_array_add(paths, NULL);
+    registered_languages = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    register_languages(SIMP_GTK_SOURCEVIEW_SOURCE_LANG_DIR);
+    register_languages(SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR);
     source_language_manager = gtk_source_language_manager_new();
     gtk_source_language_manager_set_search_path(source_language_manager,
                                                  (const char **)paths->pdata);
@@ -465,7 +502,7 @@ void simp_gtk_shutdown(void *self) {
     stopped = true;
     g_application_quit(G_APPLICATION(application));
     while (posts) post_cancel(posts);
-    while (dialogs) dialog_finish(dialogs, "", false);
+    while (dialogs) dialog_finish(dialogs, false);
     for (Connection *connection = connections; connection;) {
         Connection *next = connection->next;
         if (!connection->closed) simp_gtk_disconnect(connection->token);
@@ -475,6 +512,7 @@ void simp_gtk_shutdown(void *self) {
         widget_dispose(record);
 #ifdef SIMP_GTK_SOURCEVIEW
     g_clear_object(&source_language_manager);
+    g_clear_pointer(&registered_languages, g_hash_table_unref);
 #endif
     while (widgets) {
         WidgetRecord *next = widgets->next;
@@ -593,7 +631,7 @@ static void widget_dispose(WidgetRecord *r) {
     GtkWidget *widget = r->widget;
     for (FileDialog *dialog = dialogs; dialog;) {
         FileDialog *next = dialog->next;
-        if (dialog->parent == r->token) dialog_finish(dialog, "", false);
+        if (dialog->parent == r->token) dialog_finish(dialog, false);
         dialog = next;
     }
     while (r->items) {
@@ -615,11 +653,7 @@ static void widget_dispose(WidgetRecord *r) {
         disconnect_object(G_OBJECT(gtk_text_view_get_buffer(GTK_TEXT_VIEW(widget))));
     for (ShortcutBinding *binding = r->shortcuts; binding;) {
         ShortcutBinding *next = binding->next;
-        if (binding->context) {
-            simp_callback_release(binding->context);
-            simp_callback_dispose(binding->context);
-            binding->context = NULL;
-        }
+        shortcut_release(binding);
         binding->owner = NULL;
         binding = next;
     }
@@ -831,10 +865,17 @@ void simp_gtk_menu_item_activate(void *self, int64_t token, int64_t item) {
     g_object_unref(action);
 }
 
+static void *path_string(const char *path) {
+    return simp_string_new(&simp_string_class_meta, path, strlen(path));
+}
+
 /* Remove all native ownership before invoking Simple: a result handler may
- * immediately dispose its parent, open another chooser, or shut down. */
-static void dialog_finish(FileDialog *dialog, const char *path, bool invoke) {
-    char *result = g_strdup(path);
+ * immediately dispose its parent, open another chooser, or shut down. A
+ * single-file chooser delivers one path ("" when cancelled); a multi-select
+ * chooser delivers each selected path and then "" to end the batch. */
+static void dialog_finish(FileDialog *dialog, bool invoke) {
+    GPtrArray *paths = dialog->paths;
+    bool multiple = dialog->multiple;
     FileDialog **link = &dialogs;
     while (*link != dialog) link = &(*link)->next;
     *link = dialog->next;
@@ -848,18 +889,21 @@ static void dialog_finish(FileDialog *dialog, const char *path, bool invoke) {
         g_object_unref(dialog->chooser);
     }
     SimpCallbackContext *context = dialog->context;
-    g_free(dialog->path);
     free(dialog);
     if (invoke) {
-        void *text = simp_string_new(&simp_string_class_meta, result, strlen(result));
-        void *slots[] = { &text };
-        SimpRootFrame frame = {0};
-        simp_gc_push_or_abort(&frame, slots, 1);
         typedef void (*Adapter)(SimpCallbackContext *, void *);
-        ((Adapter)simp_callback_adapter(context))(context, text);
-        simp_gc_pop_or_abort(&frame);
+        Adapter adapter = (Adapter)simp_callback_adapter(context);
+        guint deliveries = multiple ? paths->len + 1 : 1;
+        for (guint i = 0; i < deliveries; ++i) {
+            void *text = path_string(i < paths->len ? g_ptr_array_index(paths, i) : "");
+            void *slots[] = { &text };
+            SimpRootFrame frame = {0};
+            simp_gc_push_or_abort(&frame, slots, 1);
+            adapter(context, text);
+            simp_gc_pop_or_abort(&frame);
+        }
     }
-    g_free(result);
+    g_ptr_array_unref(paths);
     simp_callback_release(context);
     simp_callback_dispose(context);
 }
@@ -870,7 +914,7 @@ static gboolean dialog_complete(gpointer data) {
     FileDialog *dialog = data;
     g_source_unref(dialog->completion);
     dialog->completion = NULL;
-    dialog_finish(dialog, dialog->path ? dialog->path : "", true);
+    dialog_finish(dialog, true);
     simp_runtime_managed_leave(acquired);
     return G_SOURCE_REMOVE;
 }
@@ -887,12 +931,21 @@ static void chooser_response(GtkNativeDialog *chooser, int response, gpointer da
     int acquired = simp_runtime_managed_enter();
     FileDialog *dialog = data;
     if (!dialog->completion && response == GTK_RESPONSE_ACCEPT) {
-        GFile *file = gtk_file_chooser_get_file(GTK_FILE_CHOOSER(chooser));
-        if (file) {
-            dialog->path = g_file_get_path(file);
-            if (!dialog->path) dialog->path = g_file_get_uri(file);
+        GListModel *files = gtk_file_chooser_get_files(GTK_FILE_CHOOSER(chooser));
+        guint count = files ? g_list_model_get_n_items(files) : 0;
+        if (!dialog->multiple) count = MIN(count, 1u);
+        for (guint i = 0; i < count; ++i) {
+            GFile *file = g_list_model_get_item(files, i);
+            char *path = g_file_get_path(file);
+            /* Simple strings are UTF-8; fall back to the (ASCII) URI otherwise. */
+            if (!path || !g_utf8_validate(path, -1, NULL)) {
+                g_free(path);
+                path = g_file_get_uri(file);
+            }
+            g_ptr_array_add(dialog->paths, path);
             g_object_unref(file);
         }
+        g_clear_object(&files);
     }
     /* GTK's fallback chooser still has response cleanup to perform. Release
      * native dialogs and enter user code only after that signal unwinds. */
@@ -900,9 +953,8 @@ static void chooser_response(GtkNativeDialog *chooser, int response, gpointer da
     simp_runtime_managed_leave(acquired);
 }
 
-int64_t simp_gtk_file_dialog_create(void *self, int64_t parent, bool save,
-                                    void *initial_path, void *callback) {
-    (void)self;
+static int64_t file_dialog_create(int64_t parent, bool save, bool multiple,
+                                  void *initial_path, void *callback) {
     GtkWidget *window = widget_live(parent);
     if (!GTK_IS_WINDOW(window)) fatal("FileDialog requires Window");
     char *path = text_copy(initial_path);
@@ -910,12 +962,16 @@ int64_t simp_gtk_file_dialog_create(void *self, int64_t parent, bool save,
     if (!dialog) fatal("allocation failed");
     dialog->token = token_new();
     dialog->parent = parent;
+    dialog->multiple = multiple;
+    dialog->paths = g_ptr_array_new_with_free_func(g_free);
     dialog->context = simp_callback_acquire(callback, "callback<void(String)>");
     dialog->chooser = gtk_file_chooser_native_new(
         save ? "Save file" : "Open file", GTK_WINDOW(window),
         save ? GTK_FILE_CHOOSER_ACTION_SAVE : GTK_FILE_CHOOSER_ACTION_OPEN,
         save ? "_Save" : "_Open", "_Cancel");
     gtk_native_dialog_set_modal(GTK_NATIVE_DIALOG(dialog->chooser), TRUE);
+    if (multiple)
+        gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(dialog->chooser), TRUE);
     if (*path) {
         GFile *file = g_file_new_for_path(path);
         if (g_file_test(path, G_FILE_TEST_IS_DIR))
@@ -929,6 +985,12 @@ int64_t simp_gtk_file_dialog_create(void *self, int64_t parent, bool save,
             char *name = g_file_get_basename(file);
             gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog->chooser), name);
             g_free(name);
+        } else if (multiple) {
+            GFile *folder = g_file_get_parent(file);
+            if (folder) {
+                gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog->chooser), folder, NULL);
+                g_object_unref(folder);
+            }
         } else gtk_file_chooser_set_file(GTK_FILE_CHOOSER(dialog->chooser), file, NULL);
         g_object_unref(file);
     }
@@ -941,13 +1003,44 @@ int64_t simp_gtk_file_dialog_create(void *self, int64_t parent, bool save,
     return token;
 }
 
+int64_t simp_gtk_file_dialog_create(void *self, int64_t parent, bool save,
+                                    void *initial_path, void *callback) {
+    (void)self;
+    return file_dialog_create(parent, save, false, initial_path, callback);
+}
+
+int64_t simp_gtk_file_dialog_create_multiple(void *self, int64_t parent, void *initial_path,
+                                             void *callback) {
+    (void)self;
+    return file_dialog_create(parent, false, true, initial_path, callback);
+}
+
+/* GtkAlertDialog owns its window: it is modal, transient for the parent, and
+ * destroys itself when dismissed or when the parent is destroyed. */
+void simp_gtk_alert_show(void *self, int64_t parent, void *message, void *detail) {
+    (void)self;
+    require_managed();
+    simp_gtk_require_owner();
+    GtkWidget *window = widget_live(parent);
+    if (!GTK_IS_WINDOW(window)) fatal("AlertDialog requires Window");
+    char *heading = text_copy(message);
+    char *body = text_copy(detail);
+    GtkAlertDialog *alert = gtk_alert_dialog_new("%s", heading);
+    if (*body) gtk_alert_dialog_set_detail(alert, body);
+    gtk_alert_dialog_set_modal(alert, TRUE);
+    gtk_alert_dialog_show(alert, GTK_WINDOW(window));
+    g_object_unref(alert);
+    g_free(body);
+    g_free(heading);
+}
+
 void simp_gtk_file_dialog_cancel(void *self, int64_t token) {
     (void)self;
     require_managed();
     simp_gtk_require_owner();
     for (FileDialog *dialog = dialogs; dialog; dialog = dialog->next)
         if (dialog->token == token) {
-            dialog_finish(dialog, "", false);
+            dialog_finish(dialog, false);
             return;
         }
 }
@@ -1127,34 +1220,45 @@ static GtkSourceBuffer *source_buffer(int64_t token) {
     return GTK_SOURCE_BUFFER(gtk_text_view_get_buffer(GTK_TEXT_VIEW(widget)));
 }
 
+static void shortcut_free(ShortcutBinding *binding) {
+    g_free(binding->trigger);
+    free(binding);
+}
+
 static gboolean shortcut_invoke(GtkWidget *widget, GVariant *args, gpointer data) {
     (void)widget;
     (void)args;
     simp_gtk_require_owner();
     ShortcutBinding *binding = data;
-    if (!binding->context) return FALSE;
+    if (!binding->context || binding->release_pending) return FALSE;
     int acquired = simp_runtime_managed_enter();
+    ++binding->active;
     typedef void (*Adapter)(SimpCallbackContext *);
     ((Adapter)simp_callback_adapter(binding->context))(binding->context);
+    if (--binding->active == 0) {
+        if (binding->release_pending) shortcut_release(binding);
+        if (binding->orphaned) shortcut_free(binding);
+    }
     simp_runtime_managed_leave(acquired);
     return TRUE;
 }
 
+/* GtkCallbackAction destroy notify. GTK may finalize the action while its
+ * callback is still running (the view or window was disposed from inside the
+ * shortcut); shortcut_invoke then completes the release on unwind. */
 static void shortcut_context_dispose(gpointer data) {
     simp_gtk_require_owner();
     int acquired = simp_runtime_managed_enter();
     ShortcutBinding *binding = data;
-    if (binding->context) {
-        simp_callback_release(binding->context);
-        simp_callback_dispose(binding->context);
-    }
     if (binding->owner) {
         ShortcutBinding **link = &binding->owner->shortcuts;
         while (*link && *link != binding) link = &(*link)->next;
         if (*link == binding) *link = binding->next;
+        binding->owner = NULL;
     }
-    g_free(binding->trigger);
-    free(binding);
+    shortcut_release(binding);
+    if (binding->active) binding->orphaned = true;
+    else shortcut_free(binding);
     simp_runtime_managed_leave(acquired);
 }
 
@@ -1295,55 +1399,211 @@ void simp_gtk_source_view_edit(void *self, int64_t token, int64_t operation) {
     g_object_unref(buffer);
 }
 
+/* Search option bits shared with GtkSource.View in sourceview.simp. */
+enum {
+    SEARCH_CASE_SENSITIVE = 1,
+    SEARCH_WHOLE_WORDS = 2,
+    SEARCH_IN_SELECTION = 4,
+};
+
+/* The "in selection" scope and the last match are buffer marks so they track
+ * edits: the scope start has left gravity and its end right gravity, so text
+ * replaced at either boundary stays inside the scope. */
+#define SCOPE_START "simp-search-scope-start"
+#define SCOPE_END "simp-search-scope-end"
+#define MATCH_START "simp-search-match-start"
+#define MATCH_END "simp-search-match-end"
+
+static void mark_set(GtkTextBuffer *buffer, const char *name, const GtkTextIter *where,
+                     gboolean left_gravity) {
+    GtkTextMark *mark = gtk_text_buffer_get_mark(buffer, name);
+    if (mark) gtk_text_buffer_move_mark(buffer, mark, where);
+    else gtk_text_buffer_create_mark(buffer, name, where, left_gravity);
+}
+
+static bool mark_iter(GtkTextBuffer *buffer, const char *name, GtkTextIter *iter) {
+    GtkTextMark *mark = gtk_text_buffer_get_mark(buffer, name);
+    if (!mark) return false;
+    gtk_text_buffer_get_iter_at_mark(buffer, iter, mark);
+    return true;
+}
+
+static void mark_clear(GtkTextBuffer *buffer, const char *name) {
+    GtkTextMark *mark = gtk_text_buffer_get_mark(buffer, name);
+    if (mark) gtk_text_buffer_delete_mark(buffer, mark);
+}
+
+static bool word_char(gunichar c) { return g_unichar_isalnum(c) || c == '_'; }
+
+static bool at_word_bounds(const GtkTextIter *start, const GtkTextIter *end) {
+    GtkTextIter before = *start;
+    if (gtk_text_iter_backward_char(&before) && word_char(gtk_text_iter_get_char(&before)))
+        return false;
+    return gtk_text_iter_is_end(end) || !word_char(gtk_text_iter_get_char(end));
+}
+
+static bool search_bounds(GtkTextBuffer *buffer, int64_t flags, GtkTextIter *low,
+                          GtkTextIter *high) {
+    if (!(flags & SEARCH_IN_SELECTION)) {
+        gtk_text_buffer_get_bounds(buffer, low, high);
+        return true;
+    }
+    return mark_iter(buffer, SCOPE_START, low) && mark_iter(buffer, SCOPE_END, high) &&
+           gtk_text_iter_compare(low, high) < 0;
+}
+
+static bool search_range(GtkTextIter from, const GtkTextIter *high, const char *query,
+                         int64_t flags, GtkTextIter *match_start, GtkTextIter *match_end) {
+    GtkTextSearchFlags mode = flags & SEARCH_CASE_SENSITIVE ? 0 : GTK_TEXT_SEARCH_CASE_INSENSITIVE;
+    while (gtk_text_iter_compare(&from, high) < 0) {
+        if (!gtk_text_iter_forward_search(&from, query, mode, match_start, match_end, high))
+            return false;
+        if (!(flags & SEARCH_WHOLE_WORDS) || at_word_bounds(match_start, match_end)) return true;
+        from = *match_start;
+        if (!gtk_text_iter_forward_char(&from)) return false;
+    }
+    return false;
+}
+
+static bool selection_matches(GtkTextBuffer *buffer, const char *query, int64_t flags,
+                              GtkTextIter *start, GtkTextIter *end) {
+    GtkTextIter low, high, match_start, match_end;
+    if (!gtk_text_buffer_get_selection_bounds(buffer, start, end)) return false;
+    if (!search_bounds(buffer, flags, &low, &high)) return false;
+    if (gtk_text_iter_compare(start, &low) < 0 || gtk_text_iter_compare(end, &high) > 0)
+        return false;
+    return search_range(*start, end, query, flags, &match_start, &match_end) &&
+           gtk_text_iter_equal(&match_start, start) && gtk_text_iter_equal(&match_end, end);
+}
+
+static bool source_find(int64_t token, const char *query, int64_t flags) {
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    GtkTextIter low, high, from, selection_end, match_start, match_end;
+    if (!*query || !search_bounds(buffer, flags, &low, &high)) return false;
+    if (!gtk_text_buffer_get_selection_bounds(buffer, &from, &selection_end))
+        gtk_text_buffer_get_iter_at_mark(buffer, &from, gtk_text_buffer_get_insert(buffer));
+    else from = selection_end;
+    if (gtk_text_iter_compare(&from, &low) < 0 || gtk_text_iter_compare(&from, &high) > 0)
+        from = low;
+    bool found = search_range(from, &high, query, flags, &match_start, &match_end);
+    if (!found && !gtk_text_iter_equal(&from, &low))
+        found = search_range(low, &high, query, flags, &match_start, &match_end);
+    if (found) {
+        gtk_text_buffer_select_range(buffer, &match_start, &match_end);
+        mark_set(buffer, MATCH_START, &match_start, TRUE);
+        mark_set(buffer, MATCH_END, &match_end, FALSE);
+        gtk_text_view_scroll_to_iter(GTK_TEXT_VIEW(widget_live(token)), &match_start, 0.1,
+                                     FALSE, 0, 0);
+    }
+    return found;
+}
+
+bool simp_gtk_source_view_search(void *self, int64_t token, void *needle, int64_t flags) {
+    (void)self;
+    char *query = text_copy(needle);
+    bool found = source_find(token, query, flags);
+    g_free(query);
+    return found;
+}
+
 bool simp_gtk_source_view_find(void *self, int64_t token, void *needle) {
+    return simp_gtk_source_view_search(self, token, needle, 0);
+}
+
+bool simp_gtk_source_view_replace(void *self, int64_t token, void *needle, void *replacement,
+                                  int64_t flags) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     char *query = text_copy(needle);
-    if (!*query) {
-        g_free(query);
-        return false;
+    char *text = text_copy(replacement);
+    GtkTextIter start, end;
+    bool replaced = false;
+    if (*query && (selection_matches(buffer, query, flags, &start, &end) ||
+                   (source_find(token, query, flags) &&
+                    gtk_text_buffer_get_selection_bounds(buffer, &start, &end)))) {
+        gtk_text_buffer_begin_user_action(buffer);
+        gtk_text_buffer_delete(buffer, &start, &end);
+        gtk_text_buffer_insert(buffer, &start, text, -1);
+        gtk_text_buffer_end_user_action(buffer);
+        replaced = true;
     }
-    GtkTextIter start, end, match_start, match_end;
-    gtk_text_buffer_get_selection_bounds(buffer, &start, &end);
-    if (gtk_text_iter_get_offset(&start) == gtk_text_iter_get_offset(&end))
-        gtk_text_buffer_get_iter_at_mark(buffer, &start, gtk_text_buffer_get_insert(buffer));
-    gboolean found = gtk_text_iter_forward_search(&start, query, GTK_TEXT_SEARCH_CASE_INSENSITIVE,
-                                                  &match_start, &match_end, NULL);
-    if (!found) {
-        gtk_text_buffer_get_start_iter(buffer, &start);
-        found = gtk_text_iter_forward_search(&start, query, GTK_TEXT_SEARCH_CASE_INSENSITIVE,
-                                             &match_start, &match_end, NULL);
-    }
-    if (found) {
-        gtk_text_buffer_select_range(buffer, &match_start, &match_end);
-        gtk_text_view_scroll_to_iter(GTK_TEXT_VIEW(widget_live(token)), &match_start, 0.1, FALSE, 0, 0);
-    }
+    g_free(text);
     g_free(query);
-    return found != FALSE;
+    return replaced;
 }
 
 bool simp_gtk_source_view_replace_next(void *self, int64_t token, void *needle, void *replacement) {
+    return simp_gtk_source_view_replace(self, token, needle, replacement, 0);
+}
+
+/* Replaces every match in the search range as one undoable action. Matches
+ * are found after the previous replacement, so replacement text containing
+ * the query is never matched again. */
+int64_t simp_gtk_source_view_replace_all(void *self, int64_t token, void *needle,
+                                         void *replacement, int64_t flags) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    char *query = text_copy(needle);
+    char *text = text_copy(replacement);
+    GtkTextIter low, high, match_start, match_end;
+    int64_t count = 0;
+    if (*query && search_bounds(buffer, flags, &low, &high)) {
+        GtkTextMark *position = gtk_text_buffer_create_mark(buffer, NULL, &low, FALSE);
+        gtk_text_buffer_begin_user_action(buffer);
+        for (;;) {
+            GtkTextIter from;
+            gtk_text_buffer_get_iter_at_mark(buffer, &from, position);
+            if (!search_bounds(buffer, flags, &low, &high) ||
+                !search_range(from, &high, query, flags, &match_start, &match_end)) break;
+            gtk_text_buffer_delete(buffer, &match_start, &match_end);
+            gtk_text_buffer_insert(buffer, &match_start, text, -1);
+            gtk_text_buffer_move_mark(buffer, position, &match_start);
+            ++count;
+        }
+        gtk_text_buffer_end_user_action(buffer);
+        gtk_text_buffer_delete_mark(buffer, position);
+    }
+    g_free(text);
+    g_free(query);
+    return count;
+}
+
+/* Captures the current selection as the "in selection" scope. Selecting a
+ * Find result does not replace the scope, so Find/Replace can be reopened while
+ * a match is selected; with no selection the scope is cleared. */
+bool simp_gtk_source_view_capture_scope(void *self, int64_t token) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    GtkTextIter start, end, match_start, match_end, scope_start;
+    if (!gtk_text_buffer_get_selection_bounds(buffer, &start, &end)) {
+        mark_clear(buffer, SCOPE_START);
+        mark_clear(buffer, SCOPE_END);
+        return false;
+    }
+    if (mark_iter(buffer, MATCH_START, &match_start) && mark_iter(buffer, MATCH_END, &match_end) &&
+        gtk_text_iter_equal(&start, &match_start) && gtk_text_iter_equal(&end, &match_end))
+        return mark_iter(buffer, SCOPE_START, &scope_start);
+    mark_set(buffer, SCOPE_START, &start, TRUE);
+    mark_set(buffer, SCOPE_END, &end, FALSE);
+    return true;
+}
+
+bool simp_gtk_source_view_has_scope(void *self, int64_t token) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    GtkTextIter low, high;
+    return search_bounds(buffer, SEARCH_IN_SELECTION, &low, &high);
+}
+
+void *simp_gtk_source_view_selected_text(void *self, int64_t token) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     GtkTextIter start, end;
-    if (!gtk_text_buffer_get_selection_bounds(buffer, &start, &end)) {
-        if (!simp_gtk_source_view_find(self, token, needle)) return false;
-        gtk_text_buffer_get_selection_bounds(buffer, &start, &end);
-    }
-    char *expected = text_copy(needle);
-    char *actual = gtk_text_buffer_get_text(buffer, &start, &end, TRUE);
-    gboolean matches = g_ascii_strcasecmp(actual, expected) == 0;
-    g_free(actual);
-    g_free(expected);
-    if (!matches && !simp_gtk_source_view_find(self, token, needle)) return false;
-    gtk_text_buffer_get_selection_bounds(buffer, &start, &end);
-    char *text = text_copy(replacement);
-    gtk_text_buffer_begin_user_action(buffer);
-    gtk_text_buffer_delete(buffer, &start, &end);
-    gtk_text_buffer_insert(buffer, &start, text, -1);
-    gtk_text_buffer_end_user_action(buffer);
+    char *text = gtk_text_buffer_get_selection_bounds(buffer, &start, &end)
+                     ? gtk_text_buffer_get_text(buffer, &start, &end, TRUE) : g_strdup("");
+    void *result = simp_string_new(&simp_string_class_meta, text, strlen(text));
     g_free(text);
-    return true;
+    return result;
 }
 
 int64_t simp_gtk_source_view_line(void *self, int64_t token) {
@@ -1362,20 +1622,56 @@ int64_t simp_gtk_source_view_column(void *self, int64_t token) {
     return gtk_text_iter_get_line_offset(&cursor) + 1;
 }
 
-void simp_gtk_source_view_language(void *self, int64_t token, void *language_id) {
+/* "" selects plain text (no highlighting). Other ids must name a language
+ * definition shipped by the sourceview package; see doc/GTK.md. */
+bool simp_gtk_source_view_language(void *self, int64_t token, void *language_id) {
     (void)self;
     char *id = text_copy(language_id);
-    GtkSourceLanguage *language =
-        gtk_source_language_manager_get_language(source_language_manager, id);
+    GtkSourceLanguage *language = NULL;
+    if (*id && g_hash_table_contains(registered_languages, id))
+        language = gtk_source_language_manager_get_language(source_language_manager, id);
+    bool accepted = !*id || language;
     g_free(id);
-    if (!language) fatal("GtkSourceView language definition was not found");
+    if (!accepted) return false;
     GtkSourceBuffer *buffer = source_buffer(token);
+    GtkSourceView *view = GTK_SOURCE_VIEW(widget_live(token));
     gtk_source_buffer_set_language(buffer, language);
-    gtk_source_buffer_set_highlight_syntax(buffer, TRUE);
-    gtk_source_view_set_show_line_numbers(GTK_SOURCE_VIEW(widget_live(token)), TRUE);
-    gtk_source_view_set_auto_indent(GTK_SOURCE_VIEW(widget_live(token)), TRUE);
-    gtk_source_view_set_tab_width(GTK_SOURCE_VIEW(widget_live(token)), 4);
-    gtk_source_view_set_insert_spaces_instead_of_tabs(GTK_SOURCE_VIEW(widget_live(token)), TRUE);
+    gtk_source_buffer_set_highlight_syntax(buffer, language != NULL);
+    gtk_source_view_set_show_line_numbers(view, TRUE);
+    gtk_source_view_set_auto_indent(view, TRUE);
+    gtk_source_view_set_tab_width(view, 4);
+    gtk_source_view_set_insert_spaces_instead_of_tabs(view, TRUE);
+    return true;
+}
+
+void *simp_gtk_source_view_language_id(void *self, int64_t token) {
+    (void)self;
+    GtkSourceLanguage *language = gtk_source_buffer_get_language(source_buffer(token));
+    const char *id = language ? gtk_source_language_get_id(language) : "";
+    return simp_string_new(&simp_string_class_meta, id, strlen(id));
+}
+
+/* Maps a file name to a registered language id using the globs/mimetypes
+ * metadata in the package's .lang files, or "" for plain text. */
+void *simp_gtk_source_language_for(void *self, void *path) {
+    (void)self;
+    require_live();
+    char *name = text_copy(path);
+    GtkSourceLanguage *language = *name
+        ? gtk_source_language_manager_guess_language(source_language_manager, name, NULL) : NULL;
+    const char *id = language ? gtk_source_language_get_id(language) : "";
+    if (!g_hash_table_contains(registered_languages, id)) id = "";
+    void *result = simp_string_new(&simp_string_class_meta, id, strlen(id));
+    g_free(name);
+    return result;
+}
+
+bool simp_gtk_source_is_text(void *self, void *data) {
+    (void)self;
+    const char *bytes;
+    uint64_t length;
+    simp_string_bytes(data, &bytes, &length);
+    return length == 0 || !memchr(bytes, 0, length);
 }
 
 bool simp_gtk_source_view_has_context(void *self, int64_t token, void *context_name,

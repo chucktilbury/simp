@@ -19,6 +19,10 @@ class Fixture {
     int height()
     void resize()
     bool entryFocus(String text)
+    void chooseMany(String folder, int count)
+    bool alert(String fragments)
+    bool alertOpen()
+    void select(int first, int last)
     void cleanup()
 }
 void Fixture.choose(String path, int accept, int overwrite) from "fixture_editor_choose"
@@ -28,6 +32,10 @@ bool Fixture.shortcut(String trigger) from "fixture_editor_shortcut"
 int Fixture.height() from "fixture_editor_height"
 void Fixture.resize() from "fixture_editor_resize"
 bool Fixture.entryFocus(String text) from "fixture_editor_entry_focus"
+void Fixture.chooseMany(String folder, int count) from "fixture_editor_choose_many"
+bool Fixture.alert(String fragments) from "fixture_editor_alert"
+bool Fixture.alertOpen() from "fixture_editor_alert_open"
+void Fixture.select(int first, int last) from "fixture_editor_select"
 void Fixture.cleanup() from "fixture_editor_cleanup"
 
 class EditorChecks {
@@ -35,7 +43,9 @@ class EditorChecks {
     int stage
     int checks
     int originalHeight
+    int documentsBeforeMany
     EditorDocument saved
+    EditorDocument search
     callback<void()> nextAction
     void require(bool condition, String label) {
         if (!condition) {
@@ -51,15 +61,40 @@ class EditorChecks {
         file.close()
         return result
     }
+    EditorDocument documentAt(String name) {
+        int index = 0
+        while (index < editor.documents.length) {
+            EditorDocument document = editor.documents[index] as EditorDocument
+            if (document.path.equals(path(name))) {
+                return document
+            }
+            index = index + 1
+        }
+        return null
+    }
+    void options(bool caseSensitive, bool words, bool selection) {
+        editor.caseCheck.setActive(caseSensitive)
+        editor.wholeWordsCheck.setActive(words)
+        editor.selectionCheck.setActive(selection)
+    }
+    // Runs Replace all on a fresh copy of SAMPLE and returns status and text.
+    String replaceAllWith(String query, String replacement, bool caseSensitive, bool words) {
+        search.view.setText("alpha beta alphabet Alpha\nalpha gamma\n")
+        options(caseSensitive, words, false)
+        editor.findEntry.setText(query)
+        editor.replaceEntry.setText(replacement)
+        editor.replaceAllAction()
+        return format("{}|{}", editor.status.text(), search.view.text())
+    }
     String path(String name) { return System.FileSystem().join(System.FileSystem().getCwd(), name) }
     void activate() {
         editor.activate()
         Gtk.Application().post(nextAction)
     }
-    void opened(String selected) {
+    void opened(list selected) {
         Fixture().collect()
-        if (stage == 11 && !selected.equals("")) {
-            require(System.FileSystem().remove(selected), "remove selected file before Open")
+        if (stage == 11 && selected.length > 0) {
+            require(System.FileSystem().remove(selected[0] as String), "remove selected file before Open")
         }
         editor.opened(selected)
         Gtk.Application().post(nextAction)
@@ -160,6 +195,7 @@ class EditorChecks {
         }
         if (stage == 11) {
             require(editor.documents.length == 2 && editor.status.text().contains("Open failed"), "accepted file disappearing before Open is reported")
+            require(Fixture().alert("Could not open|vanishing.simp") && !Fixture().alertOpen(), "chooser Open failure dialog dismissed")
             EditorDocument document = editor.currentDocument()
             require(!editor.writeDocument(document, path("missing-folder/save.simp")) && document.path.equals(path("other.simp")), "invalid save preserves identity")
             editor.openFile("sftp://invalid.example/file.simp")
@@ -201,6 +237,75 @@ class EditorChecks {
         }
         if (stage == 13) {
             require(Fixture().height() > originalHeight + 100, "viewport grows after resize")
+            require(editor.currentDocument().view.language().equals("tweed"), "Simple source highlighted")
+            editor.newDocument()
+            require(editor.currentDocument().view.language().equals("") && !editor.currentDocument().view.hasContextAt("keyword", 0), "untitled is plain text")
+            editor.closeCurrentDocument()
+            editor.openFile(path("many/binary.dat"))
+            require(editor.status.text().contains("not a text file") && Fixture().alert("Could not open file|binary.dat"), "binary Open shows a parented error dialog")
+            editor.openFile(path("many/one.simp"))
+            require(editor.currentDocument().path.equals(path("many/one.simp")), "open first file")
+            documentsBeforeMany = editor.documents.length
+            Fixture().chooseMany(path("many"), 4)
+            require(Fixture().shortcut("<Control>o"), "shortcut Open routes to multi-select chooser")
+        }
+        if (stage == 14) {
+            require(editor.documents.length == documentsBeforeMany + 1, "multi-select opens every new text file")
+            require(editor.status.text().contains("Open failed for 2 of 4 files"), "per-file failures reported")
+            require(Fixture().alert("binary.dat|invalid.txt|not a text file"), "multi-select failures shown in one dialog")
+            require(!Fixture().alertOpen(), "alert dismissed")
+            EditorDocument text = documentAt("many/two.txt")
+            require(text != null && text.view.text().equals("class Demo {}\n"), "text file opened")
+            require(editor.currentDocument() == text || editor.currentDocument() == documentAt("many/one.simp"), "last opened file is current")
+            require(text.view.language().equals("") && !text.view.hasContextAt("keyword", 0), "plain text not highlighted")
+            EditorDocument source = documentAt("many/one.simp")
+            require(source.view.language().equals("tweed") && source.view.hasContextAt("keyword", 0), "source highlighted")
+            require(editor.writeDocument(text, path("many/renamed.simp")) && text.view.language().equals("tweed"), "Save As source enables highlighting")
+            search = text
+            editor.activateDocument(search)
+            require(replaceAllWith("alpha", "X", false, false).equals("Replaced 4 occurrences|X beta Xbet X\nX gamma\n"), "Replace all default")
+            require(replaceAllWith("alpha", "X", true, false).equals("Replaced 3 occurrences|X beta Xbet Alpha\nX gamma\n"), "Replace all case sensitive")
+            require(replaceAllWith("alpha", "X", false, true).equals("Replaced 3 occurrences|X beta alphabet X\nX gamma\n"), "Replace all whole words")
+            require(replaceAllWith("alpha", "X", true, true).equals("Replaced 2 occurrences|X beta alphabet Alpha\nX gamma\n"), "Replace all whole words case sensitive")
+            options(true, true, false)
+            search.view.setText("alpha beta alphabet Alpha\nalpha gamma\n")
+            Fixture().select(0, 0)
+            editor.findAction()
+            editor.replaceEntry.setText("omega")
+            editor.replaceAction()
+            editor.replaceAction()
+            require(search.view.text().equals("omega beta alphabet Alpha\nomega gamma\n"), "Replace next honors whole words and case")
+            editor.findEntry.setText("previous")
+            Fixture().select(6, 10)
+            require(Fixture().shortcut("<Control>f") && Fixture().entryFocus("beta"), "Ctrl+F fills Find from selection")
+            Fixture().select(0, 0)
+            require(Fixture().shortcut("<Control>h") && editor.findEntry.text().equals("beta"), "Ctrl+H keeps query without selection")
+            Fixture().select(20, 25)
+            require(Fixture().shortcut("<Control>h") && editor.findEntry.text().equals("Alpha") && Fixture().entryFocus("omega"), "Ctrl+H fills Find from selection")
+            search.view.setText("alpha beta alphabet Alpha\nalpha gamma\n")
+            Fixture().select(0, 25)
+            require(Fixture().shortcut("<Control>h"), "Replace captures selection scope")
+            options(false, true, true)
+            editor.findEntry.setText("gamma")
+            editor.findAction()
+            require(editor.status.text().equals("No match"), "Find in selection stays inside scope")
+            editor.findEntry.setText("alpha")
+            editor.findAction()
+            require(search.view.selectedText().equals("alpha"), "Find in selection selects match")
+            require(Fixture().shortcut("<Control>h") && search.view.hasSearchScope(), "reopening Replace on a match keeps scope")
+            editor.replaceEntry.setText("alpha alpha")
+            editor.replaceAllAction()
+            require(editor.status.text().equals("Replaced 2 occurrences") && search.view.text().equals("alpha alpha beta alphabet alpha alpha\nalpha gamma\n"), "Replace all in selection")
+            editor.replaceAllAction()
+            require(editor.status.text().equals("Replaced 4 occurrences") && search.view.text().endsWith("alphabet alpha alpha alpha alpha\nalpha gamma\n"), "selection scope tracks replacements")
+            Fixture().select(0, 0)
+            require(Fixture().shortcut("<Control>f") && !search.view.hasSearchScope(), "Find without selection clears scope")
+            editor.findAction()
+            require(editor.status.text().contains("In selection"), "In selection requires a selection")
+            options(false, false, false)
+            editor.findEntry.setText("")
+            editor.replaceEntry.setText("")
+            editor.activateDocument(editor.documents[0] as EditorDocument)
             editor.menu.activateItem(editor.quitItem)
             require(!editor.window.disposed() && editor.pendingCloseAll, "Quit protects dirty tabs")
             editor.closeCancelAction()
@@ -210,8 +315,8 @@ class EditorChecks {
             Fixture().choose("", 0, 0)
             editor.closeSaveAction()
         }
-        if (stage == 14) {
-            require(!editor.window.disposed() && editor.documents.length == 2 && !editor.pendingCloseAll && editor.pendingCloseDocument == null, "Quit Save As Cancel preserves all documents")
+        if (stage == 15) {
+            require(!editor.window.disposed() && editor.documents.length == documentsBeforeMany + 1 && !editor.pendingCloseAll && editor.pendingCloseDocument == null, "Quit Save As Cancel preserves all documents")
             editor.quitAction()
             editor.closeDiscardAction()
             require(editor.window.disposed(), "Quit Discard")
@@ -269,6 +374,12 @@ def main():
         (work / "overwrite.simp").write_text("original\n")
         (work / "other.simp").write_text("other\n")
         (work / "vanishing.simp").write_text("removed before reading\n")
+        many = work / "many"
+        many.mkdir()
+        (many / "one.simp").write_text("class One {}\n")
+        (many / "two.txt").write_text("class Demo {}\n")
+        (many / "binary.dat").write_bytes(b"text\0with NUL\n")
+        (many / "invalid.txt").write_bytes(b"caf\xe9\n")
         result = invoke([str(args.compiler.resolve()), str(source), str(native),
                          "-o", str(work / "editor")], work, env)
         assert result.returncode == 0, result.stderr
