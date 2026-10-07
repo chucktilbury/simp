@@ -2,7 +2,8 @@
 
 The optional `gtk` package (`0.1.0`, `import gtk`, namespace `Gtk`) provides a
 compact GTK-aligned interface: `Application`, `Widget`, `Window`, `Box`, `Label`,
-`Button`, `Entry`, `CheckButton`, `ScrolledWindow`, and `SignalConnection`.
+`Button`, `Entry`, `CheckButton`, `ScrolledWindow`, `Notebook`, `MenuBar`,
+`FileDialog`, and `SignalConnection`, plus the optional `sourceview` package.
 It is not a complete GTK binding or a generic GUI framework.
 
 ## Build and package linkage
@@ -79,6 +80,8 @@ void dispose()
 bool disposed()
 void setVisible(bool value)
 void setSensitive(bool value)
+void setHExpand(bool value)
+void setVExpand(bool value)
 ```
 
 The first-release additions are:
@@ -89,9 +92,11 @@ The first-release additions are:
 | `Box` | `Box(int orientation, int spacing)`, `setLayout(int orientation, int spacing)`, `append(Widget)`, `remove(Widget)` |
 | `Label` | `Label(String text)`, `setText(String)`, `String text()` |
 | `Button` | `Button(String label)`, `setLabel(String)`, `String label()`, `onClicked(callback<void()>)` |
-| `Entry` | `Entry(String text)`, `setText(String)`, `String text()`, `onChanged(callback<void(String)>)` |
+| `Entry` | `Entry(String text)`, `setText(String)`, `String text()`, `focus()`, `onChanged(callback<void(String)>)` |
 | `CheckButton` | `CheckButton(String label)`, `setLabel(String)`, `String label()`, `setActive(bool)`, `bool active()`, `onToggled(callback<void(bool)>)` |
 | `ScrolledWindow` | `ScrolledWindow()`, `setChild(Widget)`, `remove(Widget)` |
+| `Notebook` | `Notebook()`, `appendPage(Widget, String)`, `int currentPage()`, `setCurrentPage(int)`, `int pageCount()`, `setPageTitle(int, String)`, `remove(Widget)`, `onPageChanged(callback<void()>)` |
+| `MenuBar` | `MenuBar()`, `int addMenu(String)`, `int addItem(int menu, String label, callback<void()>)`, `setItemEnabled(int item, bool)`, `activateItem(int item)` |
 
 Methods without a listed result return `void`, except signal registration,
 which returns `SignalConnection`. Orientation is `Gtk.Box.HORIZONTAL` (`0`) or
@@ -106,6 +111,88 @@ windows cannot be children. Self-parenting, cycles, already-parented children,
 occupied single-child containers, and removing from the wrong parent are errors.
 GTK may internally insert a viewport in a scrolled window; the Simple ownership
 relationship still refers to the child supplied by the caller.
+
+Expansion uses GTK's actual `hexpand`/`vexpand` layout properties. For an editor,
+expand the notebook, scrolled window and source widget vertically and horizontally
+so they receive the window's available viewport, rather than only one line's
+natural height. `focus()` requests keyboard focus; the target must be in a
+presented window to receive it.
+
+## Menus and asynchronous file dialogs
+
+`MenuBar` is a real `GtkPopoverMenuBar` backed by `GMenu` and `GSimpleAction`.
+`addMenu(label)` returns a zero-based submenu index. `addItem(menu, label, action)`
+returns a positive, unique item token scoped to that menu bar. Actions retain
+their typed callback receivers until menu disposal or application shutdown.
+`setItemEnabled` updates the actual GTK action state. `activateItem` invokes
+that same action, including GTK's disabled-action check; disabled items do not
+invoke callbacks. An action may dispose its own menu/window or shut down.
+
+```text
+Gtk.FileDialog(Window parent, bool save, String initialPath,
+               callback<void(String)> result)
+void cancel()
+bool pending()
+```
+
+Construction shows a modal, parented `GtkFileChooserNative` asynchronously:
+`save=false` opens an existing file; `save=true` chooses a save destination.
+An empty initial path uses GTK's default location. A directory selects the
+starting folder; a filename selects the open file or initializes the save
+folder/name. Local selections return filesystem paths. Nonlocal selections
+return their URI, allowing applications to explicitly report unsupported
+locations rather than silently treating acceptance as cancellation.
+
+User acceptance invokes the rooted typed callback once with a copied managed
+path or URI. User cancellation invokes it once with `""`. Save choosers
+use GTK 4's built-in asynchronous overwrite confirmation (including native
+platform/portal equivalents). A destination is delivered only after replacement
+has been accepted. Declining replacement leaves the chooser open, allowing
+another name or cancellation; the binding does not add a second confirmation.
+
+`cancel()` is idempotent programmatic cancellation and **does not invoke** the
+result callback. Parent destruction/disposal and application shutdown likewise
+cancel pending choosers and release their callback roots without invocation.
+`pending()` becomes false before the result handler runs and remains usable
+after cancellation or shutdown. Dropping a dialog variable does not cancel it.
+Callbacks may collect, retain their result, open another chooser, dispose the
+parent, or shut down. Native response cleanup completes before the Simple
+result handler runs, using a one-shot GUI idle dispatch; no nested main loop
+or blocking wait is used.
+
+## Source editing
+
+Configure `-DSIMP_GTK_SOURCEVIEW=ON` together with GTK to enable `import sourceview`
+and `GtkSource.View`. `widget()` supplies its `Gtk.SourceViewWidget` for normal
+parenting and expansion. Besides text, modified state, search/replace, language,
+cursor and shortcut operations, the editor exposes:
+
+```text
+bool canUndo()
+bool canRedo()
+bool hasSelection()
+void undo()
+void redo()
+void cut()
+void copy()
+void paste()
+void selectAll()
+void focus()
+```
+
+Undo/redo state and selection query the actual text buffer. Clipboard operations
+use GTK's display clipboard; paste is asynchronous and obeys text-view editability.
+`setText` follows GTK's whole-buffer replacement semantics: it is irreversible
+and clears prior undo/redo history. It is appropriate for loading/resetting a
+document; typing, clipboard edits and `replaceNext` create undoable user edits.
+Selection and edits emit the existing buffer/cursor signals, so menus can refresh
+their action state. `onChanged` also forwards `can-undo`/`can-redo` property
+notifications, which occur after GTK has updated its undo manager.
+`onCursorMoved` forwards insertion/selection-bound mark changes and
+`has-selection` notifications. Handlers may therefore run more than once for
+one edit; query current state rather than counting emissions. Each returned
+connection token disconnects the whole grouped subscription. These methods
+share the normal GUI-thread lifetime rules.
 
 ## Ownership, aliases, and disposal
 
@@ -246,6 +333,10 @@ checks are unchanged.
 
 The suite uses real GTK/Xvfb and isolated session buses, compiled and installed
 consumers, GC/reentry/misuse cases, optional documentation/examples, and ASan/UBSan.
-See [TESTING.md](TESTING.md). Styling, menus, dialogs, models, drawing, input events,
+`tests/test_gtk_bindings.py` additionally drives real native chooser responses,
+overwrite acceptance/decline, callback GC and cancellation/teardown, menu actions,
+and actual multiline source-widget allocations before and after window resize.
+Its private fixture is not shipped in the package.
+See [TESTING.md](TESTING.md). Styling, broad dialog/model coverage, drawing, input events,
 arbitrary native-widget adoption, file-open/command-line activation, and broad GTK
 property coverage are not implemented in this release.

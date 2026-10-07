@@ -19,9 +19,9 @@ def environment(work: Path) -> dict[str, str]:
 
 
 def invoke(command: list[str], work: Path, env: dict[str, str],
-           stdin: str = "") -> subprocess.CompletedProcess[str]:
+           stdin: str = "", timeout: int = 30) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(command, cwd=work, env=env, input=stdin,
-                            text=True, capture_output=True, timeout=30)
+                            text=True, capture_output=True, timeout=timeout)
     if any(marker in result.stderr for marker in
            ("AddressSanitizer", "UndefinedBehaviorSanitizer", "runtime error:")):
         raise AssertionError(f"Instrumentation failure:\n{result.stderr}")

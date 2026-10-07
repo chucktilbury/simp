@@ -17,6 +17,10 @@ class EditorDocument {
         view.setText(contents)
         view.markSaved()
         scroller = Gtk.ScrolledWindow()
+        scroller.setHExpand(true)
+        scroller.setVExpand(true)
+        view.widget().setHExpand(true)
+        view.widget().setVExpand(true)
         scroller.setChild(view.widget())
     }
 
@@ -35,23 +39,26 @@ class EditorDocument {
 class TweedEditor {
     Gtk.Window window
     Gtk.Box layout
-    Gtk.Box fileTools
+    Gtk.MenuBar menu
+    list documentItems
+    int undoItem
+    int redoItem
+    int cutItem
+    int copyItem
+    int recentItem
+    int newItem
+    int openItem
+    int quitItem
+    Gtk.FileDialog fileDialog
+    EditorDocument dialogDocument
+    bool dialogClosing
     Gtk.Box searchTools
-    Gtk.Entry pathEntry
     Gtk.Entry findEntry
     Gtk.Entry replaceEntry
     Gtk.Notebook notebook
     Gtk.Label status
-    Gtk.Button openButton
-    Gtk.Button recentButton
-    Gtk.Button newButton
-    Gtk.Button closeTabButton
-    Gtk.Button saveButton
-    Gtk.Button saveAsButton
     Gtk.Button findButton
     Gtk.Button replaceButton
-    Gtk.Button undoButton
-    Gtk.Button redoButton
     Gtk.Box closeChoices
     Gtk.Button closeSaveButton
     Gtk.Button closeDiscardButton
@@ -78,6 +85,15 @@ class TweedEditor {
     callback<void()> replaceAction
     callback<void()> undoAction
     callback<void()> redoAction
+    callback<void()> quitAction
+    callback<void()> cutAction
+    callback<void()> copyAction
+    callback<void()> pasteAction
+    callback<void()> selectAllAction
+    callback<void()> showFindAction
+    callback<void()> showReplaceAction
+    callback<void(String)> openResultAction
+    callback<void(String)> saveResultAction
     callback<bool()> closeAction
     callback<void()> testAction
 
@@ -90,31 +106,36 @@ class TweedEditor {
         }
         documents = []
         recentFiles = []
+        pendingCloseDocument = null
+        pendingCloseAll = false
+        allowWindowClose = false
+        fileDialog = null
+        dialogDocument = null
+        dialogClosing = false
         window = Gtk.Window("Tweed Lang Editor")
         window.setDefaultSize(1000, 700)
         layout = Gtk.Box(Gtk.Box.VERTICAL, 5)
         window.setChild(layout)
-        fileTools = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
-        layout.append(fileTools)
-        pathEntry = Gtk.Entry("")
-        pathEntry.setSensitive(true)
-        fileTools.append(pathEntry)
-        openButton = Gtk.Button("Open")
-        recentButton = Gtk.Button("Recent")
-        newButton = Gtk.Button("New")
-        closeTabButton = Gtk.Button("Close Tab")
-        saveButton = Gtk.Button("Save")
-        saveAsButton = Gtk.Button("Save As")
-        undoButton = Gtk.Button("Undo")
-        redoButton = Gtk.Button("Redo")
-        fileTools.append(openButton)
-        fileTools.append(recentButton)
-        fileTools.append(newButton)
-        fileTools.append(closeTabButton)
-        fileTools.append(saveButton)
-        fileTools.append(saveAsButton)
-        fileTools.append(undoButton)
-        fileTools.append(redoButton)
+        menu = Gtk.MenuBar()
+        layout.append(menu)
+        documentItems = []
+        int fileMenu = menu.addMenu("File")
+        newItem = menu.addItem(fileMenu, "New", commandAction("new"))
+        openItem = menu.addItem(fileMenu, "Open...", commandAction("open"))
+        recentItem = menu.addItem(fileMenu, "Recent", recentAction)
+        documentItems.append(menu.addItem(fileMenu, "Save", commandAction("save")))
+        documentItems.append(menu.addItem(fileMenu, "Save As...", commandAction("save-as")))
+        documentItems.append(menu.addItem(fileMenu, "Close", commandAction("close")))
+        quitItem = menu.addItem(fileMenu, "Quit", commandAction("quit"))
+        int editMenu = menu.addMenu("Edit")
+        undoItem = menu.addItem(editMenu, "Undo", commandAction("undo"))
+        redoItem = menu.addItem(editMenu, "Redo", commandAction("redo"))
+        cutItem = menu.addItem(editMenu, "Cut", commandAction("cut"))
+        copyItem = menu.addItem(editMenu, "Copy", commandAction("copy"))
+        documentItems.append(menu.addItem(editMenu, "Paste", commandAction("paste")))
+        documentItems.append(menu.addItem(editMenu, "Select All", commandAction("select-all")))
+        documentItems.append(menu.addItem(editMenu, "Find", commandAction("find")))
+        documentItems.append(menu.addItem(editMenu, "Replace", commandAction("replace")))
         searchTools = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
         layout.append(searchTools)
         findEntry = Gtk.Entry("")
@@ -126,6 +147,8 @@ class TweedEditor {
         searchTools.append(replaceEntry)
         searchTools.append(replaceButton)
         notebook = Gtk.Notebook()
+        notebook.setHExpand(true)
+        notebook.setVExpand(true)
         layout.append(notebook)
         notebook.onPageChanged(pageChangedAction)
         closeChoices = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
@@ -139,16 +162,8 @@ class TweedEditor {
         closeChoices.setVisible(false)
         status = Gtk.Label("Ready")
         layout.append(status)
-        openButton.onClicked(openAction)
-        recentButton.onClicked(recentAction)
-        newButton.onClicked(newAction)
-        closeTabButton.onClicked(closeTabAction)
-        saveButton.onClicked(saveAction)
-        saveAsButton.onClicked(saveAsAction)
         findButton.onClicked(findAction)
         replaceButton.onClicked(replaceAction)
-        undoButton.onClicked(undoAction)
-        redoButton.onClicked(redoAction)
         closeSaveButton.onClicked(closeSaveAction)
         closeDiscardButton.onClicked(closeDiscardAction)
         closeCancelButton.onClicked(closeCancelAction)
@@ -169,6 +184,24 @@ class TweedEditor {
         }
     }
 
+    callback<void()> commandAction(String command) {
+        if (command.equals("save")) { return saveAction }
+        if (command.equals("save-as")) { return saveAsAction }
+        if (command.equals("open")) { return openAction }
+        if (command.equals("new")) { return newAction }
+        if (command.equals("close")) { return closeTabAction }
+        if (command.equals("quit")) { return quitAction }
+        if (command.equals("find")) { return showFindAction }
+        if (command.equals("replace")) { return showReplaceAction }
+        if (command.equals("undo")) { return undoAction }
+        if (command.equals("redo")) { return redoAction }
+        if (command.equals("cut")) { return cutAction }
+        if (command.equals("copy")) { return copyAction }
+        if (command.equals("paste")) { return pasteAction }
+        if (command.equals("select-all")) { return selectAllAction }
+        return null
+    }
+
     void bindCommand(EditorDocument document, String trigger, String command) {
         bool conflict = false
         int existingIndex = 0
@@ -183,35 +216,11 @@ class TweedEditor {
             status.setText(format("Shortcut conflict: {}", trigger))
             return
         }
-        bool knownCommand = false
+        callback<void()> action = commandAction(command)
+        bool knownCommand = action != null
         bool bound = false
-        if (command.equals("save")) {
-            knownCommand = true
-            bound = document.view.bindShortcut(trigger, saveAction)
-        }
-        if (command.equals("open")) {
-            knownCommand = true
-            bound = document.view.bindShortcut(trigger, openAction)
-        }
-        if (command.equals("new")) {
-            knownCommand = true
-            bound = document.view.bindShortcut(trigger, newAction)
-        }
-        if (command.equals("find")) {
-            knownCommand = true
-            bound = document.view.bindShortcut(trigger, findAction)
-        }
-        if (command.equals("replace")) {
-            knownCommand = true
-            bound = document.view.bindShortcut(trigger, replaceAction)
-        }
-        if (command.equals("undo")) {
-            knownCommand = true
-            bound = document.view.bindShortcut(trigger, undoAction)
-        }
-        if (command.equals("redo")) {
-            knownCommand = true
-            bound = document.view.bindShortcut(trigger, redoAction)
+        if (knownCommand) {
+            bound = document.view.bindShortcut(trigger, action)
         }
         if (!knownCommand) {
             status.setText(format("Unknown editor shortcut command: {}", command))
@@ -255,12 +264,20 @@ class TweedEditor {
             bindCommand(document, "<Control>h", "replace")
             bindCommand(document, "<Control>z", "undo")
             bindCommand(document, "<Control><Shift>z", "redo")
+            bindCommand(document, "<Control><Shift>s", "save-as")
+            bindCommand(document, "<Control>w", "close")
+            bindCommand(document, "<Control>q", "quit")
+            bindCommand(document, "<Control>x", "cut")
+            bindCommand(document, "<Control>c", "copy")
+            bindCommand(document, "<Control>v", "paste")
+            bindCommand(document, "<Control>a", "select-all")
         }
         document.view.onChanged(changedAction)
         document.view.onCursorMoved(cursorAction)
     }
 
     void newDocument() {
+        if (commandsBlocked()) { return }
         EditorDocument document = EditorDocument("", "")
         documents.append(document)
         notebook.appendPage(document.scroller, document.tabTitle())
@@ -270,6 +287,10 @@ class TweedEditor {
 
     EditorDocument openDocument(String requestedPath) {
         if (requestedPath.equals("") || requestedPath.equals("--test")) {
+            return null
+        }
+        if (requestedPath.contains("://")) {
+            status.setText("Open failed: only local filesystem paths are supported")
             return null
         }
         String absolutePath = System.FileSystem().absolutePath(requestedPath)
@@ -296,7 +317,12 @@ class TweedEditor {
             return null
         }
         String text = input.readAll()
+        String readError = System.System().lastError()
         input.close()
+        if (!readError.equals("")) {
+            status.setText(format("Open failed: {}: {}", absolutePath, readError))
+            return null
+        }
         EditorDocument document = EditorDocument(absolutePath, text)
         documents.append(document)
         notebook.appendPage(document.scroller, document.tabTitle())
@@ -314,6 +340,7 @@ class TweedEditor {
             if ((documents[index] as EditorDocument) == document) {
                 notebook.setCurrentPage(index)
                 updateStatus()
+                document.view.focus()
                 return
             }
             index = index + 1
@@ -337,6 +364,7 @@ class TweedEditor {
     }
 
     void saveCurrent() {
+        if (commandsBlocked()) { return }
         EditorDocument document = currentDocument()
         if (document == null) {
             status.setText("No document to save")
@@ -344,23 +372,29 @@ class TweedEditor {
         }
         String destination = document.path
         if (destination.equals("")) {
-            destination = pathEntry.text()
+            chooseSave(document, false)
+            return
         }
         writeDocument(document, destination)
     }
 
     void saveAsCurrent() {
+        if (commandsBlocked()) { return }
         EditorDocument document = currentDocument()
         if (document == null) {
             status.setText("No document to save")
             return
         }
-        writeDocument(document, pathEntry.text())
+        chooseSave(document, false)
     }
 
     bool writeDocument(EditorDocument document, String destination) {
         if (destination.equals("")) {
-            status.setText("Enter a file path before saving")
+            status.setText("Save failed: empty file path")
+            return false
+        }
+        if (destination.contains("://")) {
+            status.setText("Save failed: only local filesystem paths are supported")
             return false
         }
         String absoluteDestination = destination
@@ -369,6 +403,31 @@ class TweedEditor {
                 System.FileSystem().getCwd(), absoluteDestination)
         }
         absoluteDestination = System.FileSystem().normalize(absoluteDestination)
+        if (System.FileSystem().exists(absoluteDestination)) {
+            if (!System.FileSystem().isFile(absoluteDestination)) {
+                status.setText("Save failed: destination is not a regular file")
+                return false
+            }
+            absoluteDestination = System.FileSystem().absolutePath(absoluteDestination)
+        } else {
+            String parent = System.FileSystem().absolutePath(
+                System.FileSystem().dirname(absoluteDestination))
+            if (parent.equals("")) {
+                showError("Save failed: ", destination)
+                return false
+            }
+            absoluteDestination = System.FileSystem().join(parent,
+                System.FileSystem().basename(absoluteDestination))
+        }
+        int index = 0
+        while (index < documents.length) {
+            EditorDocument other = documents[index] as EditorDocument
+            if (other != document && other.path.equals(absoluteDestination)) {
+                status.setText("Save failed: destination belongs to another open document")
+                return false
+            }
+            index = index + 1
+        }
         System.File output = System.File(absoluteDestination, "w")
         if (!output.isOpen()) {
             showError("Save failed: ", absoluteDestination)
@@ -376,24 +435,74 @@ class TweedEditor {
         }
         String contents = document.view.text()
         int written = output.write(contents)
+        String writeError = System.System().lastError()
         if (written != contents.length) {
             output.close()
-            showError("Save failed: ", absoluteDestination)
+            status.setText(format("Save failed: {}: {}", absoluteDestination, writeError))
             return false
         }
         output.flush()
+        String flushError = System.System().lastError()
         output.close()
+        String closeError = System.System().lastError()
+        if (!flushError.equals("") || !closeError.equals("")) {
+            status.setText(format("Save failed: {}: {} {}", absoluteDestination,
+                                  flushError, closeError))
+            return false
+        }
         document.path = absoluteDestination
         rememberRecent(absoluteDestination)
         document.view.markSaved()
         refreshTab(document)
         status.setText("Saved")
+        updateMenu()
         return true
     }
 
-    void openFromPath() { openFile(pathEntry.text()) }
+    bool commandsBlocked() {
+        return fileDialog != null || pendingCloseAll || pendingCloseDocument != null
+    }
+
+    void chooseOpen() {
+        if (commandsBlocked()) { return }
+        fileDialog = Gtk.FileDialog(window, false, "", openResultAction)
+        updateMenu()
+    }
+
+    void opened(String path) {
+        fileDialog = null
+        if (!path.equals("")) { openFile(path) }
+        updateMenu()
+    }
+
+    void chooseSave(EditorDocument document, bool closing) {
+        dialogDocument = document
+        dialogClosing = closing
+        fileDialog = Gtk.FileDialog(window, true, document.path, saveResultAction)
+        updateMenu()
+    }
+
+    void savedAs(String path) {
+        EditorDocument document = dialogDocument
+        bool closing = dialogClosing
+        fileDialog = null
+        dialogDocument = null
+        dialogClosing = false
+        if (path.equals("")) {
+            if (closing) { cancelPendingClose() }
+            status.setText("Save As cancelled")
+        } else {
+            if (writeDocument(document, path) && closing) {
+                continueSavedClose()
+            }
+        }
+        updateMenu()
+    }
+
+    void quit() { window.close() }
 
     void openRecent() {
+        if (commandsBlocked()) { return }
         if (recentFiles.length == 0) {
             status.setText("No recent files in this session")
             return
@@ -413,6 +522,7 @@ class TweedEditor {
     }
 
     void findNext() {
+        if (commandsBlocked()) { return }
         EditorDocument document = currentDocument()
         if (document == null) {
             return
@@ -425,6 +535,7 @@ class TweedEditor {
     }
 
     void replaceNext() {
+        if (commandsBlocked()) { return }
         EditorDocument document = currentDocument()
         if (document == null) {
             return
@@ -437,6 +548,7 @@ class TweedEditor {
     }
 
     void undoCurrent() {
+        if (commandsBlocked()) { return }
         EditorDocument document = currentDocument()
         if (document != null) {
             document.view.undo()
@@ -444,10 +556,35 @@ class TweedEditor {
     }
 
     void redoCurrent() {
+        if (commandsBlocked()) { return }
         EditorDocument document = currentDocument()
         if (document != null) {
             document.view.redo()
         }
+    }
+
+    void cutCurrent() {
+        if (!commandsBlocked() && currentDocument() != null) { currentDocument().view.cut() }
+    }
+
+    void copyCurrent() {
+        if (!commandsBlocked() && currentDocument() != null) { currentDocument().view.copy() }
+    }
+
+    void pasteCurrent() {
+        if (!commandsBlocked() && currentDocument() != null) { currentDocument().view.paste() }
+    }
+
+    void selectAllCurrent() {
+        if (!commandsBlocked() && currentDocument() != null) { currentDocument().view.selectAll() }
+    }
+
+    void showFind() {
+        if (!commandsBlocked()) { findEntry.focus() }
+    }
+
+    void showReplace() {
+        if (!commandsBlocked()) { replaceEntry.focus() }
     }
 
     void changed() {
@@ -476,6 +613,7 @@ class TweedEditor {
     }
 
     void updateStatus() {
+        updateMenu()
         EditorDocument document = currentDocument()
         if (document == null) {
             return
@@ -488,9 +626,46 @@ class TweedEditor {
         status.setText(message)
     }
 
+    void updateMenu() {
+        if (menu == null || status == null || window.disposed()) { return }
+        bool ready = !commandsBlocked()
+        EditorDocument document = currentDocument()
+        bool editable = ready && document != null
+        menu.setItemEnabled(newItem, ready)
+        menu.setItemEnabled(openItem, ready)
+        menu.setItemEnabled(recentItem, ready && recentFiles.length > 0)
+        menu.setItemEnabled(quitItem, fileDialog == null)
+        int index = 0
+        while (index < documentItems.length) {
+            menu.setItemEnabled(documentItems[index] as int, editable)
+            index = index + 1
+        }
+        bool canUndo = false
+        bool canRedo = false
+        bool selected = false
+        if (editable) {
+            canUndo = document.view.canUndo()
+            canRedo = document.view.canRedo()
+            selected = document.view.hasSelection()
+        }
+        menu.setItemEnabled(undoItem, canUndo)
+        menu.setItemEnabled(redoItem, canRedo)
+        menu.setItemEnabled(cutItem, selected)
+        menu.setItemEnabled(copyItem, selected)
+        notebook.setSensitive(fileDialog == null)
+        closeChoices.setSensitive(fileDialog == null)
+        searchTools.setSensitive(ready)
+    }
+
     bool requestClose() {
         if (allowWindowClose) {
             return false
+        }
+        if (fileDialog != null) {
+            fileDialog.cancel()
+            fileDialog = null
+            dialogDocument = null
+            dialogClosing = false
         }
         int index = 0
         while (index < documents.length) {
@@ -500,6 +675,7 @@ class TweedEditor {
                 pendingCloseDocument = null
                 closeChoices.setVisible(true)
                 status.setText("Unsaved changes: Save, Discard, or Cancel closing")
+                updateMenu()
                 return true
             }
             index = index + 1
@@ -508,6 +684,7 @@ class TweedEditor {
     }
 
     void closeCurrentDocument() {
+        if (commandsBlocked()) { return }
         EditorDocument document = currentDocument()
         if (document == null) {
             return
@@ -518,6 +695,7 @@ class TweedEditor {
             closeChoices.setVisible(true)
             status.setText(format("Unsaved changes in {}: Save, Discard, or Cancel",
                                   document.tabTitle()))
+            updateMenu()
             return
         }
         removeDocument(document)
@@ -569,6 +747,7 @@ class TweedEditor {
     }
 
     void savePendingClose() {
+        if (fileDialog != null) { return }
         EditorDocument document = pendingCloseDocument
         if (pendingCloseAll) {
             document = firstModifiedDocument()
@@ -580,11 +759,16 @@ class TweedEditor {
         activateDocument(document)
         String destination = document.path
         if (destination.equals("")) {
-            destination = pathEntry.text()
+            chooseSave(document, true)
+            return
         }
         if (!writeDocument(document, destination)) {
             return
         }
+        continueSavedClose()
+    }
+
+    void continueSavedClose() {
         if (!pendingCloseAll) {
             finishPendingClose()
             return
@@ -671,6 +855,7 @@ class TweedEditor {
         bool dirtyBlocked = requestClose()
         window.close()
         bool dirtyCloseCancelled = !window.disposed()
+        cancelPendingClose()
         closeCurrentDocument()
         cancelPendingClose()
         bool tabCloseCancelled = documents.length == 2 && document.view.modified()
@@ -718,7 +903,7 @@ start {
     editor.changedAction = editor.changed
     editor.cursorAction = editor.updateStatus
     editor.pageChangedAction = editor.pageChanged
-    editor.openAction = editor.openFromPath
+    editor.openAction = editor.chooseOpen
     editor.recentAction = editor.openRecent
     editor.saveAction = editor.saveCurrent
     editor.saveAsAction = editor.saveAsCurrent
@@ -731,6 +916,15 @@ start {
     editor.replaceAction = editor.replaceNext
     editor.undoAction = editor.undoCurrent
     editor.redoAction = editor.redoCurrent
+    editor.quitAction = editor.quit
+    editor.cutAction = editor.cutCurrent
+    editor.copyAction = editor.copyCurrent
+    editor.pasteAction = editor.pasteCurrent
+    editor.selectAllAction = editor.selectAllCurrent
+    editor.showFindAction = editor.showFind
+    editor.showReplaceAction = editor.showReplace
+    editor.openResultAction = editor.opened
+    editor.saveResultAction = editor.savedAs
     editor.closeAction = editor.requestClose
     editor.testAction = editor.test
     app.onActivate(editor.activate)

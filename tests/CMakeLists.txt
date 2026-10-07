@@ -101,6 +101,17 @@ if(SIMP_GTK)
             --xvfb "${SIMP_XVFB_EXECUTABLE}"
             "--sanitize=${SIMP_SANITIZER_LIST}" ${gtk_install_arguments})
     set_tests_properties(simp_gtk PROPERTIES LABELS gtk TIMEOUT 180)
+    set(gtk_binding_arguments)
+    if(SIMP_GTK_SOURCEVIEW)
+        list(APPEND gtk_binding_arguments --sourceview)
+    endif()
+    add_test(NAME simp_gtk_bindings
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_gtk_bindings.py"
+            --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
+            --work "${CMAKE_CURRENT_BINARY_DIR}/gtk-bindings"
+            --xvfb "${SIMP_XVFB_EXECUTABLE}"
+            "--sanitize=${SIMP_SANITIZER_LIST}" ${gtk_binding_arguments})
+    set_tests_properties(simp_gtk_bindings PROPERTIES LABELS gtk TIMEOUT 90)
 endif()
 add_test(NAME simpkg_cli
     COMMAND "${Python3_EXECUTABLE}"
@@ -400,6 +411,15 @@ foreach(example_case IN LISTS example_cases)
     set_tests_properties("simp_example_${example_name}" PROPERTIES LABELS examples TIMEOUT 60)
 endforeach()
 if(SIMP_GTK_SOURCEVIEW)
+    add_test(NAME simp_editor_dialogs
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_editor_dialogs.py"
+        --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
+        --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+        --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
+        --source "${example_directory}/editor/tweed.simp"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/editor-dialogs"
+        --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
+    set_tests_properties(simp_editor_dialogs PROPERTIES LABELS "examples;gtk" TIMEOUT 90)
     add_test(NAME simp_editor_default_shortcuts
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
         --compiler "$<TARGET_FILE:simp>" --examples "${example_directory}"

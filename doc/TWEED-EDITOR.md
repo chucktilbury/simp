@@ -1,10 +1,11 @@
-# Tweed editor (first iteration)
+# Tweed editor
 
 `examples/editor/tweed.simp` is a small Simple-written GTK editor. It keeps the
 compiler and package names unchanged; Tweed Lang is the editor/application
 branding, not a repository-wide rename. The editor uses the optional GTK
 package and a separate GtkSourceView-backed `sourceview` package. It provides
-multiple notebook tabs, duplicate-path focusing, open/save/save-as, session
+File and Edit menus, native open/save-as file choosers, multiple notebook tabs,
+duplicate-path focusing, open/save/save-as, session
 recent files, dirty tab titles, close protection, undo/redo, find/replace,
 line/column status, and configurable GTK keyboard shortcuts. GTK's text view
 provides ordinary selection, cursor navigation, and clipboard bindings.
@@ -18,7 +19,10 @@ numbers. Documents are represented separately from notebook pages; opening an
 already-open path selects its existing tab. `openDocument(path)` returns the
 existing or newly opened document independently of selection, and
 `activateDocument(document)` selects its tab; a future Project Explorer can use
-these same APIs.
+these same APIs. The notebook, scrolled viewport, and source view explicitly
+expand horizontally and vertically, so the multiline editor fills the remaining
+window space and grows when the window is resized; the menu, search controls,
+close prompt, and status line retain their natural height.
 
 ## Build and run
 
@@ -48,18 +52,39 @@ GtkSourceView 5 development files. Headless GTK/editor tests additionally
 require Xvfb and `dbus-daemon`. With both options disabled, ordinary compiler
 and non-GUI applications do not link GTK or GtkSourceView.
 
-Use the path field with **Open** or **Save As**; **Save** writes the active
-document to its current path. The **Recent** button reopens the last file opened
-or saved during this editor session. Command-line file arguments open tabs at
-startup. A modified tab is marked with `*`. **Close Tab** and a window-close
-request offer in-app **Save**, **Discard**, and **Cancel** controls; saving an
-untitled document uses the path field. For a window close with several modified
-documents, Save handles them one at a time until all are saved.
+**File > New** creates an editable untitled tab. **Open...** uses a native GTK
+file chooser; selecting an already-open file focuses its existing tab.
+**Save** writes the active document to its current path, or opens **Save As...**
+for an untitled document. Save As asks for confirmation before replacing an
+existing file, and refuses a destination belonging to another open document.
+Cancelling a chooser or overwrite confirmation leaves files and document
+identities unchanged. Open/read/write/flush/close failures appear in the status
+line. The editor supports local filesystem paths; nonlocal chooser URIs are
+explicitly rejected rather than interpreted as cancellation.
+**Recent** reopens the last unique file added to the session history.
+Command-line file arguments open tabs at startup.
+
+**Edit** offers Undo, Redo, Cut, Copy, Paste, Select All, Find, and Replace.
+Find and Replace focus their respective search-row fields; **Find next** and
+**Replace next** execute the entered query. Undo/Redo and Cut/Copy menu items
+track the active buffer's undo/redo and selection state. File dialogs are modal,
+asynchronous, parented to the editor window, and cancelled on parent teardown;
+they do not run nested event loops.
+
+A modified tab is marked with `*`. **File > Close**, **Quit**, and a window-close
+request offer in-app **Save**, **Discard**, and **Cancel** controls. Saving an
+untitled document during close opens Save As; cancelling that chooser cancels
+the pending close without discarding changes. For a window close with several
+modified documents, Save handles them one at a time until all are saved.
 
 Default shortcuts use GTK trigger notation: `<Control>s` saves,
-`<Control>o` opens the path in the field, `<Control>n` creates a tab,
-`<Control>f` finds, `<Control>h` replaces, `<Control>z` undoes, and
-`<Control><Shift>z` redoes. To change or remove defaults, put a
+`<Control>o` opens the file chooser, `<Control>n` creates a tab,
+`<Control>f` focuses Find, `<Control>h` focuses Replace, `<Control>z` undoes,
+and `<Control><Shift>z` redoes. `<Control><Shift>s` opens Save As,
+`<Control>w` closes the active tab, and `<Control>q` requests Quit.
+`<Control>x`, `<Control>c`, `<Control>v`, and `<Control>a` perform Cut, Copy,
+Paste, and Select All. Menus and configurable shortcuts resolve to the same
+named command callbacks. To change or remove defaults, put a
 `tweed-shortcuts.conf` file in the editor's working directory. Each nonblank
 line maps one GTK trigger to one command:
 
@@ -71,9 +96,17 @@ line maps one GTK trigger to one command:
 <Control>h=replace
 <Control>z=undo
 <Control><Shift>z=redo
+<Control><Shift>s=save-as
+<Control>w=close
+<Control>q=quit
+<Control>x=cut
+<Control>c=copy
+<Control>v=paste
+<Control>a=select-all
 ```
 
-Commands are `save`, `open`, `new`, `find`, `replace`, `undo`, and `redo`.
+Commands are `save`, `save-as`, `open`, `new`, `close`, `quit`, `find`, `replace`,
+`undo`, `redo`, `cut`, `copy`, `paste`, and `select-all`.
 Duplicate triggers, unknown commands, and unparseable triggers are reported in
 the status line rather than silently rebound.
 
@@ -97,6 +130,6 @@ Run the editor-specific headless cases and existing GTK integration checks:
 
 ```sh
 ctest --test-dir build-tweed \
-  -R '^(simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_gtk)$' \
+  -R '^(simp_example_editor_tweed\.simp|simp_editor_default_shortcuts|simp_editor_dialogs|simp_gtk|simp_gtk_bindings)$' \
   --output-on-failure
 ```

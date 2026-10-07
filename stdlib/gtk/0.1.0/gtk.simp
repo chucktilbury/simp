@@ -62,6 +62,8 @@ namespace Gtk {
         bool _disposed(int token)
         void _visible(int token, bool value)
         void _sensitive(int token, bool value)
+        void _expand(int token, bool horizontal, bool value)
+        void _focus(int token)
         void _textSet(int token, String text)
         String _textGet(int token)
         void _attach(int parent, int child)
@@ -90,12 +92,15 @@ namespace Gtk {
         void _boxLayout(int orientation, int spacing) { _layout(_id, orientation, spacing) }
         void _setActive(bool value) { _activeSet(_id, value) }
         bool _getActive() { return _activeGet(_id) }
+        void _grabFocus() { _focus(_id) }
         public:
         int _widgetToken() { return _id }
         void dispose() { _dispose(_id) }
         bool disposed() { return _disposed(_id) }
         void setVisible(bool value) { _visible(_id, value) }
         void setSensitive(bool value) { _sensitive(_id, value) }
+        void setHExpand(bool value) { _expand(_id, true, value) }
+        void setVExpand(bool value) { _expand(_id, false, value) }
     }
 
     class Window : Widget {
@@ -153,6 +158,37 @@ namespace Gtk {
         SignalConnection onChanged(callback<void(String)> action) {
             return SignalConnection(_entrySelf(), action)
         }
+        void focus() { _grabFocus() }
+    }
+
+    class MenuBar : Widget {
+        private:
+        int _addMenu(int token, String label)
+        int _addItem(int token, int menu, String label, callback<void()> action)
+        void _enabled(int token, int item, bool value)
+        void _activate(int token, int item)
+        public:
+        MenuBar() { super Widget(10, "", 0, 0) }
+        int addMenu(String label) { return _addMenu(_widgetToken(), label) }
+        int addItem(int menu, String label, callback<void()> action) {
+            return _addItem(_widgetToken(), menu, label, action)
+        }
+        void setItemEnabled(int item, bool enabled) { _enabled(_widgetToken(), item, enabled) }
+        void activateItem(int item) { _activate(_widgetToken(), item) }
+    }
+
+    class FileDialog {
+        private:
+        int _token
+        int _create(int parent, bool save, String initialPath, callback<void(String)> result)
+        void _cancel(int token)
+        bool _pending(int token)
+        public:
+        FileDialog(Window parent, bool save, String initialPath, callback<void(String)> result) {
+            _token = _create(parent._widgetToken(), save, initialPath, result)
+        }
+        void cancel() { _cancel(_token) }
+        bool pending() { return _pending(_token) }
     }
 
     class CheckButton : Widget {
@@ -233,6 +269,17 @@ namespace Gtk {
     bool Widget._disposed(int token) from "simp_gtk_widget_disposed"
     void Widget._visible(int token, bool value) from "simp_gtk_widget_visible"
     void Widget._sensitive(int token, bool value) from "simp_gtk_widget_sensitive"
+    void Widget._expand(int token, bool horizontal, bool value) from "simp_gtk_widget_expand"
+    void Widget._focus(int token) from "simp_gtk_widget_focus"
+    int MenuBar._addMenu(int token, String label) from "simp_gtk_menu_add"
+    int MenuBar._addItem(int token, int menu, String label, callback<void()> action)
+        from "simp_gtk_menu_item_add"
+    void MenuBar._enabled(int token, int item, bool value) from "simp_gtk_menu_item_enabled"
+    void MenuBar._activate(int token, int item) from "simp_gtk_menu_item_activate"
+    int FileDialog._create(int parent, bool save, String initialPath, callback<void(String)> result)
+        from "simp_gtk_file_dialog_create"
+    void FileDialog._cancel(int token) from "simp_gtk_file_dialog_cancel"
+    bool FileDialog._pending(int token) from "simp_gtk_file_dialog_pending"
     void Widget._textSet(int token, String text) from "simp_gtk_widget_text_set"
     String Widget._textGet(int token) from "simp_gtk_widget_text_get"
     void Widget._attach(int parent, int child) from "simp_gtk_widget_attach"

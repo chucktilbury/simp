@@ -10,6 +10,11 @@ namespace GtkSource {
         void _markSaved(int token)
         void _undo(int token)
         void _redo(int token)
+        bool _canUndo(int token)
+        bool _canRedo(int token)
+        bool _hasSelection(int token)
+        void _edit(int token, int operation)
+        void _focus(int token)
         bool _find(int token, String query)
         bool _replaceNext(int token, String query, String replacement)
         int _line(int token)
@@ -33,6 +38,14 @@ namespace GtkSource {
         void markSaved() { _markSaved(_widgetToken()) }
         void undo() { _undo(_widgetToken()) }
         void redo() { _redo(_widgetToken()) }
+        bool canUndo() { return _canUndo(_widgetToken()) }
+        bool canRedo() { return _canRedo(_widgetToken()) }
+        bool hasSelection() { return _hasSelection(_widgetToken()) }
+        void cut() { _edit(_widgetToken(), 0) }
+        void copy() { _edit(_widgetToken(), 1) }
+        void paste() { _edit(_widgetToken(), 2) }
+        void selectAll() { _edit(_widgetToken(), 3) }
+        void focus() { _focus(_widgetToken()) }
         bool find(String query) { return _find(_widgetToken(), query) }
         bool replaceNext(String query, String replacement) {
             return _replaceNext(_widgetToken(), query, replacement)
@@ -60,6 +73,11 @@ namespace GtkSource {
     void View._markSaved(int token) from "simp_gtk_source_view_mark_saved"
     void View._undo(int token) from "simp_gtk_source_view_undo"
     void View._redo(int token) from "simp_gtk_source_view_redo"
+    bool View._canUndo(int token) from "simp_gtk_source_view_can_undo"
+    bool View._canRedo(int token) from "simp_gtk_source_view_can_redo"
+    bool View._hasSelection(int token) from "simp_gtk_source_view_has_selection"
+    void View._edit(int token, int operation) from "simp_gtk_source_view_edit"
+    void View._focus(int token) from "simp_gtk_widget_focus"
     bool View._find(int token, String query) from "simp_gtk_source_view_find"
     bool View._replaceNext(int token, String query, String replacement)
         from "simp_gtk_source_view_replace_next"

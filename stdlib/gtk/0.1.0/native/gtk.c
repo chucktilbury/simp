@@ -12,6 +12,21 @@
 extern const SimpClassMeta simp_string_class_meta;
 
 typedef struct ShortcutBinding ShortcutBinding;
+typedef struct MenuItem {
+    struct MenuItem *next;
+    int64_t token;
+    GSimpleAction *action;
+} MenuItem;
+
+typedef struct FileDialog {
+    struct FileDialog *next;
+    int64_t token;
+    int64_t parent;
+    GtkFileChooserNative *chooser;
+    SimpCallbackContext *context;
+    GSource *completion;
+    char *path;
+} FileDialog;
 
 typedef struct WidgetRecord {
     struct WidgetRecord *next;
@@ -21,6 +36,10 @@ typedef struct WidgetRecord {
     void *receiver;
     SimpCallbackContext *root;
     ShortcutBinding *shortcuts;
+    GMenu *menu;
+    GPtrArray *submenus;
+    GSimpleActionGroup *actions;
+    MenuItem *items;
     bool native_destroying;
 } WidgetRecord;
 
@@ -38,6 +57,9 @@ typedef struct Connection {
     int64_t token;
     GObject *object;
     gulong signal;
+    gulong additional[3];
+    unsigned additional_count;
+    unsigned closures;
     SimpCallbackContext *context;
     unsigned active;
     bool closed;
@@ -62,6 +84,7 @@ static GMainContext *main_context;
 static Connection *connections;
 static Post *posts;
 static WidgetRecord *widgets;
+static FileDialog *dialogs;
 static GtkApplication *application;
 static bool activated;
 static bool ran;
@@ -71,6 +94,7 @@ static GtkSourceLanguageManager *source_language_manager;
 #endif
 static void widget_dispose(WidgetRecord *record);
 static void window_removed(GtkApplication *app, GtkWindow *window, gpointer data);
+static void dialog_finish(FileDialog *dialog, const char *path, bool invoke);
 
 static _Noreturn void fatal(const char *message) {
     fprintf(stderr, "Simple GTK error: %s\n", message);
@@ -115,9 +139,11 @@ static void connection_destroy(gpointer data, GClosure *closure) {
     simp_gtk_require_owner();
     int acquired = simp_runtime_managed_enter();
     Connection *connection = data;
-    connection->object = NULL;
-    connection->closed = true;
-    connection->detached = true;
+    if (--connection->closures == 0) {
+        connection->object = NULL;
+        connection->closed = true;
+        connection->detached = true;
+    }
     connection_collect(connection);
     simp_runtime_managed_leave(acquired);
 }
@@ -165,6 +191,7 @@ static void changed(GtkEditable *editable, gpointer data) {
     signal_leave(connection, acquired);
 }
 
+#ifdef SIMP_GTK_SOURCEVIEW
 static void changed_no_args(GObject *object, gpointer data) {
     (void)object;
     Connection *connection = data;
@@ -174,17 +201,23 @@ static void changed_no_args(GObject *object, gpointer data) {
     signal_leave(connection, acquired);
 }
 
+static void state_notified(GObject *object, GParamSpec *property, gpointer data) {
+    (void)property;
+    changed_no_args(object, data);
+}
+
 static void cursor_moved(GtkTextBuffer *buffer, GtkTextIter *location,
                          GtkTextMark *mark, gpointer data) {
-    (void)buffer;
     (void)location;
-    (void)mark;
+    if (mark != gtk_text_buffer_get_insert(buffer) &&
+        mark != gtk_text_buffer_get_selection_bound(buffer)) return;
     Connection *connection = data;
     int acquired = signal_enter(connection);
     typedef void (*Adapter)(SimpCallbackContext *);
     ((Adapter)simp_callback_adapter(connection->context))(connection->context);
     signal_leave(connection, acquired);
 }
+#endif
 
 static void text_changed(GtkEditable *editable, gpointer data) {
     Connection *connection = data;
@@ -242,6 +275,7 @@ static int64_t connect_signal(GObject *object, const char *signal,
     connection->token = token_new();
     connection->object = object;
     connection->context = simp_callback_acquire(callback, signature);
+    connection->closures = 1;
     connection->next = connections;
     connections = connection;
     connection->signal = g_signal_connect_data(object, signal, forwarder, connection,
@@ -249,6 +283,20 @@ static int64_t connect_signal(GObject *object, const char *signal,
     if (!connection->signal) fatal("signal connection failed");
     return connection->token;
 }
+
+#ifdef SIMP_GTK_SOURCEVIEW
+static void connect_state(int64_t token, const char *signal) {
+    Connection *connection = connections;
+    while (connection && connection->token != token) connection = connection->next;
+    if (!connection || connection->additional_count == G_N_ELEMENTS(connection->additional))
+        fatal("invalid grouped signal connection");
+    ++connection->closures;
+    gulong id = g_signal_connect_data(connection->object, signal, G_CALLBACK(state_notified),
+                                     connection, connection_destroy, 0);
+    if (!id) fatal("signal connection failed");
+    connection->additional[connection->additional_count++] = id;
+}
+#endif
 
 int64_t simp_gtk_connect_clicked(GtkButton *button, void *callback) {
     require_live();
@@ -280,7 +328,11 @@ bool simp_gtk_disconnect(int64_t token) {
         /* GClosure defers its notify until emission unwinds. The active
          * count also covers synchronous/nested callbacks explicitly. */
         connection->closed = true;
-        g_signal_handler_disconnect(connection->object, connection->signal);
+        GObject *object = connection->object;
+        gulong ids[4] = { connection->signal };
+        unsigned count = connection->additional_count + 1;
+        memcpy(ids + 1, connection->additional, connection->additional_count * sizeof(gulong));
+        for (unsigned i = 0; i < count; ++i) g_signal_handler_disconnect(object, ids[i]);
         return true;
     }
     return false;
@@ -413,6 +465,7 @@ void simp_gtk_shutdown(void *self) {
     stopped = true;
     g_application_quit(G_APPLICATION(application));
     while (posts) post_cancel(posts);
+    while (dialogs) dialog_finish(dialogs, "", false);
     for (Connection *connection = connections; connection;) {
         Connection *next = connection->next;
         if (!connection->closed) simp_gtk_disconnect(connection->token);
@@ -538,6 +591,24 @@ static void detach(WidgetRecord *r) {
 static void widget_dispose(WidgetRecord *r) {
     if (!r->widget) return;
     GtkWidget *widget = r->widget;
+    for (FileDialog *dialog = dialogs; dialog;) {
+        FileDialog *next = dialog->next;
+        if (dialog->parent == r->token) dialog_finish(dialog, "", false);
+        dialog = next;
+    }
+    while (r->items) {
+        MenuItem *item = r->items;
+        r->items = item->next;
+        simp_gtk_disconnect(item->token);
+        g_object_unref(item->action);
+        free(item);
+    }
+    if (r->actions) {
+        gtk_widget_insert_action_group(widget, "menu", NULL);
+        g_clear_object(&r->actions);
+        g_clear_pointer(&r->submenus, g_ptr_array_unref);
+        g_clear_object(&r->menu);
+    }
     disconnect_object(G_OBJECT(widget));
 #ifdef SIMP_GTK_SOURCEVIEW
     if (GTK_SOURCE_IS_VIEW(widget))
@@ -624,6 +695,12 @@ int64_t simp_gtk_widget_create(void *self, int64_t kind, void *text,
     case 6: widget = gtk_check_button_new_with_label(label); break;
     case 7: widget = gtk_scrolled_window_new(); break;
     case 9: widget = gtk_notebook_new(); break;
+    case 10: {
+        GMenu *menu = g_menu_new();
+        widget = gtk_popover_menu_bar_new_from_model(G_MENU_MODEL(menu));
+        g_object_unref(menu);
+        break;
+    }
 #ifdef SIMP_GTK_SOURCEVIEW
     case 8:
         widget = GTK_WIDGET(gtk_source_view_new());
@@ -641,6 +718,12 @@ int64_t simp_gtk_widget_create(void *self, int64_t kind, void *text,
     r->widget = g_object_ref_sink(widget);
     r->receiver = receiver;
     r->root = simp_callback_acquire(keep_alive, "callback<void()>");
+    if (kind == 10) {
+        r->menu = G_MENU(g_object_ref(gtk_popover_menu_bar_get_menu_model(GTK_POPOVER_MENU_BAR(widget))));
+        r->submenus = g_ptr_array_new_with_free_func(g_object_unref);
+        r->actions = g_simple_action_group_new();
+        gtk_widget_insert_action_group(widget, "menu", G_ACTION_GROUP(r->actions));
+    }
     r->next = widgets;
     widgets = r;
     g_signal_connect(widget, "destroy", G_CALLBACK(widget_destroyed), r);
@@ -670,6 +753,212 @@ void simp_gtk_widget_visible(void *self, int64_t token, bool value) {
 void simp_gtk_widget_sensitive(void *self, int64_t token, bool value) {
     (void)self;
     gtk_widget_set_sensitive(widget_live(token), value);
+}
+
+void simp_gtk_widget_expand(void *self, int64_t token, bool horizontal, bool value) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    if (horizontal) gtk_widget_set_hexpand(widget, value);
+    else gtk_widget_set_vexpand(widget, value);
+}
+
+void simp_gtk_widget_focus(void *self, int64_t token) {
+    (void)self;
+    gtk_widget_grab_focus(widget_live(token));
+}
+
+static WidgetRecord *menu_record(int64_t token) {
+    if (!GTK_IS_POPOVER_MENU_BAR(widget_live(token))) fatal("operation requires MenuBar");
+    return record_find(token);
+}
+
+int64_t simp_gtk_menu_add(void *self, int64_t token, void *label) {
+    (void)self;
+    WidgetRecord *record = menu_record(token);
+    char *text = text_copy(label);
+    GMenu *menu = g_menu_new();
+    int64_t index = record->submenus->len;
+    g_ptr_array_add(record->submenus, menu);
+    g_menu_append_submenu(record->menu, text, G_MENU_MODEL(menu));
+    g_free(text);
+    return index;
+}
+
+static void menu_activated(GSimpleAction *action, GVariant *parameter, gpointer data) {
+    (void)action;
+    (void)parameter;
+    clicked(NULL, data);
+}
+
+int64_t simp_gtk_menu_item_add(void *self, int64_t token, int64_t menu,
+                               void *label, void *callback) {
+    (void)self;
+    WidgetRecord *record = menu_record(token);
+    if (menu < 0 || menu >= record->submenus->len) fatal("invalid menu index");
+    char *text = text_copy(label);
+    MenuItem *item = calloc(1, sizeof(*item));
+    if (!item) fatal("allocation failed");
+    char *name = g_strdup_printf("item%" G_GINT64_FORMAT, token_new());
+    item->action = g_simple_action_new(name, NULL);
+    item->token = connect_signal(G_OBJECT(item->action), "activate",
+                                G_CALLBACK(menu_activated), callback, "callback<void()>");
+    g_action_map_add_action(G_ACTION_MAP(record->actions), G_ACTION(item->action));
+    char *detailed = g_strconcat("menu.", name, NULL);
+    g_menu_append(g_ptr_array_index(record->submenus, (guint)menu), text, detailed);
+    g_free(detailed);
+    g_free(name);
+    g_free(text);
+    item->next = record->items;
+    record->items = item;
+    return item->token;
+}
+
+static GSimpleAction *menu_item(int64_t token, int64_t item) {
+    for (MenuItem *i = menu_record(token)->items; i; i = i->next)
+        if (i->token == item) return i->action;
+    fatal("invalid menu item");
+}
+
+void simp_gtk_menu_item_enabled(void *self, int64_t token, int64_t item, bool enabled) {
+    (void)self;
+    g_simple_action_set_enabled(menu_item(token, item), enabled);
+}
+
+void simp_gtk_menu_item_activate(void *self, int64_t token, int64_t item) {
+    (void)self;
+    GSimpleAction *action = g_object_ref(menu_item(token, item));
+    g_action_activate(G_ACTION(action), NULL);
+    g_object_unref(action);
+}
+
+/* Remove all native ownership before invoking Simple: a result handler may
+ * immediately dispose its parent, open another chooser, or shut down. */
+static void dialog_finish(FileDialog *dialog, const char *path, bool invoke) {
+    char *result = g_strdup(path);
+    FileDialog **link = &dialogs;
+    while (*link != dialog) link = &(*link)->next;
+    *link = dialog->next;
+    if (dialog->completion) {
+        g_source_destroy(dialog->completion);
+        g_source_unref(dialog->completion);
+    }
+    if (dialog->chooser) {
+        g_signal_handlers_disconnect_by_data(dialog->chooser, dialog);
+        gtk_native_dialog_hide(GTK_NATIVE_DIALOG(dialog->chooser));
+        g_object_unref(dialog->chooser);
+    }
+    SimpCallbackContext *context = dialog->context;
+    g_free(dialog->path);
+    free(dialog);
+    if (invoke) {
+        void *text = simp_string_new(&simp_string_class_meta, result, strlen(result));
+        void *slots[] = { &text };
+        SimpRootFrame frame = {0};
+        simp_gc_push_or_abort(&frame, slots, 1);
+        typedef void (*Adapter)(SimpCallbackContext *, void *);
+        ((Adapter)simp_callback_adapter(context))(context, text);
+        simp_gc_pop_or_abort(&frame);
+    }
+    g_free(result);
+    simp_callback_release(context);
+    simp_callback_dispose(context);
+}
+
+static gboolean dialog_complete(gpointer data) {
+    simp_gtk_require_owner();
+    int acquired = simp_runtime_managed_enter();
+    FileDialog *dialog = data;
+    g_source_unref(dialog->completion);
+    dialog->completion = NULL;
+    dialog_finish(dialog, dialog->path ? dialog->path : "", true);
+    simp_runtime_managed_leave(acquired);
+    return G_SOURCE_REMOVE;
+}
+
+static void dialog_schedule(FileDialog *dialog) {
+    if (dialog->completion) return;
+    dialog->completion = g_idle_source_new();
+    g_source_set_callback(dialog->completion, dialog_complete, dialog, NULL);
+    g_source_attach(dialog->completion, main_context);
+}
+
+static void chooser_response(GtkNativeDialog *chooser, int response, gpointer data) {
+    simp_gtk_require_owner();
+    int acquired = simp_runtime_managed_enter();
+    FileDialog *dialog = data;
+    if (!dialog->completion && response == GTK_RESPONSE_ACCEPT) {
+        GFile *file = gtk_file_chooser_get_file(GTK_FILE_CHOOSER(chooser));
+        if (file) {
+            dialog->path = g_file_get_path(file);
+            if (!dialog->path) dialog->path = g_file_get_uri(file);
+            g_object_unref(file);
+        }
+    }
+    /* GTK's fallback chooser still has response cleanup to perform. Release
+     * native dialogs and enter user code only after that signal unwinds. */
+    dialog_schedule(dialog);
+    simp_runtime_managed_leave(acquired);
+}
+
+int64_t simp_gtk_file_dialog_create(void *self, int64_t parent, bool save,
+                                    void *initial_path, void *callback) {
+    (void)self;
+    GtkWidget *window = widget_live(parent);
+    if (!GTK_IS_WINDOW(window)) fatal("FileDialog requires Window");
+    char *path = text_copy(initial_path);
+    FileDialog *dialog = calloc(1, sizeof(*dialog));
+    if (!dialog) fatal("allocation failed");
+    dialog->token = token_new();
+    dialog->parent = parent;
+    dialog->context = simp_callback_acquire(callback, "callback<void(String)>");
+    dialog->chooser = gtk_file_chooser_native_new(
+        save ? "Save file" : "Open file", GTK_WINDOW(window),
+        save ? GTK_FILE_CHOOSER_ACTION_SAVE : GTK_FILE_CHOOSER_ACTION_OPEN,
+        save ? "_Save" : "_Open", "_Cancel");
+    gtk_native_dialog_set_modal(GTK_NATIVE_DIALOG(dialog->chooser), TRUE);
+    if (*path) {
+        GFile *file = g_file_new_for_path(path);
+        if (g_file_test(path, G_FILE_TEST_IS_DIR))
+            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog->chooser), file, NULL);
+        else if (save) {
+            GFile *folder = g_file_get_parent(file);
+            if (folder) {
+                gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog->chooser), folder, NULL);
+                g_object_unref(folder);
+            }
+            char *name = g_file_get_basename(file);
+            gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog->chooser), name);
+            g_free(name);
+        } else gtk_file_chooser_set_file(GTK_FILE_CHOOSER(dialog->chooser), file, NULL);
+        g_object_unref(file);
+    }
+    g_free(path);
+    dialog->next = dialogs;
+    dialogs = dialog;
+    int64_t token = dialog->token;
+    g_signal_connect(dialog->chooser, "response", G_CALLBACK(chooser_response), dialog);
+    gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog->chooser));
+    return token;
+}
+
+void simp_gtk_file_dialog_cancel(void *self, int64_t token) {
+    (void)self;
+    require_managed();
+    simp_gtk_require_owner();
+    for (FileDialog *dialog = dialogs; dialog; dialog = dialog->next)
+        if (dialog->token == token) {
+            dialog_finish(dialog, "", false);
+            return;
+        }
+}
+
+bool simp_gtk_file_dialog_pending(void *self, int64_t token) {
+    (void)self;
+    require_managed();
+    simp_gtk_require_owner();
+    for (FileDialog *dialog = dialogs; dialog; dialog = dialog->next)
+        if (dialog->token == token) return true;
+    return false;
 }
 
 void simp_gtk_widget_text_set(void *self, int64_t token, void *text) {
@@ -872,15 +1161,20 @@ static void shortcut_context_dispose(gpointer data) {
 int64_t simp_gtk_source_view_changed(void *self, int64_t token, void *callback) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
-    return connect_signal(G_OBJECT(buffer), "changed", G_CALLBACK(changed_no_args),
-                          callback, "callback<void()>");
+    int64_t connection = connect_signal(G_OBJECT(buffer), "changed", G_CALLBACK(changed_no_args),
+                                        callback, "callback<void()>");
+    connect_state(connection, "notify::can-undo");
+    connect_state(connection, "notify::can-redo");
+    return connection;
 }
 
 int64_t simp_gtk_source_view_cursor_moved(void *self, int64_t token, void *callback) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
-    return connect_signal(G_OBJECT(buffer), "mark-set", G_CALLBACK(cursor_moved),
-                          callback, "callback<void()>");
+    int64_t connection = connect_signal(G_OBJECT(buffer), "mark-set", G_CALLBACK(cursor_moved),
+                                        callback, "callback<void()>");
+    connect_state(connection, "notify::has-selection");
+    return connection;
 }
 
 bool simp_gtk_source_view_bind_shortcut(void *self, int64_t token, void *trigger_text,
@@ -966,6 +1260,39 @@ void simp_gtk_source_view_redo(void *self, int64_t token) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     if (gtk_text_buffer_get_can_redo(buffer)) gtk_text_buffer_redo(buffer);
+}
+
+bool simp_gtk_source_view_can_undo(void *self, int64_t token) {
+    (void)self;
+    return gtk_text_buffer_get_can_undo(GTK_TEXT_BUFFER(source_buffer(token))) != FALSE;
+}
+
+bool simp_gtk_source_view_can_redo(void *self, int64_t token) {
+    (void)self;
+    return gtk_text_buffer_get_can_redo(GTK_TEXT_BUFFER(source_buffer(token))) != FALSE;
+}
+
+bool simp_gtk_source_view_has_selection(void *self, int64_t token) {
+    (void)self;
+    return gtk_text_buffer_get_has_selection(GTK_TEXT_BUFFER(source_buffer(token))) != FALSE;
+}
+
+void simp_gtk_source_view_edit(void *self, int64_t token, int64_t operation) {
+    (void)self;
+    GtkTextBuffer *buffer = g_object_ref(GTK_TEXT_BUFFER(source_buffer(token)));
+    GtkWidget *widget = g_object_ref(widget_live(token));
+    GdkClipboard *clipboard = gtk_widget_get_clipboard(widget);
+    bool editable = gtk_text_view_get_editable(GTK_TEXT_VIEW(widget));
+    if (operation == 0) gtk_text_buffer_cut_clipboard(buffer, clipboard, editable);
+    else if (operation == 1) gtk_text_buffer_copy_clipboard(buffer, clipboard);
+    else if (operation == 2) gtk_text_buffer_paste_clipboard(buffer, clipboard, NULL, editable);
+    else if (operation == 3) {
+        GtkTextIter start, end;
+        gtk_text_buffer_get_bounds(buffer, &start, &end);
+        gtk_text_buffer_select_range(buffer, &start, &end);
+    } else fatal("invalid source editing operation");
+    g_object_unref(widget);
+    g_object_unref(buffer);
 }
 
 bool simp_gtk_source_view_find(void *self, int64_t token, void *needle) {
