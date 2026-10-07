@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language id="tweed" name="Tweed Lang" version="2.0" _section="Source">
+  <metadata>
+    <property name="mimetypes">text/x-tweed</property>
+    <property name="globs">*.simp;*.tweed</property>
+    <property name="line-comment-start">//</property>
+  </metadata>
+  <styles>
+    <style id="keyword" name="Keyword" map-to="def:keyword"/>
+    <style id="type" name="Type" map-to="def:type"/>
+    <style id="string" name="String" map-to="def:string"/>
+    <style id="number" name="Number" map-to="def:decimal"/>
+    <style id="comment" name="Comment" map-to="def:comment"/>
+    <style id="operator" name="Operator" map-to="def:operator"/>
+  </styles>
+  <definitions>
+    <context id="tweed" class="no-spell-check">
+      <include>
+        <context ref="comment"/>
+        <context ref="string"/>
+        <context ref="number"/>
+        <context ref="keyword"/>
+        <context ref="type"/>
+        <context ref="operators"/>
+      </include>
+    </context>
+    <context id="comment" class="comment" style-ref="comment">
+      <match>//.*|#.*</match>
+    </context>
+    <context id="string" class="string" style-ref="string">
+      <match>&quot;([^&quot;\\]|\\.)*&quot;</match>
+    </context>
+    <context id="number" class="number" style-ref="number">
+      <match extended="true">\b[0-9]+(\.[0-9]+)?([uU])?\b</match>
+    </context>
+    <context id="keyword" class="keyword" style-ref="keyword">
+      <keyword>class</keyword><keyword>namespace</keyword><keyword>import</keyword>
+      <keyword>start</keyword><keyword>if</keyword><keyword>else</keyword>
+      <keyword>while</keyword><keyword>for</keyword><keyword>foreach</keyword>
+      <keyword>in</keyword><keyword>break</keyword><keyword>continue</keyword>
+      <keyword>return</keyword><keyword>try</keyword><keyword>catch</keyword>
+      <keyword>finally</keyword><keyword>raise</keyword><keyword>throw</keyword>
+      <keyword>public</keyword><keyword>private</keyword><keyword>protected</keyword>
+      <keyword>virtual</keyword><keyword>override</keyword><keyword>from</keyword>
+      <keyword>as</keyword><keyword>is</keyword><keyword>enum</keyword>
+      <keyword>callback</keyword><keyword>super</keyword><keyword>null</keyword>
+      <keyword>true</keyword><keyword>false</keyword>
+    </context>
+    <context id="type" class="type" style-ref="type">
+      <keyword>int</keyword><keyword>unsigned</keyword><keyword>float</keyword>
+      <keyword>bool</keyword><keyword>String</keyword><keyword>list</keyword>
+      <keyword>dict</keyword><keyword>buffer</keyword><keyword>handle</keyword>
+      <keyword>type</keyword><keyword>void</keyword>
+    </context>
+    <context id="operators" style-ref="operator">
+      <match>[-+*/%=!&lt;&gt;&amp;|.:]</match>
+    </context>
+  </definitions>
+</language>

@@ -46,6 +46,7 @@ def main() -> None:
     parser.add_argument("--compiler", type=Path, required=True)
     parser.add_argument("--work", type=Path, required=True)
     parser.add_argument("--gtk", action="store_true")
+    parser.add_argument("--sourceview", action="store_true")
     parser.add_argument("--xvfb")
     args = parser.parse_args()
     cases = list(programs(args.doc))
@@ -53,9 +54,14 @@ def main() -> None:
     args.work.mkdir(parents=True, exist_ok=True)
     for name, source, expectation in cases:
         requirement = expectation.get("requires")
-        assert requirement in (None, "gtk"), f"{name}: unsupported requirement {requirement}"
-        if requirement == "gtk" and not args.gtk:
+        assert requirement in (None, "gtk", "sourceview"), (
+            f"{name}: unsupported requirement {requirement}")
+        if requirement in ("gtk", "sourceview") and not args.gtk:
             print(f"NOT CONFIGURED optional GTK program {name} (SIMP_GTK=OFF)")
+            continue
+        if requirement == "sourceview" and not args.sourceview:
+            print(f"NOT CONFIGURED optional GtkSourceView program {name} "
+                  "(SIMP_GTK_SOURCEVIEW=OFF)")
             continue
         with tempfile.TemporaryDirectory(dir=args.work, prefix="doc-") as directory:
             work = Path(directory)
@@ -70,7 +76,7 @@ def main() -> None:
             program = project / "example.simp"
             program.write_text(source)
             try:
-                if requirement == "gtk":
+                if requirement in ("gtk", "sourceview"):
                     with headless(args.xvfb, work, environment(work)) as env:
                         check_program(args.compiler.resolve(), program, project, case, env)
                 else:

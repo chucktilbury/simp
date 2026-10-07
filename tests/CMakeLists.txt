@@ -84,6 +84,9 @@ if(SIMP_GTK)
         message(FATAL_ERROR "SIMP_GTK tests require dbus-daemon")
     endif()
     set(gtk_program_arguments --gtk --xvfb "${SIMP_XVFB_EXECUTABLE}")
+    if(SIMP_GTK_SOURCEVIEW)
+        list(APPEND gtk_program_arguments --sourceview)
+    endif()
     set(gtk_install_arguments)
     if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         list(APPEND gtk_install_arguments --build "${CMAKE_BINARY_DIR}")
@@ -396,6 +399,16 @@ foreach(example_case IN LISTS example_cases)
         ${gtk_program_arguments})
     set_tests_properties("simp_example_${example_name}" PROPERTIES LABELS examples TIMEOUT 60)
 endforeach()
+if(SIMP_GTK_SOURCEVIEW)
+    add_test(NAME simp_editor_default_shortcuts
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
+        --compiler "$<TARGET_FILE:simp>" --examples "${example_directory}"
+        --manifest "${CMAKE_CURRENT_SOURCE_DIR}/examples.json"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/examples-default-shortcuts"
+        --case "editor/tweed.simp" --gtk --sourceview --default-shortcuts
+        --xvfb "${SIMP_XVFB_EXECUTABLE}")
+    set_tests_properties(simp_editor_default_shortcuts PROPERTIES LABELS "examples;gtk" TIMEOUT 60)
+endif()
 
 add_test(NAME simp_documentation_programs
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_doc_programs.py"

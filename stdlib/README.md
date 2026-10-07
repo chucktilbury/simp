@@ -56,6 +56,14 @@ The `gtk/0.1.0` source tree is optional: it is staged/installed only with
 `SIMP_GTK=ON`, together with its package-native archive. Its native directory
 is package implementation detail. See [the GTK foundation guide](../doc/GTK.md).
 
+The `sourceview/0.1.0` package is separately opt-in via
+`SIMP_GTK_SOURCEVIEW=ON` and depends on the optional GTK package and GtkSourceView
+5. It provides editor-oriented source buffers/views, search and replace,
+undo/redo, cursor information, and shortcut binding. The Tweed language syntax
+definition lives with that package. The Simple-written first-iteration editor
+is in `examples/editor/`; see [its guide](../doc/TWEED-EDITOR.md). Neither
+optional package is linked into the compiler or programs that do not import it.
+
 ## Adding a package
 
 Create `stdlib/<package>/<semver>/`, add the manifest and source files, and
