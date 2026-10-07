@@ -45,11 +45,33 @@ Configuration fails if a dependency is
 missing; tests do not silently skip an unavailable display. Xvfb can be selected
 with `-DSIMP_XVFB_EXECUTABLE=/absolute/path/to/Xvfb`.
 
+The optional Tweed editor additionally uses GtkSourceView 5. Enable it with
+`-DSIMP_GTK_SOURCEVIEW=ON` (which also enables GTK). Install
+`libgtksourceview-5-dev` on Debian/Ubuntu. This option stages the separate
+`sourceview/0.1.0` package and its native support; ordinary compiler builds and
+applications that do not import these packages remain independent of GTK.
+Build and run the editor with:
+
+```sh
+cmake -S . -B build-editor -DCMAKE_BUILD_TYPE=Debug \
+  -DSIMP_GTK=ON -DSIMP_GTK_SOURCEVIEW=ON \
+  -DSIMP_STAGE_PREFIX="$PWD/build-editor/stage"
+cmake --build build-editor -j4
+build-editor/stage/bin/simp examples/editor/tweed.simp \
+  -o build-editor/tweed-editor
+build-editor/tweed-editor file1.simp file2.simp
+```
+
+The editor documentation describes its current capabilities and limitations:
+[Tweed editor first iteration](TWEED-EDITOR.md).
+
 The build stages/installs the `gtk/0.1.0` package and its native archive together.
 Its import metadata links GTK only into applications importing it, never the
 compiler or non-import programs. With the option off, no GTK package is staged
 or installed. Use a separate staging prefix for different configurations.
-See [GTK.md](GTK.md) for the widget API, application activation, and ownership.
+With sourceview enabled, the staged GTK manifest also carries the GtkSourceView
+link dependency needed by the optional native editor package. See
+[GTK.md](GTK.md) for the widget API, application activation, and ownership.
 Optional GTK examples and documentation programs run under a fresh headless
 display and isolated session bus when this build option is enabled.
 

@@ -26,6 +26,7 @@ namespace Gtk {
         int _changed(Entry source, callback<void(String)> action)
         int _close(Window source, callback<bool()> action)
         int _toggled(CheckButton source, callback<void(bool)> action)
+        int _pageChanged(Notebook source, callback<void()> action)
         bool _disconnect(int token)
         bool _connected(int token)
         public:
@@ -43,6 +44,9 @@ namespace Gtk {
         }
         SignalConnection(CheckButton source, callback<void(bool)> action) {
             _token = _toggled(source, action)
+        }
+        SignalConnection(Notebook source, callback<void()> action) {
+            _token = _pageChanged(source, action)
         }
         bool disconnect() { return _disconnect(_token) }
         bool connected() { return _connected(_token) }
@@ -68,6 +72,11 @@ namespace Gtk {
         void _activeSet(int token, bool value)
         bool _activeGet(int token)
         protected:
+        void _notebookAppend(int notebook, int child, String title)
+        int _notebookCurrent(int notebook)
+        void _notebookSetCurrent(int notebook, int page)
+        int _notebookCount(int notebook)
+        void _notebookTitle(int notebook, int page, String title)
         Widget(int kind, String text, int orientation, int spacing) {
             _id = _create(kind, text, orientation, spacing, _self()._keepAlive)
         }
@@ -82,6 +91,7 @@ namespace Gtk {
         void _setActive(bool value) { _activeSet(_id, value) }
         bool _getActive() { return _activeGet(_id) }
         public:
+        int _widgetToken() { return _id }
         void dispose() { _dispose(_id) }
         bool disposed() { return _disposed(_id) }
         void setVisible(bool value) { _visible(_id, value) }
@@ -166,6 +176,32 @@ namespace Gtk {
         void remove(Widget child) { _removeChild(child) }
     }
 
+    class Notebook : Widget {
+        private:
+        Notebook _notebookSelf()
+        public:
+        Notebook() { super Widget(9, "", 0, 0) }
+        void appendPage(Widget child, String title) {
+            _notebookAppend(_widgetToken(), child._widgetToken(), title)
+        }
+        int currentPage() { return _notebookCurrent(_widgetToken()) }
+        void setCurrentPage(int page) { _notebookSetCurrent(_widgetToken(), page) }
+        int pageCount() { return _notebookCount(_widgetToken()) }
+        void setPageTitle(int page, String title) {
+            _notebookTitle(_widgetToken(), page, title)
+        }
+        void remove(Widget child) { _removeChild(child) }
+        SignalConnection onPageChanged(callback<void()> action) {
+            return SignalConnection(_notebookSelf(), action)
+        }
+    }
+
+    class SourceViewWidget : Widget {
+        public:
+        SourceViewWidget() { super Widget(8, "", 0, 0) }
+        int nativeToken() { return _widgetToken() }
+    }
+
     void Application._create(String id) from "simp_gtk_application_create"
     Application Application._self() from "simp_gtk_self"
     Widget Widget._self() from "simp_gtk_self"
@@ -173,6 +209,7 @@ namespace Gtk {
     Button Button._buttonSelf() from "simp_gtk_self"
     Entry Entry._entrySelf() from "simp_gtk_self"
     CheckButton CheckButton._checkSelf() from "simp_gtk_self"
+    Notebook Notebook._notebookSelf() from "simp_gtk_self"
     void Application.initialize() from "simp_gtk_initialize"
     String Application.id() from "simp_gtk_application_id"
     void Application.run() from "simp_gtk_run"
@@ -186,6 +223,8 @@ namespace Gtk {
     int SignalConnection._changed(Entry source, callback<void(String)> action) from "simp_gtk_entry_signal"
     int SignalConnection._close(Window source, callback<bool()> action) from "simp_gtk_window_signal"
     int SignalConnection._toggled(CheckButton source, callback<void(bool)> action) from "simp_gtk_checkbox_signal"
+    int SignalConnection._pageChanged(Notebook source, callback<void()> action)
+        from "simp_gtk_notebook_signal"
     bool SignalConnection._disconnect(int token) from "simp_gtk_connection_disconnect"
     bool SignalConnection._connected(int token) from "simp_gtk_connected"
     int Widget._create(int kind, String text, int orientation, int spacing, callback<void()> root)
@@ -203,4 +242,12 @@ namespace Gtk {
     void Widget._layout(int token, int orientation, int spacing) from "simp_gtk_box_layout"
     void Widget._activeSet(int token, bool value) from "simp_gtk_checkbox_set"
     bool Widget._activeGet(int token) from "simp_gtk_checkbox_get"
+    void Widget._notebookAppend(int notebook, int child, String title)
+        from "simp_gtk_notebook_append"
+    int Widget._notebookCurrent(int notebook) from "simp_gtk_notebook_current"
+    void Widget._notebookSetCurrent(int notebook, int page)
+        from "simp_gtk_notebook_set_current"
+    int Widget._notebookCount(int notebook) from "simp_gtk_notebook_count"
+    void Widget._notebookTitle(int notebook, int page, String title)
+        from "simp_gtk_notebook_title"
 }

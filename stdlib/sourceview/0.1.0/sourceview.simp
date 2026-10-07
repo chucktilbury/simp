@@ -1,0 +1,79 @@
+import gtk
+
+namespace GtkSource {
+    class View {
+        private:
+        Gtk.SourceViewWidget _widget
+        void _setText(int token, String text)
+        String _getText(int token)
+        bool _modified(int token)
+        void _markSaved(int token)
+        void _undo(int token)
+        void _redo(int token)
+        bool _find(int token, String query)
+        bool _replaceNext(int token, String query, String replacement)
+        int _line(int token)
+        int _column(int token)
+        bool _hasContext(int token, String context, int offset)
+        void _language(int token, String language)
+        bool _bindShortcut(int token, String trigger, callback<void()> action)
+        bool _hasShortcut(int token, String trigger)
+        int _changed(int token, callback<void()> action)
+        int _cursorMoved(int token, callback<void()> action)
+        public:
+        View() {
+            _widget = Gtk.SourceViewWidget()
+            _language(_widgetToken(), "tweed")
+        }
+        Gtk.SourceViewWidget widget() { return _widget }
+        int _widgetToken() { return _widget.nativeToken() }
+        void setText(String text) { _setText(_widgetToken(), text) }
+        String text() { return _getText(_widgetToken()) }
+        bool modified() { return _modified(_widgetToken()) }
+        void markSaved() { _markSaved(_widgetToken()) }
+        void undo() { _undo(_widgetToken()) }
+        void redo() { _redo(_widgetToken()) }
+        bool find(String query) { return _find(_widgetToken(), query) }
+        bool replaceNext(String query, String replacement) {
+            return _replaceNext(_widgetToken(), query, replacement)
+        }
+        int line() { return _line(_widgetToken()) }
+        int column() { return _column(_widgetToken()) }
+        bool hasContextAt(String context, int offset) {
+            return _hasContext(_widgetToken(), context, offset)
+        }
+        bool bindShortcut(String trigger, callback<void()> action) {
+            return _bindShortcut(_widgetToken(), trigger, action)
+        }
+        bool hasShortcut(String trigger) { return _hasShortcut(_widgetToken(), trigger) }
+        int onChanged(callback<void()> action) {
+            return _changed(_widgetToken(), action)
+        }
+        int onCursorMoved(callback<void()> action) {
+            return _cursorMoved(_widgetToken(), action)
+        }
+    }
+
+    void View._setText(int token, String text) from "simp_gtk_source_view_set_text"
+    String View._getText(int token) from "simp_gtk_source_view_get_text"
+    bool View._modified(int token) from "simp_gtk_source_view_modified"
+    void View._markSaved(int token) from "simp_gtk_source_view_mark_saved"
+    void View._undo(int token) from "simp_gtk_source_view_undo"
+    void View._redo(int token) from "simp_gtk_source_view_redo"
+    bool View._find(int token, String query) from "simp_gtk_source_view_find"
+    bool View._replaceNext(int token, String query, String replacement)
+        from "simp_gtk_source_view_replace_next"
+    int View._line(int token) from "simp_gtk_source_view_line"
+    int View._column(int token) from "simp_gtk_source_view_column"
+    bool View._hasContext(int token, String context, int offset)
+        from "simp_gtk_source_view_has_context"
+    void View._language(int token, String language) from "simp_gtk_source_view_language"
+    bool View._bindShortcut(int token, String trigger, callback<void()> action)
+        from "simp_gtk_source_view_bind_shortcut"
+    bool View._hasShortcut(int token, String trigger)
+        from "simp_gtk_source_view_has_shortcut"
+    int View._changed(int token, callback<void()> action)
+        from "simp_gtk_source_view_changed"
+    int View._cursorMoved(int token, callback<void()> action)
+        from "simp_gtk_source_view_cursor_moved"
+}

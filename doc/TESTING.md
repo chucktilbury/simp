@@ -53,14 +53,15 @@ The optional suite is enabled explicitly, never as a silently skipped display
 test:
 
 ```sh
-cmake -S . -B build-gtk -DSIMP_GTK=ON \
+cmake -S . -B build-gtk -DSIMP_GTK=ON -DSIMP_GTK_SOURCEVIEW=ON \
   -DSIMP_STAGE_PREFIX="$PWD/build-gtk/stage"
 cmake --build build-gtk -j4
-ctest --test-dir build-gtk -R '^(simp_gtk|simp_callbacks)$' --output-on-failure -V
+ctest --test-dir build-gtk -R '^(simp_gtk|simp_callbacks|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts)$' --output-on-failure -V
 ```
 
-Configuration requires `pkg-config`, GTK 4 development files, Xvfb, and
-`dbus-daemon` (`pkg-config libgtk-4-dev xvfb dbus-daemon` on Debian/Ubuntu).
+Configuration requires `pkg-config`, GTK 4 and GtkSourceView 5 development
+files, Xvfb, and `dbus-daemon` (`pkg-config libgtk-4-dev
+libgtksourceview-5-dev xvfb dbus-daemon` on Debian/Ubuntu).
 A local Xvfb executable can
 be supplied via `SIMP_XVFB_EXECUTABLE`; it must have its normal shared-library
 dependencies available. `gtk_support.py` starts a fresh Xvfb using `-displayfd` and a private session
@@ -84,6 +85,11 @@ GTK linkage in non-import programs and the compiler. Fixtures live in
 `simp_callbacks` separately checks one-shot transport roots, accept on another
 registered thread, cancellation, lock reentry and unregistered-thread rejection,
 as well as the pre-existing strict foreign-owner invocation failures.
+
+The editor example test exercises the Tweed language definition, text-buffer
+editing/search, undo/redo, document/tab behavior and file operations. The
+shortcut test covers defaults, user mappings and conflicts. Run the complete
+configured suite with `ctest --test-dir build-gtk --output-on-failure`.
 
 For sanitizer coverage, add `-DSIMP_GTK=ON` and `SIMP_XVFB_EXECUTABLE` if needed
 to the sanitizer build above, then run the same selector. Address/UB checks

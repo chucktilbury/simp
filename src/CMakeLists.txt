@@ -142,22 +142,56 @@ set_target_properties(simp_sqlite_native PROPERTIES
 add_dependencies(simp_resources simp_sqlite_native)
 
 option(SIMP_GTK "Build the optional GTK 4 interface package and headless tests" OFF)
+option(SIMP_GTK_SOURCEVIEW "Build the optional GtkSourceView editor package" OFF)
+if(SIMP_GTK_SOURCEVIEW AND NOT SIMP_GTK)
+    message(FATAL_ERROR "SIMP_GTK_SOURCEVIEW requires SIMP_GTK=ON")
+endif()
 if(SIMP_GTK)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
     add_library(simp_gtk_native STATIC
         "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/gtk.c")
     target_link_libraries(simp_gtk_native PRIVATE simp_headers PkgConfig::GTK4 Threads::Threads)
+    if(SIMP_GTK_SOURCEVIEW)
+        pkg_check_modules(GTK_SOURCEVIEW REQUIRED IMPORTED_TARGET gtksourceview-5)
+        target_link_libraries(simp_gtk_native PRIVATE PkgConfig::GTK_SOURCEVIEW)
+        target_compile_definitions(simp_gtk_native PRIVATE
+            SIMP_GTK_SOURCEVIEW=1
+            SIMP_GTK_SOURCEVIEW_SOURCE_LANG_DIR="${SIMP_SOURCE_STDLIB_DIRECTORY}/sourceview/0.1.0/language-specs"
+            SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR="${CMAKE_INSTALL_FULL_DATADIR}/simp/modules/sourceview/0.1.0/language-specs")
+        set(SIMP_GTK_SOURCEVIEW_MANIFEST
+            "${CMAKE_CURRENT_BINARY_DIR}/gtk-sourceview-simp-package.toml")
+        configure_file(
+            "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/simp-package-sourceview.toml.in"
+            "${SIMP_GTK_SOURCEVIEW_MANIFEST}" @ONLY)
+        add_custom_target(simp_sourceview_package ALL
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${SIMP_GTK_SOURCEVIEW_MANIFEST}"
+                "${SIMP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/simp-package.toml"
+            DEPENDS simp_resources
+            COMMENT "Staging GtkSourceView link metadata"
+            VERBATIM)
+    else()
+        add_custom_command(TARGET simp_resources POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E remove_directory
+                "${SIMP_STAGE_MODULE_DIRECTORY}/sourceview")
+    endif()
     target_compile_options(simp_gtk_native PRIVATE -Wall -Wextra -Wpedantic)
     set_target_properties(simp_gtk_native PROPERTIES
         ARCHIVE_OUTPUT_DIRECTORY "${SIMP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/lib"
         OUTPUT_NAME simp_gtk)
     add_dependencies(simp_resources simp_gtk_native)
     message(STATUS "GTK 4 interface enabled; GTK links only into importing applications")
+    if(SIMP_GTK_SOURCEVIEW)
+        message(STATUS "GtkSourceView editor package enabled")
+    endif()
 else()
     # Do not advertise an unusable source-only package in a non-GTK prefix.
     add_custom_command(TARGET simp_resources POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E remove_directory "${SIMP_STAGE_MODULE_DIRECTORY}/gtk")
+    add_custom_command(TARGET simp_resources POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory
+            "${SIMP_STAGE_MODULE_DIRECTORY}/sourceview")
     message(STATUS "GTK 4 interface disabled (enable with -DSIMP_GTK=ON)")
 endif()
 

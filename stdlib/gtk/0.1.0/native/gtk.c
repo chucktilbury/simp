@@ -5,8 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef SIMP_GTK_SOURCEVIEW
+#include <gtksourceview/gtksource.h>
+#endif
 
 extern const SimpClassMeta simp_string_class_meta;
+
+typedef struct ShortcutBinding ShortcutBinding;
 
 typedef struct WidgetRecord {
     struct WidgetRecord *next;
@@ -15,8 +20,18 @@ typedef struct WidgetRecord {
     struct WidgetRecord *parent;
     void *receiver;
     SimpCallbackContext *root;
+    ShortcutBinding *shortcuts;
     bool native_destroying;
 } WidgetRecord;
+
+#ifdef SIMP_GTK_SOURCEVIEW
+struct ShortcutBinding {
+    ShortcutBinding *next;
+    WidgetRecord *owner;
+    SimpCallbackContext *context;
+    char *trigger;
+};
+#endif
 
 typedef struct Connection {
     struct Connection *next;
@@ -51,6 +66,9 @@ static GtkApplication *application;
 static bool activated;
 static bool ran;
 static bool scheduler_hold;
+#ifdef SIMP_GTK_SOURCEVIEW
+static GtkSourceLanguageManager *source_language_manager;
+#endif
 static void widget_dispose(WidgetRecord *record);
 static void window_removed(GtkApplication *app, GtkWindow *window, gpointer data);
 
@@ -126,8 +144,41 @@ static void clicked(GtkButton *button, gpointer data) {
     signal_leave(connection, acquired);
 }
 
+static void page_switched(GtkNotebook *notebook, GtkWidget *page, guint page_num,
+                          gpointer data) {
+    (void)notebook;
+    (void)page;
+    (void)page_num;
+    Connection *connection = data;
+    int acquired = signal_enter(connection);
+    typedef void (*Adapter)(SimpCallbackContext *);
+    ((Adapter)simp_callback_adapter(connection->context))(connection->context);
+    signal_leave(connection, acquired);
+}
+
 static void changed(GtkEditable *editable, gpointer data) {
     (void)editable;
+    Connection *connection = data;
+    int acquired = signal_enter(connection);
+    typedef void (*Adapter)(SimpCallbackContext *);
+    ((Adapter)simp_callback_adapter(connection->context))(connection->context);
+    signal_leave(connection, acquired);
+}
+
+static void changed_no_args(GObject *object, gpointer data) {
+    (void)object;
+    Connection *connection = data;
+    int acquired = signal_enter(connection);
+    typedef void (*Adapter)(SimpCallbackContext *);
+    ((Adapter)simp_callback_adapter(connection->context))(connection->context);
+    signal_leave(connection, acquired);
+}
+
+static void cursor_moved(GtkTextBuffer *buffer, GtkTextIter *location,
+                         GtkTextMark *mark, gpointer data) {
+    (void)buffer;
+    (void)location;
+    (void)mark;
     Connection *connection = data;
     int acquired = signal_enter(connection);
     typedef void (*Adapter)(SimpCallbackContext *);
@@ -239,6 +290,23 @@ static void application_initialize(const char *id, bool scheduler) {
     require_managed();
     if (initialized) fatal("application initialization is single-use");
     if (!gtk_init_check()) fatal("GTK initialization failed (display unavailable)");
+#ifdef SIMP_GTK_SOURCEVIEW
+    GtkSourceLanguageManager *defaults = gtk_source_language_manager_get_default();
+    const char * const *existing_paths =
+        gtk_source_language_manager_get_search_path(defaults);
+    GPtrArray *paths = g_ptr_array_new();
+    for (size_t i = 0; existing_paths && existing_paths[i]; ++i)
+        g_ptr_array_add(paths, (gpointer)existing_paths[i]);
+    if (g_file_test(SIMP_GTK_SOURCEVIEW_SOURCE_LANG_DIR, G_FILE_TEST_IS_DIR))
+        g_ptr_array_add(paths, (gpointer)SIMP_GTK_SOURCEVIEW_SOURCE_LANG_DIR);
+    if (g_file_test(SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR, G_FILE_TEST_IS_DIR))
+        g_ptr_array_add(paths, (gpointer)SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR);
+    g_ptr_array_add(paths, NULL);
+    source_language_manager = gtk_source_language_manager_new();
+    gtk_source_language_manager_set_search_path(source_language_manager,
+                                                 (const char **)paths->pdata);
+    g_ptr_array_unref(paths);
+#endif
     owner = pthread_self();
     initialized = true;
     main_context = g_main_context_ref(g_main_context_default());
@@ -352,6 +420,9 @@ void simp_gtk_shutdown(void *self) {
     }
     for (WidgetRecord *record = widgets; record; record = record->next)
         widget_dispose(record);
+#ifdef SIMP_GTK_SOURCEVIEW
+    g_clear_object(&source_language_manager);
+#endif
     while (widgets) {
         WidgetRecord *next = widgets->next;
         free(widgets);
@@ -457,6 +528,10 @@ static void detach(WidgetRecord *r) {
     else if (GTK_IS_WINDOW(parent)) gtk_window_set_child(GTK_WINDOW(parent), NULL);
     else if (GTK_IS_SCROLLED_WINDOW(parent))
         gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(parent), NULL);
+    else if (GTK_IS_NOTEBOOK(parent)) {
+        int page = gtk_notebook_page_num(GTK_NOTEBOOK(parent), r->widget);
+        if (page >= 0) gtk_notebook_remove_page(GTK_NOTEBOOK(parent), page);
+    }
     else fatal("invalid widget parent");
 }
 
@@ -464,6 +539,21 @@ static void widget_dispose(WidgetRecord *r) {
     if (!r->widget) return;
     GtkWidget *widget = r->widget;
     disconnect_object(G_OBJECT(widget));
+#ifdef SIMP_GTK_SOURCEVIEW
+    if (GTK_SOURCE_IS_VIEW(widget))
+        disconnect_object(G_OBJECT(gtk_text_view_get_buffer(GTK_TEXT_VIEW(widget))));
+    for (ShortcutBinding *binding = r->shortcuts; binding;) {
+        ShortcutBinding *next = binding->next;
+        if (binding->context) {
+            simp_callback_release(binding->context);
+            simp_callback_dispose(binding->context);
+            binding->context = NULL;
+        }
+        binding->owner = NULL;
+        binding = next;
+    }
+    r->shortcuts = NULL;
+#endif
     for (WidgetRecord *child = widgets; child; child = child->next)
         if (child->parent == r) widget_dispose(child);
     detach(r);
@@ -533,6 +623,14 @@ int64_t simp_gtk_widget_create(void *self, int64_t kind, void *text,
         gtk_editable_set_text(GTK_EDITABLE(widget), label); break;
     case 6: widget = gtk_check_button_new_with_label(label); break;
     case 7: widget = gtk_scrolled_window_new(); break;
+    case 9: widget = gtk_notebook_new(); break;
+#ifdef SIMP_GTK_SOURCEVIEW
+    case 8:
+        widget = GTK_WIDGET(gtk_source_view_new());
+        gtk_text_buffer_set_enable_undo(
+            gtk_text_view_get_buffer(GTK_TEXT_VIEW(widget)), TRUE);
+        break;
+#endif
     default: fatal("invalid widget kind");
     }
     g_free(label);
@@ -619,6 +717,8 @@ void simp_gtk_widget_attach(void *self, int64_t parent, int64_t child) {
         if (gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(p)))
             fatal("container already has a child");
         gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(p), c);
+    } else if (GTK_IS_NOTEBOOK(p)) {
+        fatal("use Notebook.appendPage to attach a notebook page");
     } else fatal("widget is not a container");
     cr->parent = pr;
 }
@@ -678,6 +778,296 @@ bool simp_gtk_checkbox_get(void *self, int64_t token) {
     return gtk_check_button_get_active(GTK_CHECK_BUTTON(w)) != FALSE;
 }
 
+void simp_gtk_notebook_append(void *self, int64_t notebook, int64_t child, void *title) {
+    (void)self;
+    GtkWidget *parent = widget_live(notebook);
+    GtkWidget *page = widget_live(child);
+    WidgetRecord *pr = record_find(notebook), *cr = record_find(child);
+    if (!GTK_IS_NOTEBOOK(parent) || GTK_IS_WINDOW(page) || pr == cr ||
+        cr->parent || gtk_widget_get_parent(page))
+        fatal("invalid notebook page");
+    for (WidgetRecord *r = pr; r; r = r->parent)
+        if (r == cr) fatal("parenting cycle");
+    char *label = text_copy(title);
+    gtk_notebook_append_page(GTK_NOTEBOOK(parent), page, gtk_label_new(label));
+    g_free(label);
+    cr->parent = pr;
+}
+
+int64_t simp_gtk_notebook_current(void *self, int64_t token) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    if (!GTK_IS_NOTEBOOK(widget)) fatal("operation requires Notebook");
+    return gtk_notebook_get_current_page(GTK_NOTEBOOK(widget));
+}
+
+void simp_gtk_notebook_set_current(void *self, int64_t token, int64_t page) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    if (!GTK_IS_NOTEBOOK(widget) || page < 0 ||
+        page >= gtk_notebook_get_n_pages(GTK_NOTEBOOK(widget)))
+        fatal("invalid notebook page");
+    gtk_notebook_set_current_page(GTK_NOTEBOOK(widget), (int)page);
+}
+
+int64_t simp_gtk_notebook_count(void *self, int64_t token) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    if (!GTK_IS_NOTEBOOK(widget)) fatal("operation requires Notebook");
+    return gtk_notebook_get_n_pages(GTK_NOTEBOOK(widget));
+}
+
+void simp_gtk_notebook_title(void *self, int64_t token, int64_t page, void *title) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    if (!GTK_IS_NOTEBOOK(widget) || page < 0 ||
+        page >= gtk_notebook_get_n_pages(GTK_NOTEBOOK(widget)))
+        fatal("invalid notebook page");
+    GtkWidget *tab = gtk_notebook_get_tab_label(GTK_NOTEBOOK(widget),
+                                                gtk_notebook_get_nth_page(GTK_NOTEBOOK(widget), (int)page));
+    if (!GTK_IS_LABEL(tab)) fatal("notebook tab label is not a Label");
+    char *label = text_copy(title);
+    gtk_label_set_text(GTK_LABEL(tab), label);
+    g_free(label);
+}
+
+#ifdef SIMP_GTK_SOURCEVIEW
+static GtkSourceBuffer *source_buffer(int64_t token) {
+    GtkWidget *widget = widget_live(token);
+    if (!GTK_SOURCE_IS_VIEW(widget)) fatal("operation requires GtkSourceView");
+    return GTK_SOURCE_BUFFER(gtk_text_view_get_buffer(GTK_TEXT_VIEW(widget)));
+}
+
+static gboolean shortcut_invoke(GtkWidget *widget, GVariant *args, gpointer data) {
+    (void)widget;
+    (void)args;
+    simp_gtk_require_owner();
+    ShortcutBinding *binding = data;
+    if (!binding->context) return FALSE;
+    int acquired = simp_runtime_managed_enter();
+    typedef void (*Adapter)(SimpCallbackContext *);
+    ((Adapter)simp_callback_adapter(binding->context))(binding->context);
+    simp_runtime_managed_leave(acquired);
+    return TRUE;
+}
+
+static void shortcut_context_dispose(gpointer data) {
+    simp_gtk_require_owner();
+    int acquired = simp_runtime_managed_enter();
+    ShortcutBinding *binding = data;
+    if (binding->context) {
+        simp_callback_release(binding->context);
+        simp_callback_dispose(binding->context);
+    }
+    if (binding->owner) {
+        ShortcutBinding **link = &binding->owner->shortcuts;
+        while (*link && *link != binding) link = &(*link)->next;
+        if (*link == binding) *link = binding->next;
+    }
+    g_free(binding->trigger);
+    free(binding);
+    simp_runtime_managed_leave(acquired);
+}
+
+int64_t simp_gtk_source_view_changed(void *self, int64_t token, void *callback) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    return connect_signal(G_OBJECT(buffer), "changed", G_CALLBACK(changed_no_args),
+                          callback, "callback<void()>");
+}
+
+int64_t simp_gtk_source_view_cursor_moved(void *self, int64_t token, void *callback) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    return connect_signal(G_OBJECT(buffer), "mark-set", G_CALLBACK(cursor_moved),
+                          callback, "callback<void()>");
+}
+
+bool simp_gtk_source_view_bind_shortcut(void *self, int64_t token, void *trigger_text,
+                                        void *callback) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    if (!GTK_SOURCE_IS_VIEW(widget)) fatal("operation requires GtkSourceView");
+    char *trigger_name = text_copy(trigger_text);
+    GtkShortcutTrigger *trigger = gtk_shortcut_trigger_parse_string(trigger_name);
+    if (!trigger) {
+        g_free(trigger_name);
+        return false;
+    }
+    ShortcutBinding *binding = calloc(1, sizeof(*binding));
+    if (!binding) fatal("allocation failed");
+    binding->owner = record_find(token);
+    binding->context = simp_callback_acquire(callback, "callback<void()>");
+    binding->trigger = trigger_name;
+    binding->next = binding->owner->shortcuts;
+    binding->owner->shortcuts = binding;
+    GtkShortcutAction *action = gtk_callback_action_new(
+        shortcut_invoke, binding, shortcut_context_dispose);
+    if (!action) fatal("could not create GTK shortcut action");
+    GtkShortcut *shortcut = gtk_shortcut_new(trigger, action);
+    GtkEventController *controller = gtk_shortcut_controller_new();
+    gtk_shortcut_controller_set_scope(GTK_SHORTCUT_CONTROLLER(controller),
+                                      GTK_SHORTCUT_SCOPE_LOCAL);
+    gtk_shortcut_controller_add_shortcut(GTK_SHORTCUT_CONTROLLER(controller), shortcut);
+    gtk_widget_add_controller(widget, controller);
+    return true;
+}
+
+bool simp_gtk_source_view_has_shortcut(void *self, int64_t token, void *trigger_text) {
+    (void)self;
+    char *trigger = text_copy(trigger_text);
+    WidgetRecord *record = record_find(token);
+    if (!GTK_SOURCE_IS_VIEW(record->widget)) fatal("operation requires GtkSourceView");
+    bool found = false;
+    for (ShortcutBinding *binding = record->shortcuts; binding; binding = binding->next)
+        if (g_str_equal(binding->trigger, trigger)) {
+            found = true;
+            break;
+        }
+    g_free(trigger);
+    return found;
+}
+
+void simp_gtk_source_view_set_text(void *self, int64_t token, void *text) {
+    (void)self;
+    char *bytes = text_copy(text);
+    gtk_text_buffer_set_text(GTK_TEXT_BUFFER(source_buffer(token)), bytes, -1);
+    g_free(bytes);
+}
+
+void *simp_gtk_source_view_get_text(void *self, int64_t token) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    GtkTextIter start, end;
+    gtk_text_buffer_get_bounds(buffer, &start, &end);
+    char *text = gtk_text_buffer_get_text(buffer, &start, &end, TRUE);
+    void *result = simp_string_new(&simp_string_class_meta, text, strlen(text));
+    g_free(text);
+    return result;
+}
+
+bool simp_gtk_source_view_modified(void *self, int64_t token) {
+    (void)self;
+    return gtk_text_buffer_get_modified(GTK_TEXT_BUFFER(source_buffer(token))) != FALSE;
+}
+
+void simp_gtk_source_view_mark_saved(void *self, int64_t token) {
+    (void)self;
+    gtk_text_buffer_set_modified(GTK_TEXT_BUFFER(source_buffer(token)), FALSE);
+}
+
+void simp_gtk_source_view_undo(void *self, int64_t token) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    if (gtk_text_buffer_get_can_undo(buffer)) gtk_text_buffer_undo(buffer);
+}
+
+void simp_gtk_source_view_redo(void *self, int64_t token) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    if (gtk_text_buffer_get_can_redo(buffer)) gtk_text_buffer_redo(buffer);
+}
+
+bool simp_gtk_source_view_find(void *self, int64_t token, void *needle) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    char *query = text_copy(needle);
+    if (!*query) {
+        g_free(query);
+        return false;
+    }
+    GtkTextIter start, end, match_start, match_end;
+    gtk_text_buffer_get_selection_bounds(buffer, &start, &end);
+    if (gtk_text_iter_get_offset(&start) == gtk_text_iter_get_offset(&end))
+        gtk_text_buffer_get_iter_at_mark(buffer, &start, gtk_text_buffer_get_insert(buffer));
+    gboolean found = gtk_text_iter_forward_search(&start, query, GTK_TEXT_SEARCH_CASE_INSENSITIVE,
+                                                  &match_start, &match_end, NULL);
+    if (!found) {
+        gtk_text_buffer_get_start_iter(buffer, &start);
+        found = gtk_text_iter_forward_search(&start, query, GTK_TEXT_SEARCH_CASE_INSENSITIVE,
+                                             &match_start, &match_end, NULL);
+    }
+    if (found) {
+        gtk_text_buffer_select_range(buffer, &match_start, &match_end);
+        gtk_text_view_scroll_to_iter(GTK_TEXT_VIEW(widget_live(token)), &match_start, 0.1, FALSE, 0, 0);
+    }
+    g_free(query);
+    return found != FALSE;
+}
+
+bool simp_gtk_source_view_replace_next(void *self, int64_t token, void *needle, void *replacement) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    GtkTextIter start, end;
+    if (!gtk_text_buffer_get_selection_bounds(buffer, &start, &end)) {
+        if (!simp_gtk_source_view_find(self, token, needle)) return false;
+        gtk_text_buffer_get_selection_bounds(buffer, &start, &end);
+    }
+    char *expected = text_copy(needle);
+    char *actual = gtk_text_buffer_get_text(buffer, &start, &end, TRUE);
+    gboolean matches = g_ascii_strcasecmp(actual, expected) == 0;
+    g_free(actual);
+    g_free(expected);
+    if (!matches && !simp_gtk_source_view_find(self, token, needle)) return false;
+    gtk_text_buffer_get_selection_bounds(buffer, &start, &end);
+    char *text = text_copy(replacement);
+    gtk_text_buffer_begin_user_action(buffer);
+    gtk_text_buffer_delete(buffer, &start, &end);
+    gtk_text_buffer_insert(buffer, &start, text, -1);
+    gtk_text_buffer_end_user_action(buffer);
+    g_free(text);
+    return true;
+}
+
+int64_t simp_gtk_source_view_line(void *self, int64_t token) {
+    (void)self;
+    GtkTextIter cursor;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
+    return gtk_text_iter_get_line(&cursor) + 1;
+}
+
+int64_t simp_gtk_source_view_column(void *self, int64_t token) {
+    (void)self;
+    GtkTextIter cursor;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
+    return gtk_text_iter_get_line_offset(&cursor) + 1;
+}
+
+void simp_gtk_source_view_language(void *self, int64_t token, void *language_id) {
+    (void)self;
+    char *id = text_copy(language_id);
+    GtkSourceLanguage *language =
+        gtk_source_language_manager_get_language(source_language_manager, id);
+    g_free(id);
+    if (!language) fatal("GtkSourceView language definition was not found");
+    GtkSourceBuffer *buffer = source_buffer(token);
+    gtk_source_buffer_set_language(buffer, language);
+    gtk_source_buffer_set_highlight_syntax(buffer, TRUE);
+    gtk_source_view_set_show_line_numbers(GTK_SOURCE_VIEW(widget_live(token)), TRUE);
+    gtk_source_view_set_auto_indent(GTK_SOURCE_VIEW(widget_live(token)), TRUE);
+    gtk_source_view_set_tab_width(GTK_SOURCE_VIEW(widget_live(token)), 4);
+    gtk_source_view_set_insert_spaces_instead_of_tabs(GTK_SOURCE_VIEW(widget_live(token)), TRUE);
+}
+
+bool simp_gtk_source_view_has_context(void *self, int64_t token, void *context_name,
+                                     int64_t offset) {
+    (void)self;
+    GtkSourceBuffer *buffer = source_buffer(token);
+    GtkTextIter start, end, position;
+    gtk_text_buffer_get_bounds(GTK_TEXT_BUFFER(buffer), &start, &end);
+    gtk_source_buffer_ensure_highlight(buffer, &start, &end);
+    if (offset < 0 || offset > gtk_text_iter_get_offset(&end))
+        fatal("source context offset is out of range");
+    gtk_text_buffer_get_iter_at_offset(GTK_TEXT_BUFFER(buffer), &position, (int)offset);
+    char *name = text_copy(context_name);
+    gboolean has_context = gtk_source_buffer_iter_has_context_class(buffer, &position, name);
+    g_free(name);
+    return has_context != FALSE;
+}
+#endif
+
 int64_t simp_gtk_widget_signal(void *self, int64_t token, int64_t kind, void *callback) {
     (void)self;
     GtkWidget *w = widget_live(token);
@@ -692,6 +1082,11 @@ int64_t simp_gtk_widget_signal(void *self, int64_t token, int64_t kind, void *ca
         if (!GTK_IS_CHECK_BUTTON(w)) fatal("toggled requires CheckButton");
         return connect_signal(G_OBJECT(w), "toggled", G_CALLBACK(toggled),
                               callback, "callback<void(bool)>");
+    }
+    if (kind == 4) {
+        if (!GTK_IS_NOTEBOOK(w)) fatal("page change requires GtkNotebook");
+        return connect_signal(G_OBJECT(w), "switch-page", G_CALLBACK(page_switched),
+                              callback, "callback<void()>");
     }
     fatal("invalid signal kind");
 }
@@ -716,4 +1111,7 @@ int64_t simp_gtk_window_signal(void *self, void *source, void *callback) {
 }
 int64_t simp_gtk_checkbox_signal(void *self, void *source, void *callback) {
     return simp_gtk_widget_signal(self, source_token(source), 3, callback);
+}
+int64_t simp_gtk_notebook_signal(void *self, void *source, void *callback) {
+    return simp_gtk_widget_signal(self, source_token(source), 4, callback);
 }

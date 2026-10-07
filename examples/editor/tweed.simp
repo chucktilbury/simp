@@ -1,0 +1,739 @@
+import gtk
+import sourceview
+import system
+
+class EditorDocument {
+    GtkSource.View view
+    Gtk.ScrolledWindow scroller
+    String path
+    list shortcuts
+    bool shortcutConflict
+
+    EditorDocument(String filePath, String contents) {
+        path = filePath
+        shortcuts = []
+        shortcutConflict = false
+        view = GtkSource.View()
+        view.setText(contents)
+        view.markSaved()
+        scroller = Gtk.ScrolledWindow()
+        scroller.setChild(view.widget())
+    }
+
+    String tabTitle() {
+        String title = "Untitled"
+        if (!path.equals("")) {
+            title = System.FileSystem().basename(path)
+        }
+        if (view.modified()) {
+            title.append("*")
+        }
+        return title
+    }
+}
+
+class TweedEditor {
+    Gtk.Window window
+    Gtk.Box layout
+    Gtk.Box fileTools
+    Gtk.Box searchTools
+    Gtk.Entry pathEntry
+    Gtk.Entry findEntry
+    Gtk.Entry replaceEntry
+    Gtk.Notebook notebook
+    Gtk.Label status
+    Gtk.Button openButton
+    Gtk.Button recentButton
+    Gtk.Button newButton
+    Gtk.Button closeTabButton
+    Gtk.Button saveButton
+    Gtk.Button saveAsButton
+    Gtk.Button findButton
+    Gtk.Button replaceButton
+    Gtk.Button undoButton
+    Gtk.Button redoButton
+    Gtk.Box closeChoices
+    Gtk.Button closeSaveButton
+    Gtk.Button closeDiscardButton
+    Gtk.Button closeCancelButton
+    list documents
+    list recentFiles
+    EditorDocument pendingCloseDocument
+    bool pendingCloseAll
+    bool allowWindowClose
+    int pageChanges
+    callback<void()> changedAction
+    callback<void()> cursorAction
+    callback<void()> pageChangedAction
+    callback<void()> openAction
+    callback<void()> recentAction
+    callback<void()> saveAction
+    callback<void()> saveAsAction
+    callback<void()> newAction
+    callback<void()> closeTabAction
+    callback<void()> closeSaveAction
+    callback<void()> closeDiscardAction
+    callback<void()> closeCancelAction
+    callback<void()> findAction
+    callback<void()> replaceAction
+    callback<void()> undoAction
+    callback<void()> redoAction
+    callback<bool()> closeAction
+    callback<void()> testAction
+
+    void activate() {
+        if (window != null) {
+            if (!window.disposed()) {
+                window.present()
+                return
+            }
+        }
+        documents = []
+        recentFiles = []
+        window = Gtk.Window("Tweed Lang Editor")
+        window.setDefaultSize(1000, 700)
+        layout = Gtk.Box(Gtk.Box.VERTICAL, 5)
+        window.setChild(layout)
+        fileTools = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
+        layout.append(fileTools)
+        pathEntry = Gtk.Entry("")
+        pathEntry.setSensitive(true)
+        fileTools.append(pathEntry)
+        openButton = Gtk.Button("Open")
+        recentButton = Gtk.Button("Recent")
+        newButton = Gtk.Button("New")
+        closeTabButton = Gtk.Button("Close Tab")
+        saveButton = Gtk.Button("Save")
+        saveAsButton = Gtk.Button("Save As")
+        undoButton = Gtk.Button("Undo")
+        redoButton = Gtk.Button("Redo")
+        fileTools.append(openButton)
+        fileTools.append(recentButton)
+        fileTools.append(newButton)
+        fileTools.append(closeTabButton)
+        fileTools.append(saveButton)
+        fileTools.append(saveAsButton)
+        fileTools.append(undoButton)
+        fileTools.append(redoButton)
+        searchTools = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
+        layout.append(searchTools)
+        findEntry = Gtk.Entry("")
+        replaceEntry = Gtk.Entry("")
+        findButton = Gtk.Button("Find next")
+        replaceButton = Gtk.Button("Replace next")
+        searchTools.append(findEntry)
+        searchTools.append(findButton)
+        searchTools.append(replaceEntry)
+        searchTools.append(replaceButton)
+        notebook = Gtk.Notebook()
+        layout.append(notebook)
+        notebook.onPageChanged(pageChangedAction)
+        closeChoices = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
+        closeSaveButton = Gtk.Button("Save")
+        closeDiscardButton = Gtk.Button("Discard")
+        closeCancelButton = Gtk.Button("Cancel")
+        closeChoices.append(closeSaveButton)
+        closeChoices.append(closeDiscardButton)
+        closeChoices.append(closeCancelButton)
+        layout.append(closeChoices)
+        closeChoices.setVisible(false)
+        status = Gtk.Label("Ready")
+        layout.append(status)
+        openButton.onClicked(openAction)
+        recentButton.onClicked(recentAction)
+        newButton.onClicked(newAction)
+        closeTabButton.onClicked(closeTabAction)
+        saveButton.onClicked(saveAction)
+        saveAsButton.onClicked(saveAsAction)
+        findButton.onClicked(findAction)
+        replaceButton.onClicked(replaceAction)
+        undoButton.onClicked(undoAction)
+        redoButton.onClicked(redoAction)
+        closeSaveButton.onClicked(closeSaveAction)
+        closeDiscardButton.onClicked(closeDiscardAction)
+        closeCancelButton.onClicked(closeCancelAction)
+        window.onCloseRequest(closeAction)
+
+        System.Process process = System.Process()
+        int index = 1
+        while (index < process.argc()) {
+            openFile(process.arg(index))
+            index = index + 1
+        }
+        if (notebook.pageCount() == 0) {
+            newDocument()
+        }
+        window.present()
+        if (process.argc() > 1 && process.arg(1).equals("--test")) {
+            Gtk.Application().post(testAction)
+        }
+    }
+
+    void bindCommand(EditorDocument document, String trigger, String command) {
+        bool conflict = false
+        int existingIndex = 0
+        while (existingIndex < document.shortcuts.length) {
+            if ((document.shortcuts[existingIndex] as String).equals(trigger)) {
+                conflict = true
+            }
+            existingIndex = existingIndex + 1
+        }
+        if (conflict) {
+            document.shortcutConflict = true
+            status.setText(format("Shortcut conflict: {}", trigger))
+            return
+        }
+        bool knownCommand = false
+        bool bound = false
+        if (command.equals("save")) {
+            knownCommand = true
+            bound = document.view.bindShortcut(trigger, saveAction)
+        }
+        if (command.equals("open")) {
+            knownCommand = true
+            bound = document.view.bindShortcut(trigger, openAction)
+        }
+        if (command.equals("new")) {
+            knownCommand = true
+            bound = document.view.bindShortcut(trigger, newAction)
+        }
+        if (command.equals("find")) {
+            knownCommand = true
+            bound = document.view.bindShortcut(trigger, findAction)
+        }
+        if (command.equals("replace")) {
+            knownCommand = true
+            bound = document.view.bindShortcut(trigger, replaceAction)
+        }
+        if (command.equals("undo")) {
+            knownCommand = true
+            bound = document.view.bindShortcut(trigger, undoAction)
+        }
+        if (command.equals("redo")) {
+            knownCommand = true
+            bound = document.view.bindShortcut(trigger, redoAction)
+        }
+        if (!knownCommand) {
+            status.setText(format("Unknown editor shortcut command: {}", command))
+        }
+        if (knownCommand && !bound) {
+            status.setText(format("Invalid GTK shortcut trigger: {}", trigger))
+        }
+        if (knownCommand && bound) {
+            document.shortcuts.append(trigger)
+        }
+    }
+
+    void configureShortcuts(EditorDocument document) {
+        String configPath = "tweed-shortcuts.conf"
+        if (System.FileSystem().exists(configPath)) {
+            System.File config = System.File(configPath, "r")
+            if (!config.isOpen()) {
+                status.setText("Could not read tweed-shortcuts.conf")
+                return
+            }
+            list lines = config.readLines()
+            config.close()
+            int index = 0
+            while (index < lines.length) {
+                list fields = (lines[index] as String).split("=")
+                if (fields.length == 2) {
+                    bindCommand(document, (fields[0] as String).trim(),
+                                (fields[1] as String).trim())
+                } else {
+                    if (!(lines[index] as String).trim().equals("")) {
+                        status.setText(format("Invalid shortcut config line {}", index + 1))
+                    }
+                }
+                index = index + 1
+            }
+        } else {
+            bindCommand(document, "<Control>s", "save")
+            bindCommand(document, "<Control>o", "open")
+            bindCommand(document, "<Control>n", "new")
+            bindCommand(document, "<Control>f", "find")
+            bindCommand(document, "<Control>h", "replace")
+            bindCommand(document, "<Control>z", "undo")
+            bindCommand(document, "<Control><Shift>z", "redo")
+        }
+        document.view.onChanged(changedAction)
+        document.view.onCursorMoved(cursorAction)
+    }
+
+    void newDocument() {
+        EditorDocument document = EditorDocument("", "")
+        documents.append(document)
+        notebook.appendPage(document.scroller, document.tabTitle())
+        configureShortcuts(document)
+        activateDocument(document)
+    }
+
+    EditorDocument openDocument(String requestedPath) {
+        if (requestedPath.equals("") || requestedPath.equals("--test")) {
+            return null
+        }
+        String absolutePath = System.FileSystem().absolutePath(requestedPath)
+        if (absolutePath.equals("")) {
+            showError("Open failed: ", requestedPath)
+            return null
+        }
+        int index = 0
+        while (index < documents.length) {
+            EditorDocument existing = documents[index] as EditorDocument
+            if (existing.path.equals(absolutePath)) {
+                rememberRecent(absolutePath)
+                return existing
+            }
+            index = index + 1
+        }
+        if (!System.FileSystem().isFile(absolutePath)) {
+            status.setText(format("Open failed: {} is not a regular file", requestedPath))
+            return null
+        }
+        System.File input = System.File(absolutePath, "r")
+        if (!input.isOpen()) {
+            showError("Open failed: ", requestedPath)
+            return null
+        }
+        String text = input.readAll()
+        input.close()
+        EditorDocument document = EditorDocument(absolutePath, text)
+        documents.append(document)
+        notebook.appendPage(document.scroller, document.tabTitle())
+        configureShortcuts(document)
+        rememberRecent(absolutePath)
+        return document
+    }
+
+    void activateDocument(EditorDocument document) {
+        if (document == null) {
+            return
+        }
+        int index = 0
+        while (index < documents.length) {
+            if ((documents[index] as EditorDocument) == document) {
+                notebook.setCurrentPage(index)
+                updateStatus()
+                return
+            }
+            index = index + 1
+        }
+        status.setText("Document is not open")
+    }
+
+    void openFile(String requestedPath) {
+        EditorDocument document = openDocument(requestedPath)
+        if (document != null) {
+            activateDocument(document)
+        }
+    }
+
+    EditorDocument currentDocument() {
+        int page = notebook.currentPage()
+        if (page < 0 || page >= documents.length) {
+            return null
+        }
+        return documents[page] as EditorDocument
+    }
+
+    void saveCurrent() {
+        EditorDocument document = currentDocument()
+        if (document == null) {
+            status.setText("No document to save")
+            return
+        }
+        String destination = document.path
+        if (destination.equals("")) {
+            destination = pathEntry.text()
+        }
+        writeDocument(document, destination)
+    }
+
+    void saveAsCurrent() {
+        EditorDocument document = currentDocument()
+        if (document == null) {
+            status.setText("No document to save")
+            return
+        }
+        writeDocument(document, pathEntry.text())
+    }
+
+    bool writeDocument(EditorDocument document, String destination) {
+        if (destination.equals("")) {
+            status.setText("Enter a file path before saving")
+            return false
+        }
+        String absoluteDestination = destination
+        if (!absoluteDestination.startsWith("/")) {
+            absoluteDestination = System.FileSystem().join(
+                System.FileSystem().getCwd(), absoluteDestination)
+        }
+        absoluteDestination = System.FileSystem().normalize(absoluteDestination)
+        System.File output = System.File(absoluteDestination, "w")
+        if (!output.isOpen()) {
+            showError("Save failed: ", absoluteDestination)
+            return false
+        }
+        String contents = document.view.text()
+        int written = output.write(contents)
+        if (written != contents.length) {
+            output.close()
+            showError("Save failed: ", absoluteDestination)
+            return false
+        }
+        output.flush()
+        output.close()
+        document.path = absoluteDestination
+        rememberRecent(absoluteDestination)
+        document.view.markSaved()
+        refreshTab(document)
+        status.setText("Saved")
+        return true
+    }
+
+    void openFromPath() { openFile(pathEntry.text()) }
+
+    void openRecent() {
+        if (recentFiles.length == 0) {
+            status.setText("No recent files in this session")
+            return
+        }
+        openFile(recentFiles[recentFiles.length - 1] as String)
+    }
+
+    void rememberRecent(String path) {
+        int index = 0
+        while (index < recentFiles.length) {
+            if ((recentFiles[index] as String).equals(path)) {
+                return
+            }
+            index = index + 1
+        }
+        recentFiles.append(path)
+    }
+
+    void findNext() {
+        EditorDocument document = currentDocument()
+        if (document == null) {
+            return
+        }
+        if (!document.view.find(findEntry.text())) {
+            status.setText("No match")
+        } else {
+            updateStatus()
+        }
+    }
+
+    void replaceNext() {
+        EditorDocument document = currentDocument()
+        if (document == null) {
+            return
+        }
+        if (!document.view.replaceNext(findEntry.text(), replaceEntry.text())) {
+            status.setText("No match")
+        } else {
+            updateStatus()
+        }
+    }
+
+    void undoCurrent() {
+        EditorDocument document = currentDocument()
+        if (document != null) {
+            document.view.undo()
+        }
+    }
+
+    void redoCurrent() {
+        EditorDocument document = currentDocument()
+        if (document != null) {
+            document.view.redo()
+        }
+    }
+
+    void changed() {
+        EditorDocument document = currentDocument()
+        if (document != null) {
+            refreshTab(document)
+        }
+        updateStatus()
+    }
+
+    void pageChanged() {
+        pageChanges = pageChanges + 1
+        updateStatus()
+    }
+
+    void refreshTab(EditorDocument document) {
+        int index = 0
+        while (index < documents.length) {
+            EditorDocument item = documents[index] as EditorDocument
+            if (item == document) {
+                notebook.setPageTitle(index, item.tabTitle())
+                return
+            }
+            index = index + 1
+        }
+    }
+
+    void updateStatus() {
+        EditorDocument document = currentDocument()
+        if (document == null) {
+            return
+        }
+        String message = "Ln "
+        message = format("Ln {}, Col {}", document.view.line(), document.view.column())
+        if (document.view.modified()) {
+            message.append("  Modified")
+        }
+        status.setText(message)
+    }
+
+    bool requestClose() {
+        if (allowWindowClose) {
+            return false
+        }
+        int index = 0
+        while (index < documents.length) {
+            EditorDocument document = documents[index] as EditorDocument
+            if (document.view.modified()) {
+                pendingCloseAll = true
+                pendingCloseDocument = null
+                closeChoices.setVisible(true)
+                status.setText("Unsaved changes: Save, Discard, or Cancel closing")
+                return true
+            }
+            index = index + 1
+        }
+        return false
+    }
+
+    void closeCurrentDocument() {
+        EditorDocument document = currentDocument()
+        if (document == null) {
+            return
+        }
+        if (document.view.modified()) {
+            pendingCloseDocument = document
+            pendingCloseAll = false
+            closeChoices.setVisible(true)
+            status.setText(format("Unsaved changes in {}: Save, Discard, or Cancel",
+                                  document.tabTitle()))
+            return
+        }
+        removeDocument(document)
+    }
+
+    void removeDocument(EditorDocument document) {
+        int index = 0
+        while (index < documents.length) {
+            if ((documents[index] as EditorDocument) == document) {
+                notebook.remove(document.scroller)
+                document.scroller.dispose()
+                list remaining = []
+                int itemIndex = 0
+                while (itemIndex < documents.length) {
+                    EditorDocument item = documents[itemIndex] as EditorDocument
+                    if (item != document) {
+                        remaining.append(item)
+                    }
+                    itemIndex = itemIndex + 1
+                }
+                documents = remaining
+                if (pendingCloseDocument == document) {
+                    pendingCloseDocument = null
+                }
+                if (!pendingCloseAll) {
+                    closeChoices.setVisible(false)
+                }
+                if (documents.length == 0 && !pendingCloseAll) {
+                    newDocument()
+                } else {
+                    updateStatus()
+                }
+                return
+            }
+            index = index + 1
+        }
+    }
+
+    EditorDocument firstModifiedDocument() {
+        int index = 0
+        while (index < documents.length) {
+            EditorDocument document = documents[index] as EditorDocument
+            if (document.view.modified()) {
+                return document
+            }
+            index = index + 1
+        }
+        return null
+    }
+
+    void savePendingClose() {
+        EditorDocument document = pendingCloseDocument
+        if (pendingCloseAll) {
+            document = firstModifiedDocument()
+        }
+        if (document == null) {
+            finishPendingClose()
+            return
+        }
+        activateDocument(document)
+        String destination = document.path
+        if (destination.equals("")) {
+            destination = pathEntry.text()
+        }
+        if (!writeDocument(document, destination)) {
+            return
+        }
+        if (!pendingCloseAll) {
+            finishPendingClose()
+            return
+        }
+        if (firstModifiedDocument() == null) {
+            finishPendingClose()
+        } else {
+            status.setText("Saved. Save or discard the remaining modified tabs")
+        }
+    }
+
+    void discardPendingClose() {
+        if (pendingCloseAll) {
+            while (documents.length > 0) {
+                removeDocument(documents[0] as EditorDocument)
+            }
+            pendingCloseAll = false
+            pendingCloseDocument = null
+            closeChoices.setVisible(false)
+            allowWindowClose = true
+            window.close()
+            return
+        }
+        EditorDocument document = pendingCloseDocument
+        if (document != null) {
+            removeDocument(document)
+        }
+        pendingCloseDocument = null
+        closeChoices.setVisible(false)
+    }
+
+    void cancelPendingClose() {
+        pendingCloseDocument = null
+        pendingCloseAll = false
+        closeChoices.setVisible(false)
+        updateStatus()
+    }
+
+    void finishPendingClose() {
+        if (pendingCloseAll) {
+            pendingCloseAll = false
+            pendingCloseDocument = null
+            closeChoices.setVisible(false)
+            allowWindowClose = true
+            window.close()
+            return
+        }
+        EditorDocument document = pendingCloseDocument
+        pendingCloseDocument = null
+        closeChoices.setVisible(false)
+        if (document != null) {
+            removeDocument(document)
+        }
+    }
+
+    void showError(String prefix, String path) {
+        String message = prefix
+        message.append(path)
+        message.append(": ")
+        message.append(System.System().lastError())
+        status.setText(message)
+    }
+
+    void test() {
+        EditorDocument document = currentDocument()
+        openFile("/path/that/does/not/exist/test.simp")
+        bool badOpen = status.text().contains("Open failed") && documents.length == 2
+        openFile(System.FileSystem().tempDir())
+        bool directoryRejected = status.text().contains("not a regular file") && documents.length == 2
+        document.view.setText("class Demo {\n  // note\n  String name = \"Tweed\"\n  int count = 12\n}\n")
+        bool tabs = documents.length == 2 && notebook.pageCount() == 2 && recentFiles.length == 2
+        bool tabSwitchUpdatesStatus = pageChanges > 0
+        bool remapped = false
+        bool defaults = false
+        if (System.FileSystem().exists("tweed-shortcuts.conf")) {
+            remapped = document.view.hasShortcut("<Control><Alt>s") && !document.view.hasShortcut("<Control>s")
+        } else {
+            defaults = document.view.hasShortcut("<Control>s") && document.view.hasShortcut("<Control>o")
+        }
+        bool conflicted = document.shortcutConflict
+        bool highlighted = document.view.hasContextAt("keyword", 0) && document.view.hasContextAt("comment", 17) && document.view.hasContextAt("string", 39) && document.view.hasContextAt("number", 62)
+        bool searched = document.view.find("Tweed")
+        bool replaced = document.view.replaceNext("Tweed", "Tweed Lang")
+        bool dirtyBlocked = requestClose()
+        window.close()
+        bool dirtyCloseCancelled = !window.disposed()
+        closeCurrentDocument()
+        cancelPendingClose()
+        bool tabCloseCancelled = documents.length == 2 && document.view.modified()
+        document.view.undo()
+        bool undoRestored = document.view.text().contains("name = \"Tweed\"") && !document.view.text().contains("Tweed Lang")
+        document.view.redo()
+        bool undoRedo = document.view.text().contains("Tweed Lang")
+        closeCurrentDocument()
+        savePendingClose()
+        bool saved = false
+        System.File savedFile = System.File(document.path, "r")
+        if (savedFile.isOpen()) {
+            String savedContents = savedFile.readAll()
+            saved = savedContents.contains("String name = \"Tweed Lang\"")
+            savedFile.close()
+        }
+        bool savedTabClosed = documents.length == 1 && notebook.pageCount() == 1
+        bool closeProtected = !requestClose()
+        newDocument()
+        EditorDocument discarded = currentDocument()
+        discarded.view.setText("discard this")
+        closeCurrentDocument()
+        discardPendingClose()
+        bool tabDiscarded = documents.length == 1 && notebook.pageCount() == 1
+        EditorDocument remaining = currentDocument()
+        remaining.view.setText("discard all")
+        bool windowClosePrompted = requestClose()
+        cancelPendingClose()
+        bool windowCloseCancelled = !window.disposed() && documents.length == 1
+        remaining.view.setText("discard all")
+        bool windowClosePromptedAgain = requestClose()
+        discardPendingClose()
+        bool windowDiscarded = windowClosePrompted && windowClosePromptedAgain && window.disposed()
+        print(badOpen && directoryRejected && tabs && tabSwitchUpdatesStatus &&
+              (remapped || defaults) && conflicted == remapped && highlighted &&
+              searched && replaced && undoRestored && undoRedo && dirtyBlocked &&
+              dirtyCloseCancelled && tabCloseCancelled && saved && savedTabClosed &&
+              closeProtected && tabDiscarded && windowCloseCancelled && windowDiscarded)
+    }
+}
+
+start {
+    Gtk.Application app = Gtk.Application("org.tweed.Editor")
+    TweedEditor editor = TweedEditor()
+    editor.changedAction = editor.changed
+    editor.cursorAction = editor.updateStatus
+    editor.pageChangedAction = editor.pageChanged
+    editor.openAction = editor.openFromPath
+    editor.recentAction = editor.openRecent
+    editor.saveAction = editor.saveCurrent
+    editor.saveAsAction = editor.saveAsCurrent
+    editor.newAction = editor.newDocument
+    editor.closeTabAction = editor.closeCurrentDocument
+    editor.closeSaveAction = editor.savePendingClose
+    editor.closeDiscardAction = editor.discardPendingClose
+    editor.closeCancelAction = editor.cancelPendingClose
+    editor.findAction = editor.findNext
+    editor.replaceAction = editor.replaceNext
+    editor.undoAction = editor.undoCurrent
+    editor.redoAction = editor.redoCurrent
+    editor.closeAction = editor.requestClose
+    editor.testAction = editor.test
+    app.onActivate(editor.activate)
+    app.run()
+    app.shutdown()
+}
