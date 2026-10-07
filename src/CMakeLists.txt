@@ -140,7 +140,7 @@ set_target_properties(simp_sqlite_native PROPERTIES
 )
 add_dependencies(simp_resources simp_sqlite_native)
 
-option(SIMP_GTK "Build the optional GTK 4 foundation package and headless tests" OFF)
+option(SIMP_GTK "Build the optional GTK 4 interface package and headless tests" OFF)
 if(SIMP_GTK)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
@@ -152,12 +152,12 @@ if(SIMP_GTK)
         ARCHIVE_OUTPUT_DIRECTORY "${SIMP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/lib"
         OUTPUT_NAME simp_gtk)
     add_dependencies(simp_resources simp_gtk_native)
-    message(STATUS "GTK 4 foundation enabled; GTK links only into importing applications")
+    message(STATUS "GTK 4 interface enabled; GTK links only into importing applications")
 else()
     # Do not advertise an unusable source-only package in a non-GTK prefix.
     add_custom_command(TARGET simp_resources POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E remove_directory "${SIMP_STAGE_MODULE_DIRECTORY}/gtk")
-    message(STATUS "GTK 4 foundation disabled (enable with -DSIMP_GTK=ON)")
+    message(STATUS "GTK 4 interface disabled (enable with -DSIMP_GTK=ON)")
 endif()
 
 add_library(simp_frontend

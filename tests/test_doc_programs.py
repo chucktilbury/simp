@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 
 from program_runner import check_program, environment
+from gtk_support import headless
 
 FENCE = re.compile(r"^```(?:simp|simple)\s*\n(.*?)^```\s*$",
                    re.MULTILINE | re.DOTALL)
@@ -44,11 +45,18 @@ def main() -> None:
     parser.add_argument("--fixtures", type=Path, required=True)
     parser.add_argument("--compiler", type=Path, required=True)
     parser.add_argument("--work", type=Path, required=True)
+    parser.add_argument("--gtk", action="store_true")
+    parser.add_argument("--xvfb")
     args = parser.parse_args()
     cases = list(programs(args.doc))
     assert cases, "No complete documentation programs found"
     args.work.mkdir(parents=True, exist_ok=True)
     for name, source, expectation in cases:
+        requirement = expectation.get("requires")
+        assert requirement in (None, "gtk"), f"{name}: unsupported requirement {requirement}"
+        if requirement == "gtk" and not args.gtk:
+            print(f"NOT CONFIGURED optional GTK program {name} (SIMP_GTK=OFF)")
+            continue
         with tempfile.TemporaryDirectory(dir=args.work, prefix="doc-") as directory:
             work = Path(directory)
             project = work / "project"
@@ -62,7 +70,11 @@ def main() -> None:
             program = project / "example.simp"
             program.write_text(source)
             try:
-                check_program(args.compiler.resolve(), program, project, case, environment(work))
+                if requirement == "gtk":
+                    with headless(args.xvfb, work, environment(work)) as env:
+                        check_program(args.compiler.resolve(), program, project, case, env)
+                else:
+                    check_program(args.compiler.resolve(), program, project, case, environment(work))
             except (AssertionError, subprocess.TimeoutExpired) as error:
                 raise AssertionError(f"{name}: {error}") from error
             print(f"PASS {name}")

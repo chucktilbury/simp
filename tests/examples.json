@@ -1,4 +1,5 @@
 {
+  "gtk.simp": {"requires": "gtk", "args": ["--test"], "stdout": "Hello GTK"},
   "cast_scalar.simp": {"stdout": "18446744073709551606"},
   "collection_cast.simp": {"stdout": "class Bar 5"},
   "ctor_dtor.simp": {"stdout": "in the FirstBase constructorin the SecondBase constructor\nin the Child constructorfirst foo is 123second foo is 42end child constructor\nfirst base bar is 24first base foo is 246\nin the Child destructorin the SecondBase destructorin the FirstBase destructor"},

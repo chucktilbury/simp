@@ -36,15 +36,19 @@ For native APIs accepting a function pointer plus user context, the installed
 adapters. See [CALLBACKS.md](CALLBACKS.md) for exact signatures, disconnection,
 rooting, owner-thread restrictions, and the fail-fast exception boundary.
 
-## Optional `gtk` foundation
+## Optional `gtk` interface
 
-`import gtk` exposes `Gtk.Application` only when built with `SIMP_GTK=ON`.
-The minimal lifecycle/scheduler methods are `initialize()`, `run()`, `quit()`,
-`shutdown()`, `int post(callback<void()> action)`, and `bool cancel(int token)`.
-All except `post()` require the GUI owner thread. Worker posts retain the
-receiver until GUI execution or cancellation; shutdown rejects new posts.
-This is GTK 4 integration groundwork, **not** a window/widget interface.
-See [GTK.md](GTK.md) for complete lifetime, threading, adapter, and build rules.
+`import gtk` is available when built with `SIMP_GTK=ON`. Construct
+`Gtk.Application(String id)`, install `onActivate(callback<void()>)`, create
+widgets during activation, and call `run()`. GTK supplies desktop/single-instance
+activation; the single run ends with deterministic shutdown.
+`Widget` is the base of `Window`, `Box`, `Label`, `Button`, `Entry`, `CheckButton`,
+and `ScrolledWindow`. Typed signals return `SignalConnection` with `disconnect()`
+and `connected()`. Explicit GUI-thread `dispose()` recursively disposes attached
+children and invalidates aliases; GC never tears down GTK objects.
+Only `int post(callback<void()>)` is worker-callable; `bool cancel(int)` and all
+widget/connection operations require the GUI thread. See [GTK.md](GTK.md) for
+the compact API, runnable example, ownership, compatibility changes, and limits.
 
 ## `system`
 

@@ -79,6 +79,11 @@ if(SIMP_GTK)
     if(NOT SIMP_XVFB_EXECUTABLE)
         message(FATAL_ERROR "SIMP_GTK tests require Xvfb; install it or set SIMP_XVFB_EXECUTABLE")
     endif()
+    find_program(SIMP_DBUS_DAEMON_EXECUTABLE NAMES dbus-daemon)
+    if(NOT SIMP_DBUS_DAEMON_EXECUTABLE)
+        message(FATAL_ERROR "SIMP_GTK tests require dbus-daemon")
+    endif()
+    set(gtk_program_arguments --gtk --xvfb "${SIMP_XVFB_EXECUTABLE}")
     set(gtk_install_arguments)
     if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         list(APPEND gtk_install_arguments --build "${CMAKE_BINARY_DIR}")
@@ -375,7 +380,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
 execute_process(COMMAND "${Python3_EXECUTABLE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
     --examples "${example_directory}"
-    --manifest "${CMAKE_CURRENT_SOURCE_DIR}/examples.json" --list
+    --manifest "${CMAKE_CURRENT_SOURCE_DIR}/examples.json" --list ${gtk_program_arguments}
     OUTPUT_VARIABLE example_cases OUTPUT_STRIP_TRAILING_WHITESPACE
     RESULT_VARIABLE example_result ERROR_VARIABLE example_error)
 if(NOT example_result EQUAL 0)
@@ -387,7 +392,8 @@ foreach(example_case IN LISTS example_cases)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
         --compiler "$<TARGET_FILE:simp>" --examples "${example_directory}"
         --manifest "${CMAKE_CURRENT_SOURCE_DIR}/examples.json"
-        --work "${CMAKE_CURRENT_BINARY_DIR}/examples" --case "${example_case}")
+        --work "${CMAKE_CURRENT_BINARY_DIR}/examples" --case "${example_case}"
+        ${gtk_program_arguments})
     set_tests_properties("simp_example_${example_name}" PROPERTIES LABELS examples TIMEOUT 60)
 endforeach()
 
@@ -395,7 +401,7 @@ add_test(NAME simp_documentation_programs
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_doc_programs.py"
     --compiler "$<TARGET_FILE:simp>" --doc "${CMAKE_CURRENT_SOURCE_DIR}/../doc"
     --fixtures "${CMAKE_CURRENT_SOURCE_DIR}/doc_fixtures"
-    --work "${CMAKE_CURRENT_BINARY_DIR}/doc-programs")
+    --work "${CMAKE_CURRENT_BINARY_DIR}/doc-programs" ${gtk_program_arguments})
 set_tests_properties(simp_documentation_programs PROPERTIES LABELS documentation TIMEOUT 180)
 
 if(SIMP_FUZZ)

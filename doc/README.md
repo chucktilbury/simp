@@ -12,6 +12,7 @@
 - [Build and run examples](EXAMPLES.md)
 - [Compiler man page](simp.1)
 - [Standard library reference](STDLIB.md)
+- [Optional GTK 4 interface](GTK.md)
 - [Standard library source layout and adding packages](../stdlib/README.md)
 - [Test suite and adding tests](../tests/README.md)
 - [Sanitizers, example checks, CI, coverage, and fuzzing](TESTING.md)

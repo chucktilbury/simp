@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* Package-local contract for future widget wrappers, not installed as a
+/* Package-local signal contract, not installed as a
  * runtime header. Objects are borrowed; connections own only callback roots. */
 void simp_gtk_require_owner(void);
 int64_t simp_gtk_connect_clicked(GtkButton *button, void *callback);

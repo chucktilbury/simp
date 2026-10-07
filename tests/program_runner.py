@@ -43,7 +43,8 @@ def check_program(compiler: Path, source: Path, work: Path, case: dict,
     assert output.is_file(), f"No compiler output for {source}"
     if case.get("object"):
         return
-    result = invoke([str(output)], work, env, case.get("stdin", ""))
+    command = [str(output)] + case.get("args", [])
+    result = invoke(command, work, env, case.get("stdin", ""))
     assert result.returncode == case.get("exit", 0), (
         f"{source}: exit {result.returncode}\n{result.stderr}")
     assert result.stdout == case["stdout"], (

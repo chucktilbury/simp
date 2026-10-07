@@ -47,7 +47,7 @@ to avoid overwriting another configuration's compiler and runtime.
 The networking integration case exercises empty native strings; UBSan caught
 and now guards the zero-length `memchr` call on their null backing storage.
 
-## Real GTK 4 foundation
+## Real GTK 4 interface
 
 The optional suite is enabled explicitly, never as a silently skipped display
 test:
@@ -59,22 +59,28 @@ cmake --build build-gtk -j4
 ctest --test-dir build-gtk -R '^(simp_gtk|simp_callbacks)$' --output-on-failure -V
 ```
 
-Configuration requires `pkg-config`, GTK 4 development files, and Xvfb
-(`pkg-config libgtk-4-dev xvfb` on Debian/Ubuntu). A local Xvfb executable can
+Configuration requires `pkg-config`, GTK 4 development files, Xvfb, and
+`dbus-daemon` (`pkg-config libgtk-4-dev xvfb dbus-daemon` on Debian/Ubuntu).
+A local Xvfb executable can
 be supplied via `SIMP_XVFB_EXECUTABLE`; it must have its normal shared-library
-dependencies available. `test_gtk.py` starts a fresh Xvfb using `-displayfd`,
-checks readiness, uses a private HOME/configuration and GTK's Cairo renderer,
-and terminates that exact server process afterward. There is no dependence
-on the user's running desktop. Startup failure and missing display are failures.
+dependencies available. `gtk_support.py` starts a fresh Xvfb using `-displayfd` and a private session
+bus, checks both for readiness, uses private HOME/configuration, and selects
+GTK's Cairo renderer with GL disabled. It terminates those exact owned processes
+even when a consumer fails. There is no dependence on the user's running desktop
+or application IDs on their bus. Startup failure and missing display are failures.
 
-Ten Simple subprocess cases cover real clicked/changed/close-request signals,
-boolean responses, nested/synchronous emissions, GC inside callbacks, receiver
-retention, disconnect and widget destruction inside handlers, cancellation,
-shutdown from a handler, worker progress while the loop is idle, worker-to-GUI
-root transfer, and explicit misuse/exception aborts. The same test verifies compile-only object link sidecars, installs and runs
-scheduler and signal consumers, and checks absence of GTK linkage in non-import
-programs and the compiler. Fixtures live in `tests/functional/cli/gtk/`, not the
-public package.
+Compiled Simple cases cover all public widgets/properties, typed
+clicked/changed/toggled/close signals, copied text under GC, boolean close
+responses, nested emissions, retained receivers, disconnect/disposal/shutdown
+inside handlers, recursive parent/child disposal, detached children, aliases,
+native window destruction, native weak-ref finalization, cancellation, worker
+progress and GUI posts, and misuse/exception aborts. Compile failures check
+callback types and package-private access. Two processes on one isolated bus
+verify actual single-instance activation forwarding. The same test verifies
+compile-only link sidecars, installs scheduler/signal consumers and a public
+widget consumer using `simpkg init`/`install` and its lock, and checks absence of
+GTK linkage in non-import programs and the compiler. Fixtures live in
+`tests/functional/cli/gtk/`, not the public package.
 `simp_callbacks` separately checks one-shot transport roots, accept on another
 registered thread, cancellation, lock reentry and unregistered-thread rejection,
 as well as the pre-existing strict foreign-owner invocation failures.
@@ -89,7 +95,7 @@ and external uninstrumented GTK libraries are not claimed to be instrumented.
 ## Repository examples
 
 `ctest --test-dir build -L examples --output-on-failure -j4` compiles every
-`examples/**/*.simp`. Each program runs in a temporary project with a private
+configured `examples/**/*.simp`. Each program runs in a temporary project with a private
 home directory, checked stdout, checked exit status, and checked stderr.
 `scanner.simp` receives the checked-in `input_test.txt` in its working directory
 and on stdin. The formerly empty module example now exports `Example.Answer`;
@@ -97,6 +103,10 @@ a small importing driver compiles and runs it, checking its answer.
 
 `tests/examples.json` contains exact expectations; configuration fails if any
 example has no expectation or an expectation names a deleted example.
+`gtk.simp` explicitly requires optional GTK: it is registered only with
+`SIMP_GTK=ON`, and runs with `--test` on the headless fixture. Without that
+argument the example is interactive. The default example suite needs no GTK;
+the inventory still validates optional examples.
 `err.simp` handles a missing-file error and exits successfully; `test.simp`
 demonstrates a buffer-bounds runtime error and `unhandled_exception.simp`
 demonstrates an uncaught exception. The latter two must abort with the intended
@@ -120,6 +130,11 @@ This is JSON: escape newlines and quotes, and include no implicit line breaks
 Optional `fixture` names a checked-in project under `tests/doc_fixtures/`
 for examples that demonstrate external packages. Optional `stdin`, `exit`,
 and `diagnostic` use the same checks as repository examples.
+`"requires": "gtk"` explicitly identifies an optional GTK program. The runner
+validates its marker in all builds, reports it as not configured with
+`SIMP_GTK=OFF`, and compiles/runs it on the headless fixture with `SIMP_GTK=ON`.
+Configured GTK programs are never silently skipped; missing fixtures/toolkit
+dependencies fail. This includes the complete sample in `GTK.md`.
 Explicit `// Fragment: reason` comments identify non-standalone snippets;
 they cannot carry test markers. The extractor refuses unmarked complete
 programs rather than silently skipping new ones. Design-note fragments without

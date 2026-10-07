@@ -7,6 +7,7 @@ import shutil
 import tempfile
 
 from program_runner import check_program, environment
+from gtk_support import headless
 
 
 def main() -> None:
@@ -17,6 +18,8 @@ def main() -> None:
     parser.add_argument("--compiler", type=Path)
     parser.add_argument("--work", type=Path)
     parser.add_argument("--case")
+    parser.add_argument("--gtk", action="store_true")
+    parser.add_argument("--xvfb")
     args = parser.parse_args()
     cases = json.loads(args.manifest.read_text())
     sources = {p.relative_to(args.examples).as_posix()
@@ -25,7 +28,10 @@ def main() -> None:
         f"Example expectations differ: missing={sources - set(cases)}, "
         f"obsolete={set(cases) - sources}")
     if args.list:
-        print(";".join(sorted(cases)))
+        for name, case in cases.items():
+            assert case.get("requires") in (None, "gtk"), f"{name}: unsupported requirement"
+        print(";".join(sorted(name for name, case in cases.items()
+                              if args.gtk or case.get("requires") != "gtk")))
         return
     args.work.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=args.work, prefix="example-") as directory:
@@ -40,7 +46,12 @@ def main() -> None:
             source.write_text(case["driver"])
         if args.case == "scanner.simp":
             case["stdin"] = (project / "input_test.txt").read_text()
-        check_program(args.compiler.resolve(), source, project, case, env)
+        if case.get("requires") == "gtk":
+            assert args.gtk, "GTK example was registered without SIMP_GTK"
+            with headless(args.xvfb, work, env) as gtk_env:
+                check_program(args.compiler.resolve(), source, project, case, gtk_env)
+        else:
+            check_program(args.compiler.resolve(), source, project, case, env)
 
 
 if __name__ == "__main__":

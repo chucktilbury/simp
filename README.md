@@ -70,6 +70,7 @@ No environment activation is needed. The manifest schema is in
 | `include/` | Runtime C headers and compiler headers |
 | `builtin/` | Built-in `String` class source |
 | `stdlib/` | Versioned standard-library packages |
+| `examples/` | Runnable examples, including the optional [GTK editor](doc/GTK.md) |
 | `tests/` | Compiler tests and Simple source fixtures |
 | `doc/` | User documentation |
 | `build/`, `bin/`, `lib/`, `share/` | Local CMake build outputs |
