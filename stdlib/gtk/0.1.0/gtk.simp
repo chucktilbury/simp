@@ -263,6 +263,7 @@ namespace Gtk {
         FileSelection _selection
         int _create(int parent, bool save, String initialPath, callback<void(String)> result)
         int _createMultiple(int parent, String initialPath, callback<void(String)> path)
+        int _createFolder(int parent, String initialPath, callback<void(String)> result)
         void _cancel(int token)
         bool _pending(int token)
         public:
@@ -272,6 +273,9 @@ namespace Gtk {
         FileDialog(Window parent, String initialPath, callback<void(list)> results) {
             _selection = FileSelection(results)
             _token = _createMultiple(parent._widgetToken(), initialPath, _selection.add)
+        }
+        FileDialog(Window parent, String initialPath, callback<void(String)> folder) {
+            _token = _createFolder(parent._widgetToken(), initialPath, folder)
         }
         void cancel() { _cancel(_token) }
         bool pending() { return _pending(_token) }
@@ -328,6 +332,57 @@ namespace Gtk {
         }
     }
 
+    class Paned : Widget {
+        private:
+        void _position(int token, int position)
+        public:
+        Paned() { super Widget(12, "", 0, 0) }
+        void append(Widget child) { _attachChild(child) }
+        void setPosition(int position) { _position(_widgetToken(), position) }
+    }
+
+    class Tree : Widget {
+        private:
+        void _setup(int token, callback<void(int)> request, callback<void(int)> activate)
+        void _add(int token, int parent, int id, String label, String icon, bool expandable, String value, int data)
+        void _clear(int token, int parent)
+        void _expandRow(int token, int id, bool expanded)
+        String _value(int token, int id)
+        int _data(int token, int id)
+        int _find(int token, String value)
+        int _count(int token, int parent)
+        public:
+        Tree(callback<void(int)> request, callback<void(int)> activate) {
+            super Widget(13, "", 0, 0)
+            _setup(_widgetToken(), request, activate)
+        }
+        void add(int parent, int id, String label, String icon, bool expandable, String value, int data) {
+            _add(_widgetToken(), parent, id, label, icon, expandable, value, data)
+        }
+        void clear(int parent) { _clear(_widgetToken(), parent) }
+        void setExpanded(int id, bool expanded) { _expandRow(_widgetToken(), id, expanded) }
+        String value(int id) { return _value(_widgetToken(), id) }
+        int data(int id) { return _data(_widgetToken(), id) }
+        int findValue(String value) { return _find(_widgetToken(), value) }
+        int childCount(int parent) { return _count(_widgetToken(), parent) }
+    }
+
+    class DirectoryScan {
+        private:
+        int _token
+        int _start(int owner, String path, bool hidden, callback<void(int, String)> result)
+        void _cancel(int token)
+        void _append(int token, int tree, int parent, int firstId, int count, String icons)
+        public:
+        DirectoryScan(Tree owner, String path, bool hidden, callback<void(int, String)> result) {
+            _token = _start(owner._widgetToken(), path, hidden, result)
+        }
+        void cancel() { _cancel(_token) }
+        void append(Tree owner, int parent, int firstId, int count, String icons) {
+            _append(_token, owner._widgetToken(), parent, firstId, count, icons)
+        }
+    }
+
     class SourceViewWidget : Widget {
         public:
         SourceViewWidget() { super Widget(8, "", 0, 0) }
@@ -379,6 +434,24 @@ namespace Gtk {
         from "simp_gtk_file_dialog_create"
     int FileDialog._createMultiple(int parent, String initialPath, callback<void(String)> path)
         from "simp_gtk_file_dialog_create_multiple"
+    int FileDialog._createFolder(int parent, String initialPath, callback<void(String)> result)
+        from "simp_gtk_file_dialog_create_folder"
+    void Paned._position(int token, int position) from "simp_gtk_paned_position"
+    void Tree._setup(int token, callback<void(int)> request, callback<void(int)> activate)
+        from "simp_gtk_tree_setup"
+    void Tree._add(int token, int parent, int id, String label, String icon, bool expandable, String value, int data)
+        from "simp_gtk_tree_add"
+    String Tree._value(int token, int id) from "simp_gtk_tree_value"
+    int Tree._data(int token, int id) from "simp_gtk_tree_data"
+    int Tree._find(int token, String value) from "simp_gtk_tree_find"
+    int Tree._count(int token, int parent) from "simp_gtk_tree_count"
+    void Tree._clear(int token, int parent) from "simp_gtk_tree_clear"
+    void Tree._expandRow(int token, int id, bool expanded) from "simp_gtk_tree_expand"
+    int DirectoryScan._start(int owner, String path, bool hidden, callback<void(int, String)> result)
+        from "simp_gtk_directory_start"
+    void DirectoryScan._cancel(int token) from "simp_gtk_directory_cancel"
+    void DirectoryScan._append(int token, int tree, int parent, int firstId, int count, String icons)
+        from "simp_gtk_directory_append"
     void AlertDialog._show(int parent, String message, String detail) from "simp_gtk_alert_show"
     void FileDialog._cancel(int token) from "simp_gtk_file_dialog_cancel"
     bool FileDialog._pending(int token) from "simp_gtk_file_dialog_pending"

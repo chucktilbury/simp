@@ -47,6 +47,16 @@ case so CMake discovers it; no central test list needs editing.
 
 ## Unit and CLI tests
 
+With GTK tests enabled, `simp_project_explorer` drives the actual Tweed model,
+native parented folder chooser and GTK tree activation under private Xvfb/dbus
+and isolated HOME/XDG directories. It covers lazy expansion, duplicate focus,
+hidden entries, refresh, read errors, non-UTF-8 filenames, symlink loops, stale
+results and teardown during enumeration. Its 20,000-file case requires every
+entry to arrive, fewer than 1,000 live row widgets and a GUI heartbeat gap below
+300ms; it prints measured latency rather than just asserting small-tree output.
+The same fixture is used by sanitizer configurations. The permission-denied
+case expects an ordinary unprivileged test user.
+
 Parser and semantic fixtures consumed by `simp_tests` use a
 `<fixture>.simp.json` file beside the `.simp` file with `friendly_name`,
 `expected_diagnostic` (empty for accepted input), and an `enabled` boolean.

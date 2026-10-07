@@ -25,6 +25,7 @@ typedef struct FileDialog {
     GtkFileChooserNative *chooser;
     SimpCallbackContext *context;
     GSource *completion;
+    GSource *presentation;
     GPtrArray *paths;
     bool multiple;
 } FileDialog;
@@ -118,6 +119,8 @@ static GHashTable *registered_languages;
 static void widget_dispose(WidgetRecord *record);
 static void window_removed(GtkApplication *app, GtkWindow *window, gpointer data);
 static void dialog_finish(FileDialog *dialog, bool invoke);
+static void directory_cancel_owner(int64_t owner_token);
+static void tree_stop(GtkWidget *widget);
 static void config_finish_shutdown(void);
 
 static _Noreturn void fatal(const char *message) {
@@ -505,10 +508,15 @@ void simp_gtk_shutdown(void *self) {
     g_application_quit(G_APPLICATION(application));
     while (posts) post_cancel(posts);
     while (dialogs) dialog_finish(dialogs, false);
+    directory_cancel_owner(0);
     for (Connection *connection = connections; connection;) {
         Connection *next = connection->next;
         if (!connection->closed) simp_gtk_disconnect(connection->token);
         connection = next;
+    }
+    for (WidgetRecord *record = widgets; record; record = record->next) {
+        if (record->widget && GTK_IS_WINDOW(record->widget))
+            gtk_window_set_focus(GTK_WINDOW(record->widget), NULL);
     }
     for (WidgetRecord *record = widgets; record; record = record->next)
         widget_dispose(record);
@@ -606,6 +614,8 @@ static GtkWidget *widget_live(int64_t token) {
     return widget;
 }
 
+#include "explorer.c"
+
 static void disconnect_object(GObject *object) {
     for (Connection *c = connections; c;) {
         Connection *next = c->next;
@@ -622,6 +632,11 @@ static void detach(WidgetRecord *r) {
     else if (GTK_IS_WINDOW(parent)) gtk_window_set_child(GTK_WINDOW(parent), NULL);
     else if (GTK_IS_SCROLLED_WINDOW(parent))
         gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(parent), NULL);
+    else if (GTK_IS_PANED(parent)) {
+        if (gtk_paned_get_start_child(GTK_PANED(parent)) == r->widget)
+            gtk_paned_set_start_child(GTK_PANED(parent), NULL);
+        else gtk_paned_set_end_child(GTK_PANED(parent), NULL);
+    }
     else if (GTK_IS_NOTEBOOK(parent)) {
         int page = gtk_notebook_page_num(GTK_NOTEBOOK(parent), r->widget);
         if (page >= 0) gtk_notebook_remove_page(GTK_NOTEBOOK(parent), page);
@@ -632,6 +647,9 @@ static void detach(WidgetRecord *r) {
 static void widget_dispose(WidgetRecord *r) {
     if (!r->widget) return;
     GtkWidget *widget = r->widget;
+    if (GTK_IS_WINDOW(widget)) gtk_window_set_focus(GTK_WINDOW(widget), NULL);
+    directory_cancel_owner(r->token);
+    tree_stop(widget);
     for (FileDialog *dialog = dialogs; dialog;) {
         FileDialog *next = dialog->next;
         if (dialog->parent == r->token) dialog_finish(dialog, false);
@@ -733,6 +751,14 @@ int64_t simp_gtk_widget_create(void *self, int64_t kind, void *text,
         gtk_editable_set_text(GTK_EDITABLE(widget), label); break;
     case 6: widget = gtk_check_button_new_with_label(label); break;
     case 7: widget = gtk_scrolled_window_new(); break;
+    case 12: widget = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
+        gtk_paned_set_resize_start_child(GTK_PANED(widget), FALSE);
+        gtk_paned_set_shrink_start_child(GTK_PANED(widget), TRUE);
+        gtk_paned_set_shrink_end_child(GTK_PANED(widget), FALSE);
+        break;
+    case 13: widget = gtk_list_view_new(NULL, NULL);
+        gtk_list_view_set_single_click_activate(GTK_LIST_VIEW(widget), FALSE);
+        break;
     case 9: widget = gtk_notebook_new(); break;
     case 10: {
         GMenu *menu = g_menu_new();
@@ -888,6 +914,10 @@ static void dialog_finish(FileDialog *dialog, bool invoke) {
         g_source_destroy(dialog->completion);
         g_source_unref(dialog->completion);
     }
+    if (dialog->presentation) {
+        g_source_destroy(dialog->presentation);
+        g_source_unref(dialog->presentation);
+    }
     if (dialog->chooser) {
         g_signal_handlers_disconnect_by_data(dialog->chooser, dialog);
         gtk_native_dialog_hide(GTK_NATIVE_DIALOG(dialog->chooser));
@@ -958,7 +988,18 @@ static void chooser_response(GtkNativeDialog *chooser, int response, gpointer da
     simp_runtime_managed_leave(acquired);
 }
 
-static int64_t file_dialog_create(int64_t parent, bool save, bool multiple,
+static gboolean dialog_present(gpointer data) {
+    simp_gtk_require_owner();
+    int acquired = simp_runtime_managed_enter();
+    FileDialog *dialog = data;
+    g_source_unref(dialog->presentation);
+    dialog->presentation = NULL;
+    gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog->chooser));
+    simp_runtime_managed_leave(acquired);
+    return G_SOURCE_REMOVE;
+}
+
+static int64_t file_dialog_create(int64_t parent, bool save, bool multiple, bool folder,
                                   void *initial_path, void *callback) {
     GtkWidget *window = widget_live(parent);
     if (!GTK_IS_WINDOW(window)) fatal("FileDialog requires Window");
@@ -971,8 +1012,9 @@ static int64_t file_dialog_create(int64_t parent, bool save, bool multiple,
     dialog->paths = g_ptr_array_new_with_free_func(g_free);
     dialog->context = simp_callback_acquire(callback, "callback<void(String)>");
     dialog->chooser = gtk_file_chooser_native_new(
-        save ? "Save file" : "Open file", GTK_WINDOW(window),
-        save ? GTK_FILE_CHOOSER_ACTION_SAVE : GTK_FILE_CHOOSER_ACTION_OPEN,
+        folder ? "Open folder" : save ? "Save file" : "Open file", GTK_WINDOW(window),
+        folder ? GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER :
+            save ? GTK_FILE_CHOOSER_ACTION_SAVE : GTK_FILE_CHOOSER_ACTION_OPEN,
         save ? "_Save" : "_Open", "_Cancel");
     gtk_native_dialog_set_modal(GTK_NATIVE_DIALOG(dialog->chooser), TRUE);
     if (multiple)
@@ -1004,20 +1046,32 @@ static int64_t file_dialog_create(int64_t parent, bool save, bool multiple,
     dialogs = dialog;
     int64_t token = dialog->token;
     g_signal_connect(dialog->chooser, "response", G_CALLBACK(chooser_response), dialog);
-    gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog->chooser));
+    if (folder) {
+        dialog->presentation = g_idle_source_new();
+        g_source_set_callback(dialog->presentation, dialog_present, dialog, NULL);
+        g_source_attach(dialog->presentation, main_context);
+    } else {
+        gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog->chooser));
+    }
     return token;
 }
 
 int64_t simp_gtk_file_dialog_create(void *self, int64_t parent, bool save,
                                     void *initial_path, void *callback) {
     (void)self;
-    return file_dialog_create(parent, save, false, initial_path, callback);
+    return file_dialog_create(parent, save, false, false, initial_path, callback);
 }
 
 int64_t simp_gtk_file_dialog_create_multiple(void *self, int64_t parent, void *initial_path,
                                              void *callback) {
     (void)self;
-    return file_dialog_create(parent, false, true, initial_path, callback);
+    return file_dialog_create(parent, false, true, false, initial_path, callback);
+}
+
+int64_t simp_gtk_file_dialog_create_folder(void *self, int64_t parent, void *initial_path,
+                                          void *callback) {
+    (void)self;
+    return file_dialog_create(parent, false, false, true, initial_path, callback);
 }
 
 /* GtkAlertDialog owns its window: it is modal, transient for the parent, and
@@ -1106,6 +1160,12 @@ void simp_gtk_widget_attach(void *self, int64_t parent, int64_t child) {
         gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(p), c);
     } else if (GTK_IS_NOTEBOOK(p)) {
         fatal("use Notebook.appendPage to attach a notebook page");
+    } else if (GTK_IS_PANED(p)) {
+        if (!gtk_paned_get_start_child(GTK_PANED(p)))
+            gtk_paned_set_start_child(GTK_PANED(p), c);
+        else if (!gtk_paned_get_end_child(GTK_PANED(p)))
+            gtk_paned_set_end_child(GTK_PANED(p), c);
+        else fatal("Paned already has two children");
     } else fatal("widget is not a container");
     cr->parent = pr;
 }

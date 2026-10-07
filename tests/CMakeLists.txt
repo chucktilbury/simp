@@ -446,6 +446,15 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --work "${CMAKE_CURRENT_BINARY_DIR}/tweed-shortcuts")
     set_tests_properties(simp_tweed_shortcuts PROPERTIES
         FIXTURES_REQUIRED tweed_binary LABELS "examples;gtk" TIMEOUT 120)
+    add_test(NAME simp_project_explorer
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_project_explorer.py"
+        --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
+        --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+        --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
+        --source "${example_directory}/editor/tweed.simp"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/project-explorer"
+        --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
+    set_tests_properties(simp_project_explorer PROPERTIES LABELS "examples;gtk" TIMEOUT 150)
     add_test(NAME simp_editor_dialogs
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_editor_dialogs.py"
         --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"

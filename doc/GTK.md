@@ -3,7 +3,7 @@
 The optional `gtk` package (`0.1.0`, `import gtk`, namespace `Gtk`) provides a
 compact GTK-aligned interface: `Application`, `Widget`, `Window`, `Box`, `Label`,
 `Button`, `Entry`, `CheckButton`, `ScrolledWindow`, `Notebook`, `MenuBar`,
-`FileDialog`, and `SignalConnection`, plus the optional `sourceview` package.
+`FileDialog`, `Paned`, `Tree`, `DirectoryScan`, and `SignalConnection`, plus the optional `sourceview` package.
 It is not a complete GTK binding or a generic GUI framework.
 
 ## Build and package linkage
@@ -102,6 +102,7 @@ The first-release additions are:
 | `CheckButton` | `CheckButton(String label)`, `setLabel(String)`, `String label()`, `setActive(bool)`, `bool active()`, `onToggled(callback<void(bool)>)` |
 | `ScrolledWindow` | `ScrolledWindow()`, `setChild(Widget)`, `remove(Widget)` |
 | `Notebook` | `Notebook()`, `appendPage(Widget, String)`, `int currentPage()`, `setCurrentPage(int)`, `int pageCount()`, `setPageTitle(int, String)`, `remove(Widget)`, `onPageChanged(callback<void()>)` |
+| `Paned` | `Paned()`, `append(Widget)`, `setPosition(int)` |
 | `MenuBar` | `MenuBar()`, `int addMenu(String)`, `int addItem(int menu, String label, callback<void()>)`, `setItemEnabled(int item, bool)`, `activateItem(int item)` |
 
 Methods without a listed result return `void`, except signal registration,
@@ -187,6 +188,93 @@ Gtk.AlertDialog().show(Window parent, String message, String detail)
 `show` presents a modal `GtkAlertDialog`, transient for `parent`, with a primary
 message, secondary detail text and a single Close button. It returns
 immediately and needs no callback; the binding keeps no reference to the alert.
+
+The folder-selection overload is:
+
+```text
+Gtk.FileDialog(Window parent, String initialPath, callback<void(String)> folder)
+```
+
+It uses `GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER`, with the same parent,
+asynchronous delivery, accept/cancel, URI and lifetime contracts as the existing
+file constructors. The overload preserves existing open/save/multiple APIs.
+Folder presentation uses a cancellable one-shot idle dispatch, so immediate
+cancellation or parent teardown cannot leave a not-yet-mapped folder chooser
+presenting after its parent closes. Existing file chooser presentation is unchanged.
+It currently shares their `GtkFileChooserNative` implementation; a separate
+`GtkFileDialog` migration must preserve this folder overload and use GTK's
+asynchronous select-folder operation, not treat it as an open-file request.
+
+## Trees and asynchronous directory enumeration
+
+`Paned` is a horizontal, draggable two-child splitter. `append` attaches the
+start child first, then the end child. A third child is an error.
+`setPosition` accepts a nonnegative GTK integer pixel position. The start side
+keeps its requested width on window resize; the end side grows.
+
+```text
+Gtk.Tree(callback<void(int)> request, callback<void(int)> activate)
+void add(int parent, int id, String label, String icon, bool expandable,
+         String value, int data)
+void clear(int parent)
+void setExpanded(int id, bool expanded)
+String value(int id)
+int data(int id)
+int findValue(String value)
+int childCount(int parent)
+```
+
+`Tree` is a virtualized `GtkListView`/`GtkTreeListModel` with `GtkTreeExpander`
+rows and symbolic icon names. IDs must be positive and unique among live rows;
+parent `0` denotes its roots. Values and integer data are generic, native-owned
+row metadata, copied from the caller, not filesystem policy. `request(id)`
+runs when an expandable row expands (possibly again on rebinding);
+applications should guard already-started loads. Collapsed rows do not request
+population merely to render their expansion arrow. `activate(id)` runs for
+leaves on double-click/Enter; directory activation toggles expansion.
+`clear(parent)` removes its descendants, invalidating their IDs.
+`setExpanded` requires a visible, expandable row; expand its ancestors first.
+`findValue` returns the smallest matching live ID or `0`; `childCount` counts
+immediate children, including any loading/error placeholders. All other row
+methods require a live ID. Roots/callbacks are released on widget disposal and
+shutdown, including disposal from within a callback.
+
+```text
+Gtk.DirectoryScan(Gtk.Tree owner, String path, bool hidden,
+                  callback<void(int, String)> result)
+void cancel()
+void append(Gtk.Tree owner, int parent, int firstId, int count, String icons)
+```
+
+Enumeration and sorting run on a native worker without managed-runtime or GTK
+access. On the GUI owner thread, `result(count, "")` delivers a batch of up to
+64 entries, at 5ms intervals. During that callback, `append` copies the current
+batch into its owning Tree, assigning consecutive IDs starting at `firstId`.
+The application chooses the parent, IDs and icons, without allocating a
+managed object/path for every file. Ignoring a batch skips those rows.
+`append` is valid only for that active batch, with a positive count no larger
+than the delivered count; any remaining entries in that batch are skipped.
+
+Rows have local UTF-8 paths as their `value` and kind as their integer `data`:
+`0` (regular file), `1` (directory), `2` (symlink), or `3` (other).
+Directories are expandable; other kinds are leaves. `icons` is a newline-separated
+set of `key=icon-name` rules, with required defaults `0` through `3` and
+optional filename suffixes beginning with `.`; the first matching suffix
+overrides the regular-file default. These rules are supplied by the application,
+not hardcoded editor policy in the native binding.
+
+Dot-prefixed entries are omitted when `hidden=false`; directories sort first,
+then UTF-8 names in byte order. Child symlinks are not followed. An explicitly
+selected root may itself be a symlink. A final `result(-1, error)` reports
+completion; empty error means success. Read failures or invalid-UTF-8 filenames
+report a nonempty error and no batches.
+
+Dropping the scan variable does not cancel it. Idempotent `cancel`, owner Tree
+disposal and shutdown release the callback root without further results.
+An active callback can cancel itself or shut down; registration release waits
+until it unwinds. The worker retains only native memory and a cancellable,
+so cancellation does not block the GUI waiting for filesystem I/O. Applications
+remain responsible for generation checks and for their loading/error rows.
 
 ## Source editing
 

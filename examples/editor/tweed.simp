@@ -460,6 +460,155 @@ class EditorDocument {
     }
 }
 
+class ProjectNode {
+    ProjectNode _self()
+    ProjectExplorer explorer
+    Gtk.DirectoryScan scan
+    int id
+    int generation
+    int kind
+    String path
+    bool started
+    bool populated
+    bool complete
+    String error
+
+    ProjectNode(ProjectExplorer owner, int row, String filePath, int entryKind) {
+        explorer = owner
+        path = filePath
+        kind = entryKind
+        generation = owner.generation
+        id = row
+        error = ""
+    }
+
+    void load() {
+        if (kind != 1 || started) { return }
+        started = true
+        explorer.addMessage(id, "Loading...", "content-loading-symbolic")
+        scan = Gtk.DirectoryScan(explorer.tree, path, explorer.hidden.active(), _self().received)
+    }
+
+    void received(int count, String message) {
+        if (generation != explorer.generation || explorer.tree.disposed()) { return }
+        if (!populated) {
+            populated = true
+            explorer.tree.clear(id)
+        }
+        if (count == -1) {
+            complete = true
+            scan = null
+            error = message
+            if (!error.equals("")) {
+                explorer.addMessage(id, format("Could not read directory: {}", error), "dialog-error-symbolic")
+            } else {
+                if (explorer.tree.childCount(id) == 0) {
+                    explorer.addMessage(id, "(Empty folder)", "folder-symbolic")
+                }
+            }
+            return
+        }
+        scan.append(explorer.tree, id, explorer.nextId + 1, count, explorer.icons)
+        explorer.nextId = explorer.nextId + count
+    }
+}
+ProjectNode ProjectNode._self() from "simp_gtk_self"
+
+class ProjectExplorer {
+    ProjectExplorer _self()
+    Gtk.Box sidebar
+    Gtk.Tree tree
+    Gtk.CheckButton hidden
+    Gtk.Button refreshButton
+    list nodes
+    int nextId
+    int generation
+    String rootPath
+    String icons
+    callback<void(String)> open
+
+    ProjectExplorer(callback<void(String)> openFile) {
+        open = openFile
+        nodes = []
+        rootPath = ""
+        icons = "0=text-x-generic-symbolic\n1=folder-symbolic\n2=emblem-symbolic-link-symbolic\n3=dialog-warning-symbolic\n.simp=text-x-script-symbolic\n.tweed=text-x-script-symbolic\n.c=text-x-script-symbolic\n.h=text-x-script-symbolic\n.py=text-x-script-symbolic\n.png=image-x-generic-symbolic\n.jpg=image-x-generic-symbolic\n.svg=image-x-generic-symbolic"
+        sidebar = Gtk.Box(Gtk.Box.VERTICAL, 4)
+        sidebar.setVExpand(true)
+        sidebar.append(Gtk.Label("Project Explorer"))
+        refreshButton = Gtk.Button("Refresh")
+        refreshButton.setSensitive(false)
+        refreshButton.onClicked(_self().refresh)
+        sidebar.append(refreshButton)
+        hidden = Gtk.CheckButton("Show Hidden Files")
+        hidden.onToggled(_self().hiddenChanged)
+        sidebar.append(hidden)
+        tree = Gtk.Tree(_self().expand, _self().activateFile)
+        tree.setHExpand(true)
+        tree.setVExpand(true)
+        Gtk.ScrolledWindow scroll = Gtk.ScrolledWindow()
+        scroll.setHExpand(true)
+        scroll.setVExpand(true)
+        scroll.setChild(tree)
+        sidebar.append(scroll)
+        addMessage(0, "Use File > Open Folder...", "folder-open-symbolic")
+    }
+
+    void addMessage(int parent, String text, String image) {
+        nextId = nextId + 1
+        tree.add(parent, nextId, text, image, false, "", -1)
+    }
+
+    void cancelLoads() {
+        generation = generation + 1
+        int i = 0
+        while (i < nodes.length) {
+            ProjectNode node = nodes[i] as ProjectNode
+            if (node.scan != null) {
+                node.scan.cancel()
+                node.scan = null
+            }
+            i = i + 1
+        }
+    }
+
+    void setRoot(String path) {
+        rootPath = path
+        refreshButton.setSensitive(true)
+        refresh()
+    }
+
+    void refresh() {
+        if (rootPath.equals("") || tree.disposed()) { return }
+        cancelLoads()
+        tree.clear(0)
+        nodes = []
+        nextId = 1
+        tree.add(0, 1, rootPath, "folder-open-symbolic", true, rootPath, 1)
+        tree.setExpanded(1, true)
+    }
+
+    void hiddenChanged(bool value) { refresh() }
+
+    void expand(int id) {
+        int i = 0
+        while (i < nodes.length) {
+            if ((nodes[i] as ProjectNode).id == id) { return }
+            i = i + 1
+        }
+        if (tree.data(id) == 1) {
+            ProjectNode node = ProjectNode(_self(), id, tree.value(id), 1)
+            nodes.append(node)
+            node.load()
+        }
+    }
+
+    void activateFile(int id) {
+        int kind = tree.data(id)
+        if (kind >= 0 && kind != 1) { open(tree.value(id)) }
+    }
+}
+ProjectExplorer ProjectExplorer._self() from "simp_gtk_self"
+
 class TweedEditor {
     TweedEditor _self()
     TweedSettings settings
@@ -492,6 +641,9 @@ class TweedEditor {
     Gtk.Window window
     Gtk.Box layout
     Gtk.MenuBar menu
+    ProjectExplorer project
+    Gtk.Paned workspace
+    int openFolderItem
     list documentItems
     int undoItem
     int redoItem
@@ -601,6 +753,7 @@ class TweedEditor {
         int fileMenu = menu.addMenu("File")
         newItem = menu.addItem(fileMenu, "New", commandAction("new"))
         openItem = menu.addItem(fileMenu, "Open...", commandAction("open"))
+        openFolderItem = menu.addItem(fileMenu, "Open Folder...", _self().chooseFolder)
         recentItem = menu.addItem(fileMenu, "Recent", recentAction)
         documentItems.append(menu.addItem(fileMenu, "Save", commandAction("save")))
         documentItems.append(menu.addItem(fileMenu, "Save As...", commandAction("save-as")))
@@ -648,7 +801,14 @@ class TweedEditor {
         notebook = Gtk.Notebook()
         notebook.setHExpand(true)
         notebook.setVExpand(true)
-        layout.append(notebook)
+        project = ProjectExplorer(_self().openFile)
+        workspace = Gtk.Paned()
+        workspace.setHExpand(true)
+        workspace.setVExpand(true)
+        workspace.append(project.sidebar)
+        workspace.append(notebook)
+        workspace.setPosition(250)
+        layout.append(workspace)
         notebook.onPageChanged(pageChangedAction)
         closeChoices = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
         closeSaveButton = Gtk.Button("Save")
@@ -1269,6 +1429,33 @@ class TweedEditor {
         updateMenu()
     }
 
+    void chooseFolder() {
+        if (commandsBlocked()) { return }
+        String initialPath = project.rootPath
+        if (initialPath.equals("") && currentDocument() != null && !currentDocument().path.equals("")) {
+            initialPath = System.FileSystem().dirname(currentDocument().path)
+        }
+        fileDialog = Gtk.FileDialog(window, initialPath, _self().folderOpened)
+        updateMenu()
+    }
+
+    void folderOpened(String path) {
+        fileDialog = null
+        updateMenu()
+        if (path.equals("")) {
+            currentDocument().view.focus()
+            return
+        }
+        if (path.contains("://")) {
+            status.setText("Open folder failed: only local filesystem paths are supported")
+            return
+        }
+        if (!path.startsWith("/")) {
+            path = System.FileSystem().join(System.FileSystem().getCwd(), path)
+        }
+        project.setRoot(System.FileSystem().normalize(path))
+    }
+
     void opened(list paths) {
         fileDialog = null
         openFailures = []
@@ -1555,6 +1742,8 @@ class TweedEditor {
         bool editable = ready && document != null
         menu.setItemEnabled(newItem, ready)
         menu.setItemEnabled(openItem, ready)
+        menu.setItemEnabled(openFolderItem, ready)
+        project.sidebar.setSensitive(ready)
         menu.setItemEnabled(recentItem, ready && recentFiles.length > 0)
         menu.setItemEnabled(quitItem, fileDialog == null)
         int index = 0

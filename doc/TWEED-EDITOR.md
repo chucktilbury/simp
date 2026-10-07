@@ -26,7 +26,7 @@ sourceview package (see [GTK source editing](GTK.md#language-definitions));
 only Tweed is shipped. Documents are represented separately from notebook pages; opening an
 already-open path selects its existing tab. `openDocument(path)` returns the
 existing or newly opened document independently of selection, and
-`activateDocument(document)` selects its tab; a future Project Explorer can use
+`activateDocument(document)` selects its tab; Project Explorer uses
 these same APIs. The notebook, scrolled viewport, and source view explicitly
 expand horizontally and vertically, so the multiline editor fills the remaining
 window space and grows when the window is resized; the menu, search controls,
@@ -131,6 +131,37 @@ and `<Control><Shift>z` redoes. `<Control><Shift>s` opens Save As,
 `<Control>x`, `<Control>c`, `<Control>v`, and `<Control>a` perform Cut, Copy,
 Paste, and Select All. `<Control>comma` opens Preferences. Menus and configurable
 shortcuts resolve to the same named command callbacks.
+
+## Project Explorer
+
+**File > Open Folder...** opens a modal folder chooser parented to the editor.
+Acceptance replaces the root in a resizable left-hand Project Explorer;
+cancellation leaves the current root and tabs unchanged. The root opens
+automatically. Expand a directory with its arrow or double-click it; double-click
+a file (or press Enter on it) opens it through the same document-opening path
+as File > Open, including existing-tab focus and binary/invalid-UTF-8 rejection.
+Single-click selects a row without changing the document.
+
+Only expanded directories are enumerated. Filesystem enumeration and
+directories-first, case-sensitive UTF-8 byte-order sorting run off the GUI
+thread; entries are delivered in small, bounded batches. GTK virtualizes
+rows, and Simple retains loading state only for directories actually expanded,
+not a managed object for every file in a large folder. Folder, source/text,
+image, symlink and special-file icons distinguish entries. Symlinks are shown
+as leaves, never recursively expanded; a link to a regular text file can still
+be opened normally. Loading, empty-directory and read-error rows make progress
+and failures visible. Non-UTF-8 filenames produce an explicit directory error,
+rather than silently skipping or lossily decoding names.
+
+**Refresh** re-reads the root after files are added, removed or permissions
+change; **Show Hidden Files** includes dot-prefixed files and directories.
+Both rebuild the tree with its root expanded and descendants collapsed;
+open documents, unsaved edits and the active tab are unchanged. Expansion
+results are cached until that rebuild. Replacing the root, refreshing, or
+closing the editor cancels obsolete work and prevents stale results from
+repopulating the tree. Project state and the hidden-files toggle are not saved.
+This increment does not rename/delete files or add Git, project build settings,
+LSP integration, or session restoration.
 
 ## Preferences and settings
 
