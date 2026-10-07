@@ -13,7 +13,9 @@ provides ordinary selection, cursor navigation, and clipboard bindings.
 The editor's source adapter is `GtkSource.View`. It exposes managed multiline
 text buffers, undo/redo, modified state, cursor coordinates, search/replace,
 syntax-context queries, and shortcut registration while remaining attachable
-to existing `Gtk.Widget` containers. The `tweed` GtkSourceView language
+to existing `Gtk.Widget` containers. The document editor uses GtkSourceView's
+monospace setting; the rest of the application keeps the platform's normal
+font. The `tweed` GtkSourceView language
 definition highlights Tweed Lang keywords/types, strings, comments, and
 numbers. Highlighting is enabled only for recognized source files: a document's
 language is chosen from its file name (`*.simp` and `*.tweed` select `tweed`),
@@ -89,9 +91,16 @@ explicitly rejected rather than interpreted as cancellation.
 Command-line file arguments open tabs at startup.
 
 **Edit** offers Undo, Redo, Cut, Copy, Paste, Select All, Find, and Replace.
-Find and Replace focus their respective search-row fields. If text is selected
-on a single line, it replaces the Find query; otherwise the previous query is
-kept. **Find next** selects the next match after the current selection,
+Find and Replace open a separate, non-modal window transient for the editor.
+The Find window contains the query and Find next; Replace adds the replacement
+field and Replace next / Replace all. Closing the window hides it and preserves
+the query/options for next time. The dialog follows the active document: its
+search uses that tab's buffer, and in-selection bounds are stored separately
+per document. While it is open, switching to a tab with selected text captures
+that selection as the tab's search scope; tabs without a selection retain any
+existing scope. If text is selected on a single line when Find or Replace
+is opened, it replaces the Find query; otherwise the previous query is kept.
+**Find next** selects the next match after the current selection,
 wrapping around once; **Replace next** replaces the selected match (or the next
 one), and **Replace all** replaces every match in one undoable step and reports
 the count. The **Whole words**, **Case sensitive**, and **In selection** check
@@ -160,7 +169,9 @@ and buffer APIs.
 The requested directory-tree Project Explorer is also deferred. The current
 document-open/focus and notebook APIs are the intended integration points for
 that panel. Persistent recent history, native per-tab close glyphs, and an
-extension/plugin runtime are not included yet.
+extension/plugin runtime, and a configurable toolbar are not included yet. The
+dialog controls and menu/shortcut commands use the same editor actions, so a
+future toolbar can reuse those actions.
 Any future in-process plugins should be treated as trusted code.
 
 Run the editor-specific headless cases and existing GTK integration checks:

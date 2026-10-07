@@ -36,6 +36,7 @@ namespace GtkSource {
         int _column(int token)
         bool _hasContext(int token, String context, int offset)
         bool _language(int token, String language)
+        void _monospace(int token, bool monospace)
         bool _bindShortcut(int token, String trigger, callback<void()> action)
         bool _hasShortcut(int token, String trigger)
         int _changed(int token, callback<void()> action)
@@ -63,6 +64,9 @@ namespace GtkSource {
         void paste() { _edit(_widgetToken(), 2) }
         void selectAll() { _edit(_widgetToken(), 3) }
         void focus() { _focus(_widgetToken()) }
+        void setMonospace(bool monospace) {
+            _monospace(_widgetToken(), monospace)
+        }
         bool find(String query) { return _find(_widgetToken(), query) }
         bool replaceNext(String query, String replacement) {
             return _replaceNext(_widgetToken(), query, replacement)
@@ -117,6 +121,8 @@ namespace GtkSource {
     bool View._hasContext(int token, String context, int offset)
         from "simp_gtk_source_view_has_context"
     bool View._language(int token, String language) from "simp_gtk_source_view_language"
+    void View._monospace(int token, bool monospace)
+        from "simp_gtk_source_view_monospace"
     String View._languageId(int token) from "simp_gtk_source_view_language_id"
     bool View._search(int token, String query, int options) from "simp_gtk_source_view_search"
     bool View._replace(int token, String query, String replacement, int options)

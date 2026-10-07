@@ -14,6 +14,7 @@ class EditorDocument {
         shortcuts = []
         shortcutConflict = false
         view = GtkSource.View()
+        view.setMonospace(true)
         view.setLanguage(GtkSource.Content().languageFor(filePath))
         view.setText(contents)
         view.markSaved()
@@ -53,7 +54,11 @@ class TweedEditor {
     Gtk.FileDialog fileDialog
     EditorDocument dialogDocument
     bool dialogClosing
-    Gtk.Box searchTools
+    Gtk.TransientWindow searchWindow
+    Gtk.Box searchLayout
+    Gtk.Box findRow
+    Gtk.Box replaceRow
+    Gtk.Box optionsRow
     Gtk.Entry findEntry
     Gtk.Entry replaceEntry
     Gtk.Notebook notebook
@@ -75,6 +80,7 @@ class TweedEditor {
     EditorDocument pendingCloseDocument
     bool pendingCloseAll
     bool allowWindowClose
+    bool searchDialogOpen
     int pageChanges
     callback<void()> changedAction
     callback<void()> cursorAction
@@ -100,6 +106,7 @@ class TweedEditor {
     callback<void()> selectAllAction
     callback<void()> showFindAction
     callback<void()> showReplaceAction
+    callback<bool()> searchCloseAction
     callback<void(list)> openResultAction
     callback<void(String)> saveResultAction
     callback<bool()> closeAction
@@ -119,6 +126,7 @@ class TweedEditor {
         pendingCloseDocument = null
         pendingCloseAll = false
         allowWindowClose = false
+        searchDialogOpen = false
         fileDialog = null
         dialogDocument = null
         dialogClosing = false
@@ -146,8 +154,13 @@ class TweedEditor {
         documentItems.append(menu.addItem(editMenu, "Select All", commandAction("select-all")))
         documentItems.append(menu.addItem(editMenu, "Find", commandAction("find")))
         documentItems.append(menu.addItem(editMenu, "Replace", commandAction("replace")))
-        searchTools = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
-        layout.append(searchTools)
+        searchWindow = Gtk.TransientWindow("Find")
+        searchWindow.setDefaultSize(520, 150)
+        searchWindow.setTransientFor(window)
+        searchWindow.setVisible(false)
+        searchLayout = Gtk.Box(Gtk.Box.VERTICAL, 6)
+        searchWindow.setChild(searchLayout)
+        findRow = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
         findEntry = Gtk.Entry("")
         replaceEntry = Gtk.Entry("")
         findButton = Gtk.Button("Find next")
@@ -156,14 +169,20 @@ class TweedEditor {
         wholeWordsCheck = Gtk.CheckButton("Whole words")
         caseCheck = Gtk.CheckButton("Case sensitive")
         selectionCheck = Gtk.CheckButton("In selection")
-        searchTools.append(findEntry)
-        searchTools.append(findButton)
-        searchTools.append(replaceEntry)
-        searchTools.append(replaceButton)
-        searchTools.append(replaceAllButton)
-        searchTools.append(wholeWordsCheck)
-        searchTools.append(caseCheck)
-        searchTools.append(selectionCheck)
+        findRow.append(findEntry)
+        findRow.append(findButton)
+        searchLayout.append(findRow)
+        replaceRow = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
+        replaceRow.append(replaceEntry)
+        replaceRow.append(replaceButton)
+        replaceRow.append(replaceAllButton)
+        searchLayout.append(replaceRow)
+        optionsRow = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
+        optionsRow.append(wholeWordsCheck)
+        optionsRow.append(caseCheck)
+        optionsRow.append(selectionCheck)
+        searchLayout.append(optionsRow)
+        replaceRow.setVisible(false)
         notebook = Gtk.Notebook()
         notebook.setHExpand(true)
         notebook.setVExpand(true)
@@ -183,6 +202,7 @@ class TweedEditor {
         findButton.onClicked(findAction)
         replaceButton.onClicked(replaceAction)
         replaceAllButton.onClicked(replaceAllAction)
+        searchWindow.onCloseRequest(searchCloseAction)
         closeSaveButton.onClicked(closeSaveAction)
         closeDiscardButton.onClicked(closeDiscardAction)
         closeCancelButton.onClicked(closeCancelAction)
@@ -439,6 +459,7 @@ class TweedEditor {
     bool writeDocument(EditorDocument document, String destination) {
         if (destination.equals("")) {
             status.setText("Save failed: empty file path")
+            closeSearchDialog()
             return false
         }
         if (destination.contains("://")) {
@@ -725,15 +746,36 @@ class TweedEditor {
 
     void showFind() {
         if (!commandsBlocked()) {
+            searchWindow.setTitle("Find")
+            replaceRow.setVisible(false)
             prepareSearch()
+            searchDialogOpen = true
+            searchWindow.present()
             findEntry.focus()
         }
     }
 
     void showReplace() {
         if (!commandsBlocked()) {
+            searchWindow.setTitle("Find and Replace")
+            replaceRow.setVisible(true)
             prepareSearch()
+            searchDialogOpen = true
+            searchWindow.present()
             replaceEntry.focus()
+        }
+    }
+
+    bool hideSearchDialog() {
+        searchDialogOpen = false
+        searchWindow.setVisible(false)
+        return true
+    }
+
+    void closeSearchDialog() {
+        searchDialogOpen = false
+        if (searchWindow != null && !searchWindow.disposed()) {
+            searchWindow.dispose()
         }
     }
 
@@ -747,6 +789,12 @@ class TweedEditor {
 
     void pageChanged() {
         pageChanges = pageChanges + 1
+        if (searchDialogOpen) {
+            EditorDocument document = currentDocument()
+            if (document != null && document.view.hasSelection()) {
+                document.view.captureSearchScope()
+            }
+        }
         updateStatus()
     }
 
@@ -804,11 +852,14 @@ class TweedEditor {
         menu.setItemEnabled(copyItem, selected)
         notebook.setSensitive(fileDialog == null)
         closeChoices.setSensitive(fileDialog == null)
-        searchTools.setSensitive(ready)
+        findRow.setSensitive(ready)
+        replaceRow.setSensitive(ready)
+        optionsRow.setSensitive(ready)
     }
 
     bool requestClose() {
         if (allowWindowClose) {
+            closeSearchDialog()
             return false
         }
         if (fileDialog != null) {
@@ -1079,6 +1130,7 @@ start {
     editor.selectAllAction = editor.selectAllCurrent
     editor.showFindAction = editor.showFind
     editor.showReplaceAction = editor.showReplace
+    editor.searchCloseAction = editor.hideSearchDialog
     editor.openResultAction = editor.opened
     editor.saveResultAction = editor.savedAs
     editor.closeAction = editor.requestClose

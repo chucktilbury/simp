@@ -23,6 +23,9 @@ class Fixture {
     bool alert(String fragments)
     bool alertOpen()
     void select(int first, int last)
+    bool searchDialog(bool replaceMode)
+    bool closeSearchDialog()
+    bool monospace()
     void cleanup()
 }
 void Fixture.choose(String path, int accept, int overwrite) from "fixture_editor_choose"
@@ -36,6 +39,9 @@ void Fixture.chooseMany(String folder, int count) from "fixture_editor_choose_ma
 bool Fixture.alert(String fragments) from "fixture_editor_alert"
 bool Fixture.alertOpen() from "fixture_editor_alert_open"
 void Fixture.select(int first, int last) from "fixture_editor_select"
+bool Fixture.searchDialog(bool replaceMode) from "fixture_editor_search_dialog"
+bool Fixture.closeSearchDialog() from "fixture_editor_close_search_dialog"
+bool Fixture.monospace() from "fixture_editor_monospace"
 void Fixture.cleanup() from "fixture_editor_cleanup"
 
 class EditorChecks {
@@ -256,6 +262,7 @@ class EditorChecks {
             require(!Fixture().alertOpen(), "alert dismissed")
             EditorDocument text = documentAt("many/two.txt")
             require(text != null && text.view.text().equals("class Demo {}\n"), "text file opened")
+            require(Fixture().monospace(), "editor source view uses monospace font")
             require(editor.currentDocument() == text || editor.currentDocument() == documentAt("many/one.simp"), "last opened file is current")
             require(text.view.language().equals("") && !text.view.hasContextAt("keyword", 0), "plain text not highlighted")
             EditorDocument source = documentAt("many/one.simp")
@@ -277,14 +284,26 @@ class EditorChecks {
             require(search.view.text().equals("omega beta alphabet Alpha\nomega gamma\n"), "Replace next honors whole words and case")
             editor.findEntry.setText("previous")
             Fixture().select(6, 10)
-            require(Fixture().shortcut("<Control>f") && Fixture().entryFocus("beta"), "Ctrl+F fills Find from selection")
+            require(Fixture().shortcut("<Control>f") && Fixture().searchDialog(false) &&
+                    Fixture().entryFocus("beta"), "Ctrl+F opens Find dialog and fills selection")
             Fixture().select(0, 0)
-            require(Fixture().shortcut("<Control>h") && editor.findEntry.text().equals("beta"), "Ctrl+H keeps query without selection")
+            require(Fixture().shortcut("<Control>h") && Fixture().searchDialog(true) &&
+                    editor.findEntry.text().equals("beta"), "Ctrl+H opens Replace dialog and keeps query")
             Fixture().select(20, 25)
             require(Fixture().shortcut("<Control>h") && editor.findEntry.text().equals("Alpha") && Fixture().entryFocus("omega"), "Ctrl+H fills Find from selection")
+            require(Fixture().closeSearchDialog() && !editor.searchDialogOpen &&
+                    editor.findEntry.text().equals("Alpha"), "closing search dialog hides it and keeps search state")
             search.view.setText("alpha beta alphabet Alpha\nalpha gamma\n")
             Fixture().select(0, 25)
             require(Fixture().shortcut("<Control>h"), "Replace captures selection scope")
+            EditorDocument sourceScope = documentAt("many/one.simp")
+            editor.activateDocument(sourceScope)
+            Fixture().select(0, 5)
+            editor.activateDocument(search)
+            editor.activateDocument(sourceScope)
+            require(sourceScope.view.hasSearchScope(), "search dialog captures selection scope per tab")
+            editor.activateDocument(search)
+            require(search.view.hasSearchScope(), "switching tabs preserves the other tab search scope")
             options(false, true, true)
             editor.findEntry.setText("gamma")
             editor.findAction()
@@ -348,7 +367,7 @@ def main():
         env["GTK_USE_PORTAL"] = "0"
         native = work / "fixture.o"
         flags = shlex.split(subprocess.check_output(
-            ["pkg-config", "--cflags", "gtk4"], text=True))
+            ["pkg-config", "--cflags", "gtk4", "gtksourceview-5"], text=True))
         if args.sanitize:
             flags += ["-fsanitize=" + args.sanitize, "-fno-omit-frame-pointer"]
         result = invoke([args.clang, "-std=c11", "-Wall", "-Wextra", "-Werror",

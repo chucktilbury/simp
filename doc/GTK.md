@@ -91,7 +91,8 @@ The first-release additions are:
 
 | Class | Constructor and operations |
 | --- | --- |
-| `Window` | `Window(String title)`, `setTitle(String)`, `String title()`, `setDefaultSize(int width, int height)`, `setChild(Widget)`, `remove(Widget)`, `present()`, `close()`, `onCloseRequest(callback<bool()>)` |
+| `Window` | `Window(String title)`, `setTitle(String)`, `String title()`, `setDefaultSize(int width, int height)`, `setTransientFor(Window parent)`, `setChild(Widget)`, `remove(Widget)`, `present()`, `close()`, `onCloseRequest(callback<bool()>)` |
+| `TransientWindow` | `TransientWindow(String title)`, `setTitle(String)`, `String title()`, `setDefaultSize(int width, int height)`, `setTransientFor(Window parent)`, `setChild(Widget)`, `remove(Widget)`, `present()`, `close()`, `onCloseRequest(callback<bool()>)` |
 | `Box` | `Box(int orientation, int spacing)`, `setLayout(int orientation, int spacing)`, `append(Widget)`, `remove(Widget)` |
 | `Label` | `Label(String text)`, `setText(String)`, `String text()` |
 | `Button` | `Button(String label)`, `setLabel(String)`, `String label()`, `onClicked(callback<void()>)` |
@@ -108,8 +109,11 @@ Default window dimensions must be positive and fit that range.
 Text accepts managed UTF-8 strings, including empty strings, but not null,
 embedded NULs, or invalid UTF-8. Getters return managed copies.
 
-`Window` and `ScrolledWindow` have one child; remove it before attaching a
-replacement. `Box` accepts multiple children. A child must be live and unparented;
+`Window`, `TransientWindow` and `ScrolledWindow` have one child; remove it before
+attaching a replacement. `Window` is associated with the `Gtk.Application`;
+`TransientWindow` is a standalone top-level. `setTransientFor` establishes the
+native transient relationship, not managed ownership, so dispose transient
+windows explicitly. `Box` accepts multiple children. A child must be live and unparented;
 windows cannot be children. Self-parenting, cycles, already-parented children,
 occupied single-child containers, and removing from the wrong parent are errors.
 GTK may internally insert a viewport in a scrolled window; the Simple ownership
@@ -185,7 +189,9 @@ immediately and needs no callback; the binding keeps no reference to the alert.
 
 Configure `-DSIMP_GTK_SOURCEVIEW=ON` together with GTK to enable `import sourceview`
 and `GtkSource.View`. `widget()` supplies its `Gtk.SourceViewWidget` for normal
-parenting and expansion. Besides text, modified state, search/replace, language,
+parenting and expansion. `setMonospace(bool)` selects GTK's text-view
+monospaced-font mode without changing the font of other widgets. Besides text,
+modified state, search/replace, language,
 cursor and shortcut operations, the editor exposes:
 
 ```text

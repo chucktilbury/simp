@@ -25,6 +25,7 @@ namespace Gtk {
         int _click(Button source, callback<void()> action)
         int _changed(Entry source, callback<void(String)> action)
         int _close(Window source, callback<bool()> action)
+        int _close(TransientWindow source, callback<bool()> action)
         int _toggled(CheckButton source, callback<void(bool)> action)
         int _pageChanged(Notebook source, callback<void()> action)
         bool _disconnect(int token)
@@ -40,6 +41,9 @@ namespace Gtk {
             _token = _changed(source, action)
         }
         SignalConnection(Window source, callback<bool()> action) {
+            _token = _close(source, action)
+        }
+        SignalConnection(TransientWindow source, callback<bool()> action) {
             _token = _close(source, action)
         }
         SignalConnection(CheckButton source, callback<void(bool)> action) {
@@ -70,6 +74,7 @@ namespace Gtk {
         void _remove(int parent, int child)
         void _windowAction(int token, int action)
         void _windowSize(int token, int width, int height)
+        void _windowTransientFor(int token, int parent)
         void _layout(int token, int orientation, int spacing)
         void _activeSet(int token, bool value)
         bool _activeGet(int token)
@@ -89,6 +94,7 @@ namespace Gtk {
         void _presentWindow() { _windowAction(_id, 0) }
         void _closeWindow() { _windowAction(_id, 1) }
         void _sizeWindow(int width, int height) { _windowSize(_id, width, height) }
+        void _setTransientFor(int parent) { _windowTransientFor(_id, parent) }
         void _boxLayout(int orientation, int spacing) { _layout(_id, orientation, spacing) }
         void _setActive(bool value) { _activeSet(_id, value) }
         bool _getActive() { return _activeGet(_id) }
@@ -111,12 +117,35 @@ namespace Gtk {
         void setTitle(String title) { _setText(title) }
         String title() { return _getText() }
         void setDefaultSize(int width, int height) { _sizeWindow(width, height) }
+        void setTransientFor(Window parent) {
+            _setTransientFor(parent._widgetToken())
+        }
         void setChild(Widget child) { _attachChild(child) }
         void remove(Widget child) { _removeChild(child) }
         void present() { _presentWindow() }
         void close() { _closeWindow() }
         SignalConnection onCloseRequest(callback<bool()> action) {
             return SignalConnection(_windowSelf(), action)
+        }
+    }
+
+    class TransientWindow : Widget {
+        private:
+        TransientWindow _transientSelf()
+        public:
+        TransientWindow(String title) { super Widget(11, title, 0, 0) }
+        void setTitle(String title) { _setText(title) }
+        String title() { return _getText() }
+        void setDefaultSize(int width, int height) { _sizeWindow(width, height) }
+        void setTransientFor(Window parent) {
+            _setTransientFor(parent._widgetToken())
+        }
+        void setChild(Widget child) { _attachChild(child) }
+        void remove(Widget child) { _removeChild(child) }
+        void present() { _presentWindow() }
+        void close() { _closeWindow() }
+        SignalConnection onCloseRequest(callback<bool()> action) {
+            return SignalConnection(_transientSelf(), action)
         }
     }
 
@@ -278,6 +307,7 @@ namespace Gtk {
     Application Application._self() from "simp_gtk_self"
     Widget Widget._self() from "simp_gtk_self"
     Window Window._windowSelf() from "simp_gtk_self"
+    TransientWindow TransientWindow._transientSelf() from "simp_gtk_self"
     Button Button._buttonSelf() from "simp_gtk_self"
     Entry Entry._entrySelf() from "simp_gtk_self"
     CheckButton CheckButton._checkSelf() from "simp_gtk_self"
@@ -294,6 +324,8 @@ namespace Gtk {
     int SignalConnection._click(Button source, callback<void()> action) from "simp_gtk_button_signal"
     int SignalConnection._changed(Entry source, callback<void(String)> action) from "simp_gtk_entry_signal"
     int SignalConnection._close(Window source, callback<bool()> action) from "simp_gtk_window_signal"
+    int SignalConnection._close(TransientWindow source, callback<bool()> action)
+        from "simp_gtk_window_signal"
     int SignalConnection._toggled(CheckButton source, callback<void(bool)> action) from "simp_gtk_checkbox_signal"
     int SignalConnection._pageChanged(Notebook source, callback<void()> action)
         from "simp_gtk_notebook_signal"
@@ -325,6 +357,8 @@ namespace Gtk {
     void Widget._remove(int parent, int child) from "simp_gtk_widget_remove"
     void Widget._windowAction(int token, int action) from "simp_gtk_window_action"
     void Widget._windowSize(int token, int width, int height) from "simp_gtk_window_size"
+    void Widget._windowTransientFor(int token, int parent)
+        from "simp_gtk_window_transient_for"
     void Widget._layout(int token, int orientation, int spacing) from "simp_gtk_box_layout"
     void Widget._activeSet(int token, bool value) from "simp_gtk_checkbox_set"
     bool Widget._activeGet(int token) from "simp_gtk_checkbox_get"

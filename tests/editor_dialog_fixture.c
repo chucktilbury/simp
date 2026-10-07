@@ -1,6 +1,7 @@
 #include "gtk_private.h"
 #include <simp/RuntimeGc.h>
 #include <simp/Stdlib.h>
+#include <gtksourceview/gtksource.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -67,6 +68,35 @@ static GtkWidget *find_type(GtkWidget *widget, GType type) {
     for (GtkWidget *child = gtk_widget_get_first_child(widget); child;
          child = gtk_widget_get_next_sibling(child)) {
         GtkWidget *found = find_type(child, type);
+        if (found) return found;
+    }
+    return NULL;
+}
+
+static GtkWindow *search_window(void) {
+    GListModel *windows = gtk_window_get_toplevels();
+    GtkWindow *found = NULL;
+    for (guint i = 0; i < g_list_model_get_n_items(windows); ++i) {
+        GtkWindow *window = g_list_model_get_item(windows, i);
+        const char *title = gtk_window_get_title(window);
+        if ((g_strcmp0(title, "Find") == 0 ||
+             g_strcmp0(title, "Find and Replace") == 0) &&
+            gtk_window_get_transient_for(window) == editor_window()) {
+            found = window;
+            break;
+        }
+        g_object_unref(window);
+    }
+    return found;
+}
+
+static GtkWidget *find_button(GtkWidget *widget, const char *label) {
+    if (GTK_IS_BUTTON(widget) &&
+        g_strcmp0(gtk_button_get_label(GTK_BUTTON(widget)), label) == 0)
+        return widget;
+    for (GtkWidget *child = gtk_widget_get_first_child(widget); child;
+         child = gtk_widget_get_next_sibling(child)) {
+        GtkWidget *found = find_button(child, label);
         if (found) return found;
     }
     return NULL;
@@ -270,7 +300,7 @@ bool fixture_editor_alert_open(void *self) {
     for (guint i = 0; i < g_list_model_get_n_items(windows); ++i) {
         GtkWindow *window = g_list_model_get_item(windows, i);
         if (window != editor && gtk_window_get_transient_for(window) == editor &&
-            gtk_widget_get_visible(GTK_WIDGET(window)))
+            gtk_widget_get_visible(GTK_WIDGET(window)) && gtk_window_get_modal(window))
             open = true;
         g_object_unref(window);
     }
@@ -366,14 +396,56 @@ bool fixture_editor_entry_focus(void *self, void *text) {
     const char *bytes;
     uint64_t length;
     simp_string_bytes(text, &bytes, &length);
-    GtkWidget *focus = gtk_root_get_focus(GTK_ROOT(editor_window()));
-    for (GtkWidget *widget = focus; widget; widget = gtk_widget_get_parent(widget)) {
-        if (GTK_IS_ENTRY(widget)) {
-            const char *actual = gtk_editable_get_text(GTK_EDITABLE(widget));
-            return strlen(actual) == length && memcmp(actual, bytes, length) == 0;
+    GListModel *windows = gtk_window_get_toplevels();
+    for (guint i = 0; i < g_list_model_get_n_items(windows); ++i) {
+        GtkWindow *window = g_list_model_get_item(windows, i);
+        GtkWidget *focus = gtk_window_get_focus(window);
+        for (GtkWidget *widget = focus; widget; widget = gtk_widget_get_parent(widget)) {
+            if (GTK_IS_ENTRY(widget)) {
+                const char *actual = gtk_editable_get_text(GTK_EDITABLE(widget));
+                bool found = strlen(actual) == length && memcmp(actual, bytes, length) == 0;
+                g_object_unref(window);
+                return found;
+            }
         }
+        g_object_unref(window);
     }
     return false;
+}
+
+bool fixture_editor_search_dialog(void *self, bool replace_mode) {
+    (void)self;
+    simp_gtk_require_owner();
+    GtkWindow *dialog = search_window();
+    if (!dialog) return false;
+    const char *title = replace_mode ? "Find and Replace" : "Find";
+    GtkWidget *root = gtk_window_get_child(dialog);
+    GtkWidget *replace = find_button(root, "Replace all");
+    GtkWidget *replace_row = replace ? gtk_widget_get_parent(replace) : NULL;
+    bool matches = gtk_widget_get_visible(GTK_WIDGET(dialog)) &&
+        g_strcmp0(gtk_window_get_title(dialog), title) == 0 &&
+        replace_row && (gtk_widget_get_visible(replace_row) == replace_mode);
+    g_object_unref(dialog);
+    return matches;
+}
+
+bool fixture_editor_close_search_dialog(void *self) {
+    (void)self;
+    simp_gtk_require_owner();
+    GtkWindow *dialog = search_window();
+    if (!dialog) return false;
+    gtk_window_close(dialog);
+    bool closed = !gtk_widget_get_visible(GTK_WIDGET(dialog));
+    g_object_unref(dialog);
+    return closed;
+}
+
+bool fixture_editor_monospace(void *self) {
+    (void)self;
+    simp_gtk_require_owner();
+    GtkWidget *view = find_view(GTK_WIDGET(editor_window()));
+    return view && GTK_SOURCE_IS_VIEW(view) &&
+        gtk_text_view_get_monospace(GTK_TEXT_VIEW(view));
 }
 
 void fixture_editor_cleanup(void *self) {

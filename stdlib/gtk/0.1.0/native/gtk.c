@@ -721,6 +721,8 @@ int64_t simp_gtk_widget_create(void *self, int64_t kind, void *text,
     switch (kind) {
     case 1: widget = gtk_application_window_new(application);
         gtk_window_set_title(GTK_WINDOW(widget), label); break;
+    case 11: widget = gtk_window_new();
+        gtk_window_set_title(GTK_WINDOW(widget), label); break;
     case 2: widget = gtk_box_new((GtkOrientation)orientation, (int)spacing); break;
     case 3: widget = gtk_label_new(label); break;
     case 4: widget = gtk_button_new_with_label(label); break;
@@ -1136,6 +1138,17 @@ void simp_gtk_window_size(void *self, int64_t token, int64_t width, int64_t heig
     gtk_window_set_default_size(GTK_WINDOW(w), (int)width, (int)height);
 }
 
+void simp_gtk_window_transient_for(void *self, int64_t token, int64_t parent) {
+    (void)self;
+    require_managed();
+    simp_gtk_require_owner();
+    GtkWidget *window = widget_live(token);
+    GtkWidget *parent_window = widget_live(parent);
+    if (!GTK_IS_WINDOW(window) || !GTK_IS_WINDOW(parent_window) || window == parent_window)
+        fatal("transient parent and child must be distinct Windows");
+    gtk_window_set_transient_for(GTK_WINDOW(window), GTK_WINDOW(parent_window));
+}
+
 void simp_gtk_box_layout(void *self, int64_t token, int64_t orientation, int64_t spacing) {
     (void)self;
     GtkWidget *w = widget_live(token);
@@ -1397,6 +1410,13 @@ void simp_gtk_source_view_edit(void *self, int64_t token, int64_t operation) {
     } else fatal("invalid source editing operation");
     g_object_unref(widget);
     g_object_unref(buffer);
+}
+
+void simp_gtk_source_view_monospace(void *self, int64_t token, bool monospace) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    if (!GTK_SOURCE_IS_VIEW(widget)) fatal("operation requires GtkSourceView");
+    gtk_text_view_set_monospace(GTK_TEXT_VIEW(widget), monospace);
 }
 
 /* Search option bits shared with GtkSource.View in sourceview.simp. */
