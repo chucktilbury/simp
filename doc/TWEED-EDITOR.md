@@ -4,7 +4,7 @@
 compiler and package names unchanged; Tweed Lang is the editor/application
 branding, not a repository-wide rename. The editor uses the optional GTK
 package and a separate GtkSourceView-backed `sourceview` package. It provides
-File and Edit menus, native open/save-as file choosers, multiple notebook tabs,
+File, Edit, Project and Help menus, native open/save-as file choosers, multiple notebook tabs,
 duplicate-path focusing, open/save/save-as, session
 recent files, dirty tab titles, close protection, undo/redo, find/replace,
 line/column status, a non-modal Preferences window, and configurable GTK keyboard shortcuts. GTK's text view
@@ -159,9 +159,160 @@ Both rebuild the tree with its root expanded and descendants collapsed;
 open documents, unsaved edits and the active tab are unchanged. Expansion
 results are cached until that rebuild. Replacing the root, refreshing, or
 closing the editor cancels obsolete work and prevents stale results from
-repopulating the tree. Project state and the hidden-files toggle are not saved.
-This increment does not rename/delete files or add Git, project build settings,
-LSP integration, or session restoration.
+repopulating the tree. A plain folder opened this way has no saved state; the
+hidden-files toggle is never saved. Expansion, tabs and layout are saved only
+for Tweed projects (below). The Explorer does not rename/delete files or add
+Git, build settings or LSP integration.
+
+## Projects
+
+A Tweed project is a folder containing `.tweed/project.toml`. Ordinary folders
+still open through **File > Open Folder...** without any project metadata and
+use only the global Preferences. Opening or creating a project never executes
+anything: there are no build commands, LSP servers, plugins or trust prompts.
+
+All project commands live in the **Project** menu and are ordinary named
+commands (`project-new`, `project-open`, `project-save`, `project-save-as`,
+`project-delete`, `project-configure`), so they can be bound in Preferences >
+Keyboard like any other command. Choosers are modal folder choosers parented
+to the editor; cancelling one changes nothing.
+
+- **New Project...** chooses a root folder and creates `.tweed/project.toml`
+  and `.tweed/workspace.toml` there (project name defaults to the folder name).
+  Source files are never created, modified or moved. If the folder already has
+  Tweed metadata, a confirmation bar offers **Replace Metadata** or **Cancel**.
+- **Open Project...** chooses a folder; it must already contain
+  `.tweed/project.toml`, otherwise an alert explains how to create one.
+  Running `tweed DIR` opens `DIR` as a project when it contains that file and
+  as a plain folder otherwise.
+- **Save Project** writes the current configuration and workspace state.
+- **Save Project As...** chooses a different folder and writes a copy of the
+  project configuration plus the workspace state rebased to that folder. Saved
+  tabs and expanded folders whose relative paths do not exist under the new
+  root are dropped. Source trees are not copied or moved, the original
+  project's metadata is left untouched, and open documents stay open. The new
+  folder becomes the active project. Existing metadata in the target requires
+  **Replace Metadata**; choosing the current root is refused.
+- **Delete Project...** asks for confirmation naming the root, then removes
+  exactly `.tweed/workspace.toml` and `.tweed/project.toml` and removes
+  `.tweed` only if it is then empty. Source files and any other files in
+  `.tweed` are preserved; nothing is deleted recursively, and a symbolic-link
+  `.tweed` is refused. The editor stays on the same folder as a plain folder,
+  documents stay open, and a remembered startup project for that root is
+  forgotten.
+- **Configure Project...** opens a non-modal window parented to the editor:
+  project name, Explorer exclusions, and editor overrides. **Apply** validates
+  and saves `project.toml` and applies the result immediately; **Reset All to
+  Inherit** unchecks every override.
+
+Switching projects (Open, New on another folder, Open Folder, or Delete) and
+Quit first save the current workspace. Modified documents then get the normal
+**Save** / **Discard** / **Cancel** prompt; **Cancel** leaves the current
+project, documents and state unchanged. Dirty edits are never written to
+workspace state. If saving the workspace fails at Quit, a bar offers **Quit
+Without Saving** or **Cancel**.
+
+### Settings precedence
+
+Effective editor settings are project override, then user Preference, then the
+built-in default. In Configure Project, a checked override row stores its value
+in `project.toml`; an unchecked row is absent from the file and inherits. While
+a project is active, Preferences shows which settings the project overrides,
+and changing an overridden Preference is saved but does not affect that
+project's documents. Overrides apply to existing and newly opened documents.
+
+### Explorer exclusions
+
+`[explorer] exclude` is a list of glob patterns (`*`, `?`) matched with GLib
+`g_pattern_match_simple`. A pattern without `/` matches an entry name at any
+depth (`build`, `*.log`); a pattern containing `/` matches the path relative to
+the project root (`docs/generated`). Patterns must not start or end with `/`
+or contain `.`/`..` segments. Excluded entries are hidden from the Explorer
+and never enumerated; files remain on disk and can still be opened with File >
+Open. Configure Project accepts the list comma-separated.
+
+### Storage format
+
+`.tweed/project.toml` (at most 64 KiB) is meant to be shared:
+
+```toml
+version = 1
+
+[project]
+name = "Demo"
+
+[explorer]
+exclude = ["build", "*.log"]
+
+[editor]          # optional; each absent key inherits
+tab_width = 2
+insert_spaces = false
+```
+
+Editor keys and ranges are the same as user settings (`font_family`,
+`font_size`, `tab_width`, `insert_spaces`, `line_numbers`, `wrap`,
+`highlight_current_line`). Unknown keys are retained when saving.
+
+`.tweed/workspace.toml` (at most 1 MiB) is local session state:
+
+```toml
+version = 1
+
+[workspace]
+active = "src/a.simp"
+explorer_width = 300
+window_width = 980
+window_height = 720
+expanded = ["src"]
+files = [{ path = "src/a.simp", line = 2, column = 3 }]
+```
+
+All paths are relative to the project root; absolute paths, `..` segments
+and paths escaping the root are rejected. Only saved files with a path are
+recorded (untitled tabs are not). On restore, missing files, binary/invalid
+UTF-8 files and read errors are skipped and reported; cursors are clamped to
+the file. Widths are 0-5000 and window sizes 200-10000 x 150-10000; GTK may
+enlarge the window to its minimum size or the screen.
+
+For version control, commit `.tweed/project.toml` and ignore the local state:
+
+```gitignore
+.tweed/workspace.toml
+```
+
+Both files are written with the same asynchronous atomic replacement as user
+settings, private permissions, and an expected-content check that refuses to
+overwrite a file changed by another process. Malformed TOML, unsupported or
+missing `version`, wrong types/ranges, oversized files and read errors are
+reported in an alert. Invalid values are ignored, and saving the invalid file
+is disabled until it is repaired and the project reopened, so it is never
+overwritten automatically. Write failures are reported and never shown as
+saved. Persisted paths are only used to open files under the root; they never
+authorize deletion or execution.
+
+### Reopening the last project
+
+Preferences > Editor has **Reopen last project on startup** (default off). When
+enabled, the user settings file remembers only the root path of the last active
+project:
+
+```toml
+[project]
+reopen_last = true
+last_root = "/home/me/src/demo"
+```
+
+The workspace itself stays in that project's `.tweed`. Turning the option off
+clears `last_root`. At startup the project is reopened only if the option is on
+and no file or folder was given on the command line. A missing or invalid
+remembered project is reported in an alert and the editor starts normally.
+
+## About
+
+**Help > About Tweed...** opens a small window parented to the editor showing the
+editor name, version (the repository version from `CMakeLists.txt`), a short
+description, licensing status (the repository has no license file) and the
+project URL as text. **Close** hides it; it is closed with the editor.
 
 ## Preferences and settings
 
@@ -216,11 +367,17 @@ quit = "<Control>q"
 find = "<Control>f"
 replace = "<Control>h"
 preferences = "<Control>comma"
+
+[project]
+reopen_last = false
+last_root = ""
 ```
 
 Editor keys are optional and use defaults when absent. Keyboard keys are
 command IDs (`new`, `open`, `save`, `save-as`, `close`, `quit`, `find`, `replace`,
-`undo`, `redo`, `cut`, `copy`, `paste`, `select-all`, `preferences`); omitted IDs
+`undo`, `redo`, `cut`, `copy`, `paste`, `select-all`, `preferences`,
+`project-new`, `project-open`, `project-save`,
+`project-save-as`, `project-delete`, `project-configure`, `about`); omitted IDs
 use defaults and `""` explicitly disables one. Unknown keyboard commands are
 errors. A missing file is normal first-run behavior: no file is created until
 a valid setting changes.
@@ -290,21 +447,21 @@ and shutdown. The editor does not mislabel compiler checking as LSP. A future
 LSP client should be a separate configurable component attached to the document
 and buffer APIs.
 
-The requested directory-tree Project Explorer is also deferred. The current
-document-open/focus and notebook APIs are the intended integration points for
-that panel. Persistent recent history, native per-tab close glyphs, and an
+Projects deliberately do not include unsaved-buffer recovery (dirty edits are
+only kept in memory), build commands, LSP configuration, plugins, Git
+integration or project trust. Persistent recent history, native per-tab close glyphs, and an
 extension/plugin runtime, and a configurable toolbar are not included yet. The
 dialog controls and menu/shortcut commands use the same editor actions, so a
 future toolbar can reuse those actions.
 Any future in-process plugins should be treated as trusted code.
 
-Appearance, Files/session, Projects, Build, and LSP preference categories and
-project/file-type overrides are future work; no placeholder pages are installed.
+Appearance, Files/session, Build, and LSP preference categories and
+file-type overrides are future work; no placeholder pages are installed.
 
 Run the editor-specific headless cases and existing GTK integration checks:
 
 ```sh
 ctest --test-dir build-tweed \
-  -R '^(simp_tweed_binary|simp_tweed_shortcuts|simp_tweed_preferences|simp_editor_dialogs|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_gtk|simp_gtk_bindings)$' \
+  -R '^(simp_tweed_binary|simp_tweed_shortcuts|simp_tweed_preferences|simp_editor_dialogs|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_tweed_project|simp_gtk|simp_gtk_bindings)$' \
   --output-on-failure
 ```

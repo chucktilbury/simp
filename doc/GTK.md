@@ -93,8 +93,8 @@ The first-release additions are:
 
 | Class | Constructor and operations |
 | --- | --- |
-| `Window` | `Window(String title)`, `setTitle(String)`, `String title()`, `setDefaultSize(int width, int height)`, `setTransientFor(Window parent)`, `setChild(Widget)`, `remove(Widget)`, `present()`, `close()`, `onCloseRequest(callback<bool()>)` |
-| `TransientWindow` | `TransientWindow(String title)`, `setTitle(String)`, `String title()`, `setDefaultSize(int width, int height)`, `setTransientFor(Window parent)`, `setChild(Widget)`, `remove(Widget)`, `present()`, `close()`, `onCloseRequest(callback<bool()>)` |
+| `Window` | `Window(String title)`, `setTitle(String)`, `String title()`, `setDefaultSize(int width, int height)`, `int defaultWidth()`, `int defaultHeight()`, `setTransientFor(Window parent)`, `setChild(Widget)`, `remove(Widget)`, `present()`, `close()`, `onCloseRequest(callback<bool()>)` |
+| `TransientWindow` | `TransientWindow(String title)`, `setTitle(String)`, `String title()`, `setDefaultSize(int width, int height)`, `int defaultWidth()`, `int defaultHeight()`, `setTransientFor(Window parent)`, `setChild(Widget)`, `remove(Widget)`, `present()`, `close()`, `onCloseRequest(callback<bool()>)` |
 | `Box` | `Box(int orientation, int spacing)`, `setLayout(int orientation, int spacing)`, `append(Widget)`, `remove(Widget)` |
 | `Label` | `Label(String text)`, `setText(String)`, `String text()` |
 | `Button` | `Button(String label)`, `setLabel(String)`, `String label()`, `onClicked(callback<void()>)` |
@@ -102,13 +102,16 @@ The first-release additions are:
 | `CheckButton` | `CheckButton(String label)`, `setLabel(String)`, `String label()`, `setActive(bool)`, `bool active()`, `onToggled(callback<void(bool)>)` |
 | `ScrolledWindow` | `ScrolledWindow()`, `setChild(Widget)`, `remove(Widget)` |
 | `Notebook` | `Notebook()`, `appendPage(Widget, String)`, `int currentPage()`, `setCurrentPage(int)`, `int pageCount()`, `setPageTitle(int, String)`, `remove(Widget)`, `onPageChanged(callback<void()>)` |
-| `Paned` | `Paned()`, `append(Widget)`, `setPosition(int)` |
+| `Paned` | `Paned()`, `append(Widget)`, `setPosition(int)`, `int position()` |
 | `MenuBar` | `MenuBar()`, `int addMenu(String)`, `int addItem(int menu, String label, callback<void()>)`, `setItemEnabled(int item, bool)`, `activateItem(int item)` |
 
 Methods without a listed result return `void`, except signal registration,
 which returns `SignalConnection`. Orientation is `Gtk.Box.HORIZONTAL` (`0`) or
 `Gtk.Box.VERTICAL` (`1`); spacing is nonnegative and must fit GTK's integer range.
 Default window dimensions must be positive and fit that range.
+`defaultWidth`/`defaultHeight` return GTK's current default size, which GTK 4
+updates when the user resizes an unmaximized window (`0` means unset); use them
+to persist window size.
 Text accepts managed UTF-8 strings, including empty strings, but not null,
 embedded NULs, or invalid UTF-8. Getters return managed copies.
 
@@ -209,7 +212,8 @@ asynchronous select-folder operation, not treat it as an open-file request.
 
 `Paned` is a horizontal, draggable two-child splitter. `append` attaches the
 start child first, then the end child. A third child is an error.
-`setPosition` accepts a nonnegative GTK integer pixel position. The start side
+`setPosition` accepts a nonnegative GTK integer pixel position, and `position()`
+returns the current divider position. The start side
 keeps its requested width on window resize; the end side grows.
 
 ```text
@@ -222,6 +226,7 @@ String value(int id)
 int data(int id)
 int findValue(String value)
 int childCount(int parent)
+bool expanded(int id)
 ```
 
 `Tree` is a virtualized `GtkListView`/`GtkTreeListModel` with `GtkTreeExpander`
@@ -234,7 +239,8 @@ population merely to render their expansion arrow. `activate(id)` runs for
 leaves on double-click/Enter; directory activation toggles expansion.
 `clear(parent)` removes its descendants, invalidating their IDs.
 `setExpanded` requires a visible, expandable row; expand its ancestors first.
-`findValue` returns the smallest matching live ID or `0`; `childCount` counts
+`expanded(id)` reports whether a live row is currently expanded (false
+when it is not visible). `findValue` returns the smallest matching live ID or `0`; `childCount` counts
 immediate children, including any loading/error placeholders. All other row
 methods require a live ID. Roots/callbacks are released on widget disposal and
 shutdown, including disposal from within a callback.
@@ -242,6 +248,8 @@ shutdown, including disposal from within a callback.
 ```text
 Gtk.DirectoryScan(Gtk.Tree owner, String path, bool hidden,
                   callback<void(int, String)> result)
+Gtk.DirectoryScan(Gtk.Tree owner, String path, bool hidden, String root,
+                  String excludes, callback<void(int, String)> result)
 void cancel()
 void append(Gtk.Tree owner, int parent, int firstId, int count, String icons)
 ```
@@ -268,6 +276,13 @@ then UTF-8 names in byte order. Child symlinks are not followed. An explicitly
 selected root may itself be a symlink. A final `result(-1, error)` reports
 completion; empty error means success. Read failures or invalid-UTF-8 filenames
 report a nonempty error and no batches.
+
+The filtered constructor additionally omits entries matching `excludes`, a
+newline-separated list of GLib `g_pattern_match_simple` globs (`*`, `?`).
+A pattern without `/` is matched against the entry name; a pattern with `/`
+is matched against the entry's path relative to `root` (which should be an
+ancestor of `path`). Empty `excludes` filters nothing. Excluded directories are
+never enumerated. Pattern validation is the application's responsibility.
 
 Dropping the scan variable does not cancel it. Idempotent `cancel`, owner Tree
 disposal and shutdown release the callback root without further results.
@@ -296,7 +311,13 @@ void copy()
 void paste()
 void selectAll()
 void focus()
+void setCursor(int line, int column)
 ```
+
+`setCursor` places the insertion cursor at a 1-based line and character column
+and scrolls it into view. Values are clamped to the buffer: lines below 1 or past
+the end select the first/last line, and columns past the end of the line select
+the line end. It matches the 1-based `line()`/`column()` getters.
 
 Undo/redo state and selection query the actual text buffer. Clipboard operations
 use GTK's display clipboard; paste is asynchronous and obeys text-view editability.
@@ -407,6 +428,8 @@ Simple-written settings model, not a settings framework:
 | `String value(String text, String section, String key)` | After validation: `""` for absent, `s` plus decoded string, `i` plus decimal integer, `btrue`/`bfalse`, `t` for a table, `x` for another type. Empty section addresses the root. |
 | `String key(String text, String section, int index)` | Zero-based key enumeration; `""` at the end or for an absent table. |
 | `String quote(String text)` | A TOML-escaped basic string literal. |
+| `String item(String text, String section, String key, int index, String field)` | After validation: a tagged value (same tags as `value`) for zero-based element `index` of array `section.key`, or with nonempty `field`, that key of a table element (`""` if absent, `x` if the element is not a table). `""` past the end or for a missing array. |
+| `String remove(String text, String section, String key)` | Validated TOML with one key removed (empty section addresses the root); other values are kept and serialized as by `merge`. |
 | `String merge(String original, String updates)` | Both inputs must be validated TOML; recursively overlays updates and serializes, preserving unrelated values but not comments/formatting. |
 | `void save(String path, String text, String expected, callback<void(String)> result)` | Asynchronously loads the local file, checks expected previous contents, then atomically replaces using its ETag where supported. Expected `""` allows a missing first-run file. Result is `""` on success, or an explicit I/O/concurrent-edit error. The caller creates the parent directory and bounds/validates the data. |
 

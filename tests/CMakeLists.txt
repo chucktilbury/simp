@@ -472,7 +472,17 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --source "${example_directory}/editor/tweed.simp"
         --work "${CMAKE_CURRENT_BINARY_DIR}/tweed-preferences"
         --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
-    set_tests_properties(simp_tweed_preferences PROPERTIES LABELS "examples;gtk" TIMEOUT 180)
+    set_tests_properties(simp_tweed_preferences PROPERTIES LABELS "examples;gtk" TIMEOUT 300)
+    add_test(NAME simp_tweed_project
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_tweed_project.py"
+        --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
+        --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
+        --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
+        --source "${example_directory}/editor/tweed.simp"
+        --cmake "${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt"
+        --work "${CMAKE_CURRENT_BINARY_DIR}/tweed-project"
+        --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
+    set_tests_properties(simp_tweed_project PROPERTIES LABELS "examples;gtk" TIMEOUT 300)
     add_test(NAME simp_editor_default_shortcuts
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_examples.py"
         --compiler "$<TARGET_FILE:simp>" --examples "${example_directory}"

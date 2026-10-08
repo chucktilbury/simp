@@ -34,6 +34,7 @@ namespace GtkSource {
         String _languageId(int token)
         int _line(int token)
         int _column(int token)
+        void _setCursor(int token, int line, int column)
         bool _hasContext(int token, String context, int offset)
         bool _language(int token, String language)
         void _monospace(int token, bool monospace)
@@ -90,6 +91,7 @@ namespace GtkSource {
         String language() { return _languageId(_widgetToken()) }
         int line() { return _line(_widgetToken()) }
         int column() { return _column(_widgetToken()) }
+        void setCursor(int line, int column) { _setCursor(_widgetToken(), line, column) }
         bool hasContextAt(String context, int offset) {
             return _hasContext(_widgetToken(), context, offset)
         }
@@ -126,6 +128,7 @@ namespace GtkSource {
         from "simp_gtk_source_view_replace_next"
     int View._line(int token) from "simp_gtk_source_view_line"
     int View._column(int token) from "simp_gtk_source_view_column"
+    void View._setCursor(int token, int line, int column) from "simp_gtk_source_view_set_cursor"
     bool View._hasContext(int token, String context, int offset)
         from "simp_gtk_source_view_has_context"
     bool View._language(int token, String language) from "simp_gtk_source_view_language"

@@ -271,6 +271,30 @@ void simp_gtk_tree_expand(void *self, int64_t token, int64_t id, bool expanded) 
     tree_unref(tree);
     if (!found) fatal("Tree row is not visible; expand its ancestors first");
 }
+bool simp_gtk_tree_is_expanded(void *self, int64_t token, int64_t id) {
+    (void)self;
+    tree_live(token);
+    GtkSelectionModel *selection =
+        g_object_ref(gtk_list_view_get_model(GTK_LIST_VIEW(widget_live(token))));
+    guint count = g_list_model_get_n_items(G_LIST_MODEL(selection));
+    bool expanded = false;
+    for (guint i = 0; i < count; ++i) {
+        GtkTreeListRow *row = g_list_model_get_item(G_LIST_MODEL(selection), i);
+        TreeItem *item = gtk_tree_list_row_get_item(row);
+        bool match = item->id == id;
+        if (match) expanded = gtk_tree_list_row_get_expanded(row);
+        g_object_unref(row);
+        if (match) break;
+    }
+    g_object_unref(selection);
+    return expanded;
+}
+int64_t simp_gtk_paned_get_position(void *self, int64_t token) {
+    (void)self;
+    GtkWidget *widget = widget_live(token);
+    if (!GTK_IS_PANED(widget)) fatal("invalid Paned");
+    return gtk_paned_get_position(GTK_PANED(widget));
+}
 void simp_gtk_paned_position(void *self, int64_t token, int64_t position) {
     (void)self;
     GtkWidget *widget = widget_live(token);
@@ -291,6 +315,8 @@ typedef struct DirectoryJob {
     int64_t token;
     int64_t owner;
     char *path;
+    char *root;
+    char **excludes;
     bool hidden;
     GCancellable *cancel;
     GPtrArray *entries;
@@ -312,6 +338,8 @@ static void directory_entry_free(gpointer data) {
 static void directory_unref(DirectoryJob *job) {
     if (!g_atomic_int_dec_and_test(&job->refs)) return;
     g_free(job->path);
+    g_free(job->root);
+    g_strfreev(job->excludes);
     g_free(job->error);
     g_ptr_array_unref(job->entries);
     g_object_unref(job->cancel);
@@ -322,6 +350,22 @@ static gint directory_compare(gconstpointer a, gconstpointer b) {
     const DirectoryEntry *second = *(DirectoryEntry *const *)b;
     if ((first->kind == 1) != (second->kind == 1)) return first->kind == 1 ? -1 : 1;
     return strcmp(first->name, second->name);
+}
+static bool directory_excluded(const DirectoryJob *job, const char *name, const char *path) {
+    if (!job->excludes) return false;
+    const char *relative = NULL;
+    size_t root_length = job->root ? strlen(job->root) : 0;
+    if (root_length && strncmp(path, job->root, root_length) == 0 &&
+        (path[root_length] == '/' || (root_length == 1 && job->root[0] == '/')))
+        relative = path + root_length + (path[root_length] == '/' ? 1 : 0);
+    for (char **pattern = job->excludes; *pattern; ++pattern) {
+        if (!**pattern) continue;
+        if (strchr(*pattern, '/')) {
+            if (relative && g_pattern_match_simple(*pattern, relative)) return true;
+        } else if (g_pattern_match_simple(*pattern, name))
+            return true;
+    }
+    return false;
 }
 static gpointer directory_worker(gpointer data) {
     DirectoryJob *job = data;
@@ -342,9 +386,15 @@ static gpointer directory_worker(gpointer data) {
                     g_object_unref(info);
                     break;
                 }
+                char *entry_path = g_build_filename(job->path, name, NULL);
+                if (directory_excluded(job, name, entry_path)) {
+                    g_free(entry_path);
+                    g_object_unref(info);
+                    continue;
+                }
                 DirectoryEntry *entry = g_new0(DirectoryEntry, 1);
                 entry->name = g_strdup(name);
-                entry->path = g_build_filename(job->path, name, NULL);
+                entry->path = entry_path;
                 GFileType type = g_file_info_get_file_type(info);
                 entry->kind = type == G_FILE_TYPE_DIRECTORY       ? 1
                               : type == G_FILE_TYPE_SYMBOLIC_LINK ? 2
@@ -430,9 +480,8 @@ static gboolean directory_dispatch(gpointer data) {
     simp_runtime_managed_leave(acquired);
     return closed ? G_SOURCE_REMOVE : G_SOURCE_CONTINUE;
 }
-int64_t simp_gtk_directory_start(void *self, int64_t owner_token, void *path, bool hidden,
-                                 void *callback) {
-    (void)self;
+static int64_t directory_start(int64_t owner_token, void *path, bool hidden, void *root,
+                               void *excludes, void *callback) {
     tree_live(owner_token);
     DirectoryJob *job = g_new0(DirectoryJob, 1);
     job->refs = 2; /* Owner thread and filesystem worker own independent references. */
@@ -440,6 +489,12 @@ int64_t simp_gtk_directory_start(void *self, int64_t owner_token, void *path, bo
     job->owner = owner_token;
     job->path = text_copy(path);
     job->hidden = hidden;
+    if (root) job->root = text_copy(root);
+    if (excludes) {
+        char *patterns = text_copy(excludes);
+        if (*patterns) job->excludes = g_strsplit(patterns, "\n", -1);
+        g_free(patterns);
+    }
     job->entries = g_ptr_array_new_with_free_func(directory_entry_free);
     job->cancel = g_cancellable_new();
     job->context = simp_callback_acquire(callback, "callback<void(int,String)>");
@@ -451,6 +506,17 @@ int64_t simp_gtk_directory_start(void *self, int64_t owner_token, void *path, bo
     GThread *thread = g_thread_new("simp-directory", directory_worker, job);
     g_thread_unref(thread);
     return job->token;
+}
+int64_t simp_gtk_directory_start(void *self, int64_t owner_token, void *path, bool hidden,
+                                 void *callback) {
+    (void)self;
+    return directory_start(owner_token, path, hidden, NULL, NULL, callback);
+}
+int64_t simp_gtk_directory_start_filtered(void *self, int64_t owner_token, void *path,
+                                          bool hidden, void *root, void *excludes,
+                                          void *callback) {
+    (void)self;
+    return directory_start(owner_token, path, hidden, root, excludes, callback);
 }
 void simp_gtk_directory_cancel(void *self, int64_t token) {
     (void)self;

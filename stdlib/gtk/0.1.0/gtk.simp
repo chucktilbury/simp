@@ -6,6 +6,8 @@ namespace Gtk {
         String key(String text, String section, int index)
         String quote(String text)
         String merge(String original, String updates)
+        String remove(String text, String section, String key)
+        String item(String text, String section, String key, int index, String field)
         void save(String path, String text, String expected, callback<void(String)> result)
     }
     String Config.validate(String text) from "simp_gtk_config_validate"
@@ -14,6 +16,9 @@ namespace Gtk {
     String Config.key(String text, String section, int index) from "simp_gtk_config_key"
     String Config.quote(String text) from "simp_gtk_config_quote"
     String Config.merge(String original, String updates) from "simp_gtk_config_merge"
+    String Config.remove(String text, String section, String key) from "simp_gtk_config_remove"
+    String Config.item(String text, String section, String key, int index, String field)
+        from "simp_gtk_config_item"
     void Config.save(String path, String text, String expected, callback<void(String)> result)
         from "simp_gtk_config_save"
 
@@ -105,6 +110,8 @@ namespace Gtk {
         void _remove(int parent, int child)
         void _windowAction(int token, int action)
         void _windowSize(int token, int width, int height)
+        int _windowWidth(int token)
+        int _windowHeight(int token)
         void _windowTransientFor(int token, int parent)
         void _layout(int token, int orientation, int spacing)
         void _activeSet(int token, bool value)
@@ -125,6 +132,8 @@ namespace Gtk {
         void _presentWindow() { _windowAction(_id, 0) }
         void _closeWindow() { _windowAction(_id, 1) }
         void _sizeWindow(int width, int height) { _windowSize(_id, width, height) }
+        int _defaultWidth() { return _windowWidth(_id) }
+        int _defaultHeight() { return _windowHeight(_id) }
         void _setTransientFor(int parent) { _windowTransientFor(_id, parent) }
         void _boxLayout(int orientation, int spacing) { _layout(_id, orientation, spacing) }
         void _setActive(bool value) { _activeSet(_id, value) }
@@ -148,6 +157,8 @@ namespace Gtk {
         void setTitle(String title) { _setText(title) }
         String title() { return _getText() }
         void setDefaultSize(int width, int height) { _sizeWindow(width, height) }
+        int defaultWidth() { return _defaultWidth() }
+        int defaultHeight() { return _defaultHeight() }
         void setTransientFor(Window parent) {
             _setTransientFor(parent._widgetToken())
         }
@@ -335,10 +346,12 @@ namespace Gtk {
     class Paned : Widget {
         private:
         void _position(int token, int position)
+        int _getPosition(int token)
         public:
         Paned() { super Widget(12, "", 0, 0) }
         void append(Widget child) { _attachChild(child) }
         void setPosition(int position) { _position(_widgetToken(), position) }
+        int position() { return _getPosition(_widgetToken()) }
     }
 
     class Tree : Widget {
@@ -347,6 +360,7 @@ namespace Gtk {
         void _add(int token, int parent, int id, String label, String icon, bool expandable, String value, int data)
         void _clear(int token, int parent)
         void _expandRow(int token, int id, bool expanded)
+        bool _isExpanded(int token, int id)
         String _value(int token, int id)
         int _data(int token, int id)
         int _find(int token, String value)
@@ -361,6 +375,7 @@ namespace Gtk {
         }
         void clear(int parent) { _clear(_widgetToken(), parent) }
         void setExpanded(int id, bool expanded) { _expandRow(_widgetToken(), id, expanded) }
+        bool expanded(int id) { return _isExpanded(_widgetToken(), id) }
         String value(int id) { return _value(_widgetToken(), id) }
         int data(int id) { return _data(_widgetToken(), id) }
         int findValue(String value) { return _find(_widgetToken(), value) }
@@ -371,11 +386,17 @@ namespace Gtk {
         private:
         int _token
         int _start(int owner, String path, bool hidden, callback<void(int, String)> result)
+        int _startFiltered(int owner, String path, bool hidden, String root, String excludes,
+            callback<void(int, String)> result)
         void _cancel(int token)
         void _append(int token, int tree, int parent, int firstId, int count, String icons)
         public:
         DirectoryScan(Tree owner, String path, bool hidden, callback<void(int, String)> result) {
             _token = _start(owner._widgetToken(), path, hidden, result)
+        }
+        DirectoryScan(Tree owner, String path, bool hidden, String root, String excludes,
+            callback<void(int, String)> result) {
+            _token = _startFiltered(owner._widgetToken(), path, hidden, root, excludes, result)
         }
         void cancel() { _cancel(_token) }
         void append(Tree owner, int parent, int firstId, int count, String icons) {
@@ -437,6 +458,10 @@ namespace Gtk {
     int FileDialog._createFolder(int parent, String initialPath, callback<void(String)> result)
         from "simp_gtk_file_dialog_create_folder"
     void Paned._position(int token, int position) from "simp_gtk_paned_position"
+    int Paned._getPosition(int token) from "simp_gtk_paned_get_position"
+    bool Tree._isExpanded(int token, int id) from "simp_gtk_tree_is_expanded"
+    int DirectoryScan._startFiltered(int owner, String path, bool hidden, String root,
+        String excludes, callback<void(int, String)> result) from "simp_gtk_directory_start_filtered"
     void Tree._setup(int token, callback<void(int)> request, callback<void(int)> activate)
         from "simp_gtk_tree_setup"
     void Tree._add(int token, int parent, int id, String label, String icon, bool expandable, String value, int data)
@@ -461,6 +486,8 @@ namespace Gtk {
     void Widget._remove(int parent, int child) from "simp_gtk_widget_remove"
     void Widget._windowAction(int token, int action) from "simp_gtk_window_action"
     void Widget._windowSize(int token, int width, int height) from "simp_gtk_window_size"
+    int Widget._windowWidth(int token) from "simp_gtk_window_width"
+    int Widget._windowHeight(int token) from "simp_gtk_window_height"
     void Widget._windowTransientFor(int token, int parent)
         from "simp_gtk_window_transient_for"
     void Widget._layout(int token, int orientation, int spacing) from "simp_gtk_box_layout"

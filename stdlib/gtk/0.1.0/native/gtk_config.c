@@ -195,12 +195,8 @@ static void config_table(GString *out, const toml_table_t *base, const toml_tabl
     g_string_append_c(out, '}');
 }
 
-void *simp_gtk_config_merge(void *self, void *original, void *changes) {
-    (void)self;
-    char error[256] = "";
-    toml_table_t *base = config_parse(original, error);
-    toml_table_t *updates = config_parse(changes, error);
-    if (!base || !updates) fatal("merge requires validated TOML");
+static void *config_render(toml_table_t *base, toml_table_t *updates, const char *skip_section,
+                           const char *skip_key) {
     GString *out = g_string_new("");
     /* Scalars first, then readable top-level tables. Nested values are inline. */
     for (int tables = 0; tables < 2; ++tables) {
@@ -213,6 +209,7 @@ void *simp_gtk_config_merge(void *self, void *original, void *changes) {
                 bool is_table = toml_table_in(source, key) != NULL;
                 if (is_table != (tables != 0)) continue;
                 if (is_table) {
+                    bool skipping = skip_key && strcmp(skip_section, key) == 0;
                     g_string_append(out, "\n[");
                     config_quote(out, key);
                     g_string_append(out, "]\n");
@@ -222,6 +219,7 @@ void *simp_gtk_config_merge(void *self, void *original, void *changes) {
                         for (int j = 0; t && toml_key_in(t, j); ++j) {
                             const char *k = toml_key_in(t, j);
                             if (p && b && toml_key_exists(b, k)) continue;
+                            if (skipping && strcmp(k, skip_key) == 0) continue;
                             config_quote(out, k);
                             g_string_append(out, " = ");
                             config_value(out, b, u, k);
@@ -229,6 +227,7 @@ void *simp_gtk_config_merge(void *self, void *original, void *changes) {
                         }
                     }
                 } else {
+                    if (skip_key && !*skip_section && strcmp(key, skip_key) == 0) continue;
                     config_quote(out, key);
                     g_string_append(out, " = ");
                     config_value(out, base, updates, key);
@@ -239,8 +238,79 @@ void *simp_gtk_config_merge(void *self, void *original, void *changes) {
     }
     void *result = config_string(out->str);
     g_string_free(out, TRUE);
+    return result;
+}
+
+void *simp_gtk_config_merge(void *self, void *original, void *changes) {
+    (void)self;
+    char error[256] = "";
+    toml_table_t *base = config_parse(original, error);
+    toml_table_t *updates = config_parse(changes, error);
+    if (!base || !updates) fatal("merge requires validated TOML");
+    void *result = config_render(base, updates, NULL, NULL);
     toml_free(base);
     toml_free(updates);
+    return result;
+}
+
+/* Returns validated TOML without one key; other keys are retained and normalized. */
+void *simp_gtk_config_remove(void *self, void *text, void *section_text, void *key_text) {
+    (void)self;
+    char error[256] = "";
+    toml_table_t *base = config_parse(text, error);
+    if (!base) fatal("remove requires validated TOML");
+    char *empty = g_strdup("");
+    toml_table_t *updates = toml_parse(empty, error, sizeof error);
+    g_free(empty);
+    char *section = text_copy(section_text), *key = text_copy(key_text);
+    void *result = config_render(base, updates, section, key);
+    g_free(section);
+    g_free(key);
+    toml_free(base);
+    toml_free(updates);
+    return result;
+}
+
+static void config_tag(GString *value, toml_datum_t s, toml_datum_t i, toml_datum_t b,
+                       bool table) {
+    if (s.ok) {
+        g_string_append_c(value, 's');
+        g_string_append(value, s.u.s);
+        free(s.u.s);
+    } else if (i.ok) g_string_append_printf(value, "i%" G_GINT64_FORMAT, i.u.i);
+    else if (b.ok) g_string_append(value, b.u.b ? "btrue" : "bfalse");
+    else g_string_append(value, table ? "t" : "x");
+}
+
+/* Tagged array element, or a field of a table element when field is nonempty. */
+void *simp_gtk_config_item(void *self, void *text, void *section_text, void *key_text,
+                           int64_t index, void *field_text) {
+    (void)self;
+    char error[256] = "";
+    toml_table_t *root = config_parse(text, error);
+    char *section = text_copy(section_text), *key = text_copy(key_text);
+    char *field = text_copy(field_text);
+    toml_table_t *table = root ? config_section(root, section) : NULL;
+    toml_array_t *array = table ? toml_array_in(table, key) : NULL;
+    GString *value = g_string_new("");
+    if (array && index >= 0 && index < toml_array_nelem(array)) {
+        int at = (int)index;
+        if (*field) {
+            toml_table_t *element = toml_table_at(array, at);
+            if (!element) g_string_append_c(value, 'x');
+            else if (toml_key_exists(element, field))
+                config_tag(value, toml_string_in(element, field), toml_int_in(element, field),
+                           toml_bool_in(element, field), toml_table_in(element, field) != NULL);
+        } else
+            config_tag(value, toml_string_at(array, at), toml_int_at(array, at),
+                       toml_bool_at(array, at), toml_table_at(array, at) != NULL);
+    }
+    void *result = config_string(value->str);
+    g_string_free(value, TRUE);
+    g_free(section);
+    g_free(key);
+    g_free(field);
+    toml_free(root);
     return result;
 }
 

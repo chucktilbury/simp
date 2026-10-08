@@ -266,7 +266,7 @@ class PreferencesChecks {
             editor.highlightCheck.setActive(true)
             require(PreferenceFixture().click("Keyboard"), "Keyboard category control")
             editor.commandSearch.setText("save")
-            require(editor.keyboardRows.length == 15, "named command rows")
+            require(editor.keyboardRows.length == 22, "named command rows")
             require(PreferenceFixture().commandVisible("Save") && !PreferenceFixture().commandVisible("Quit"), "command search filters actual rows")
             editor.commandSearch.setText("")
             KeyboardPreference save = row("save")
