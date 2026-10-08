@@ -32,6 +32,8 @@ class TweedSettings {
     bool lineNumbers
     bool wrap
     bool highlightLine
+    bool reopenLast
+    String lastRoot
     list commands
     String path
     String original
@@ -57,8 +59,17 @@ class TweedSettings {
             CommandBinding("copy", "Copy", "<Control>c"),
             CommandBinding("paste", "Paste", "<Control>v"),
             CommandBinding("select-all", "Select all", "<Control>a"),
-            CommandBinding("preferences", "Preferences", "<Control>comma")
+            CommandBinding("preferences", "Preferences", "<Control>comma"),
+            CommandBinding("project-new", "New project", ""),
+            CommandBinding("project-open", "Open project", ""),
+            CommandBinding("project-save", "Save project", ""),
+            CommandBinding("project-save-as", "Save project as", ""),
+            CommandBinding("project-delete", "Delete project metadata", ""),
+            CommandBinding("project-configure", "Configure project", ""),
+            CommandBinding("about", "About Tweed", "")
         ]
+        reopenLast = false
+        lastRoot = ""
         original = ""
         errors = ""
         writable = true
@@ -254,7 +265,19 @@ class TweedSettings {
         if (!value("", "keyboard").equals("") && !value("", "keyboard").equals("t")) {
             error("keyboard must be a table")
         }
+        if (!value("", "project").equals("") && !value("", "project").equals("t")) {
+            error("project must be a table")
+        }
         if (value("", "keyboard").equals("")) { loadLegacy() }
+        String reopen = value("project", "reopen_last")
+        if (reopen.equals("btrue")) { reopenLast = true }
+        else { if (!reopen.equals("") && !reopen.equals("bfalse")) { error("project.reopen_last must be a boolean") } }
+        String last = value("project", "last_root")
+        if (!last.equals("") && !last.equals("s")) {
+            if (!last.startsWith("s/") || last.contains("\n") || last.length > 4097) {
+                error("project.last_root must be an absolute folder path")
+            } else { lastRoot = last.slice(1, last.length) }
+        }
         String font = value("editor", "font_family")
         if (!font.equals("")) {
             if (!font.startsWith("s")) { error("editor.font_family must be a string") }
@@ -318,6 +341,7 @@ class TweedSettings {
             text.append(format("{} = {}\n", binding.id, Gtk.Config().quote(binding.trigger)))
             i = i + 1
         }
+        text.append(format("[project]\nreopen_last = {}\nlast_root = {}\n", reopenLast, Gtk.Config().quote(lastRoot)))
         return Gtk.Config().merge(original, text)
     }
 }
@@ -423,6 +447,561 @@ class KeyboardPreference {
 
 KeyboardPreference KeyboardPreference._self() from "simp_gtk_self"
 
+class WorkspaceFile {
+    String path
+    int line
+    int column
+    WorkspaceFile(String file, int row, int col) {
+        path = file
+        line = row
+        column = col
+    }
+}
+
+// A Tweed project: shareable configuration in <root>/.tweed/project.toml and
+// local session state in <root>/.tweed/workspace.toml. Metadata paths are
+// always derived from the canonical root, never from persisted contents.
+class TweedProject {
+    String root
+    String directory
+    String configPath
+    String workspacePath
+    String name
+    list excludes
+    String original
+    String base
+    String workspaceOriginal
+    String workspaceText
+    String savingConfig
+    String savingWorkspace
+    String errors
+    String workspaceErrors
+    bool writable
+    bool workspaceWritable
+    bool hasFont
+    String fontFamily
+    bool hasSize
+    int fontSize
+    bool hasTabs
+    int tabWidth
+    bool hasSpaces
+    bool insertSpaces
+    bool hasNumbers
+    bool lineNumbers
+    bool hasWrap
+    bool wrap
+    bool hasHighlight
+    bool highlightLine
+    String active
+    int explorerWidth
+    int windowWidth
+    int windowHeight
+    list expanded
+    list files
+    String readError
+    bool readMissing
+    bool readContent
+
+    TweedProject(String projectRoot) {
+        root = projectRoot
+        directory = System.FileSystem().join(root, ".tweed")
+        configPath = System.FileSystem().join(directory, "project.toml")
+        workspacePath = System.FileSystem().join(directory, "workspace.toml")
+        name = System.FileSystem().basename(root)
+        if (name.equals("") || name.length > 128) { name = "Project" }
+        excludes = []
+        original = ""
+        base = ""
+        workspaceOriginal = ""
+        workspaceText = ""
+        savingConfig = ""
+        savingWorkspace = ""
+        errors = ""
+        workspaceErrors = ""
+        writable = true
+        workspaceWritable = true
+        fontFamily = "monospace"
+        fontSize = 12
+        tabWidth = 4
+        insertSpaces = true
+        lineNumbers = true
+        wrap = false
+        highlightLine = false
+        resetWorkspace()
+        readError = ""
+    }
+
+    void resetWorkspace() {
+        active = ""
+        explorerWidth = -1
+        windowWidth = -1
+        windowHeight = -1
+        expanded = []
+        files = []
+    }
+
+    void error(String message) {
+        if (!errors.equals("")) { errors.append("\n") }
+        errors.append(message)
+        writable = false
+    }
+
+    void workspaceError(String message) {
+        if (!workspaceErrors.equals("")) { workspaceErrors.append("\n") }
+        workspaceErrors.append(message)
+        workspaceWritable = false
+        resetWorkspace()
+    }
+
+    String prefix() {
+        if (root.endsWith("/")) { return root }
+        return format("{}/", root)
+    }
+
+    // Root-relative path, or "" when path is outside the root.
+    String relative(String path) {
+        String head = prefix()
+        if (!path.startsWith(head) || path.length == head.length) { return "" }
+        String rest = path.slice(head.length, path.length)
+        if (!validRelative(rest)) { return "" }
+        return rest
+    }
+
+    bool hasControl(String text) {
+        return text.contains("\n") || text.contains("\r") || text.contains("\t")
+    }
+
+    bool validRelative(String path) {
+        if (path.equals("") || path.length > 4096 || path.startsWith("/") || hasControl(path)) { return false }
+        list parts = path.split("/")
+        int i = 0
+        while (i < parts.length) {
+            String part = parts[i] as String
+            if (part.equals("") || part.equals(".") || part.equals("..")) { return false }
+            i = i + 1
+        }
+        return true
+    }
+
+    String nameError(String text) {
+        if (text.trim().equals("") || text.length > 128 || hasControl(text)) {
+            return "Project name must be 1-128 characters, without control characters"
+        }
+        return ""
+    }
+
+    String excludeError(String pattern) {
+        if (pattern.trim().equals("") || pattern.length > 256 || hasControl(pattern)) {
+            return "Exclusion patterns must be 1-256 characters, without control characters"
+        }
+        if (pattern.startsWith("/") || pattern.endsWith("/") || !validRelative(pattern)) {
+            return format("Invalid exclusion pattern {}: use a name or root-relative path without leading/trailing /, ., or .. segments", pattern)
+        }
+        return ""
+    }
+
+    // Refuses symlinked or non-regular metadata so writes and deletes stay
+    // inside root/.tweed.
+    String metadataProblem() {
+        if (!System.FileSystem().exists(directory)) { return "" }
+        if (!System.FileSystem().isDir(directory) ||
+            !System.FileSystem().absolutePath(directory).equals(directory)) {
+            return format("{} must be a real directory, not a file or symbolic link", directory)
+        }
+        String problem = fileProblem(configPath)
+        if (problem.equals("")) { problem = fileProblem(workspacePath) }
+        return problem
+    }
+
+    String fileProblem(String path) {
+        if (!System.FileSystem().exists(path)) { return "" }
+        if (!System.FileSystem().isFile(path) ||
+            !System.FileSystem().absolutePath(path).equals(path)) {
+            return format("{} must be a regular file, not a symbolic link", path)
+        }
+        return ""
+    }
+
+    // readMissing: no file; readContent: bytes were read (readError may still
+    // report malformed contents).
+    String readMetadata(String path, int limit) {
+        readError = ""
+        readMissing = false
+        readContent = false
+        String presence = Gtk.Config().fileStatus(path)
+        if (presence.equals("missing")) {
+            readMissing = true
+            return ""
+        }
+        if (presence.length > 0) {
+            readError = format("Could not read {}: {}", path, presence)
+            return ""
+        }
+        if (!System.FileSystem().isFile(path) || System.FileSystem().fileSize(path) > limit) {
+            readError = format("{} must be a regular file no larger than {} KiB", path, limit / 1024)
+            return ""
+        }
+        System.File file = System.File(path, "r")
+        if (!file.isOpen()) {
+            readError = format("Could not read {}: {}", path, System.System().lastError())
+            return ""
+        }
+        String text = ""
+        try { text = file.readAll() }
+        except(Exception) as failure { readError = format("Could not read {}: {}", path, failure.message) }
+        String lastError = System.System().lastError()
+        file.close()
+        if (readError.equals("") && !lastError.equals("")) {
+            readError = format("Could not read {}: {}", path, lastError)
+        }
+        if (!readError.equals("")) { return "" }
+        readContent = true
+        if (!GtkSource.Content().isText(text)) {
+            readError = format("Malformed {}: not UTF-8 text", path)
+            return text
+        }
+        String malformed = Gtk.Config().validate(text)
+        if (!malformed.equals("")) { readError = format("Malformed TOML in {}: {}", path, malformed) }
+        return text
+    }
+
+    String value(String section, String key) { return Gtk.Config().value(base, section, key) }
+
+    void table(String text, String key) {
+        String kind = Gtk.Config().value(text, "", key)
+        if (!kind.equals("") && !kind.equals("t")) { error(format("{} must be a table", key)) }
+    }
+
+    int integer(String key, int minimum, int maximum) {
+        String raw = value("editor", key)
+        if (raw.equals("")) { return -1 }
+        if (raw.startsWith("i")) {
+            int number = raw.slice(1, raw.length).toInt()
+            if (number >= minimum && number <= maximum) { return number }
+        }
+        error(format("editor.{} must be an integer from {} to {}", key, minimum, maximum))
+        return -1
+    }
+
+    // -1 inherit (absent or invalid), 0 false, 1 true.
+    int boolean(String key) {
+        String raw = value("editor", key)
+        if (raw.equals("")) { return -1 }
+        if (raw.equals("btrue")) { return 1 }
+        if (raw.equals("bfalse")) { return 0 }
+        error(format("editor.{} must be a boolean", key))
+        return -1
+    }
+
+    // Returns "" when the project can be opened. Invalid individual values
+    // keep it open with errors shown and its configuration unwritable.
+    String load(TweedSettings settings) {
+        String problem = metadataProblem()
+        if (!problem.equals("")) { return problem }
+        original = readMetadata(configPath, 65536)
+        if (readMissing) { return format("No Tweed project in {} (missing .tweed/project.toml); use Project > New Project... to create one", root) }
+        if (!readError.equals("")) { return readError }
+        base = original
+        if (!value("", "version").equals("i1")) {
+            return format("Unsupported project version in {}: expected version = 1", configPath)
+        }
+        table(base, "project")
+        table(base, "explorer")
+        table(base, "editor")
+        String raw = value("project", "name")
+        if (!raw.equals("")) {
+            if (!raw.startsWith("s")) { error("project.name must be a string") }
+            else {
+                String text = raw.slice(1, raw.length)
+                String nameProblem = nameError(text)
+                if (nameProblem.equals("")) { name = text } else { error(nameProblem) }
+            }
+        }
+        raw = value("explorer", "exclude")
+        if (!raw.equals("")) {
+            if (!raw.equals("x")) { error("explorer.exclude must be an array of strings") }
+            else {
+                int i = 0
+                String item = Gtk.Config().item(base, "explorer", "exclude", 0, "")
+                while (!item.equals("")) {
+                    if (!item.startsWith("s")) { error("explorer.exclude must be an array of strings") }
+                    else {
+                        String pattern = item.slice(1, item.length)
+                        String patternProblem = excludeError(pattern)
+                        if (patternProblem.equals("")) { excludes.append(pattern) } else { error(patternProblem) }
+                    }
+                    i = i + 1
+                    item = Gtk.Config().item(base, "explorer", "exclude", i, "")
+                }
+            }
+        }
+        raw = value("editor", "font_family")
+        if (!raw.equals("")) {
+            if (!raw.startsWith("s")) { error("editor.font_family must be a string") }
+            else {
+                String font = raw.slice(1, raw.length)
+                String fontProblem = settings.fontError(font)
+                if (fontProblem.equals("")) {
+                    hasFont = true
+                    fontFamily = font
+                } else { error(format("editor.font_family: {}", fontProblem)) }
+            }
+        }
+        int number = integer("font_size", 6, 72)
+        hasSize = number > 0
+        if (hasSize) { fontSize = number }
+        number = integer("tab_width", 1, 16)
+        hasTabs = number > 0
+        if (hasTabs) { tabWidth = number }
+        number = boolean("insert_spaces")
+        hasSpaces = number >= 0
+        insertSpaces = number == 1
+        number = boolean("line_numbers")
+        hasNumbers = number >= 0
+        lineNumbers = number == 1
+        number = boolean("wrap")
+        hasWrap = number >= 0
+        wrap = number == 1
+        number = boolean("highlight_current_line")
+        hasHighlight = number >= 0
+        highlightLine = number == 1
+        loadWorkspace()
+        return ""
+    }
+
+    void loadWorkspace() {
+        workspaceOriginal = readMetadata(workspacePath, 1048576)
+        if (readMissing) {
+            workspaceOriginal = ""
+            return
+        }
+        if (!readError.equals("")) {
+            workspaceError(readError)
+            return
+        }
+        String problem = parseWorkspace(workspaceOriginal)
+        if (!problem.equals("")) { workspaceError(problem) }
+    }
+
+    String wsInteger(String text, String key, int minimum, int maximum) {
+        String raw = Gtk.Config().value(text, "workspace", key)
+        if (raw.equals("")) { return "" }
+        if (raw.startsWith("i")) {
+            int number = raw.slice(1, raw.length).toInt()
+            if (number >= minimum && number <= maximum) { return format("{}", number) }
+        }
+        return format("workspace.{} must be an integer from {} to {}", key, minimum, maximum)
+    }
+
+    int wsNumber(String text, String key) {
+        String raw = Gtk.Config().value(text, "workspace", key)
+        if (raw.equals("")) { return -1 }
+        return raw.slice(1, raw.length).toInt()
+    }
+
+    // Parses workspace TOML; returns "" or the first problem. Any problem
+    // discards the whole workspace rather than restoring part of it.
+    String parseWorkspace(String text) {
+        resetWorkspace()
+        if (!Gtk.Config().value(text, "", "version").equals("i1")) {
+            return format("Unsupported workspace version in {}: expected version = 1", workspacePath)
+        }
+        String kind = Gtk.Config().value(text, "", "workspace")
+        if (kind.equals("")) { return "" }
+        if (!kind.equals("t")) { return "workspace must be a table" }
+        String raw = Gtk.Config().value(text, "workspace", "active")
+        if (!raw.equals("")) {
+            if (!raw.startsWith("s") || !validRelative(raw.slice(1, raw.length))) {
+                return "workspace.active must be a root-relative path"
+            }
+            active = raw.slice(1, raw.length)
+        }
+        // wsInteger yields digits when valid; messages always contain spaces.
+        String problem = wsInteger(text, "explorer_width", 0, 5000)
+        if (problem.contains(" ")) { return problem }
+        problem = wsInteger(text, "window_width", 200, 10000)
+        if (problem.contains(" ")) { return problem }
+        problem = wsInteger(text, "window_height", 150, 10000)
+        if (problem.contains(" ")) { return problem }
+        explorerWidth = wsNumber(text, "explorer_width")
+        windowWidth = wsNumber(text, "window_width")
+        windowHeight = wsNumber(text, "window_height")
+        raw = Gtk.Config().value(text, "workspace", "expanded")
+        if (!raw.equals("") && !raw.equals("x")) { return "workspace.expanded must be an array of paths" }
+        int i = 0
+        String item = Gtk.Config().item(text, "workspace", "expanded", 0, "")
+        while (!item.equals("")) {
+            if (!item.startsWith("s") || !validRelative(item.slice(1, item.length))) {
+                resetWorkspace()
+                return "workspace.expanded must contain root-relative paths"
+            }
+            expanded.append(item.slice(1, item.length))
+            i = i + 1
+            item = Gtk.Config().item(text, "workspace", "expanded", i, "")
+        }
+        raw = Gtk.Config().value(text, "workspace", "files")
+        if (!raw.equals("") && !raw.equals("x")) { return "workspace.files must be an array of tables" }
+        i = 0
+        item = Gtk.Config().item(text, "workspace", "files", 0, "")
+        while (!item.equals("")) {
+            String path = Gtk.Config().item(text, "workspace", "files", i, "path")
+            String line = Gtk.Config().item(text, "workspace", "files", i, "line")
+            String column = Gtk.Config().item(text, "workspace", "files", i, "column")
+            if (!item.equals("t") || !path.startsWith("s") || !validRelative(path.slice(1, path.length)) ||
+                !validPosition(line) || !validPosition(column)) {
+                resetWorkspace()
+                return "workspace.files entries must be tables with a root-relative path and positive line/column"
+            }
+            files.append(WorkspaceFile(path.slice(1, path.length), line.slice(1, line.length).toInt(),
+                column.slice(1, column.length).toInt()))
+            i = i + 1
+            item = Gtk.Config().item(text, "workspace", "files", i, "")
+        }
+        return ""
+    }
+
+    bool validPosition(String raw) {
+        if (!raw.startsWith("i")) { return false }
+        int number = raw.slice(1, raw.length).toInt()
+        return number >= 1 && number <= 100000000
+    }
+
+    String quotedList(list values) {
+        String text = "["
+        int i = 0
+        while (i < values.length) {
+            if (i > 0) { text.append(", ") }
+            text.append(Gtk.Config().quote(values[i] as String))
+            i = i + 1
+        }
+        text.append("]")
+        return text
+    }
+
+    String excludeLines() {
+        String text = ""
+        int i = 0
+        while (i < excludes.length) {
+            if (i > 0) { text.append("\n") }
+            text.append(excludes[i] as String)
+            i = i + 1
+        }
+        return text
+    }
+
+    // Keeps unknown keys from the merge base; removed overrides fall back to
+    // inheritance by deleting their keys.
+    String serialize() {
+        String text = base
+        if (text.equals("")) { text = "version = 1\n" }
+        if (!hasFont) { text = Gtk.Config().remove(text, "editor", "font_family") }
+        if (!hasSize) { text = Gtk.Config().remove(text, "editor", "font_size") }
+        if (!hasTabs) { text = Gtk.Config().remove(text, "editor", "tab_width") }
+        if (!hasSpaces) { text = Gtk.Config().remove(text, "editor", "insert_spaces") }
+        if (!hasNumbers) { text = Gtk.Config().remove(text, "editor", "line_numbers") }
+        if (!hasWrap) { text = Gtk.Config().remove(text, "editor", "wrap") }
+        if (!hasHighlight) { text = Gtk.Config().remove(text, "editor", "highlight_current_line") }
+        String updates = format("version = 1\n[project]\nname = {}\n[explorer]\nexclude = {}\n",
+            Gtk.Config().quote(name), quotedList(excludes))
+        String editor = ""
+        if (hasFont) { editor.append(format("font_family = {}\n", Gtk.Config().quote(fontFamily))) }
+        if (hasSize) { editor.append(format("font_size = {}\n", fontSize)) }
+        if (hasTabs) { editor.append(format("tab_width = {}\n", tabWidth)) }
+        if (hasSpaces) { editor.append(format("insert_spaces = {}\n", insertSpaces)) }
+        if (hasNumbers) { editor.append(format("line_numbers = {}\n", lineNumbers)) }
+        if (hasWrap) { editor.append(format("wrap = {}\n", wrap)) }
+        if (hasHighlight) { editor.append(format("highlight_current_line = {}\n", highlightLine)) }
+        if (!editor.equals("")) {
+            updates.append("[editor]\n")
+            updates.append(editor)
+        }
+        return Gtk.Config().merge(text, updates)
+    }
+
+    // Copies configuration (including unknown keys) for Save As.
+    void copyConfiguration(TweedProject source) {
+        base = source.base
+        name = source.name
+        excludes = []
+        int i = 0
+        while (i < source.excludes.length) {
+            excludes.append(source.excludes[i] as String)
+            i = i + 1
+        }
+        hasFont = source.hasFont
+        fontFamily = source.fontFamily
+        hasSize = source.hasSize
+        fontSize = source.fontSize
+        hasTabs = source.hasTabs
+        tabWidth = source.tabWidth
+        hasSpaces = source.hasSpaces
+        insertSpaces = source.insertSpaces
+        hasNumbers = source.hasNumbers
+        lineNumbers = source.lineNumbers
+        hasWrap = source.hasWrap
+        wrap = source.wrap
+        hasHighlight = source.hasHighlight
+        highlightLine = source.highlightLine
+    }
+
+    String overrideSummary() {
+        list names = []
+        if (hasFont) { names.append("font family") }
+        if (hasSize) { names.append("font size") }
+        if (hasTabs) { names.append("tab width") }
+        if (hasSpaces) { names.append("insert spaces") }
+        if (hasNumbers) { names.append("line numbers") }
+        if (hasWrap) { names.append("wrap") }
+        if (hasHighlight) { names.append("highlight current line") }
+        String text = ""
+        int i = 0
+        while (i < names.length) {
+            if (i > 0) { text.append(", ") }
+            text.append(names[i] as String)
+            i = i + 1
+        }
+        return text
+    }
+}
+
+class OverrideRow {
+    OverrideRow _self()
+    String key
+    bool boolean
+    Gtk.Box row
+    Gtk.CheckButton override
+    Gtk.Entry entry
+    Gtk.CheckButton value
+
+    OverrideRow(String settingKey, String label, bool flag) {
+        key = settingKey
+        boolean = flag
+        row = Gtk.Box(Gtk.Box.HORIZONTAL, 6)
+        override = Gtk.CheckButton(format("Override {}", label))
+        row.append(override)
+        if (boolean) {
+            value = Gtk.CheckButton("Enabled")
+            row.append(value)
+        } else {
+            entry = Gtk.Entry("")
+            entry.setHExpand(true)
+            row.append(entry)
+        }
+        override.onToggled(_self().toggled)
+    }
+
+    void toggled(bool active) {
+        if (boolean) { value.setSensitive(active) } else { entry.setSensitive(active) }
+    }
+
+    void show(bool overridden, String text, bool flag) {
+        override.setActive(overridden)
+        if (boolean) { value.setActive(flag) } else { entry.setText(text) }
+        toggled(overridden)
+    }
+}
+OverrideRow OverrideRow._self() from "simp_gtk_self"
+
 class EditorDocument {
     GtkSource.View view
     Gtk.ScrolledWindow scroller
@@ -486,7 +1065,8 @@ class ProjectNode {
         if (kind != 1 || started) { return }
         started = true
         explorer.addMessage(id, "Loading...", "content-loading-symbolic")
-        scan = Gtk.DirectoryScan(explorer.tree, path, explorer.hidden.active(), _self().received)
+        scan = Gtk.DirectoryScan(explorer.tree, path, explorer.hidden.active(), explorer.rootPath,
+            explorer.excludes, _self().received)
     }
 
     void received(int count, String message) {
@@ -505,6 +1085,7 @@ class ProjectNode {
                 if (explorer.tree.childCount(id) == 0) {
                     explorer.addMessage(id, "(Empty folder)", "folder-symbolic")
                 }
+                explorer.restoreChildren(path)
             }
             return
         }
@@ -518,8 +1099,11 @@ class ProjectExplorer {
     ProjectExplorer _self()
     Gtk.Box sidebar
     Gtk.Tree tree
+    Gtk.Label title
     Gtk.CheckButton hidden
     Gtk.Button refreshButton
+    String excludes
+    list pending
     list nodes
     int nextId
     int generation
@@ -531,10 +1115,13 @@ class ProjectExplorer {
         open = openFile
         nodes = []
         rootPath = ""
+        excludes = ""
+        pending = []
         icons = "0=text-x-generic-symbolic\n1=folder-symbolic\n2=emblem-symbolic-link-symbolic\n3=dialog-warning-symbolic\n.simp=text-x-script-symbolic\n.tweed=text-x-script-symbolic\n.c=text-x-script-symbolic\n.h=text-x-script-symbolic\n.py=text-x-script-symbolic\n.png=image-x-generic-symbolic\n.jpg=image-x-generic-symbolic\n.svg=image-x-generic-symbolic"
         sidebar = Gtk.Box(Gtk.Box.VERTICAL, 4)
         sidebar.setVExpand(true)
-        sidebar.append(Gtk.Label("Project Explorer"))
+        title = Gtk.Label("Project Explorer")
+        sidebar.append(title)
         refreshButton = Gtk.Button("Refresh")
         refreshButton.setSensitive(false)
         refreshButton.onClicked(_self().refresh)
@@ -571,14 +1158,57 @@ class ProjectExplorer {
         }
     }
 
-    void setRoot(String path) {
+    void setRoot(String path) { setProject(path, "Project Explorer", "", []) }
+
+    // expandedPaths are absolute directories re-expanded as their parents load.
+    void setProject(String path, String label, String patterns, list expandedPaths) {
         rootPath = path
+        excludes = patterns
+        title.setText(label)
         refreshButton.setSensitive(true)
         refresh()
+        pending = expandedPaths
+    }
+
+    void restoreChildren(String parent) {
+        list ready = []
+        list remaining = []
+        int i = 0
+        while (i < pending.length) {
+            String path = pending[i] as String
+            if (System.FileSystem().dirname(path).equals(parent)) { ready.append(path) } else { remaining.append(path) }
+            i = i + 1
+        }
+        pending = remaining
+        i = 0
+        while (i < ready.length) {
+            int id = tree.findValue(ready[i] as String)
+            if (id > 1 && tree.data(id) == 1) { tree.setExpanded(id, true) }
+            i = i + 1
+        }
+    }
+
+    // Expanded directories (absolute), including restores still waiting for a parent scan.
+    list expandedPaths() {
+        list result = []
+        if (rootPath.equals("") || tree.disposed()) { return result }
+        int i = 0
+        while (i < nodes.length) {
+            ProjectNode node = nodes[i] as ProjectNode
+            if (node.id != 1 && tree.expanded(node.id)) { result.append(node.path) }
+            i = i + 1
+        }
+        i = 0
+        while (i < pending.length) {
+            result.append(pending[i] as String)
+            i = i + 1
+        }
+        return result
     }
 
     void refresh() {
         if (rootPath.equals("") || tree.disposed()) { return }
+        pending = []
         cancelLoads()
         tree.clear(0)
         nodes = []
@@ -713,6 +1343,34 @@ class TweedEditor {
     callback<void(String)> saveResultAction
     callback<bool()> closeAction
     callback<void()> testAction
+    TweedProject activeProject
+    TweedProject nextProject
+    TweedProject savingProject
+    String nextFolder
+    String switchOp
+    String projectOp
+    String projectSaveErrors
+    String chooserPurpose
+    int projectSaves
+    bool quitReady
+    bool presented
+    int projectNewItem
+    int projectOpenItem
+    list projectItems
+    int aboutItem
+    Gtk.Box confirmChoices
+    Gtk.Label confirmLabel
+    Gtk.Button confirmButton
+    Gtk.Button confirmCancelButton
+    String confirmOp
+    Gtk.CheckButton reopenCheck
+    Gtk.Label projectNote
+    Gtk.TransientWindow aboutWindow
+    Gtk.TransientWindow configureWindow
+    Gtk.Entry configureName
+    Gtk.Entry configureExcludes
+    list overrideRows
+    Gtk.Label configureMessage
 
     void activate() {
         if (window != null) {
@@ -732,6 +1390,19 @@ class TweedEditor {
         fileDialog = null
         dialogDocument = null
         dialogClosing = false
+        activeProject = null
+        nextProject = null
+        savingProject = null
+        nextFolder = ""
+        switchOp = ""
+        projectOp = ""
+        projectSaveErrors = ""
+        chooserPurpose = ""
+        projectSaves = 0
+        quitReady = false
+        presented = false
+        confirmOp = ""
+        overrideRows = []
         settings = TweedSettings()
         int commandIndex = 0
         while (commandIndex < settings.commands.length) {
@@ -769,6 +1440,16 @@ class TweedEditor {
         documentItems.append(menu.addItem(editMenu, "Find", commandAction("find")))
         documentItems.append(menu.addItem(editMenu, "Replace", commandAction("replace")))
         preferencesItem = menu.addItem(editMenu, "Preferences...", commandAction("preferences"))
+        int projectMenu = menu.addMenu("Project")
+        projectNewItem = menu.addItem(projectMenu, "New Project...", commandAction("project-new"))
+        projectOpenItem = menu.addItem(projectMenu, "Open Project...", commandAction("project-open"))
+        projectItems = []
+        projectItems.append(menu.addItem(projectMenu, "Save Project", commandAction("project-save")))
+        projectItems.append(menu.addItem(projectMenu, "Save Project As...", commandAction("project-save-as")))
+        projectItems.append(menu.addItem(projectMenu, "Delete Project...", commandAction("project-delete")))
+        projectItems.append(menu.addItem(projectMenu, "Configure Project...", commandAction("project-configure")))
+        int helpMenu = menu.addMenu("Help")
+        aboutItem = menu.addItem(helpMenu, "About Tweed...", commandAction("about"))
         searchWindow = Gtk.TransientWindow("Find")
         searchWindow.setDefaultSize(520, 150)
         searchWindow.setTransientFor(window)
@@ -819,6 +1500,17 @@ class TweedEditor {
         closeChoices.append(closeCancelButton)
         layout.append(closeChoices)
         closeChoices.setVisible(false)
+        confirmChoices = Gtk.Box(Gtk.Box.HORIZONTAL, 4)
+        confirmLabel = Gtk.Label("")
+        confirmButton = Gtk.Button("Confirm")
+        confirmCancelButton = Gtk.Button("Cancel")
+        confirmChoices.append(confirmLabel)
+        confirmChoices.append(confirmButton)
+        confirmChoices.append(confirmCancelButton)
+        confirmButton.onClicked(_self().acceptConfirm)
+        confirmCancelButton.onClicked(_self().cancelConfirm)
+        layout.append(confirmChoices)
+        confirmChoices.setVisible(false)
         status = Gtk.Label("Ready")
         layout.append(status)
         findButton.onClicked(findAction)
@@ -831,15 +1523,26 @@ class TweedEditor {
         window.onCloseRequest(closeAction)
 
         System.Process process = System.Process()
+        bool explicitRequest = false
         int index = 1
         while (index < process.argc()) {
-            openFile(process.arg(index))
+            String argument = process.arg(index)
+            if (!argument.equals("--test")) { explicitRequest = true }
+            if (!argument.equals("--test") && !argument.contains("://") && System.FileSystem().isDir(argument)) {
+                openRootArgument(argument)
+            } else { openFile(argument) }
             index = index + 1
+        }
+        // Explicit files or folders on the command line take precedence over reopening.
+        if (!explicitRequest && settings.reopenLast && !settings.lastRoot.equals("")) {
+            TweedProject last = loadProject(settings.lastRoot, "Could not reopen last project")
+            if (last != null) { activateProject(last, true) }
         }
         if (notebook.pageCount() == 0) {
             newDocument()
         }
         window.present()
+        presented = true
         if (!settings.errors.equals("")) {
             Gtk.AlertDialog().show(window, "Settings errors", format("{}\n{}\nAutomatic saving is disabled; repair the file and restart.", settings.path, settings.errors))
         }
@@ -864,6 +1567,13 @@ class TweedEditor {
         if (command.equals("paste")) { return pasteAction }
         if (command.equals("select-all")) { return selectAllAction }
         if (command.equals("preferences")) { return preferencesAction }
+        if (command.equals("project-new")) { return _self().newProject }
+        if (command.equals("project-open")) { return _self().openProject }
+        if (command.equals("project-save")) { return _self().saveProject }
+        if (command.equals("project-save-as")) { return _self().saveProjectAs }
+        if (command.equals("project-delete")) { return _self().deleteProject }
+        if (command.equals("project-configure")) { return _self().showConfigure }
+        if (command.equals("about")) { return _self().showAbout }
         return null
     }
 
@@ -873,9 +1583,26 @@ class TweedEditor {
         document.view.onCursorMoved(cursorAction)
     }
 
+    // Precedence: active project override, then user preference, then default.
     void applyDocumentSettings(EditorDocument document) {
-        document.view.configure(settings.fontFamily, settings.fontSize, settings.tabWidth,
-            settings.insertSpaces, settings.lineNumbers, settings.wrap, settings.highlightLine)
+        String font = settings.fontFamily
+        int size = settings.fontSize
+        int tabs = settings.tabWidth
+        bool spaces = settings.insertSpaces
+        bool numbers = settings.lineNumbers
+        bool wrapLines = settings.wrap
+        bool highlight = settings.highlightLine
+        TweedProject current = activeProject
+        if (current != null) {
+            if (current.hasFont) { font = current.fontFamily }
+            if (current.hasSize) { size = current.fontSize }
+            if (current.hasTabs) { tabs = current.tabWidth }
+            if (current.hasSpaces) { spaces = current.insertSpaces }
+            if (current.hasNumbers) { numbers = current.lineNumbers }
+            if (current.hasWrap) { wrapLines = current.wrap }
+            if (current.hasHighlight) { highlight = current.highlightLine }
+        }
+        document.view.configure(font, size, tabs, spaces, numbers, wrapLines, highlight)
         if (document.shortcutRevision == settings.shortcutRevision) { return }
         document.shortcutRevision = settings.shortcutRevision
         document.view.clearShortcuts()
@@ -915,6 +1642,8 @@ class TweedEditor {
         content.append(pages)
         editorPreferences = Gtk.Box(Gtk.Box.VERTICAL, 6)
         editorPreferences.append(Gtk.Label("Editor (global settings)"))
+        projectNote = Gtk.Label("")
+        editorPreferences.append(projectNote)
         fontEntry = preferenceEntry(editorPreferences, "Monospace font family", settings.fontFamily)
         sizeEntry = preferenceEntry(editorPreferences, "Font size (6-72 pt)", format("{}", settings.fontSize))
         tabsEntry = preferenceEntry(editorPreferences, "Tab width (1-16 columns)", format("{}", settings.tabWidth))
@@ -946,6 +1675,10 @@ class TweedEditor {
         pages.append(keyboardPreferences)
         keyboardPreferences.setVisible(false)
         root.append(content)
+        reopenCheck = Gtk.CheckButton("Reopen last project on startup")
+        reopenCheck.setActive(settings.reopenLast)
+        reopenCheck.onToggled(_self().reopenChanged)
+        root.append(reopenCheck)
         preferencesMessage = Gtk.Label(settings.errors)
         root.append(preferencesMessage)
         root.append(Gtk.Label(format("Automatically saved to {}", settings.path)))
@@ -985,7 +1718,39 @@ class TweedEditor {
     void showPreferences() {
         if (commandsBlocked()) { return }
         if (preferencesWindow == null) { createPreferences() }
+        refreshProjectNote()
         preferencesWindow.present()
+    }
+    void refreshProjectNote() {
+        if (projectNote == null) { return }
+        String overrides = ""
+        if (activeProject != null) { overrides = activeProject.overrideSummary() }
+        if (overrides.equals("")) { projectNote.setText("") }
+        else { projectNote.setText(format("Project {} overrides: {} (Project > Configure Project...)", activeProject.name, overrides)) }
+    }
+    void reopenChanged(bool active) {
+        if (refreshingPreferences) { return }
+        settings.reopenLast = active
+        settings.lastRoot = ""
+        if (active && activeProject != null) { settings.lastRoot = activeProject.root }
+        settingsChanged()
+    }
+    void persistSettings() {
+        if (preferencesWindow == null) { createPreferences() }
+        settingsChanged()
+    }
+    // The user config stores only the root locator; workspace state stays in .tweed.
+    void rememberProject(String root) {
+        if (settings.reopenLast && !settings.lastRoot.equals(root)) {
+            settings.lastRoot = root
+            persistSettings()
+        }
+    }
+    void forgetProject(String root) {
+        if (settings.lastRoot.equals(root)) {
+            settings.lastRoot = ""
+            persistSettings()
+        }
     }
     bool hidePreferences() {
         if (preferencesWindow == null || preferencesWindow.disposed()) { return true }
@@ -1193,11 +1958,770 @@ class TweedEditor {
                 return
             }
         }
-        if (closeAfterSave && !savePending) {
+        if (closeAfterSave && !savePending && projectSaves == 0 && !window.disposed()) {
             closeAfterSave = false
             window.close()
         }
     }
+
+    // ---- Projects -------------------------------------------------------
+
+    String version() {
+        // Keep in sync with project(simp VERSION ...) in CMakeLists.txt.
+        return "0.0.1"
+    }
+
+    void projectFailure(String title, String detail) {
+        status.setText(format("{}: {}", title, detail))
+        Gtk.AlertDialog().show(window, title, detail)
+    }
+
+    String canonicalFolder(String path, String title) {
+        if (path.contains("://")) {
+            projectFailure(title, "only local filesystem paths are supported")
+            return ""
+        }
+        String requested = path
+        if (!requested.startsWith("/")) {
+            requested = System.FileSystem().join(System.FileSystem().getCwd(), requested)
+        }
+        String canonical = System.FileSystem().absolutePath(requested)
+        if (canonical.equals("") || !System.FileSystem().isDir(canonical)) {
+            projectFailure(title, format("{} is not an accessible folder", path))
+            return ""
+        }
+        return canonical
+    }
+
+    TweedProject loadProject(String path, String title) {
+        String root = canonicalFolder(path, title)
+        if (root.equals("")) { return null }
+        // Choosing the .tweed folder itself selects its project root.
+        if (System.FileSystem().basename(root).equals(".tweed") &&
+            System.FileSystem().isFile(System.FileSystem().join(root, "project.toml"))) {
+            root = System.FileSystem().dirname(root)
+        }
+        TweedProject candidate = TweedProject(root)
+        String problem = candidate.load(settings)
+        if (!problem.equals("")) {
+            projectFailure(title, problem)
+            return null
+        }
+        return candidate
+    }
+
+    void openRootArgument(String path) {
+        if (activeProject != null || !project.rootPath.equals("")) {
+            status.setText(format("Ignored extra folder argument: {}", path))
+            return
+        }
+        String root = canonicalFolder(path, "Could not open folder")
+        if (root.equals("")) { return }
+        if (System.FileSystem().isFile(System.FileSystem().join(root, ".tweed/project.toml"))) {
+            TweedProject candidate = loadProject(root, "Could not open project")
+            if (candidate != null) { activateProject(candidate, true) }
+            return
+        }
+        project.setRoot(root)
+    }
+
+    void chooseProjectFolder(String purpose) {
+        if (commandsBlocked()) { return }
+        chooserPurpose = purpose
+        String initialPath = project.rootPath
+        if (purpose.equals("project-save-as") && activeProject != null) {
+            initialPath = System.FileSystem().dirname(activeProject.root)
+        }
+        fileDialog = Gtk.FileDialog(window, initialPath, _self().projectFolderChosen)
+        updateMenu()
+    }
+
+    void newProject() { chooseProjectFolder("project-new") }
+    void openProject() { chooseProjectFolder("project-open") }
+    void saveProjectAs() {
+        if (activeProject == null) {
+            status.setText("No project is open")
+            return
+        }
+        chooseProjectFolder("project-save-as")
+    }
+
+    void projectFolderChosen(String path) {
+        fileDialog = null
+        String purpose = chooserPurpose
+        chooserPurpose = ""
+        updateMenu()
+        if (purpose.equals("")) { return }
+        if (path.equals("")) {
+            status.setText("Cancelled")
+            return
+        }
+        if (purpose.equals("project-open")) { openProjectAt(path) }
+        if (purpose.equals("project-new")) { prepareNewProject(path, false) }
+        if (purpose.equals("project-save-as")) { prepareNewProject(path, true) }
+    }
+
+    void openProjectAt(String path) {
+        TweedProject candidate = loadProject(path, "Could not open project")
+        if (candidate == null) { return }
+        if (activeProject != null && activeProject.root.equals(candidate.root)) {
+            status.setText(format("Project already open: {}", candidate.root))
+            return
+        }
+        nextProject = candidate
+        beginSwitch("open")
+    }
+
+    // New and Save As create metadata for a chosen root; source files are never touched.
+    void prepareNewProject(String path, bool copy) {
+        String title = "Could not create project"
+        if (copy) { title = "Could not save project as" }
+        String root = canonicalFolder(path, title)
+        if (root.equals("")) { return }
+        if (copy && (activeProject == null || activeProject.root.equals(root))) {
+            projectFailure(title, "Choose a different folder from the current project root")
+            return
+        }
+        TweedProject candidate = TweedProject(root)
+        String problem = candidate.metadataProblem()
+        if (!problem.equals("")) {
+            projectFailure(title, problem)
+            return
+        }
+        // Existing on-disk text becomes the expected original, guarding replacement.
+        candidate.original = candidate.readMetadata(candidate.configPath, 65536)
+        bool exists = !candidate.readMissing
+        if (!candidate.readError.equals("") && !candidate.readContent) {
+            projectFailure(title, candidate.readError)
+            return
+        }
+        candidate.workspaceOriginal = candidate.readMetadata(candidate.workspacePath, 1048576)
+        exists = exists || !candidate.readMissing
+        if (!candidate.readError.equals("") && !candidate.readContent) {
+            projectFailure(title, candidate.readError)
+            return
+        }
+        if (copy) {
+            candidate.copyConfiguration(activeProject)
+            candidate.workspaceText = captureWorkspace(activeProject.root, root)
+        } else {
+            candidate.workspaceText = captureWorkspace(root, root)
+        }
+        nextProject = candidate
+        String op = "new"
+        if (copy) { op = "save-as" }
+        if (exists) {
+            askConfirm(format("replace-{}", op), format("{} already has Tweed project metadata. Replace .tweed/project.toml and .tweed/workspace.toml?", root), "Replace Metadata")
+            return
+        }
+        startNewProject(op)
+    }
+
+    void startNewProject(String op) {
+        // Save As leaves the original project's files untouched.
+        if (op.equals("save-as")) {
+            writeProject(nextProject, true, true, "activate")
+            return
+        }
+        beginSwitch("new")
+    }
+
+    void saveProject() {
+        if (commandsBlocked() || activeProject == null) { return }
+        activeProject.workspaceText = captureWorkspace(activeProject.root, activeProject.root)
+        status.setText("Saving project...")
+        writeProject(activeProject, true, true, "save")
+    }
+
+    void deleteProject() {
+        if (commandsBlocked() || activeProject == null) { return }
+        askConfirm("delete", format("Delete Tweed project metadata for {}? Only .tweed/project.toml and .tweed/workspace.toml are removed; source files are kept.", activeProject.root), "Delete Metadata")
+    }
+
+    void deleteProjectMetadata() {
+        TweedProject target = activeProject
+        if (target == null) { return }
+        String problem = target.metadataProblem()
+        if (!problem.equals("")) {
+            projectFailure("Could not delete project metadata", problem)
+            return
+        }
+        String failures = ""
+        if (System.FileSystem().exists(target.workspacePath)) {
+            if (System.FileSystem().remove(target.workspacePath)) { target.workspaceOriginal = "" }
+            else { failures.append(format("{}: {}\n", target.workspacePath, System.System().lastError())) }
+        }
+        if (System.FileSystem().exists(target.configPath) && !System.FileSystem().remove(target.configPath)) {
+            failures.append(format("{}: {}\n", target.configPath, System.System().lastError()))
+        }
+        if (!failures.equals("")) {
+            projectFailure("Could not delete project metadata", failures)
+            return
+        }
+        // Succeeds only if .tweed is now empty; unknown files are preserved.
+        System.FileSystem().rmdir(target.directory)
+        detachProject()
+        project.setRoot(target.root)
+        forgetProject(target.root)
+        status.setText(format("Deleted project metadata; {} remains open as a folder", target.root))
+    }
+
+    void beginSwitch(String op) {
+        if (activeProject != null) {
+            activeProject.workspaceText = captureWorkspace(activeProject.root, activeProject.root)
+        }
+        if (op.equals("open") && firstModifiedDocument() != null) {
+            switchOp = op
+            pendingCloseAll = true
+            pendingCloseDocument = null
+            closeChoices.setVisible(true)
+            status.setText("Unsaved changes: Save, Discard, or Cancel opening the project")
+            updateMenu()
+            return
+        }
+        continueSwitch(op)
+    }
+
+    void continueSwitch(String op) {
+        switchOp = ""
+        bool sameRoot = false
+        if (activeProject != null && nextProject != null) { sameRoot = activeProject.root.equals(nextProject.root) }
+        if (activeProject != null && !sameRoot) {
+            writeProject(activeProject, false, true, op)
+            return
+        }
+        performProjectOp(op)
+    }
+
+    // Starts guarded asynchronous writes; op runs once all writes finish.
+    void writeProject(TweedProject target, bool config, bool workspaceState, String op) {
+        projectOp = op
+        projectSaveErrors = ""
+        savingProject = target
+        bool explicit = op.equals("save") || op.equals("activate") || op.equals("configure")
+        String problem = target.metadataProblem()
+        if (!config && !workspaceState) { problem = "" }
+        String configText = ""
+        if (config) {
+            if (!target.writable) {
+                problem = format("{} has errors; repair it and reopen the project before saving:\n{}", target.configPath, target.errors)
+            } else { configText = target.serialize() }
+        }
+        bool writeWorkspace = workspaceState && !target.workspaceText.equals(target.workspaceOriginal)
+        if (workspaceState && !target.workspaceWritable) {
+            writeWorkspace = false
+            if (explicit && problem.equals("")) {
+                problem = format("{} could not be loaded; repair or remove .tweed/workspace.toml and reopen the project:\n{}", target.workspacePath, target.workspaceErrors)
+            }
+        }
+        bool writeConfig = config && !configText.equals(target.original)
+        if (problem.equals("") && (writeConfig || writeWorkspace) && !System.FileSystem().isDir(target.directory)) {
+            if (!System.FileSystem().mkdir(target.directory)) {
+                problem = format("Could not create {}: {}", target.directory, System.System().lastError())
+            } else { problem = target.metadataProblem() }
+        }
+        if (!problem.equals("")) {
+            projectSaveErrors = problem
+            finishProjectSave()
+            return
+        }
+        if (writeConfig) {
+            target.savingConfig = configText
+            projectSaves = projectSaves + 1
+            Gtk.Config().save(target.configPath, configText, target.original, _self().projectConfigSaved)
+        }
+        if (writeWorkspace) {
+            target.savingWorkspace = target.workspaceText
+            projectSaves = projectSaves + 1
+            Gtk.Config().save(target.workspacePath, target.workspaceText, target.workspaceOriginal, _self().projectWorkspaceSaved)
+        }
+        updateMenu()
+        if (projectSaves == 0) { finishProjectSave() }
+    }
+
+    String projectSaveMessage(String path, String error) {
+        if (error.contains("changed on disk")) {
+            return format("{} changed on disk since it was loaded; reopen the project before saving", path)
+        }
+        return format("{}: {}", path, error)
+    }
+
+    void addProjectSaveError(String message) {
+        if (!projectSaveErrors.equals("")) { projectSaveErrors.append("\n") }
+        projectSaveErrors.append(message)
+    }
+
+    void projectConfigSaved(String error) {
+        projectSaves = projectSaves - 1
+        if (error.equals("")) {
+            savingProject.original = savingProject.savingConfig
+            savingProject.base = savingProject.savingConfig
+        } else { addProjectSaveError(projectSaveMessage(savingProject.configPath, error)) }
+        if (projectSaves == 0) { finishProjectSave() }
+    }
+
+    void projectWorkspaceSaved(String error) {
+        projectSaves = projectSaves - 1
+        if (error.equals("")) { savingProject.workspaceOriginal = savingProject.savingWorkspace }
+        else { addProjectSaveError(projectSaveMessage(savingProject.workspacePath, error)) }
+        if (projectSaves == 0) { finishProjectSave() }
+    }
+
+    void finishProjectSave() {
+        String op = projectOp
+        String errors = projectSaveErrors
+        projectOp = ""
+        projectSaveErrors = ""
+        savingProject = null
+        if (window.disposed()) { return }
+        updateMenu()
+        if (errors.equals("")) { performProjectOp(op) } else { projectSaveFailed(op, errors) }
+        if (closeAfterSave && !savePending && projectSaves == 0 && confirmOp.equals("") && !window.disposed()) {
+            closeAfterSave = false
+            window.close()
+        }
+    }
+
+    void projectSaveFailed(String op, String errors) {
+        closeAfterSave = false
+        if (op.equals("save") || op.equals("configure")) {
+            if (op.equals("configure") && configureMessage != null) { configureMessage.setText(format("Save failed: {}", errors)) }
+            projectFailure("Project save failed", errors)
+            return
+        }
+        if (op.equals("activate")) {
+            nextProject = null
+            projectFailure("Could not write project metadata", errors)
+            return
+        }
+        String accept = "Continue Without Saving"
+        if (op.equals("quit")) { accept = "Quit Without Saving" }
+        askConfirm(format("continue-{}", op), format("Could not save workspace state: {}", errors), accept)
+    }
+
+    void performProjectOp(String op) {
+        if (op.equals("save")) {
+            status.setText(format("Project saved: {}", activeProject.name))
+            return
+        }
+        if (op.equals("configure")) {
+            if (configureMessage != null) { configureMessage.setText("Project configuration saved") }
+            status.setText("Project configuration saved")
+            return
+        }
+        if (op.equals("open")) {
+            TweedProject target = nextProject
+            nextProject = null
+            closeAllDocuments()
+            activateProject(target, true)
+            return
+        }
+        if (op.equals("new")) {
+            writeProject(nextProject, true, true, "activate")
+            return
+        }
+        if (op.equals("activate")) {
+            TweedProject created = nextProject
+            nextProject = null
+            created.parseWorkspace(created.workspaceOriginal)
+            activateProject(created, false)
+            status.setText(format("Project saved in {}", created.root))
+            return
+        }
+        if (op.equals("folder")) {
+            detachProject()
+            project.setRoot(nextFolder)
+            nextFolder = ""
+            return
+        }
+        if (op.equals("quit")) {
+            quitReady = true
+            allowWindowClose = true
+            window.close()
+        }
+    }
+
+    void askConfirm(String op, String message, String accept) {
+        confirmOp = op
+        confirmLabel.setText(message)
+        confirmButton.setLabel(accept)
+        confirmChoices.setVisible(true)
+        status.setText(message)
+        updateMenu()
+    }
+
+    void acceptConfirm() {
+        String op = confirmOp
+        confirmOp = ""
+        confirmChoices.setVisible(false)
+        updateMenu()
+        if (op.equals("delete")) { deleteProjectMetadata() }
+        if (op.equals("replace-new")) { startNewProject("new") }
+        if (op.equals("replace-save-as")) { startNewProject("save-as") }
+        if (op.startsWith("continue-")) { performProjectOp(op.slice(9, op.length)) }
+    }
+
+    void cancelConfirm() {
+        String op = confirmOp
+        confirmOp = ""
+        confirmChoices.setVisible(false)
+        nextProject = null
+        nextFolder = ""
+        if (op.equals("continue-quit")) {
+            allowWindowClose = false
+            quitReady = false
+        }
+        status.setText("Cancelled")
+        if (documents.length == 0) { newDocument() }
+        updateMenu()
+    }
+
+    void closeAllDocuments() {
+        int index = 0
+        while (index < documents.length) {
+            EditorDocument document = documents[index] as EditorDocument
+            notebook.remove(document.scroller)
+            document.scroller.dispose()
+            index = index + 1
+        }
+        documents = []
+    }
+
+    void detachProject() {
+        activeProject = null
+        reapplyDocumentSettings()
+        refreshProjectNote()
+        if (configureWindow != null && !configureWindow.disposed()) { configureWindow.setVisible(false) }
+        updateMenu()
+    }
+
+    void reapplyDocumentSettings() {
+        int index = 0
+        while (index < documents.length) {
+            applyDocumentSettings(documents[index] as EditorDocument)
+            index = index + 1
+        }
+    }
+
+    list absolutePaths(TweedProject target, list paths) {
+        list result = []
+        int index = 0
+        while (index < paths.length) {
+            result.append(System.FileSystem().join(target.root, paths[index] as String))
+            index = index + 1
+        }
+        return result
+    }
+
+    void activateProject(TweedProject target, bool restore) {
+        activeProject = target
+        project.setProject(target.root, target.name, target.excludeLines(), absolutePaths(target, target.expanded))
+        reapplyDocumentSettings()
+        refreshProjectNote()
+        if (restore) {
+            // Window size is restored only before the window is first shown.
+            if (!presented && target.windowWidth > 0 && target.windowHeight > 0) {
+                window.setDefaultSize(target.windowWidth, target.windowHeight)
+            }
+            if (target.explorerWidth >= 0) { workspace.setPosition(target.explorerWidth) }
+            openFailures = []
+            collectingFailures = true
+            EditorDocument chosen = null
+            int index = 0
+            while (index < target.files.length) {
+                WorkspaceFile item = target.files[index] as WorkspaceFile
+                String path = System.FileSystem().join(target.root, item.path)
+                if (!System.FileSystem().exists(path)) {
+                    openFailures.append(format("Missing: {}", path))
+                } else {
+                    EditorDocument document = openDocument(path)
+                    if (document != null) {
+                        document.view.setCursor(item.line, item.column)
+                        if (chosen == null || item.path.equals(target.active)) { chosen = document }
+                    }
+                }
+                index = index + 1
+            }
+            collectingFailures = false
+            if (documents.length == 0) { newDocument() } else { activateDocument(chosen) }
+            if (openFailures.length > 0) {
+                String details = ""
+                index = 0
+                while (index < openFailures.length) {
+                    if (index > 0) { details.append("\n") }
+                    details.append(openFailures[index] as String)
+                    index = index + 1
+                }
+                Gtk.AlertDialog().show(window, "Some workspace files could not be reopened", details)
+                openFailures = []
+            }
+        }
+        rememberProject(target.root)
+        updateMenu()
+        status.setText(format("Project: {} ({})", target.name, target.root))
+        if (!target.errors.equals("")) {
+            Gtk.AlertDialog().show(window, "Project configuration errors", format("{}\n{}\nInvalid values are ignored; saving project configuration is disabled until the file is repaired and the project reopened.", target.configPath, target.errors))
+        }
+        if (!target.workspaceErrors.equals("")) {
+            Gtk.AlertDialog().show(window, "Workspace state ignored", format("{}\nThe workspace was not restored and will not be overwritten; repair or remove .tweed/workspace.toml and reopen the project.", target.workspaceErrors))
+        }
+    }
+
+    // Workspace TOML for documents/explorer state under source, written relative
+    // to target. When they differ (Save As) only paths existing under target are kept.
+    String captureWorkspace(String source, String target) {
+        TweedProject origin = TweedProject(source)
+        bool filter = !source.equals(target)
+        String text = "version = 1\n\n[workspace]\n"
+        EditorDocument current = currentDocument()
+        String activePath = ""
+        String fileList = "["
+        int count = 0
+        int index = 0
+        while (index < documents.length) {
+            EditorDocument document = documents[index] as EditorDocument
+            String rel = ""
+            if (!document.path.equals("")) { rel = origin.relative(document.path) }
+            if (!rel.equals("") && filter && !System.FileSystem().isFile(System.FileSystem().join(target, rel))) { rel = "" }
+            if (!rel.equals("")) {
+                if (count > 0) { fileList.append(", ") }
+                fileList.append("{ path = ")
+                fileList.append(Gtk.Config().quote(rel))
+                fileList.append(format(", line = {}, column = {} ", document.view.line(), document.view.column()))
+                fileList.append("}")
+                count = count + 1
+                if (document == current) { activePath = rel }
+            }
+            index = index + 1
+        }
+        fileList.append("]")
+        if (!activePath.equals("")) { text.append(format("active = {}\n", Gtk.Config().quote(activePath))) }
+        int width = workspace.position()
+        if (width >= 0 && width <= 5000) { text.append(format("explorer_width = {}\n", width)) }
+        int windowWidth = window.defaultWidth()
+        int windowHeight = window.defaultHeight()
+        if (windowWidth >= 200 && windowWidth <= 10000 && windowHeight >= 150 && windowHeight <= 10000) {
+            text.append(format("window_width = {}\nwindow_height = {}\n", windowWidth, windowHeight))
+        }
+        list folders = []
+        if (project.rootPath.equals(source)) {
+            list paths = project.expandedPaths()
+            index = 0
+            while (index < paths.length) {
+                String rel = origin.relative(paths[index] as String)
+                if (!rel.equals("") && filter && !System.FileSystem().isDir(System.FileSystem().join(target, rel))) { rel = "" }
+                if (!rel.equals("")) { folders.append(rel) }
+                index = index + 1
+            }
+        }
+        text.append(format("expanded = {}\n", origin.quotedList(folders)))
+        text.append("files = ")
+        text.append(fileList)
+        text.append("\n")
+        return text
+    }
+
+    // ---- Configure Project ------------------------------------------------
+
+    void createConfigure() {
+        configureWindow = Gtk.TransientWindow("Configure Project")
+        configureWindow.setTransientFor(window)
+        configureWindow.setDefaultSize(640, 480)
+        Gtk.Box root = Gtk.Box(Gtk.Box.VERTICAL, 6)
+        configureName = preferenceEntry(root, "Project name", "")
+        configureExcludes = preferenceEntry(root, "Explorer exclusions (comma-separated)", "")
+        root.append(Gtk.Label("Editor overrides (unchecked settings inherit your Preferences)"))
+        overrideRows = []
+        addOverride(root, OverrideRow("font_family", "font family", false))
+        addOverride(root, OverrideRow("font_size", "font size", false))
+        addOverride(root, OverrideRow("tab_width", "tab width", false))
+        addOverride(root, OverrideRow("insert_spaces", "insert spaces", true))
+        addOverride(root, OverrideRow("line_numbers", "line numbers", true))
+        addOverride(root, OverrideRow("wrap", "wrap", true))
+        addOverride(root, OverrideRow("highlight_current_line", "highlight current line", true))
+        Gtk.Box buttons = Gtk.Box(Gtk.Box.HORIZONTAL, 6)
+        Gtk.Button inherit = Gtk.Button("Reset All to Inherit")
+        Gtk.Button apply = Gtk.Button("Apply")
+        Gtk.Button close = Gtk.Button("Close")
+        inherit.onClicked(_self().inheritAll)
+        apply.onClicked(_self().applyConfigure)
+        close.onClicked(_self().closeConfigure)
+        buttons.append(inherit)
+        buttons.append(apply)
+        buttons.append(close)
+        root.append(buttons)
+        configureMessage = Gtk.Label("")
+        root.append(configureMessage)
+        configureWindow.setChild(root)
+        configureWindow.onCloseRequest(_self().hideConfigure)
+        configureWindow.setVisible(false)
+    }
+
+    void addOverride(Gtk.Box root, OverrideRow row) {
+        overrideRows.append(row)
+        root.append(row.row)
+    }
+
+    OverrideRow overrideRow(String key) {
+        int index = 0
+        while (index < overrideRows.length) {
+            OverrideRow row = overrideRows[index] as OverrideRow
+            if (row.key.equals(key)) { return row }
+            index = index + 1
+        }
+        return null
+    }
+
+    void showConfigure() {
+        if (commandsBlocked() || activeProject == null) { return }
+        if (configureWindow == null || configureWindow.disposed()) { createConfigure() }
+        refreshConfigure()
+        configureWindow.present()
+    }
+
+    void refreshConfigure() {
+        TweedProject current = activeProject
+        configureName.setText(current.name)
+        String patterns = ""
+        int index = 0
+        while (index < current.excludes.length) {
+            if (index > 0) { patterns.append(", ") }
+            patterns.append(current.excludes[index] as String)
+            index = index + 1
+        }
+        configureExcludes.setText(patterns)
+        String font = settings.fontFamily
+        if (current.hasFont) { font = current.fontFamily }
+        int size = settings.fontSize
+        if (current.hasSize) { size = current.fontSize }
+        int tabs = settings.tabWidth
+        if (current.hasTabs) { tabs = current.tabWidth }
+        overrideRow("font_family").show(current.hasFont, font, false)
+        overrideRow("font_size").show(current.hasSize, format("{}", size), false)
+        overrideRow("tab_width").show(current.hasTabs, format("{}", tabs), false)
+        bool flag = settings.insertSpaces
+        if (current.hasSpaces) { flag = current.insertSpaces }
+        overrideRow("insert_spaces").show(current.hasSpaces, "", flag)
+        flag = settings.lineNumbers
+        if (current.hasNumbers) { flag = current.lineNumbers }
+        overrideRow("line_numbers").show(current.hasNumbers, "", flag)
+        flag = settings.wrap
+        if (current.hasWrap) { flag = current.wrap }
+        overrideRow("wrap").show(current.hasWrap, "", flag)
+        flag = settings.highlightLine
+        if (current.hasHighlight) { flag = current.highlightLine }
+        overrideRow("highlight_current_line").show(current.hasHighlight, "", flag)
+        configureMessage.setText(current.errors)
+    }
+
+    void inheritAll() {
+        int index = 0
+        while (index < overrideRows.length) {
+            OverrideRow row = overrideRows[index] as OverrideRow
+            row.override.setActive(false)
+            index = index + 1
+        }
+        configureMessage.setText("All editor settings inherit Preferences; press Apply to save")
+    }
+
+    void applyConfigure() {
+        TweedProject current = activeProject
+        if (current == null || commandsBlocked()) { return }
+        if (!current.writable) {
+            configureMessage.setText(format("Repair {} and reopen the project before changing it:\n{}", current.configPath, current.errors))
+            return
+        }
+        String name = configureName.text().trim()
+        String problem = current.nameError(name)
+        list patterns = []
+        list parts = configureExcludes.text().split(",")
+        int index = 0
+        while (index < parts.length) {
+            String pattern = (parts[index] as String).trim()
+            if (!pattern.equals("")) {
+                String patternProblem = current.excludeError(pattern)
+                if (problem.equals("")) { problem = patternProblem }
+                patterns.append(pattern)
+            }
+            index = index + 1
+        }
+        OverrideRow fontRow = overrideRow("font_family")
+        OverrideRow sizeRow = overrideRow("font_size")
+        OverrideRow tabsRow = overrideRow("tab_width")
+        int size = preferenceNumber(sizeRow.entry.text(), 6, 72)
+        int tabs = preferenceNumber(tabsRow.entry.text(), 1, 16)
+        if (problem.equals("") && fontRow.override.active()) { problem = settings.fontError(fontRow.entry.text()) }
+        if (problem.equals("") && sizeRow.override.active() && size < 0) { problem = "Font size must be an integer from 6 to 72" }
+        if (problem.equals("") && tabsRow.override.active() && tabs < 0) { problem = "Tab width must be an integer from 1 to 16" }
+        if (!problem.equals("")) {
+            configureMessage.setText(problem)
+            return
+        }
+        String oldExcludes = current.excludeLines()
+        current.name = name
+        current.excludes = patterns
+        current.hasFont = fontRow.override.active()
+        if (current.hasFont) { current.fontFamily = fontRow.entry.text() }
+        current.hasSize = sizeRow.override.active()
+        if (current.hasSize) { current.fontSize = size }
+        current.hasTabs = tabsRow.override.active()
+        if (current.hasTabs) { current.tabWidth = tabs }
+        OverrideRow row = overrideRow("insert_spaces")
+        current.hasSpaces = row.override.active()
+        current.insertSpaces = row.value.active()
+        row = overrideRow("line_numbers")
+        current.hasNumbers = row.override.active()
+        current.lineNumbers = row.value.active()
+        row = overrideRow("wrap")
+        current.hasWrap = row.override.active()
+        current.wrap = row.value.active()
+        row = overrideRow("highlight_current_line")
+        current.hasHighlight = row.override.active()
+        current.highlightLine = row.value.active()
+        reapplyDocumentSettings()
+        refreshProjectNote()
+        project.title.setText(current.name)
+        if (!oldExcludes.equals(current.excludeLines())) {
+            project.setProject(current.root, current.name, current.excludeLines(), project.expandedPaths())
+        }
+        configureMessage.setText("Saving project configuration...")
+        writeProject(current, true, false, "configure")
+    }
+
+    bool hideConfigure() {
+        if (configureWindow != null && !configureWindow.disposed()) { configureWindow.setVisible(false) }
+        return true
+    }
+    void closeConfigure() { hideConfigure() }
+
+    // ---- About ---------------------------------------------------------------
+
+    void showAbout() {
+        if (fileDialog != null) { return }
+        if (aboutWindow == null || aboutWindow.disposed()) {
+            aboutWindow = Gtk.TransientWindow("About Tweed")
+            aboutWindow.setTransientFor(window)
+            aboutWindow.setDefaultSize(480, 300)
+            Gtk.Box root = Gtk.Box(Gtk.Box.VERTICAL, 8)
+            root.append(Gtk.Label("Tweed Lang Editor"))
+            root.append(Gtk.Label(format("Version {}", version())))
+            root.append(Gtk.Label("A GTK editor for Simple (Tweed Lang), written in Simple\nwith GtkSourceView syntax highlighting, a project explorer,\nand per-project configuration."))
+            root.append(Gtk.Label("License: no license file is included in the repository."))
+            root.append(Gtk.Label("Project: https://github.com/chucktilbury/simp"))
+            Gtk.Button close = Gtk.Button("Close")
+            close.onClicked(_self().closeAbout)
+            root.append(close)
+            aboutWindow.setChild(root)
+            aboutWindow.onCloseRequest(_self().hideAbout)
+        }
+        aboutWindow.present()
+    }
+
+    bool hideAbout() {
+        if (aboutWindow != null && !aboutWindow.disposed()) { aboutWindow.setVisible(false) }
+        return true
+    }
+    void closeAbout() { hideAbout() }
 
     void newDocument() {
         if (commandsBlocked()) { return }
@@ -1416,7 +2940,8 @@ class TweedEditor {
     }
 
     bool commandsBlocked() {
-        return fileDialog != null || pendingCloseAll || pendingCloseDocument != null
+        return (fileDialog != null || pendingCloseAll || pendingCloseDocument != null ||
+            projectSaves > 0 || !confirmOp.equals(""))
     }
 
     void chooseOpen() {
@@ -1452,6 +2977,14 @@ class TweedEditor {
         }
         if (!path.startsWith("/")) {
             path = System.FileSystem().join(System.FileSystem().getCwd(), path)
+        }
+        if (activeProject != null) {
+            String root = canonicalFolder(path, "Open folder failed")
+            if (root.equals("")) { return }
+            // Leaving a project saves its workspace state, then opens the folder without project settings.
+            nextFolder = root
+            beginSwitch("folder")
+            return
         }
         project.setRoot(System.FileSystem().normalize(path))
     }
@@ -1746,6 +3279,15 @@ class TweedEditor {
         project.sidebar.setSensitive(ready)
         menu.setItemEnabled(recentItem, ready && recentFiles.length > 0)
         menu.setItemEnabled(quitItem, fileDialog == null)
+        menu.setItemEnabled(projectNewItem, ready)
+        menu.setItemEnabled(projectOpenItem, ready)
+        int projectIndex = 0
+        while (projectIndex < projectItems.length) {
+            menu.setItemEnabled(projectItems[projectIndex] as int, ready && activeProject != null)
+            projectIndex = projectIndex + 1
+        }
+        menu.setItemEnabled(aboutItem, fileDialog == null)
+        confirmChoices.setSensitive(fileDialog == null)
         int index = 0
         while (index < documentItems.length) {
             menu.setItemEnabled(documentItems[index] as int, editable)
@@ -1770,13 +3312,23 @@ class TweedEditor {
         optionsRow.setSensitive(ready)
     }
 
+    bool workspaceNeedsSave() {
+        return (activeProject != null && activeProject.workspaceWritable &&
+            !activeProject.workspaceText.equals(activeProject.workspaceOriginal))
+    }
+
     bool requestClose() {
-        if (savePending) {
+        if (savePending || projectSaves > 0) {
             closeAfterSave = true
             status.setText("Waiting for settings to save")
             return true
         }
         if (allowWindowClose) {
+            // Checked synchronously so window.close() is never re-entered from this handler.
+            if (!quitReady && workspaceNeedsSave()) {
+                writeProject(activeProject, false, true, "quit")
+                return true
+            }
             closePreferencesWindows()
             return false
         }
@@ -1785,6 +3337,17 @@ class TweedEditor {
             fileDialog = null
             dialogDocument = null
             dialogClosing = false
+            chooserPurpose = ""
+        }
+        if (!confirmOp.equals("")) {
+            confirmOp = ""
+            confirmChoices.setVisible(false)
+        }
+        switchOp = ""
+        nextProject = null
+        nextFolder = ""
+        if (activeProject != null) {
+            activeProject.workspaceText = captureWorkspace(activeProject.root, activeProject.root)
         }
         int index = 0
         while (index < documents.length) {
@@ -1799,11 +3362,24 @@ class TweedEditor {
             }
             index = index + 1
         }
+        if (workspaceNeedsSave()) {
+            allowWindowClose = true
+            writeProject(activeProject, false, true, "quit")
+            return true
+        }
         return false
     }
 
     void closePreferencesWindows() {
         closeSearchDialog()
+        if (aboutWindow != null && !aboutWindow.disposed()) {
+            aboutWindow.setVisible(false)
+            aboutWindow.dispose()
+        }
+        if (configureWindow != null && !configureWindow.disposed()) {
+            configureWindow.setVisible(false)
+            configureWindow.dispose()
+        }
         if (preferencesWindow != null && !preferencesWindow.disposed()) {
             hidePreferences()
             preferencesWindow.dispose()
@@ -1912,10 +3488,15 @@ class TweedEditor {
     }
 
     void discardPendingClose() {
+        if (pendingCloseAll && !switchOp.equals("")) {
+            pendingCloseAll = false
+            closeChoices.setVisible(false)
+            continueSwitch(switchOp)
+            return
+        }
         if (pendingCloseAll) {
-            while (documents.length > 0) {
-                removeDocument(documents[0] as EditorDocument)
-            }
+            window.setVisible(false)
+            closeAllDocuments()
             pendingCloseAll = false
             pendingCloseDocument = null
             closeChoices.setVisible(false)
@@ -1932,6 +3513,11 @@ class TweedEditor {
     }
 
     void cancelPendingClose() {
+        if (!switchOp.equals("")) {
+            switchOp = ""
+            nextProject = null
+            status.setText("Cancelled opening the project")
+        }
         pendingCloseDocument = null
         pendingCloseAll = false
         closeChoices.setVisible(false)
@@ -1939,6 +3525,12 @@ class TweedEditor {
     }
 
     void finishPendingClose() {
+        if (pendingCloseAll && !switchOp.equals("")) {
+            pendingCloseAll = false
+            closeChoices.setVisible(false)
+            continueSwitch(switchOp)
+            return
+        }
         if (pendingCloseAll) {
             pendingCloseAll = false
             pendingCloseDocument = null

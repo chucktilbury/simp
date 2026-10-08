@@ -1232,6 +1232,24 @@ void simp_gtk_window_size(void *self, int64_t token, int64_t width, int64_t heig
     gtk_window_set_default_size(GTK_WINDOW(w), (int)width, (int)height);
 }
 
+int64_t simp_gtk_window_width(void *self, int64_t token) {
+    (void)self;
+    GtkWidget *w = widget_live(token);
+    if (!GTK_IS_WINDOW(w)) fatal("invalid window");
+    int width = 0;
+    gtk_window_get_default_size(GTK_WINDOW(w), &width, NULL);
+    return width;
+}
+
+int64_t simp_gtk_window_height(void *self, int64_t token) {
+    (void)self;
+    GtkWidget *w = widget_live(token);
+    if (!GTK_IS_WINDOW(w)) fatal("invalid window");
+    int height = 0;
+    gtk_window_get_default_size(GTK_WINDOW(w), NULL, &height);
+    return height;
+}
+
 void simp_gtk_window_transient_for(void *self, int64_t token, int64_t parent) {
     (void)self;
     require_managed();
@@ -1796,6 +1814,25 @@ int64_t simp_gtk_source_view_line(void *self, int64_t token) {
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
     return gtk_text_iter_get_line(&cursor) + 1;
+}
+
+/* Moves the insertion point to a 1-based line/column, clamped to the buffer. */
+void simp_gtk_source_view_set_cursor(void *self, int64_t token, int64_t line, int64_t column) {
+    (void)self;
+    GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
+    GtkTextIter cursor;
+    int lines = gtk_text_buffer_get_line_count(buffer);
+    if (line < 1) line = 1;
+    if (line > lines) line = lines;
+    gtk_text_buffer_get_iter_at_line(buffer, &cursor, (int)line - 1);
+    int length = gtk_text_iter_ends_line(&cursor) ? 0 : gtk_text_iter_get_chars_in_line(&cursor);
+    if (length && gtk_text_iter_get_line(&cursor) < lines - 1) --length;
+    if (column < 1) column = 1;
+    if (column - 1 > length) column = length + 1;
+    gtk_text_iter_set_line_offset(&cursor, (int)column - 1);
+    gtk_text_buffer_place_cursor(buffer, &cursor);
+    gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(widget_live(token)),
+                                       gtk_text_buffer_get_insert(buffer));
 }
 
 int64_t simp_gtk_source_view_column(void *self, int64_t token) {
