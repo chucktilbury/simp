@@ -60,9 +60,9 @@ cmake --build build-gtk --target tweed -j4
 ctest --test-dir build-gtk -R '^(simp_gtk|simp_callbacks|simp_tweed_binary|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts)$' --output-on-failure -V
 ```
 
-This explicit test configuration requires `pkg-config`, GTK 4.10 or newer and
-GtkSourceView 5 development files, Xvfb, and `dbus-daemon` (install
-`libgtk-4-dev libgtksourceview-5-dev xvfb dbus-daemon` on Debian/Ubuntu).
+This explicit test configuration requires `pkg-config`, GTK 4 and GtkSourceView 5 development
+files, Xvfb, and `dbus-daemon` (`pkg-config libgtk-4-dev
+libgtksourceview-5-dev xvfb dbus-daemon` on Debian/Ubuntu).
 A local Xvfb executable can
 be supplied via `SIMP_XVFB_EXECUTABLE`; it must have its normal shared-library
 dependencies available. `gtk_support.py` starts a fresh Xvfb using `-displayfd` and a private session

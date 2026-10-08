@@ -8,10 +8,9 @@ It is not a complete GTK binding or a generic GUI framework.
 
 ## Build and package linkage
 
-Fresh configurations enable `SIMP_GTK` when GTK 4.10 or newer development files
-and `pkg-config` are available, and enable `SIMP_GTK_SOURCEVIEW` when
-GtkSourceView 5 is also available. Explicit `ON` options require the
-corresponding dependencies.
+Fresh configurations enable `SIMP_GTK` when GTK 4 development files and
+`pkg-config` are available, and enable `SIMP_GTK_SOURCEVIEW` when GtkSourceView 5
+is also available. Explicit `ON` options require the corresponding dependencies.
 With `BUILD_TESTING=ON`, headless tests default to enabled when Xvfb and
 `dbus-daemon` are found; `SIMP_GTK_TESTS=ON` requires them explicitly.
 With `SIMP_GTK=OFF` and `SIMP_GTK_SOURCEVIEW=OFF`, the GTK package is absent from staged/installed
@@ -147,7 +146,7 @@ void cancel()
 bool pending()
 ```
 
-Construction shows a modal, parented `GtkFileDialog` asynchronously:
+Construction shows a modal, parented `GtkFileChooserNative` asynchronously:
 `save=false` opens an existing file; `save=true` chooses a save destination.
 An empty initial path uses GTK's default location. A directory selects the
 starting folder; a filename selects the open file or initializes the save
@@ -168,9 +167,9 @@ cancel pending choosers and release their callback roots without invocation.
 `pending()` becomes false before the result handler runs and remains usable
 after cancellation or shutdown. Dropping a dialog variable does not cancel it.
 Callbacks may collect, retain their result, open another chooser, dispose the
-parent, or shut down. GTK completes the asynchronous dialog request before the
-Simple result handler runs, using a one-shot GUI idle dispatch; no nested main
-loop or blocking wait is used.
+parent, or shut down. Native response cleanup completes before the Simple
+result handler runs, using a one-shot GUI idle dispatch; no nested main loop
+or blocking wait is used.
 
 ```text
 Gtk.FileDialog(Window parent, String initialPath, callback<void(list)> results)
