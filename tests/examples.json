@@ -16,5 +16,6 @@
   "unhandled_exception.simp": {"stdout": "before the exceptionseen whether the exception is handled or not", "exit": -6, "diagnostic": "This would be the error message"},
   "virtual_base.simp": {"stdout": "Root ctorLeft ctorRight ctorDiamond ctorread() from diamond: 77expression with left and right: 231in Payload ctor (50)in Payload ctor (9)read() from Root: 77read() from Right Payload: 50read() from Left Payload: 50Diamond dtorRight dtorLeft dtorRoot dtor\nvirtual exception class:virtual initialization failed"},
   "virtual_exception.simp": {"stdout": "this is the stringChild was caughtFinally blockafter the exception handlers"},
+  "name_collision.simp": {"stdout": "hello from main\n"},
   "modules/example/0.1.0/example.simp": {"driver": "import example\nstart { print(Example.Answer().value()) }\n", "stdout": "42"}
 }
