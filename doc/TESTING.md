@@ -54,13 +54,14 @@ test:
 
 ```sh
 cmake -S . -B build-gtk -DSIMP_GTK=ON -DSIMP_GTK_SOURCEVIEW=ON -DSIMP_GTK_TESTS=ON \
+  -DCMAKE_C_FLAGS=-Werror=deprecated-declarations \
   -DSIMP_STAGE_PREFIX="$PWD/build-gtk/stage"
 cmake --build build-gtk -j4
 cmake --build build-gtk --target tweed -j4
-ctest --test-dir build-gtk -R '^(simp_gtk|simp_callbacks|simp_tweed_binary|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts)$' --output-on-failure -V
+ctest --test-dir build-gtk -L gtk --output-on-failure
 ```
 
-This explicit test configuration requires `pkg-config`, GTK 4 and GtkSourceView 5 development
+This explicit test configuration requires `pkg-config`, GTK 4.10+ and GtkSourceView 5 development
 files, Xvfb, and `dbus-daemon` (`pkg-config libgtk-4-dev
 libgtksourceview-5-dev xvfb dbus-daemon` on Debian/Ubuntu).
 A local Xvfb executable can
@@ -91,6 +92,16 @@ The editor example test exercises the Tweed language definition, text-buffer
 editing/search, undo/redo, document/tab behavior and file operations. The
 shortcut test covers defaults, user mappings and conflicts. Run the complete
 configured suite with `ctest --test-dir build-gtk --output-on-failure`.
+`simp_gtk_bindings` checks actual chooser accept/cancel and overwrite responses,
+immediate cancellation/parent disposal/shutdown for all four dialog operations,
+prompt GC release of callback receivers, and native weak-ref finalization after
+late cancelled completions (including after application shutdown).
+`simp_editor_dialogs` checks multi-select acceptance/cancellation and Save/Save As
+overwrite decisions without losing tabs or changing files on cancellation.
+`simp_project_explorer` checks folder acceptance/cancellation and both immediate
+and mapped parent/shutdown teardown, alongside the existing tree regressions.
+Only test fixtures use deprecated chooser APIs to drive GTK's real fallback UI;
+the package build remains checked with deprecated declarations as errors.
 `simp_tweed_binary` runs the actual `tweed` target output with the same bounded
 editor fixture, private Xvfb and session bus; its `simp_tweed_build` CTest
 fixture builds the target first. GUI options default to installed development
@@ -100,7 +111,8 @@ The build fixture also checks nanosecond output timestamps on a second
 invocation so an unchanged target cannot silently recompile or relink.
 
 For sanitizer coverage, add `-DSIMP_GTK=ON` and `SIMP_XVFB_EXECUTABLE` if needed
-to the sanitizer build above, then run the same selector. Address/UB checks
+to the sanitizer build above, then run the same selector with `-j1` to avoid
+resource contention in GUI timing checks. Address/UB checks
 remain fatal. The existing generated-program leak policy (`detect_leaks=0`)
 also avoids reporting GTK/font/display process-global caches at exit; it is
 not a suppression of GTK memory access failures. No GTK tests are skipped,

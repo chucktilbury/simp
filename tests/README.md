@@ -56,6 +56,12 @@ entry to arrive, fewer than 1,000 live row widgets and a GUI heartbeat gap below
 300ms; it prints measured latency rather than just asserting small-tree output.
 The same fixture is used by sanitizer configurations. The permission-denied
 case expects an ordinary unprivileged test user.
+Folder chooser regressions include acceptance/cancellation, immediate repeated
+cancellation, and parent close/shutdown both before and after mapping.
+`simp_gtk_bindings` separately checks all four `GtkFileDialog` operations,
+callback-root release under GC and native finalization after late cancellation
+completions; `simp_editor_dialogs` preserves Open multi-select and Save/Save As
+overwrite/cancel coverage.
 
 Parser and semantic fixtures consumed by `simp_tests` use a
 `<fixture>.simp.json` file beside the `.simp` file with `friendly_name`,

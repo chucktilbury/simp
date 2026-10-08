@@ -22,12 +22,16 @@ typedef struct FileDialog {
     struct FileDialog *next;
     int64_t token;
     int64_t parent;
-    GtkFileChooserNative *chooser;
+    GtkFileDialog *chooser;
+    GCancellable *cancellable;
     SimpCallbackContext *context;
     GSource *completion;
-    GSource *presentation;
     GPtrArray *paths;
     bool multiple;
+    bool save;
+    bool folder;
+    bool request_pending;
+    bool cancelled;
 } FileDialog;
 
 typedef struct WidgetRecord {
@@ -119,6 +123,8 @@ static GHashTable *registered_languages;
 static void widget_dispose(WidgetRecord *record);
 static void window_removed(GtkApplication *app, GtkWindow *window, gpointer data);
 static void dialog_finish(FileDialog *dialog, bool invoke);
+static void dialog_cancel(FileDialog *dialog);
+static void config_finish_shutdown(void);
 
 static _Noreturn void fatal(const char *message) {
     fprintf(stderr, "Simple GTK error: %s\n", message);
@@ -504,7 +510,7 @@ void simp_gtk_shutdown(void *self) {
     stopped = true;
     g_application_quit(G_APPLICATION(application));
     while (posts) post_cancel(posts);
-    while (dialogs) dialog_finish(dialogs, false);
+    while (dialogs) dialog_cancel(dialogs);
     for (Connection *connection = connections; connection;) {
         Connection *next = connection->next;
         if (!connection->closed) simp_gtk_disconnect(connection->token);
@@ -648,7 +654,7 @@ static void widget_dispose(WidgetRecord *r) {
     tree_stop(widget);
     for (FileDialog *dialog = dialogs; dialog;) {
         FileDialog *next = dialog->next;
-        if (dialog->parent == r->token) dialog_finish(dialog, false);
+        if (dialog->parent == r->token) dialog_cancel(dialog);
         dialog = next;
     }
     while (r->items) {
@@ -668,6 +674,7 @@ static void widget_dispose(WidgetRecord *r) {
 #ifdef SIMP_GTK_SOURCEVIEW
     if (GTK_SOURCE_IS_VIEW(widget))
         disconnect_object(G_OBJECT(gtk_text_view_get_buffer(GTK_TEXT_VIEW(widget))));
+    g_object_set_data(G_OBJECT(widget), "simp-font-provider", NULL);
     for (ShortcutBinding *binding = r->shortcuts; binding;) {
         ShortcutBinding *next = binding->next;
         shortcut_release(binding);
@@ -900,24 +907,26 @@ static void *path_string(const char *path) {
  * immediately dispose its parent, open another chooser, or shut down. A
  * single-file chooser delivers one path ("" when cancelled); a multi-select
  * chooser delivers each selected path and then "" to end the batch. */
+static void dialog_unlink(FileDialog *dialog) {
+    FileDialog **link = &dialogs;
+    while (*link && *link != dialog) link = &(*link)->next;
+    if (*link) *link = dialog->next;
+    dialog->next = NULL;
+}
+
 static void dialog_finish(FileDialog *dialog, bool invoke) {
     GPtrArray *paths = dialog->paths;
     bool multiple = dialog->multiple;
-    FileDialog **link = &dialogs;
-    while (*link != dialog) link = &(*link)->next;
-    *link = dialog->next;
+    dialog_unlink(dialog);
     if (dialog->completion) {
         g_source_destroy(dialog->completion);
         g_source_unref(dialog->completion);
     }
-    if (dialog->chooser) {
-        g_signal_handlers_disconnect_by_data(dialog->chooser, dialog);
-        gtk_native_dialog_hide(GTK_NATIVE_DIALOG(dialog->chooser));
-        g_object_unref(dialog->chooser);
-    }
+    g_clear_object(&dialog->cancellable);
+    g_clear_object(&dialog->chooser);
     SimpCallbackContext *context = dialog->context;
     free(dialog);
-    if (invoke) {
+    if (invoke && context) {
         typedef void (*Adapter)(SimpCallbackContext *, void *);
         Adapter adapter = (Adapter)simp_callback_adapter(context);
         guint deliveries = multiple ? paths->len + 1 : 1;
@@ -931,8 +940,10 @@ static void dialog_finish(FileDialog *dialog, bool invoke) {
         }
     }
     g_ptr_array_unref(paths);
-    simp_callback_release(context);
-    simp_callback_dispose(context);
+    if (context) {
+        simp_callback_release(context);
+        simp_callback_dispose(context);
+    }
 }
 
 static gboolean dialog_complete(gpointer data) {
@@ -953,34 +964,68 @@ static void dialog_schedule(FileDialog *dialog) {
     g_source_attach(dialog->completion, main_context);
 }
 
-static void chooser_response(GtkNativeDialog *chooser, int response, gpointer data) {
+static void dialog_append_file(FileDialog *dialog, GFile *file) {
+    char *path = g_file_get_path(file);
+    /* Simple strings are UTF-8; fall back to the (ASCII) URI otherwise. */
+    if (!path || !g_utf8_validate(path, -1, NULL)) {
+        g_free(path);
+        path = g_file_get_uri(file);
+    }
+    g_ptr_array_add(dialog->paths, path);
+}
+
+static void file_dialog_completed(GObject *source, GAsyncResult *result, gpointer data) {
     simp_gtk_require_owner();
     int acquired = simp_runtime_managed_enter();
     FileDialog *dialog = data;
-    if (!dialog->completion && response == GTK_RESPONSE_ACCEPT) {
-        GListModel *files = gtk_file_chooser_get_files(GTK_FILE_CHOOSER(chooser));
-        guint count = files ? g_list_model_get_n_items(files) : 0;
-        if (!dialog->multiple) count = MIN(count, 1u);
-        for (guint i = 0; i < count; ++i) {
+    dialog->request_pending = false;
+    GError *error = NULL;
+    if (dialog->multiple) {
+        GListModel *files = gtk_file_dialog_open_multiple_finish(
+            GTK_FILE_DIALOG(source), result, &error);
+        for (guint i = 0; files && i < g_list_model_get_n_items(files); ++i) {
             GFile *file = g_list_model_get_item(files, i);
-            char *path = g_file_get_path(file);
-            /* Simple strings are UTF-8; fall back to the (ASCII) URI otherwise. */
-            if (!path || !g_utf8_validate(path, -1, NULL)) {
-                g_free(path);
-                path = g_file_get_uri(file);
-            }
-            g_ptr_array_add(dialog->paths, path);
+            dialog_append_file(dialog, file);
             g_object_unref(file);
         }
         g_clear_object(&files);
+    } else {
+        GFile *file;
+        if (dialog->folder)
+            file = gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(source), result, &error);
+        else if (dialog->save)
+            file = gtk_file_dialog_save_finish(GTK_FILE_DIALOG(source), result, &error);
+        else
+            file = gtk_file_dialog_open_finish(GTK_FILE_DIALOG(source), result, &error);
+        if (file) {
+            dialog_append_file(dialog, file);
+            g_object_unref(file);
+        }
     }
-    /* GTK's fallback chooser still has response cleanup to perform. Release
-     * native dialogs and enter user code only after that signal unwinds. */
-    dialog_schedule(dialog);
+    if (error) {
+        if (!g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CANCELLED) &&
+            !g_error_matches(error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_CANCELLED) &&
+            !g_error_matches(error, GTK_DIALOG_ERROR, GTK_DIALOG_ERROR_DISMISSED))
+            g_warning("File chooser failed: %s", error->message);
+        g_error_free(error);
+    }
+    if (dialog->cancelled) dialog_finish(dialog, false);
+    else dialog_schedule(dialog);
     simp_runtime_managed_leave(acquired);
 }
 
-static int64_t file_dialog_create(int64_t parent, bool save, bool multiple,
+static void dialog_cancel(FileDialog *dialog) {
+    dialog->cancelled = true;
+    dialog_unlink(dialog);
+    simp_callback_release(dialog->context);
+    simp_callback_dispose(dialog->context);
+    dialog->context = NULL;
+    /* GTask still owns the completion's data until its callback arrives. */
+    if (dialog->request_pending) g_cancellable_cancel(dialog->cancellable);
+    else dialog_finish(dialog, false);
+}
+
+static int64_t file_dialog_create(int64_t parent, bool save, bool multiple, bool folder,
                                   void *initial_path, void *callback) {
     GtkWidget *window = widget_live(parent);
     if (!GTK_IS_WINDOW(window)) fatal("FileDialog requires Window");
@@ -990,43 +1035,55 @@ static int64_t file_dialog_create(int64_t parent, bool save, bool multiple,
     dialog->token = token_new();
     dialog->parent = parent;
     dialog->multiple = multiple;
+    dialog->save = save;
+    dialog->folder = folder;
     dialog->paths = g_ptr_array_new_with_free_func(g_free);
     dialog->context = simp_callback_acquire(callback, "callback<void(String)>");
-    dialog->chooser = gtk_file_chooser_native_new(
-        save ? "Save file" : "Open file", GTK_WINDOW(window),
-        save ? GTK_FILE_CHOOSER_ACTION_SAVE : GTK_FILE_CHOOSER_ACTION_OPEN,
-        save ? "_Save" : "_Open", "_Cancel");
-    gtk_native_dialog_set_modal(GTK_NATIVE_DIALOG(dialog->chooser), TRUE);
-    if (multiple)
-        gtk_file_chooser_set_select_multiple(GTK_FILE_CHOOSER(dialog->chooser), TRUE);
+    dialog->chooser = gtk_file_dialog_new();
+    dialog->cancellable = g_cancellable_new();
+    gtk_file_dialog_set_title(dialog->chooser,
+                              folder ? "Open folder" : save ? "Save file" : "Open file");
+    gtk_file_dialog_set_modal(dialog->chooser, TRUE);
+    gtk_file_dialog_set_accept_label(dialog->chooser, save ? "Save" : "Open");
     if (*path) {
         GFile *file = g_file_new_for_path(path);
         if (g_file_test(path, G_FILE_TEST_IS_DIR))
-            gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog->chooser), file, NULL);
+            gtk_file_dialog_set_initial_folder(dialog->chooser, file);
         else if (save) {
             GFile *folder = g_file_get_parent(file);
             if (folder) {
-                gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog->chooser), folder, NULL);
+                gtk_file_dialog_set_initial_folder(dialog->chooser, folder);
                 g_object_unref(folder);
             }
             char *name = g_file_get_basename(file);
-            gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(dialog->chooser), name);
+            gtk_file_dialog_set_initial_name(dialog->chooser, name);
             g_free(name);
-        } else if (multiple) {
+        } else if (multiple || dialog->folder) {
             GFile *folder = g_file_get_parent(file);
             if (folder) {
-                gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(dialog->chooser), folder, NULL);
+                gtk_file_dialog_set_initial_folder(dialog->chooser, folder);
                 g_object_unref(folder);
             }
-        } else gtk_file_chooser_set_file(GTK_FILE_CHOOSER(dialog->chooser), file, NULL);
+        } else gtk_file_dialog_set_initial_file(dialog->chooser, file);
         g_object_unref(file);
     }
     g_free(path);
     dialog->next = dialogs;
     dialogs = dialog;
     int64_t token = dialog->token;
-    g_signal_connect(dialog->chooser, "response", G_CALLBACK(chooser_response), dialog);
-    gtk_native_dialog_show(GTK_NATIVE_DIALOG(dialog->chooser));
+    dialog->request_pending = true;
+    if (folder)
+        gtk_file_dialog_select_folder(dialog->chooser, GTK_WINDOW(window),
+                                      dialog->cancellable, file_dialog_completed, dialog);
+    else if (multiple)
+        gtk_file_dialog_open_multiple(dialog->chooser, GTK_WINDOW(window),
+                                      dialog->cancellable, file_dialog_completed, dialog);
+    else if (save)
+        gtk_file_dialog_save(dialog->chooser, GTK_WINDOW(window),
+                             dialog->cancellable, file_dialog_completed, dialog);
+    else
+        gtk_file_dialog_open(dialog->chooser, GTK_WINDOW(window),
+                             dialog->cancellable, file_dialog_completed, dialog);
     return token;
 }
 
@@ -1073,7 +1130,7 @@ void simp_gtk_file_dialog_cancel(void *self, int64_t token) {
     simp_gtk_require_owner();
     for (FileDialog *dialog = dialogs; dialog; dialog = dialog->next)
         if (dialog->token == token) {
-            dialog_finish(dialog, false);
+            dialog_cancel(dialog);
             return;
         }
 }
@@ -1471,6 +1528,13 @@ void simp_gtk_source_view_clear_shortcuts(void *self, int64_t token) {
     }
 }
 
+static void font_provider_release(gpointer data) {
+    GtkCssProvider *provider = data;
+    GdkDisplay *display = g_object_get_data(G_OBJECT(provider), "simp-font-display");
+    gtk_style_context_remove_provider_for_display(display, GTK_STYLE_PROVIDER(provider));
+    g_object_unref(provider);
+}
+
 void simp_gtk_source_view_configure(void *self, int64_t token, void *font_text,
                                    int64_t size, int64_t tabs, bool spaces,
                                    bool numbers, bool wrap, bool highlight) {
@@ -1486,18 +1550,25 @@ void simp_gtk_source_view_configure(void *self, int64_t token, void *font_text,
         g_string_append_c(quoted, *p);
     }
     g_string_append_c(quoted, '"');
-    char *css = g_strdup_printf("textview { font-family: %s; font-size: %" G_GINT64_FORMAT
-                               "pt; }", quoted->str, size);
+    char *style_class = g_strdup_printf("simp-font-%" G_GINT64_FORMAT, token);
+    char *css = g_strdup_printf("textview.%s { font-family: %s; font-size: %" G_GINT64_FORMAT
+                               "pt; }", style_class, quoted->str, size);
     const char *previous_css = g_object_get_data(G_OBJECT(widget), "simp-font-css");
     if (g_strcmp0(previous_css, css) != 0) {
         GtkCssProvider *provider = gtk_css_provider_new();
+#if GTK_CHECK_VERSION(4, 12, 0)
+        gtk_css_provider_load_from_string(provider, css);
+#else
         gtk_css_provider_load_from_data(provider, css, -1);
-        GtkStyleContext *context = gtk_widget_get_style_context(widget);
-        GtkCssProvider *previous = g_object_get_data(G_OBJECT(widget), "simp-font-provider");
-        if (previous) gtk_style_context_remove_provider(context, GTK_STYLE_PROVIDER(previous));
-        gtk_style_context_add_provider(context, GTK_STYLE_PROVIDER(provider),
-                                       GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-        g_object_set_data_full(G_OBJECT(widget), "simp-font-provider", provider, g_object_unref);
+#endif
+        GdkDisplay *display = gtk_widget_get_display(widget);
+        g_object_set_data_full(G_OBJECT(provider), "simp-font-display",
+                               g_object_ref(display), g_object_unref);
+        g_object_set_data(G_OBJECT(widget), "simp-font-provider", NULL);
+        gtk_widget_add_css_class(widget, style_class);
+        gtk_style_context_add_provider_for_display(display, GTK_STYLE_PROVIDER(provider),
+                                                   GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+        g_object_set_data_full(G_OBJECT(widget), "simp-font-provider", provider, font_provider_release);
         g_object_set_data_full(G_OBJECT(widget), "simp-font-css", g_strdup(css), g_free);
     }
     gtk_text_view_set_monospace(GTK_TEXT_VIEW(widget), TRUE);
@@ -1508,6 +1579,7 @@ void simp_gtk_source_view_configure(void *self, int64_t token, void *font_text,
     gtk_source_view_set_highlight_current_line(GTK_SOURCE_VIEW(widget), highlight);
     g_free(font);
     g_free(css);
+    g_free(style_class);
     g_string_free(quoted, TRUE);
 }
 

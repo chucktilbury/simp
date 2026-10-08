@@ -38,7 +38,7 @@ front-end archive in `lib/libsimp_frontend.a`.
 
 ## Tweed editor and optional GTK packages
 
-On a fresh configuration, CMake detects `pkg-config`, GTK 4 and GtkSourceView 5
+On a fresh configuration, CMake detects `pkg-config`, GTK 4.10+ and GtkSourceView 5
 development files and defaults `SIMP_GTK` and `SIMP_GTK_SOURCEVIEW` to the
 available support. On Debian/Ubuntu the GUI development packages are
 `pkg-config libgtk-4-dev libgtksourceview-5-dev`. No packages are installed

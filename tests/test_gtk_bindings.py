@@ -13,7 +13,9 @@ import gtk
 class F {
     void collect()
     int dialogs()
-    int finalized()
+    int finalizedObjects()
+    int finalizedConfirmations()
+    void drain(int expected)
     int receivers()
     void track()
     void respond(String path, bool accept)
@@ -24,7 +26,9 @@ class F {
 }
 void F.collect() from "binding_collect"
 int F.dialogs() from "binding_dialogs"
-int F.finalized() from "binding_finalized"
+int F.finalizedObjects() from "binding_finalized_objects"
+int F.finalizedConfirmations() from "binding_finalized_confirmations"
+void F.drain(int expected) from "binding_drain"
 int F.receivers() from "binding_receivers"
 void F.track() from "binding_track"
 void F.respond(String path, bool accept) from "binding_respond"
@@ -132,21 +136,28 @@ class UI {
             return
         }
         {
+            print(F().finalizedObjects() == 5)
+            print(F().finalizedConfirmations() == 2)
             show(false, "")
             dialog.cancel()
             dialog.cancel()
             print(dialog.pending())
             print(F().dialogs())
+            F().collect()
+            print(F().receivers() == 5)
             show(false, "")
             window.dispose()
             print(dialog.pending())
             print(F().dialogs())
+            F().collect()
+            print(F().receivers() == 6)
             window = Gtk.Window("Shutdown")
             show(false, "")
             Gtk.Application().shutdown()
             print(dialog.pending())
             print(F().dialogs())
-            print(F().finalized())
+            F().collect()
+            print(F().receivers() == 7)
         }
     }
     void activate() {
@@ -162,8 +173,69 @@ start {
     ui.resultAction = ui.result
     app.onActivate(ui.activate)
     app.run()
+    F().drain(8)
+    print(F().finalizedObjects())
     F().collect()
     print(F().receivers())
+}
+"""
+
+LIFETIME = """
+import system
+class Relay {
+    void received(String path) { System.Process().exit(1) }
+    void receivedMany(list paths) { System.Process().exit(1) }
+    void note()
+    destroy { note() }
+}
+void Relay.note() from "binding_released"
+class UI {
+    Gtk.Window window
+    Gtk.FileDialog dialog
+    void show() {
+        String operation = System.Process().getEnv("BINDING_OPERATION")
+        if (operation.equals("open")) {
+            dialog = Gtk.FileDialog(window, false, "", Relay().received)
+        }
+        if (operation.equals("save")) {
+            dialog = Gtk.FileDialog(window, true, "", Relay().received)
+        }
+        if (operation.equals("multiple")) {
+            dialog = Gtk.FileDialog(window, "", Relay().receivedMany)
+        }
+        if (operation.equals("folder")) {
+            dialog = Gtk.FileDialog(window, "", Relay().received)
+        }
+        F().track()
+    }
+    void teardown() {
+        String teardown = System.Process().getEnv("BINDING_TEARDOWN")
+        if (teardown.equals("cancel")) {
+            dialog.cancel()
+            dialog.cancel()
+        }
+        if (teardown.equals("parent")) { window.dispose() }
+        if (teardown.equals("shutdown")) { Gtk.Application().shutdown() }
+        if (dialog.pending() || F().dialogs() != 0) { System.Process().exit(1) }
+        dialog = null
+    }
+    void activate() {
+        window = Gtk.Window("Dialog lifetime")
+        window.present()
+        show()
+        teardown()
+        F().collect()
+        if (F().receivers() != 1) { System.Process().exit(1) }
+        if (!window.disposed()) { window.dispose() }
+    }
+}
+start {
+    Gtk.Application app = Gtk.Application("org.simple.BindingLifetime")
+    UI ui = UI()
+    app.onActivate(ui.activate)
+    app.run()
+    F().drain(1)
+    print("PASS lifetime")
 }
 """
 
@@ -348,10 +420,11 @@ def main():
     dialog = DIALOG.replace('"existing.tweed"', f'"{existing}"').replace(
         '"fresh.tweed"', f'"{fresh}"')
     expected_dialog = (f"true{existing};false0true;false0true{fresh};false0"
-                       f"true;false0true{existing};false0truefalse0truefalse0"
-                       "truefalse0108")
+                       f"true;false0true{existing};false0truetrue"
+                       "truefalse0truetruefalse0truetruefalse0true88")
     cases = [("menus", MENU, "action;action;stopped;true"),
-             ("dialogs", dialog, expected_dialog)]
+             ("dialogs", dialog, expected_dialog),
+             ("lifetime", LIFETIME, "PASS lifetime")]
     if args.sourceview:
         cases.append(("allocation", SOURCEVIEW, "falsetruetruetruetruetruetruetruemultiline;grew;"))
         cases.append(("shortcuts", SHORTCUT_NATIVE + SHORTCUTS,
@@ -364,12 +437,19 @@ def main():
             result = invoke([str(args.compiler.resolve()), str(source), str(native),
                              "-o", str(output)], work, env)
             assert result.returncode == 0, f"{name}: {result.stderr}"
-            result = invoke([str(output)], work, env)
-            assert result.returncode == 0, f"{name}: {result.stderr}\n{result.stdout}"
-            assert result.stdout == expected, (name, result.stdout, expected, result.stderr)
-            assert "CRITICAL" not in result.stderr and "ERROR" not in result.stderr, result.stderr
-            assert existing.read_text() == "unchanged" and not fresh.exists()
-            print(f"PASS {name}")
+            runs = [(name, env)]
+            if name == "lifetime":
+                runs = [(f"{operation}-{teardown}",
+                         dict(env, BINDING_OPERATION=operation, BINDING_TEARDOWN=teardown))
+                        for operation in ("open", "save", "multiple", "folder")
+                        for teardown in ("cancel", "parent", "shutdown")]
+            for case, case_env in runs:
+                result = invoke([str(output)], work, case_env)
+                assert result.returncode == 0, f"{case}: {result.stderr}\n{result.stdout}"
+                assert result.stdout == expected, (case, result.stdout, expected, result.stderr)
+                assert "CRITICAL" not in result.stderr and "ERROR" not in result.stderr, result.stderr
+                assert existing.read_text() == "unchanged" and not fresh.exists()
+                print(f"PASS {case}")
 
 
 if __name__ == "__main__":

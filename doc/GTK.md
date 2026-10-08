@@ -8,7 +8,7 @@ It is not a complete GTK binding or a generic GUI framework.
 
 ## Build and package linkage
 
-Fresh configurations enable `SIMP_GTK` when GTK 4 development files and
+Fresh configurations enable `SIMP_GTK` when GTK 4.10 or newer development files and
 `pkg-config` are available, and enable `SIMP_GTK_SOURCEVIEW` when GtkSourceView 5
 is also available. Explicit `ON` options require the corresponding dependencies.
 With `BUILD_TESTING=ON`, headless tests default to enabled when Xvfb and
@@ -146,7 +146,7 @@ void cancel()
 bool pending()
 ```
 
-Construction shows a modal, parented `GtkFileChooserNative` asynchronously:
+Construction shows a modal, parented `GtkFileDialog` asynchronously:
 `save=false` opens an existing file; `save=true` chooses a save destination.
 An empty initial path uses GTK's default location. A directory selects the
 starting folder; a filename selects the open file or initializes the save
@@ -167,7 +167,7 @@ cancel pending choosers and release their callback roots without invocation.
 `pending()` becomes false before the result handler runs and remains usable
 after cancellation or shutdown. Dropping a dialog variable does not cancel it.
 Callbacks may collect, retain their result, open another chooser, dispose the
-parent, or shut down. Native response cleanup completes before the Simple
+parent, or shut down. GTK's asynchronous request completes before the Simple
 result handler runs, using a one-shot GUI idle dispatch; no nested main loop
 or blocking wait is used.
 
@@ -195,15 +195,14 @@ The folder-selection overload is:
 Gtk.FileDialog(Window parent, String initialPath, callback<void(String)> folder)
 ```
 
-It uses `GTK_FILE_CHOOSER_ACTION_SELECT_FOLDER`, with the same parent,
+It uses `gtk_file_dialog_select_folder`, with the same parent,
 asynchronous delivery, accept/cancel, URI and lifetime contracts as the existing
 file constructors. The overload preserves existing open/save/multiple APIs.
-Folder presentation uses a cancellable one-shot idle dispatch, so immediate
-cancellation or parent teardown cannot leave a not-yet-mapped folder chooser
-presenting after its parent closes. Existing file chooser presentation is unchanged.
-It currently shares their `GtkFileChooserNative` implementation; a separate
-`GtkFileDialog` migration must preserve this folder overload and use GTK's
-asynchronous select-folder operation, not treat it as an open-file request.
+All constructors use cancellable GTK asynchronous requests. Programmatic
+cancellation unlinks the pending token and releases the callback root immediately;
+native request storage remains alive until GTK delivers its completion. A late
+completion after cancellation, parent teardown or shutdown never invokes Simple
+code. Folder selection is not treated as an open-file request.
 
 ## Trees and asynchronous directory enumeration
 

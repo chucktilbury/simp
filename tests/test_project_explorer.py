@@ -280,6 +280,22 @@ class ExplorerLifetime {
     Gtk.DirectoryScan scan
     int deliveries
     String mode
+    void closeFolder() {
+        if (!ExplorerFixture().chooser()) {
+            ExplorerFixture().later(_self().closeFolder)
+            return
+        }
+        Gtk.FileDialog pending = editor.fileDialog
+        if (mode.equals("folder-mapped-shutdown")) {
+            Gtk.Application().shutdown()
+        } else {
+            editor.window.close()
+        }
+        if (pending.pending() || !editor.window.disposed() ||
+            !editor.project.rootPath.equals("")) { System.Process().exit(1) }
+        ExplorerFixture().collect()
+        System.StandardIO().writeLine("PASS mapped folder teardown")
+    }
     void close() {
         if (deliveries != 1) { System.Process().exit(1) }
         ExplorerFixture().collect()
@@ -310,13 +326,29 @@ class ExplorerLifetime {
     void activate() {
         editor.activate()
         mode = System.Process().getEnv("EXPLORER_LIFETIME")
-        if (mode.equals("folder-close")) {
+        if (mode.equals("folder-mapped-close") || mode.equals("folder-mapped-shutdown")) {
+            editor.chooseFolder()
+            ExplorerFixture().later(_self().closeFolder)
+            return
+        }
+        if (mode.equals("folder-close") || mode.equals("folder-cancel") ||
+            mode.equals("folder-shutdown")) {
             editor.chooseFolder()
             Gtk.FileDialog pending = editor.fileDialog
-            editor.window.close()
+            if (mode.equals("folder-cancel")) {
+                pending.cancel()
+                pending.cancel()
+                editor.window.close()
+            } else {
+                if (mode.equals("folder-shutdown")) {
+                    Gtk.Application().shutdown()
+                } else {
+                    editor.window.close()
+                }
+            }
             if (!editor.window.disposed() || pending.pending()) { System.Process().exit(1) }
             ExplorerFixture().collect()
-            System.StandardIO().writeLine("PASS parent closes folder chooser")
+            System.StandardIO().writeLine("PASS immediate folder teardown")
             return
         }
         if (mode.equals("tree-shutdown")) {
@@ -413,7 +445,9 @@ def main() -> None:
                 assert result.stdout.splitlines()[-1].startswith("PASS "), result
                 assert not result.stderr, result.stderr
                 print(result.stdout)
-                for mode in ("folder-close", "scan-cancel", "scan-shutdown", "tree-shutdown"):
+                for mode in ("folder-close", "folder-cancel", "folder-shutdown",
+                             "folder-mapped-close", "folder-mapped-shutdown",
+                             "scan-cancel", "scan-shutdown", "tree-shutdown"):
                     case_env = dict(gui_env, EXPLORER_LIFETIME=mode)
                     result = invoke([str(work / "explorer")], work, case_env, timeout=15)
                     assert result.returncode == 0 and "PASS " in result.stdout, result

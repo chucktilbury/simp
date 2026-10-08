@@ -252,10 +252,15 @@ class EditorChecks {
             editor.openFile(path("many/one.simp"))
             require(editor.currentDocument().path.equals(path("many/one.simp")), "open first file")
             documentsBeforeMany = editor.documents.length
+            Fixture().choose("", 0, 0)
+            require(Fixture().shortcut("<Control>o"), "multi-select Open routes to chooser for cancellation")
+        }
+        if (stage == 14) {
+            require(editor.documents.length == documentsBeforeMany, "multi-select Open Cancel preserves tabs")
             Fixture().chooseMany(path("many"), 4)
             require(Fixture().shortcut("<Control>o"), "shortcut Open routes to multi-select chooser")
         }
-        if (stage == 14) {
+        if (stage == 15) {
             require(editor.documents.length == documentsBeforeMany + 1, "multi-select opens every new text file")
             require(editor.status.text().contains("Open failed for 2 of 4 files"), "per-file failures reported")
             require(Fixture().alert("binary.dat|invalid.txt|not a text file"), "multi-select failures shown in one dialog")
@@ -334,7 +339,7 @@ class EditorChecks {
             Fixture().choose("", 0, 0)
             editor.closeSaveAction()
         }
-        if (stage == 15) {
+        if (stage == 16) {
             require(!editor.window.disposed() && editor.documents.length == documentsBeforeMany + 1 && !editor.pendingCloseAll && editor.pendingCloseDocument == null, "Quit Save As Cancel preserves all documents")
             editor.quitAction()
             editor.closeDiscardAction()
