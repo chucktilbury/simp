@@ -13,7 +13,8 @@ import gtk
 class F {
     void collect()
     int dialogs()
-    int finalized()
+    int finalizedObjects()
+    int finalizedConfirmations()
     int receivers()
     void track()
     void respond(String path, bool accept)
@@ -24,7 +25,8 @@ class F {
 }
 void F.collect() from "binding_collect"
 int F.dialogs() from "binding_dialogs"
-int F.finalized() from "binding_finalized"
+int F.finalizedObjects() from "binding_finalized_objects"
+int F.finalizedConfirmations() from "binding_finalized_confirmations"
 int F.receivers() from "binding_receivers"
 void F.track() from "binding_track"
 void F.respond(String path, bool accept) from "binding_respond"
@@ -132,6 +134,8 @@ class UI {
             return
         }
         {
+            print(F().finalizedObjects() >= 5)
+            print(F().finalizedConfirmations() >= 2)
             show(false, "")
             dialog.cancel()
             dialog.cancel()
@@ -146,7 +150,6 @@ class UI {
             Gtk.Application().shutdown()
             print(dialog.pending())
             print(F().dialogs())
-            print(F().finalized())
         }
     }
     void activate() {
@@ -348,8 +351,8 @@ def main():
     dialog = DIALOG.replace('"existing.tweed"', f'"{existing}"').replace(
         '"fresh.tweed"', f'"{fresh}"')
     expected_dialog = (f"true{existing};false0true;false0true{fresh};false0"
-                       f"true;false0true{existing};false0truefalse0truefalse0"
-                       "truefalse0108")
+                       f"true;false0true{existing};false0true"
+                       "truetruefalse0truefalse0truefalse08")
     cases = [("menus", MENU, "action;action;stopped;true"),
              ("dialogs", dialog, expected_dialog)]
     if args.sourceview:

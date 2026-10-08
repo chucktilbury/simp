@@ -3,7 +3,8 @@
 #include "../stdlib/gtk/0.1.0/native/gtk.c"
 #include <assert.h>
 
-static int64_t finalized_dialogs;
+static int64_t finalized_objects;
+static int64_t finalized_confirmations;
 static int64_t released_receivers;
 
 void binding_released(void *self) {
@@ -17,9 +18,25 @@ int64_t binding_receivers(void *self) {
 }
 
 static void fixture_finalized(gpointer data, GObject *object) {
-    (void)data;
     (void)object;
-    ++finalized_dialogs;
+    if (data) ++finalized_confirmations;
+    else ++finalized_objects;
+}
+
+int64_t binding_finalized_objects(void *self) {
+    (void)self;
+    return finalized_objects;
+}
+
+int64_t binding_finalized_confirmations(void *self) {
+    (void)self;
+    return finalized_confirmations;
+}
+
+void binding_track(void *self) {
+    (void)self;
+    assert(dialogs && dialogs->chooser);
+    g_object_weak_ref(G_OBJECT(dialogs->chooser), fixture_finalized, NULL);
 }
 
 void binding_collect(void *self) {
@@ -32,17 +49,6 @@ int64_t binding_dialogs(void *self) {
     int64_t count = 0;
     for (FileDialog *dialog = dialogs; dialog; dialog = dialog->next) ++count;
     return count;
-}
-
-int64_t binding_finalized(void *self) {
-    (void)self;
-    return finalized_dialogs;
-}
-
-void binding_track(void *self) {
-    (void)self;
-    assert(dialogs && dialogs->chooser);
-    g_object_weak_ref(G_OBJECT(dialogs->chooser), fixture_finalized, NULL);
 }
 
 typedef struct Response {
@@ -128,7 +134,7 @@ static gboolean confirm_when_ready(gpointer data) {
         GtkWindow *window = g_list_model_get_item(windows, i);
         if (GTK_IS_MESSAGE_DIALOG(window) && gtk_widget_get_visible(GTK_WIDGET(window))) {
             ready = true;
-            g_object_weak_ref(G_OBJECT(window), fixture_finalized, NULL);
+            g_object_weak_ref(G_OBJECT(window), fixture_finalized, GINT_TO_POINTER(1));
             bool alert = gtk_dialog_get_widget_for_response(GTK_DIALOG(window), 1) != NULL;
             gtk_dialog_response(GTK_DIALOG(window),
                                 alert ? (request->accept ? 1 : 0) :

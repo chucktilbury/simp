@@ -138,7 +138,7 @@ set_target_properties(simp_sqlite_native PROPERTIES
 )
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
-    pkg_check_modules(GTK4 QUIET IMPORTED_TARGET gtk4)
+    pkg_check_modules(GTK4 QUIET IMPORTED_TARGET "gtk4>=4.10")
     pkg_check_modules(GTK_SOURCEVIEW QUIET IMPORTED_TARGET gtksourceview-5)
 endif()
 option(SIMP_GTK "Build the GTK 4 interface package (default: detect installed dependencies)" ${GTK4_FOUND})
@@ -152,7 +152,7 @@ if(SIMP_GTK_SOURCEVIEW AND NOT SIMP_GTK)
 endif()
 if(SIMP_GTK)
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
+    pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET "gtk4>=4.10")
     add_library(simp_gtk_native STATIC
         "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/gtk.c"
         "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/toml.c")
