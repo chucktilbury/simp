@@ -11,6 +11,7 @@ static int overwrite_response;
 static guint attempts;
 static guint automation;
 static guint selection_attempts;
+static gboolean selection_set;
 static char *many_folder;
 static guint many_count;
 static gboolean answer_chooser(gpointer unused);
@@ -56,6 +57,14 @@ static gboolean accept_file(gpointer data) {
     GFile *selected = gtk_file_chooser_get_file(GTK_FILE_CHOOSER(dialog));
     GFile *expected = g_file_new_for_path(chosen_path);
     bool ready = selected && g_file_equal(selected, expected);
+    if (!ready && !selection_set &&
+        gtk_file_chooser_get_action(GTK_FILE_CHOOSER(dialog)) !=
+            GTK_FILE_CHOOSER_ACTION_SAVE) {
+        GError *error = NULL;
+        if (!gtk_file_chooser_set_file(GTK_FILE_CHOOSER(dialog), expected, &error)) abort();
+        if (error) abort();
+        selection_set = TRUE;
+    }
     g_clear_object(&selected);
     g_object_unref(expected);
     if (!ready) return G_SOURCE_CONTINUE;
@@ -162,6 +171,10 @@ static gboolean answer_chooser(gpointer unused) {
             g_object_unref(window);
             continue;
         }
+        if (loading(GTK_WIDGET(window))) {
+            g_object_unref(window);
+            continue;
+        }
         if (chosen_response == GTK_RESPONSE_CANCEL) {
             gtk_dialog_response(GTK_DIALOG(window), GTK_RESPONSE_CANCEL);
         } else if (many_folder) {
@@ -198,9 +211,14 @@ static gboolean answer_chooser(gpointer unused) {
                 g_free(folder);
                 g_free(name);
             } else {
-                GFile *file = g_file_new_for_path(chosen_path);
-                if (!gtk_file_chooser_set_file(chooser, file, &error)) abort();
+                char *folder = g_path_get_dirname(chosen_path);
+                GFile *file = g_file_new_for_path(folder);
+                GFile *current = gtk_file_chooser_get_current_folder(chooser);
+                if ((!current || !g_file_equal(current, file)) &&
+                    !gtk_file_chooser_set_current_folder(chooser, file, &error)) abort();
+                g_clear_object(&current);
                 g_object_unref(file);
+                g_free(folder);
             }
             if (error) abort();
             selection_attempts = 0;
@@ -234,6 +252,7 @@ void fixture_editor_choose(void *self, void *path, int64_t response, int64_t ove
     overwrite_response = overwrite == 0 ? 0 :
                          overwrite > 0 ? GTK_RESPONSE_ACCEPT : GTK_RESPONSE_CANCEL;
     attempts = 0;
+    selection_set = FALSE;
     automation = g_timeout_add(500, answer_chooser, NULL);
 }
 
