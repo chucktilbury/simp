@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<language id="tweed" name="Tweed Lang" version="2.0" _section="Source">
+<language id="cwhip" name="Cwhip" version="2.0" _section="Source">
   <metadata>
-    <property name="mimetypes">text/x-tweed</property>
-    <property name="globs">*.simp;*.tweed</property>
+    <property name="mimetypes">text/x-cwhip</property>
+    <property name="globs">*.cw;*.simp;*.tweed</property>
     <property name="line-comment-start">//</property>
   </metadata>
   <styles>
@@ -14,7 +14,7 @@
     <style id="operator" name="Operator" map-to="def:operator"/>
   </styles>
   <definitions>
-    <context id="tweed" class="no-spell-check">
+    <context id="cwhip" class="no-spell-check">
       <include>
         <context ref="comment"/>
         <context ref="string"/>

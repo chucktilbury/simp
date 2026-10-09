@@ -24,7 +24,7 @@ class CommandBinding {
     }
 }
 
-class TweedSettings {
+class CwhipSettings {
     String fontFamily
     int fontSize
     int tabWidth
@@ -42,7 +42,7 @@ class TweedSettings {
     bool legacyConflict
     int shortcutRevision
 
-    TweedSettings() {
+    CwhipSettings() {
         resetEditor()
         commands = [
             CommandBinding("new", "New document", "<Control>n"),
@@ -66,7 +66,7 @@ class TweedSettings {
             CommandBinding("project-save-as", "Save project as", ""),
             CommandBinding("project-delete", "Delete project metadata", ""),
             CommandBinding("project-configure", "Configure project", ""),
-            CommandBinding("about", "About Tweed", "")
+            CommandBinding("about", "About Cwhip", "")
         ]
         reopenLast = false
         lastRoot = ""
@@ -79,7 +79,10 @@ class TweedSettings {
         if (configHome.equals("")) {
             configHome = System.FileSystem().join(System.Process().getEnv("HOME"), ".config")
         }
-        path = System.FileSystem().join(configHome, "tweed/settings.toml")
+        path = System.FileSystem().join(configHome, "cwhip/settings.toml")
+        String oldSettings = System.FileSystem().join(configHome, "tweed/settings.toml")
+        if (Gtk.Config().fileStatus(path).equals("missing") &&
+            !Gtk.Config().fileStatus(oldSettings).equals("missing")) { path = oldSettings }
         if (!configHome.startsWith("/")) {
             error("XDG_CONFIG_HOME (or HOME fallback) must be an absolute path")
         }
@@ -130,16 +133,19 @@ class TweedSettings {
     }
 
     void loadLegacy() {
-        String legacy = "tweed-shortcuts.conf"
+        String legacy = "cwhip-shortcuts.conf"
+        if (Gtk.Config().fileStatus(legacy).equals("missing")) {
+            legacy = "tweed-shortcuts.conf"
+        }
         String presence = Gtk.Config().fileStatus(legacy)
         if (presence.equals("missing")) { return }
         if (presence.length > 0) {
-            error(format("Could not read tweed-shortcuts.conf: {}", presence))
+            error(format("Could not read {}: {}", legacy, presence))
             return
         }
         System.File file = System.File(legacy, "r")
         if (!file.isOpen()) {
-            error("Could not read tweed-shortcuts.conf")
+            error(format("Could not read {}", legacy))
             return
         }
         list lines = file.readLines()
@@ -349,7 +355,7 @@ class TweedSettings {
 class KeyboardPreference {
     KeyboardPreference _self()
     CommandBinding binding
-    TweedSettings settings
+    CwhipSettings settings
     Gtk.Box row
     Gtk.Label name
     Gtk.Entry entry
@@ -362,7 +368,7 @@ class KeyboardPreference {
     int recording
     bool refreshing
 
-    KeyboardPreference(TweedSettings model, CommandBinding command, callback<void()> changed,
+    KeyboardPreference(CwhipSettings model, CommandBinding command, callback<void()> changed,
                        callback<void()> prepare) {
         settings = model
         binding = command
@@ -458,10 +464,10 @@ class WorkspaceFile {
     }
 }
 
-// A Tweed project: shareable configuration in <root>/.tweed/project.toml and
-// local session state in <root>/.tweed/workspace.toml. Metadata paths are
+// Cwhip projects use .cwhip; existing .tweed projects remain in place. Metadata
+// paths are
 // always derived from the canonical root, never from persisted contents.
-class TweedProject {
+class CwhipProject {
     String root
     String directory
     String configPath
@@ -499,12 +505,24 @@ class TweedProject {
     list expanded
     list files
     String readError
+    String metadataConflict
     bool readMissing
     bool readContent
 
-    TweedProject(String projectRoot) {
+    CwhipProject(String projectRoot) {
         root = projectRoot
-        directory = System.FileSystem().join(root, ".tweed")
+        metadataConflict = ""
+        String currentDirectory = System.FileSystem().join(root, ".cwhip")
+        String legacyDirectory = System.FileSystem().join(root, ".tweed")
+        if (System.FileSystem().exists(currentDirectory) &&
+            System.FileSystem().exists(legacyDirectory)) {
+            metadataConflict = format("Both {} and {} contain project data; resolve the conflict without deleting either folder",
+                currentDirectory, legacyDirectory)
+            directory = currentDirectory
+        } else {
+            if (System.FileSystem().exists(legacyDirectory)) { directory = legacyDirectory }
+            else { directory = currentDirectory }
+        }
         configPath = System.FileSystem().join(directory, "project.toml")
         workspacePath = System.FileSystem().join(directory, "workspace.toml")
         name = System.FileSystem().basename(root)
@@ -601,8 +619,9 @@ class TweedProject {
     }
 
     // Refuses symlinked or non-regular metadata so writes and deletes stay
-    // inside root/.tweed.
+    // inside the project's metadata directory.
     String metadataProblem() {
+        if (!metadataConflict.equals("")) { return metadataConflict }
         if (!System.FileSystem().exists(directory)) { return "" }
         if (!System.FileSystem().isDir(directory) ||
             !System.FileSystem().absolutePath(directory).equals(directory)) {
@@ -695,11 +714,11 @@ class TweedProject {
 
     // Returns "" when the project can be opened. Invalid individual values
     // keep it open with errors shown and its configuration unwritable.
-    String load(TweedSettings settings) {
+    String load(CwhipSettings settings) {
         String problem = metadataProblem()
         if (!problem.equals("")) { return problem }
         original = readMetadata(configPath, 65536)
-        if (readMissing) { return format("No Tweed project in {} (missing .tweed/project.toml); use Project > New Project... to create one", root) }
+        if (readMissing) { return format("No Cwhip project in {} (missing {}/project.toml); use Project > New Project... to create one", root, directory) }
         if (!readError.equals("")) { return readError }
         base = original
         if (!value("", "version").equals("i1")) {
@@ -919,7 +938,7 @@ class TweedProject {
     }
 
     // Copies configuration (including unknown keys) for Save As.
-    void copyConfiguration(TweedProject source) {
+    void copyConfiguration(CwhipProject source) {
         base = source.base
         name = source.name
         excludes = []
@@ -1117,7 +1136,7 @@ class ProjectExplorer {
         rootPath = ""
         excludes = ""
         pending = []
-        icons = "0=text-x-generic-symbolic\n1=folder-symbolic\n2=emblem-symbolic-link-symbolic\n3=dialog-warning-symbolic\n.simp=text-x-script-symbolic\n.tweed=text-x-script-symbolic\n.c=text-x-script-symbolic\n.h=text-x-script-symbolic\n.py=text-x-script-symbolic\n.png=image-x-generic-symbolic\n.jpg=image-x-generic-symbolic\n.svg=image-x-generic-symbolic"
+        icons = "0=text-x-generic-symbolic\n1=folder-symbolic\n2=emblem-symbolic-link-symbolic\n3=dialog-warning-symbolic\n.cw=text-x-script-symbolic\n.simp=text-x-script-symbolic\n.tweed=text-x-script-symbolic\n.c=text-x-script-symbolic\n.h=text-x-script-symbolic\n.py=text-x-script-symbolic\n.png=image-x-generic-symbolic\n.jpg=image-x-generic-symbolic\n.svg=image-x-generic-symbolic"
         sidebar = Gtk.Box(Gtk.Box.VERTICAL, 4)
         sidebar.setVExpand(true)
         title = Gtk.Label("Project Explorer")
@@ -1239,9 +1258,9 @@ class ProjectExplorer {
 }
 ProjectExplorer ProjectExplorer._self() from "simp_gtk_self"
 
-class TweedEditor {
-    TweedEditor _self()
-    TweedSettings settings
+class CwhipEditor {
+    CwhipEditor _self()
+    CwhipSettings settings
     Gtk.TransientWindow preferencesWindow
     Gtk.Box editorPreferences
     Gtk.Box keyboardPreferences
@@ -1343,9 +1362,9 @@ class TweedEditor {
     callback<void(String)> saveResultAction
     callback<bool()> closeAction
     callback<void()> testAction
-    TweedProject activeProject
-    TweedProject nextProject
-    TweedProject savingProject
+    CwhipProject activeProject
+    CwhipProject nextProject
+    CwhipProject savingProject
     String nextFolder
     String switchOp
     String projectOp
@@ -1403,7 +1422,7 @@ class TweedEditor {
         presented = false
         confirmOp = ""
         overrideRows = []
-        settings = TweedSettings()
+        settings = CwhipSettings()
         int commandIndex = 0
         while (commandIndex < settings.commands.length) {
             CommandBinding binding = settings.commands[commandIndex] as CommandBinding
@@ -1414,7 +1433,7 @@ class TweedEditor {
         savePending = false
         saveAgain = false
         closeAfterSave = false
-        window = Gtk.Window("Tweed Lang Editor")
+        window = Gtk.Window("Cwhip Editor")
         window.setDefaultSize(1000, 700)
         layout = Gtk.Box(Gtk.Box.VERTICAL, 5)
         window.setChild(layout)
@@ -1449,7 +1468,7 @@ class TweedEditor {
         projectItems.append(menu.addItem(projectMenu, "Delete Project...", commandAction("project-delete")))
         projectItems.append(menu.addItem(projectMenu, "Configure Project...", commandAction("project-configure")))
         int helpMenu = menu.addMenu("Help")
-        aboutItem = menu.addItem(helpMenu, "About Tweed...", commandAction("about"))
+        aboutItem = menu.addItem(helpMenu, "About Cwhip...", commandAction("about"))
         searchWindow = Gtk.TransientWindow("Find")
         searchWindow.setDefaultSize(520, 150)
         searchWindow.setTransientFor(window)
@@ -1535,7 +1554,7 @@ class TweedEditor {
         }
         // Explicit files or folders on the command line take precedence over reopening.
         if (!explicitRequest && settings.reopenLast && !settings.lastRoot.equals("")) {
-            TweedProject last = loadProject(settings.lastRoot, "Could not reopen last project")
+            CwhipProject last = loadProject(settings.lastRoot, "Could not reopen last project")
             if (last != null) { activateProject(last, true) }
         }
         if (notebook.pageCount() == 0) {
@@ -1592,7 +1611,7 @@ class TweedEditor {
         bool numbers = settings.lineNumbers
         bool wrapLines = settings.wrap
         bool highlight = settings.highlightLine
-        TweedProject current = activeProject
+        CwhipProject current = activeProject
         if (current != null) {
             if (current.hasFont) { font = current.fontFamily }
             if (current.hasSize) { size = current.fontSize }
@@ -1623,7 +1642,7 @@ class TweedEditor {
     }
 
     void createPreferences() {
-        preferencesWindow = Gtk.TransientWindow("Tweed Preferences")
+        preferencesWindow = Gtk.TransientWindow("Cwhip Preferences")
         preferencesWindow.setTransientFor(window)
         preferencesWindow.setDefaultSize(850, 600)
         Gtk.Box root = Gtk.Box(Gtk.Box.VERTICAL, 8)
@@ -1739,7 +1758,7 @@ class TweedEditor {
         if (preferencesWindow == null) { createPreferences() }
         settingsChanged()
     }
-    // The user config stores only the root locator; workspace state stays in .tweed.
+    // The user config stores only the root locator; workspace state stays with the project.
     void rememberProject(String root) {
         if (settings.reopenLast && !settings.lastRoot.equals(root)) {
             settings.lastRoot = root
@@ -1993,15 +2012,16 @@ class TweedEditor {
         return canonical
     }
 
-    TweedProject loadProject(String path, String title) {
+    CwhipProject loadProject(String path, String title) {
         String root = canonicalFolder(path, title)
         if (root.equals("")) { return null }
-        // Choosing the .tweed folder itself selects its project root.
-        if (System.FileSystem().basename(root).equals(".tweed") &&
+        // Choosing a metadata folder itself selects its project root.
+        if ((System.FileSystem().basename(root).equals(".cwhip") ||
+             System.FileSystem().basename(root).equals(".tweed")) &&
             System.FileSystem().isFile(System.FileSystem().join(root, "project.toml"))) {
             root = System.FileSystem().dirname(root)
         }
-        TweedProject candidate = TweedProject(root)
+        CwhipProject candidate = CwhipProject(root)
         String problem = candidate.load(settings)
         if (!problem.equals("")) {
             projectFailure(title, problem)
@@ -2017,8 +2037,9 @@ class TweedEditor {
         }
         String root = canonicalFolder(path, "Could not open folder")
         if (root.equals("")) { return }
-        if (System.FileSystem().isFile(System.FileSystem().join(root, ".tweed/project.toml"))) {
-            TweedProject candidate = loadProject(root, "Could not open project")
+        if (System.FileSystem().isFile(System.FileSystem().join(root, ".cwhip/project.toml")) ||
+            System.FileSystem().isFile(System.FileSystem().join(root, ".tweed/project.toml"))) {
+            CwhipProject candidate = loadProject(root, "Could not open project")
             if (candidate != null) { activateProject(candidate, true) }
             return
         }
@@ -2062,7 +2083,7 @@ class TweedEditor {
     }
 
     void openProjectAt(String path) {
-        TweedProject candidate = loadProject(path, "Could not open project")
+        CwhipProject candidate = loadProject(path, "Could not open project")
         if (candidate == null) { return }
         if (activeProject != null && activeProject.root.equals(candidate.root)) {
             status.setText(format("Project already open: {}", candidate.root))
@@ -2082,7 +2103,7 @@ class TweedEditor {
             projectFailure(title, "Choose a different folder from the current project root")
             return
         }
-        TweedProject candidate = TweedProject(root)
+        CwhipProject candidate = CwhipProject(root)
         String problem = candidate.metadataProblem()
         if (!problem.equals("")) {
             projectFailure(title, problem)
@@ -2111,7 +2132,7 @@ class TweedEditor {
         String op = "new"
         if (copy) { op = "save-as" }
         if (exists) {
-            askConfirm(format("replace-{}", op), format("{} already has Tweed project metadata. Replace .tweed/project.toml and .tweed/workspace.toml?", root), "Replace Metadata")
+            askConfirm(format("replace-{}", op), format("{} already has Cwhip project metadata. Replace {} and {}?", root, candidate.configPath, candidate.workspacePath), "Replace Metadata")
             return
         }
         startNewProject(op)
@@ -2135,11 +2156,11 @@ class TweedEditor {
 
     void deleteProject() {
         if (commandsBlocked() || activeProject == null) { return }
-        askConfirm("delete", format("Delete Tweed project metadata for {}? Only .tweed/project.toml and .tweed/workspace.toml are removed; source files are kept.", activeProject.root), "Delete Metadata")
+        askConfirm("delete", format("Delete Cwhip project metadata for {}? Only {} and {} are removed; source files are kept.", activeProject.root, activeProject.configPath, activeProject.workspacePath), "Delete Metadata")
     }
 
     void deleteProjectMetadata() {
-        TweedProject target = activeProject
+        CwhipProject target = activeProject
         if (target == null) { return }
         String problem = target.metadataProblem()
         if (!problem.equals("")) {
@@ -2158,7 +2179,7 @@ class TweedEditor {
             projectFailure("Could not delete project metadata", failures)
             return
         }
-        // Succeeds only if .tweed is now empty; unknown files are preserved.
+        // Succeeds only if the metadata directory is now empty; unknown files are preserved.
         System.FileSystem().rmdir(target.directory)
         detachProject()
         project.setRoot(target.root)
@@ -2194,7 +2215,7 @@ class TweedEditor {
     }
 
     // Starts guarded asynchronous writes; op runs once all writes finish.
-    void writeProject(TweedProject target, bool config, bool workspaceState, String op) {
+    void writeProject(CwhipProject target, bool config, bool workspaceState, String op) {
         projectOp = op
         projectSaveErrors = ""
         savingProject = target
@@ -2211,7 +2232,7 @@ class TweedEditor {
         if (workspaceState && !target.workspaceWritable) {
             writeWorkspace = false
             if (explicit && problem.equals("")) {
-                problem = format("{} could not be loaded; repair or remove .tweed/workspace.toml and reopen the project:\n{}", target.workspacePath, target.workspaceErrors)
+                problem = format("{} could not be loaded; repair or remove {} and reopen the project:\n{}", target.workspacePath, target.workspacePath, target.workspaceErrors)
             }
         }
         bool writeConfig = config && !configText.equals(target.original)
@@ -2310,7 +2331,7 @@ class TweedEditor {
             return
         }
         if (op.equals("open")) {
-            TweedProject target = nextProject
+            CwhipProject target = nextProject
             nextProject = null
             closeAllDocuments()
             activateProject(target, true)
@@ -2321,7 +2342,7 @@ class TweedEditor {
             return
         }
         if (op.equals("activate")) {
-            TweedProject created = nextProject
+            CwhipProject created = nextProject
             nextProject = null
             created.parseWorkspace(created.workspaceOriginal)
             activateProject(created, false)
@@ -2403,7 +2424,7 @@ class TweedEditor {
         }
     }
 
-    list absolutePaths(TweedProject target, list paths) {
+    list absolutePaths(CwhipProject target, list paths) {
         list result = []
         int index = 0
         while (index < paths.length) {
@@ -2413,7 +2434,7 @@ class TweedEditor {
         return result
     }
 
-    void activateProject(TweedProject target, bool restore) {
+    void activateProject(CwhipProject target, bool restore) {
         activeProject = target
         project.setProject(target.root, target.name, target.excludeLines(), absolutePaths(target, target.expanded))
         reapplyDocumentSettings()
@@ -2463,14 +2484,14 @@ class TweedEditor {
             Gtk.AlertDialog().show(window, "Project configuration errors", format("{}\n{}\nInvalid values are ignored; saving project configuration is disabled until the file is repaired and the project reopened.", target.configPath, target.errors))
         }
         if (!target.workspaceErrors.equals("")) {
-            Gtk.AlertDialog().show(window, "Workspace state ignored", format("{}\nThe workspace was not restored and will not be overwritten; repair or remove .tweed/workspace.toml and reopen the project.", target.workspaceErrors))
+            Gtk.AlertDialog().show(window, "Workspace state ignored", format("{}\nThe workspace was not restored and will not be overwritten; repair or remove {} and reopen the project.", target.workspaceErrors, target.workspacePath))
         }
     }
 
     // Workspace TOML for documents/explorer state under source, written relative
     // to target. When they differ (Save As) only paths existing under target are kept.
     String captureWorkspace(String source, String target) {
-        TweedProject origin = TweedProject(source)
+        CwhipProject origin = CwhipProject(source)
         bool filter = !source.equals(target)
         String text = "version = 1\n\n[workspace]\n"
         EditorDocument current = currentDocument()
@@ -2580,7 +2601,7 @@ class TweedEditor {
     }
 
     void refreshConfigure() {
-        TweedProject current = activeProject
+        CwhipProject current = activeProject
         configureName.setText(current.name)
         String patterns = ""
         int index = 0
@@ -2625,7 +2646,7 @@ class TweedEditor {
     }
 
     void applyConfigure() {
-        TweedProject current = activeProject
+        CwhipProject current = activeProject
         if (current == null || commandsBlocked()) { return }
         if (!current.writable) {
             configureMessage.setText(format("Repair {} and reopen the project before changing it:\n{}", current.configPath, current.errors))
@@ -2699,15 +2720,16 @@ class TweedEditor {
     void showAbout() {
         if (fileDialog != null) { return }
         if (aboutWindow == null || aboutWindow.disposed()) {
-            aboutWindow = Gtk.TransientWindow("About Tweed")
+            aboutWindow = Gtk.TransientWindow("About Cwhip")
             aboutWindow.setTransientFor(window)
             aboutWindow.setDefaultSize(480, 300)
             Gtk.Box root = Gtk.Box(Gtk.Box.VERTICAL, 8)
-            root.append(Gtk.Label("Tweed Lang Editor"))
+            root.append(Gtk.Label("Cwhip Editor"))
             root.append(Gtk.Label(format("Version {}", version())))
-            root.append(Gtk.Label("A GTK editor for Simple (Tweed Lang), written in Simple\nwith GtkSourceView syntax highlighting, a project explorer,\nand per-project configuration."))
+            root.append(Gtk.Label("A GTK editor for Cwhip, written in Cwhip\nwith GtkSourceView syntax highlighting, a project explorer,\nand per-project configuration."))
             root.append(Gtk.Label("License: no license file is included in the repository."))
-            root.append(Gtk.Label("Project: https://github.com/chucktilbury/simp"))
+            root.append(Gtk.Label("Website: https://cwhip.org"))
+            root.append(Gtk.Label("Project repository: https://github.com/chucktilbury/simp"))
             Gtk.Button close = Gtk.Button("Close")
             close.onClicked(_self().closeAbout)
             root.append(close)
@@ -3033,7 +3055,9 @@ class TweedEditor {
     void chooseSave(EditorDocument document, bool closing) {
         dialogDocument = document
         dialogClosing = closing
-        fileDialog = Gtk.FileDialog(window, true, document.path, saveResultAction)
+        String initialPath = document.path
+        if (initialPath.equals("")) { initialPath = "untitled.cw" }
+        fileDialog = Gtk.FileDialog(window, true, initialPath, saveResultAction)
         updateMenu()
     }
 
@@ -3557,25 +3581,26 @@ class TweedEditor {
 
     void test() {
         EditorDocument document = currentDocument()
-        openFile("/path/that/does/not/exist/test.simp")
+        openFile("/path/that/does/not/exist/test.cw")
         bool badOpen = status.text().contains("Open failed") && documents.length == 2
         openFile(System.FileSystem().tempDir())
         bool directoryRejected = status.text().contains("not a regular file") && documents.length == 2
-        document.view.setText("class Demo {\n  // note\n  String name = \"Tweed\"\n  int count = 12\n}\n")
+        document.view.setText("class Demo {\n  // note\n  String name = \"Cwhip\"\n  int count = 12\n}\n")
         bool tabs = documents.length == 2 && notebook.pageCount() == 2 && recentFiles.length == 2
         bool tabSwitchUpdatesStatus = pageChanges > 0
         bool remapped = false
         bool defaults = false
-        if (System.FileSystem().exists("tweed-shortcuts.conf")) {
+        if (System.FileSystem().exists("cwhip-shortcuts.conf") ||
+            System.FileSystem().exists("tweed-shortcuts.conf")) {
             remapped = document.view.hasShortcut("<Control><Alt>s") && !document.view.hasShortcut("<Control>s")
         } else {
             defaults = document.view.hasShortcut("<Control>s") && document.view.hasShortcut("<Control>o")
         }
         bool conflicted = document.shortcutConflict
-        bool plainText = GtkSource.Content().languageFor("notes.txt").equals("") && document.view.language().equals("tweed")
+        bool plainText = GtkSource.Content().languageFor("notes.txt").equals("") && document.view.language().equals("cwhip")
         bool highlighted = plainText && document.view.hasContextAt("keyword", 0) && document.view.hasContextAt("comment", 17) && document.view.hasContextAt("string", 39) && document.view.hasContextAt("number", 62)
-        bool searched = document.view.find("Tweed")
-        bool replaced = document.view.replaceNext("Tweed", "Tweed Lang")
+        bool searched = document.view.find("Cwhip")
+        bool replaced = document.view.replaceNext("Cwhip", "Cwhip language")
         bool dirtyBlocked = requestClose()
         window.close()
         bool dirtyCloseCancelled = !window.disposed()
@@ -3584,16 +3609,16 @@ class TweedEditor {
         cancelPendingClose()
         bool tabCloseCancelled = documents.length == 2 && document.view.modified()
         document.view.undo()
-        bool undoRestored = document.view.text().contains("name = \"Tweed\"") && !document.view.text().contains("Tweed Lang")
+        bool undoRestored = document.view.text().contains("name = \"Cwhip\"") && !document.view.text().contains("Cwhip language")
         document.view.redo()
-        bool undoRedo = document.view.text().contains("Tweed Lang")
+        bool undoRedo = document.view.text().contains("Cwhip language")
         closeCurrentDocument()
         savePendingClose()
         bool saved = false
         System.File savedFile = System.File(document.path, "r")
         if (savedFile.isOpen()) {
             String savedContents = savedFile.readAll()
-            saved = savedContents.contains("String name = \"Tweed Lang\"")
+            saved = savedContents.contains("String name = \"Cwhip language\"")
             savedFile.close()
         }
         bool savedTabClosed = documents.length == 1 && notebook.pageCount() == 1
@@ -3621,11 +3646,11 @@ class TweedEditor {
     }
 }
 
-TweedEditor TweedEditor._self() from "simp_gtk_self"
+CwhipEditor CwhipEditor._self() from "simp_gtk_self"
 
 start {
-    Gtk.Application app = Gtk.Application("org.tweed.Editor")
-    TweedEditor editor = TweedEditor()
+    Gtk.Application app = Gtk.Application("org.simple.Editor")
+    CwhipEditor editor = CwhipEditor()
     editor.changedAction = editor.changed
     editor.cursorAction = editor.updateStatus
     editor.pageChangedAction = editor.pageChanged

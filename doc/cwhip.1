@@ -1,16 +1,18 @@
-.TH SIMP 1 "2026" "simp 0.0.1" "User Commands"
+.TH CWHIP 1 "2026" "cwhip 0.0.1" "User Commands"
 .SH NAME
-simp \- compiler for the Simple programming language
+cwhip \- compiler for the Cwhip programming language
 .SH SYNOPSIS
-.B simp
+.B cwhip
 [\fIoptions\fR] \fIinput\fR...
 .br
-.B simp
+.B cwhip
 \-\-print\-paths [\fB\-M\fR \fIdir\fR] [\fIinput\fR...]
 .SH DESCRIPTION
-.B simp
-compiles Simple source files
-.RI ( .simp )
+.B cwhip
+compiles Cwhip source files
+.RI ( .cw
+or legacy
+.IR .simp )
 to LLVM IR and invokes
 .BR clang (1)
 to produce an executable, or a relocatable object with
@@ -188,7 +190,7 @@ Paths are relative to the installation prefix (the parent of the
 directory holding
 .BR simp ).
 .TP
-.I bin/simp
+.I bin/cwhip
 The compiler.
 .TP
 .I lib/simp/libsimp_runtime.a
@@ -207,9 +209,9 @@ Standard modules.
 non\-zero on failure. Invalid command lines and unreadable inputs exit with 2.
 .SH EXAMPLES
 .nf
-simp hello.simp
-simp \-vv \-M ./deps app/main.simp \-o app
-simp \-t parser,symbols \-\-check\-only main.simp
+cwhip hello.cw
+cwhip \-vv \-M ./deps app/main.cw \-o app
+cwhip \-t parser,symbols \-\-check\-only main.cw
 simp \-\-print\-paths
 .fi
 .SH SEE ALSO

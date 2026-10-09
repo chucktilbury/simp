@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""MVP project package manager for Simple."""
+"""MVP project package manager for Cwhip."""
 
 from __future__ import annotations
 
@@ -141,7 +141,7 @@ def read_manifest(package_root: Path, *, check_directory_version: bool = True) -
     source = require_string(package, "source", str(manifest_path))
     exported = require_string(package, "export", str(manifest_path))
     if not valid_identifier(name):
-        raise SimpkgError(f"{manifest_path}: package name must be a Simple identifier")
+        raise SimpkgError(f"{manifest_path}: package name must be a Cwhip identifier")
     version_parts(version)
     validate_package_source(package_root, source, manifest_path)
     if check_directory_version and package_root.name != version:
@@ -291,7 +291,7 @@ def command_init(project_directory: str | None) -> None:
     packages = builtin_packages()
     validate_graph(packages, {"dependencies": {}, "sources": {}})
     persist(project, packages, {}, content)
-    print(f"Initialized Simple project in {project}")
+    print(f"Initialized Cwhip project in {project}")
 
 
 def parse_github_repository(value: str) -> tuple[str, str, str]:
@@ -961,7 +961,7 @@ def command_list() -> None:
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="simpkg",
-        description="Prepare project modules and environment for the Simple compiler.",
+        description="Prepare project modules and environment for the Cwhip compiler.",
     )
     commands = parser.add_subparsers(dest="command", required=True)
     initialize = commands.add_parser("init", help="create simpkg.toml and an exact simpkg.lock")

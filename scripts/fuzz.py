@@ -23,7 +23,7 @@ def main() -> None:
     artifacts = work / "artifacts"
     corpus.mkdir(parents=True, exist_ok=True)
     artifacts.mkdir(parents=True, exist_ok=True)
-    seeds = list(args.fixtures.rglob("*.simp"))
+    seeds = list(args.fixtures.rglob("*.cw")) + list(args.fixtures.rglob("*.simp"))
     if not seeds:
         raise RuntimeError("No functional fixture seeds found")
     for path in seeds:

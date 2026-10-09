@@ -394,7 +394,7 @@ The language protocol uses standard GtkSourceView 5 `.lang` files:
    metadata, through GtkSourceView's language manager. `languageFor(path)`
    matches the file name only (no content sniffing) and returns `""` for
    untitled paths, unknown extensions, or unregistered languages.
-3. `tweed.lang` is the only shipped definition (`*.simp;*.tweed`). Supporting
+3. `cwhip.lang` is the only shipped definition (`*.cw;*.simp;*.tweed`). Supporting
    another language means adding its `.lang` file; no code changes are needed.
 
 `isText` returns false for data containing NUL bytes. Simple strings are always
@@ -417,7 +417,7 @@ removes the recorder, and is safe inside its callback. It remains registered
 until cancelled, its entry is destroyed, or application shutdown; callers must
 cancel after receiving a result and coordinate which entry is recording.
 
-`Gtk.Config` exposes the small TOML/persistence primitives used by Tweed's
+`Gtk.Config` exposes the small TOML/persistence primitives used by Cwhip Editor's
 Simple-written settings model, not a settings framework:
 
 | Operation | Result/contract |
@@ -510,7 +510,7 @@ synthetic notifications are promised.
 This headless-tested program builds its hierarchy during activation and uses a
 typed changed signal to update a label. The posted finish action makes the
 documentation program terminate automatically. For an interactive editor with
-a checkbox, scrolled content, and a close button, see `examples/gtk.simp`
+a checkbox, scrolled content, and a close button, see `examples/gtk.cw`
 (run without `--test`).
 
 ```simp

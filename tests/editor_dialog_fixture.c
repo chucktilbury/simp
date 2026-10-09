@@ -19,7 +19,7 @@ static GtkWindow *editor_window(void) {
     GList *windows = gtk_application_get_windows(
         GTK_APPLICATION(g_application_get_default()));
     for (GList *item = windows; item; item = item->next) {
-        if (g_strcmp0(gtk_window_get_title(item->data), "Tweed Lang Editor") == 0)
+        if (g_strcmp0(gtk_window_get_title(item->data), "Cwhip Editor") == 0)
             return item->data;
     }
     abort();
@@ -179,6 +179,15 @@ static gboolean answer_chooser(gpointer unused) {
             if (gtk_file_chooser_get_action(chooser) == GTK_FILE_CHOOSER_ACTION_SAVE) {
                 char *folder = g_path_get_dirname(chosen_path);
                 char *name = g_path_get_basename(chosen_path);
+                if (g_strcmp0(name, "created.cw") == 0) {
+                    char *initial_name = gtk_file_chooser_get_current_name(chooser);
+                    if (g_strcmp0(initial_name, "untitled.cw") != 0) {
+                        g_printerr("Untitled Save As default name was %s, expected untitled.cw\n",
+                                   initial_name ? initial_name : "(null)");
+                        abort();
+                    }
+                    g_free(initial_name);
+                }
                 GFile *file = g_file_new_for_path(folder);
                 GFile *current = gtk_file_chooser_get_current_folder(chooser);
                 if ((!current || !g_file_equal(current, file)) &&
@@ -328,7 +337,7 @@ static GtkWindow *preferences_window(void) {
     GListModel *windows = gtk_window_get_toplevels();
     for (guint i = 0; i < g_list_model_get_n_items(windows); ++i) {
         GtkWindow *window = g_list_model_get_item(windows, i);
-        if (g_strcmp0(gtk_window_get_title(window), "Tweed Preferences") == 0) return window;
+        if (g_strcmp0(gtk_window_get_title(window), "Cwhip Preferences") == 0) return window;
         g_object_unref(window);
     }
     return NULL;

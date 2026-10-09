@@ -45,7 +45,7 @@ bool Fixture.monospace() from "fixture_editor_monospace"
 void Fixture.cleanup() from "fixture_editor_cleanup"
 
 class EditorChecks {
-    TweedEditor editor
+    CwhipEditor editor
     int stage
     int checks
     int originalHeight
@@ -123,12 +123,12 @@ class EditorChecks {
         }
         if (stage == 1) {
             require(editor.currentDocument().path.equals("") && editor.currentDocument().view.modified(), "cancel untitled Save")
-            Fixture().choose(path("created.simp"), 1, 0)
+            Fixture().choose(path("created.cw"), 1, 0)
             require(Fixture().shortcut("<Control>s"), "shortcut Save routes to chooser")
         }
         if (stage == 2) {
             saved = editor.currentDocument()
-            require(saved.path.equals(path("created.simp")) && !saved.view.modified(), "Save creates identity")
+            require(saved.path.equals(path("created.cw")) && !saved.view.modified(), "Save creates identity")
             require(contents(saved.path).equals("created\nsecond line\n"), "Save contents")
             saved.view.setText("updated\n")
             editor.menu.activateItem(editor.documentItems[0] as int)
@@ -137,7 +137,7 @@ class EditorChecks {
             editor.menu.activateItem(editor.documentItems[1] as int)
         }
         if (stage == 3) {
-            require(saved.path.equals(path("created.simp")) && contents(path("overwrite.simp")).equals("original\n"), "overwrite cancel preserves identity and contents")
+            require(saved.path.equals(path("created.cw")) && contents(path("overwrite.simp")).equals("original\n"), "overwrite cancel preserves identity and contents")
             Fixture().choose(path("overwrite.simp"), 1, 1)
             editor.menu.activateItem(editor.documentItems[1] as int)
         }
@@ -243,7 +243,7 @@ class EditorChecks {
         }
         if (stage == 13) {
             require(Fixture().height() > originalHeight + 100, "viewport grows after resize")
-            require(editor.currentDocument().view.language().equals("tweed"), "Simple source highlighted")
+            require(editor.currentDocument().view.language().equals("cwhip"), "Cwhip source highlighted")
             editor.newDocument()
             require(editor.currentDocument().view.language().equals("") && !editor.currentDocument().view.hasContextAt("keyword", 0), "untitled is plain text")
             editor.closeCurrentDocument()
@@ -271,8 +271,8 @@ class EditorChecks {
             require(editor.currentDocument() == text || editor.currentDocument() == documentAt("many/one.simp"), "last opened file is current")
             require(text.view.language().equals("") && !text.view.hasContextAt("keyword", 0), "plain text not highlighted")
             EditorDocument source = documentAt("many/one.simp")
-            require(source.view.language().equals("tweed") && source.view.hasContextAt("keyword", 0), "source highlighted")
-            require(editor.writeDocument(text, path("many/renamed.simp")) && text.view.language().equals("tweed"), "Save As source enables highlighting")
+            require(source.view.language().equals("cwhip") && source.view.hasContextAt("keyword", 0), "source highlighted")
+            require(editor.writeDocument(text, path("many/renamed.cw")) && text.view.language().equals("cwhip"), "Save As Cwhip source enables highlighting")
             search = text
             editor.activateDocument(search)
             require(replaceAllWith("alpha", "X", false, false).equals("Replaced 4 occurrences|X beta Xbet X\nX gamma\n"), "Replace all default")
@@ -393,7 +393,7 @@ def main():
             "    editor.openResultAction = checks.opened\n"
             "    editor.saveResultAction = checks.savedAs\n"
             "    app.onActivate(checks.activate)")
-        source = work / "editor.simp"
+        source = work / "editor.cw"
         source.write_text(text[:index] + DRIVER + setup)
         (work / "overwrite.simp").write_text("original\n")
         (work / "other.simp").write_text("other\n")

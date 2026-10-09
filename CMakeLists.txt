@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(simp VERSION 0.0.1 LANGUAGES C CXX)
+project(cwhip VERSION 0.0.1 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,7 +11,7 @@ set(CMAKE_C_EXTENSIONS OFF)
 include(GNUInstallDirs)
 include(cmake/Instrumentation.cmake)
 
-# Root builds stage a developer prefix in the source tree: <source>/bin/simp
+# Root builds stage a developer prefix in the source tree: <source>/bin/cwhip
 # finds its runtime, headers, builtin, and standard modules in sibling
 # directories with the same relative shape as an installed prefix.
 set(SIMP_STAGE_PREFIX "${CMAKE_SOURCE_DIR}" CACHE PATH "Developer resource staging prefix")
@@ -52,7 +52,7 @@ endif()
 install(FILES README.md doc/SIMPLE-LANGUAGE-NOTES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(DIRECTORY doc/ DESTINATION "${CMAKE_INSTALL_DOCDIR}/doc"
     FILES_MATCHING PATTERN "*.md")
-install(FILES doc/simp.1 DESTINATION "${CMAKE_INSTALL_DOCDIR}/doc")
+install(FILES doc/cwhip.1 DESTINATION "${CMAKE_INSTALL_DOCDIR}/doc")
 install(FILES tests/README.md DESTINATION "${CMAKE_INSTALL_DOCDIR}/tests")
 install(FILES stdlib/README.md DESTINATION "${CMAKE_INSTALL_DOCDIR}/stdlib")
-install(FILES doc/simp.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1")
+install(FILES doc/cwhip.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1")

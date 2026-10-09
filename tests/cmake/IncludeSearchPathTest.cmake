@@ -49,7 +49,7 @@ execute_process(
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr
 )
-set(expected_stdout "simp: built ${search_executable}\n")
+set(expected_stdout "cwhip: built ${search_executable}\n")
 if(NOT result EQUAL 0 OR NOT stdout STREQUAL expected_stdout OR NOT stderr STREQUAL "")
     message(FATAL_ERROR
         "Compilation with ordered include search paths failed "
@@ -84,7 +84,7 @@ execute_process(
     OUTPUT_VARIABLE stdout
     ERROR_VARIABLE stderr
 )
-set(expected_stdout "simp: built ${relative_executable}\n")
+set(expected_stdout "cwhip: built ${relative_executable}\n")
 if(NOT result EQUAL 0 OR NOT stdout STREQUAL expected_stdout OR NOT stderr STREQUAL "")
     message(FATAL_ERROR
         "Compilation for includer-relative precedence failed "

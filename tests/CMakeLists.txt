@@ -84,7 +84,7 @@ if(SIMP_GTK)
     option(SIMP_GTK_TESTS "Enable headless GUI tests (default: detect installed test tools)"
         ${simp_gtk_tests_default})
     if(NOT SIMP_GTK_TESTS)
-        message(STATUS "Headless GUI tests disabled; set SIMP_GTK_TESTS=ON with Xvfb and dbus-daemon to require them. Tweed can still be built.")
+        message(STATUS "Headless GUI tests disabled; set SIMP_GTK_TESTS=ON with Xvfb and dbus-daemon to require them. Cwhip Editor can still be built.")
     endif()
 endif()
 if(SIMP_GTK AND SIMP_GTK_TESTS)
@@ -171,6 +171,15 @@ add_test(NAME simp_default_output_uses_working_directory
 )
 add_test(NAME simp_cli_accepts_program
     COMMAND $<TARGET_FILE:simp> "${CMAKE_CURRENT_SOURCE_DIR}/functional/positive/positive_control_flow.simp" --check-only -t ast
+)
+add_test(NAME cwhip_cli_accepts_cw
+    COMMAND $<TARGET_FILE:cwhip> "${CMAKE_CURRENT_SOURCE_DIR}/functional/positive/positive_control_flow.cw" --check-only
+)
+add_test(NAME simp_cli_accepts_legacy_simp
+    COMMAND $<TARGET_FILE:simp> "${CMAKE_CURRENT_SOURCE_DIR}/functional/positive/positive_control_flow.simp" --check-only
+)
+add_test(NAME cwhip_cli_version
+    COMMAND $<TARGET_FILE:cwhip> --version
 )
 add_test(NAME simp_cli_include_search_path
     COMMAND "${CMAKE_COMMAND}"
@@ -399,7 +408,8 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 
 set(example_directory "${CMAKE_CURRENT_SOURCE_DIR}/../examples")
-file(GLOB_RECURSE example_sources CONFIGURE_DEPENDS "${example_directory}/*.simp")
+file(GLOB_RECURSE example_sources CONFIGURE_DEPENDS
+    "${example_directory}/*.cw" "${example_directory}/*.simp")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/examples.json")
 execute_process(COMMAND "${Python3_EXECUTABLE}"
@@ -422,7 +432,7 @@ foreach(example_case IN LISTS example_cases)
     set_tests_properties("simp_example_${example_name}" PROPERTIES LABELS examples TIMEOUT 60)
 endforeach()
 if(SIMP_GTK_SOURCEVIEW)
-    get_target_property(SIMP_TWEED_EXECUTABLE tweed SIMP_EXECUTABLE)
+    get_target_property(SIMP_TWEED_EXECUTABLE cwhip_editor SIMP_EXECUTABLE)
     add_test(NAME simp_tweed_build
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_tweed_build.py"
         --build "${CMAKE_BINARY_DIR}" --cmake "${CMAKE_COMMAND}"
@@ -437,7 +447,7 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --examples "${example_directory}"
         --manifest "${CMAKE_CURRENT_SOURCE_DIR}/examples.json"
         --work "${CMAKE_CURRENT_BINARY_DIR}/tweed-binary"
-        --case "editor/tweed.simp" ${gtk_program_arguments})
+        --case "editor/cwhip_editor.cw" ${gtk_program_arguments})
     set_tests_properties(simp_tweed_binary PROPERTIES
         FIXTURES_REQUIRED tweed_binary LABELS "examples;gtk;build" TIMEOUT 60)
     add_test(NAME simp_tweed_shortcuts
@@ -451,7 +461,7 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
         --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
-        --source "${example_directory}/editor/tweed.simp"
+        --source "${example_directory}/editor/cwhip_editor.cw"
         --work "${CMAKE_CURRENT_BINARY_DIR}/project-explorer"
         --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
     set_tests_properties(simp_project_explorer PROPERTIES LABELS "examples;gtk" TIMEOUT 150)
@@ -460,7 +470,7 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
         --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
-        --source "${example_directory}/editor/tweed.simp"
+        --source "${example_directory}/editor/cwhip_editor.cw"
         --work "${CMAKE_CURRENT_BINARY_DIR}/editor-dialogs"
         --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
     set_tests_properties(simp_editor_dialogs PROPERTIES LABELS "examples;gtk" TIMEOUT 120)
@@ -469,7 +479,7 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
         --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
-        --source "${example_directory}/editor/tweed.simp"
+        --source "${example_directory}/editor/cwhip_editor.cw"
         --work "${CMAKE_CURRENT_BINARY_DIR}/tweed-preferences"
         --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
     set_tests_properties(simp_tweed_preferences PROPERTIES LABELS "examples;gtk" TIMEOUT 300)
@@ -478,7 +488,7 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --compiler "$<TARGET_FILE:simp>" --clang "${SIMP_CLANG_EXECUTABLE}"
         --include "${CMAKE_CURRENT_SOURCE_DIR}/../include"
         --native "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib/gtk/0.1.0/native"
-        --source "${example_directory}/editor/tweed.simp"
+        --source "${example_directory}/editor/cwhip_editor.cw"
         --cmake "${CMAKE_CURRENT_SOURCE_DIR}/../CMakeLists.txt"
         --work "${CMAKE_CURRENT_BINARY_DIR}/tweed-project"
         --sanitize "${SIMP_SANITIZER_LIST}" --xvfb "${SIMP_XVFB_EXECUTABLE}")
@@ -488,7 +498,7 @@ if(SIMP_GTK_SOURCEVIEW AND SIMP_GTK_TESTS)
         --compiler "$<TARGET_FILE:simp>" --examples "${example_directory}"
         --manifest "${CMAKE_CURRENT_SOURCE_DIR}/examples.json"
         --work "${CMAKE_CURRENT_BINARY_DIR}/examples-default-shortcuts"
-        --case "editor/tweed.simp" --gtk --sourceview --default-shortcuts
+        --case "editor/cwhip_editor.cw" --gtk --sourceview --default-shortcuts
         --xvfb "${SIMP_XVFB_EXECUTABLE}")
     set_tests_properties(simp_editor_default_shortcuts PROPERTIES LABELS "examples;gtk" TIMEOUT 60)
 endif()

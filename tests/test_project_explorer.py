@@ -1,4 +1,4 @@
-"""Actual Tweed model, GTK list rows, chooser and main-loop responsiveness."""
+"""Actual Cwhip project model, GTK list rows, chooser and main-loop responsiveness."""
 import argparse
 import os
 from pathlib import Path
@@ -43,7 +43,7 @@ void ExplorerFixture.stop() from "explorer_stop"
 void ExplorerFixture.later(callback<void()> action) from "explorer_later"
 
 class ExplorerChecks {
-    TweedEditor editor
+    CwhipEditor editor
     int stage
     int deadline
     int waitUntil
@@ -276,7 +276,7 @@ class ExplorerChecks {
 
 class ExplorerLifetime {
     ExplorerLifetime _self()
-    TweedEditor editor
+    CwhipEditor editor
     Gtk.DirectoryScan scan
     int deliveries
     String mode

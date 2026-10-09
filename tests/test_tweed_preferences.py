@@ -38,7 +38,7 @@ bool PreferenceFixture.record(String trigger) from "fixture_preferences_record"
 void PreferenceFixture.tick() from "fixture_preferences_tick"
 
 class PreferencesChecks {
-    TweedEditor editor
+    CwhipEditor editor
     callback<void()> nextAction
     callback<void(String)> shutdownAction
     bool shutdownCallbackRan
@@ -138,6 +138,21 @@ class PreferencesChecks {
             require(editor.preferencesMessage.text().equals("Settings saved"), "legacy migration save")
             editor.quitAction()
             print(format("PASS legacy {}", checks))
+            return
+        }
+        if (mode.equals("legacy-settings")) {
+            if (stage == 0) {
+                require(editor.settings.fontSize == 16 &&
+                    editor.settings.path.contains("tweed/settings.toml"), "legacy settings fallback")
+                editor.showPreferences()
+                editor.sizeEntry.setText("19")
+                stage = 1
+                Gtk.Application().post(nextAction)
+                return
+            }
+            require(editor.preferencesMessage.text().equals("Settings saved"), "legacy settings save")
+            editor.quitAction()
+            print(format("PASS legacy-settings {}", checks))
             return
         }
         if (mode.equals("precedence")) {
@@ -363,7 +378,7 @@ def main():
                          "-o", str(executable)], work, env)
         assert result.returncode == 0, result.stderr
 
-        def run(name, config=None, legacy=None, expected=""):
+        def run(name, config=None, legacy=None, expected="", legacy_settings=False):
             case = work / name
             case.mkdir()
             case_env = environment(case)
@@ -371,10 +386,15 @@ def main():
             if name.startswith("invalid"):
                 case_env["PREFERENCE_CASE"] = "invalid"
             case_env["EXPECTED_ERROR"] = expected
-            path = Path(case_env["XDG_CONFIG_HOME"]) / "tweed/settings.toml"
+            path = Path(case_env["XDG_CONFIG_HOME"]) / "cwhip/settings.toml"
             if name == "fallback":
                 case_env.pop("XDG_CONFIG_HOME")
-                path = Path(case_env["HOME"]) / ".config/tweed/settings.toml"
+                path = Path(case_env["HOME"]) / ".config/cwhip/settings.toml"
+            if name == "legacy":
+                path = Path(case_env["XDG_CONFIG_HOME"]) / "tweed/settings.toml"
+                config = "version = 1\n[editor]\nfont_size = 12\n"
+            if legacy_settings:
+                path = Path(case_env["XDG_CONFIG_HOME"]) / "tweed/settings.toml"
             if config is not None:
                 path.parent.mkdir()
                 path.write_text(config)
@@ -409,6 +429,13 @@ def main():
         migrated = tomllib.loads(legacy.read_text())
         assert migrated["keyboard"]["save"] == "<Control><Alt>s"
         assert migrated["keyboard"]["close"] == ""
+        legacy_settings = run(
+            "legacy-settings",
+            "version = 1\n[editor]\nfont_size = 16\n",
+            legacy_settings=True,
+        )
+        assert tomllib.loads(legacy_settings.read_text())["editor"]["font_size"] == 19
+        assert not (legacy_settings.parents[1] / "cwhip/settings.toml").exists()
         run("precedence", 'version = 1\n[keyboard]\nsave = "<Control><Alt>s"\n', legacy="broken legacy\n")
         run("save-failure")
         run("async-save-failure")

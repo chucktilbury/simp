@@ -40,8 +40,8 @@ the fuzz harness; leak checking of the compiler CLI can also be enabled manually
 Integration drivers reject sanitizer output even in expected abort/exit cases,
 so a sanitizer crash cannot satisfy an intentional-failure expectation.
 
-`SIMP_STAGE_PREFIX` defaults to the source tree for the traditional `bin/simp`
-layout. Give instrumented builds a distinct prefix inside their build directory
+`SIMP_STAGE_PREFIX` defaults to the source tree, staging canonical `bin/cwhip`
+and compatibility `bin/simp`. Give instrumented builds a distinct prefix inside their build directory
 to avoid overwriting another configuration's compiler and runtime.
 
 The networking integration case exercises empty native strings; UBSan caught
@@ -57,7 +57,7 @@ cmake -S . -B build-gtk -DSIMP_GTK=ON -DSIMP_GTK_SOURCEVIEW=ON -DSIMP_GTK_TESTS=
   -DCMAKE_C_FLAGS=-Werror=deprecated-declarations \
   -DSIMP_STAGE_PREFIX="$PWD/build-gtk/stage"
 cmake --build build-gtk -j4
-cmake --build build-gtk --target tweed -j4
+cmake --build build-gtk --target cwhip_editor -j4
 ctest --test-dir build-gtk -L gtk --output-on-failure
 ```
 
@@ -72,7 +72,7 @@ GTK's Cairo renderer with GL disabled. It terminates those exact owned processes
 even when a consumer fails. There is no dependence on the user's running desktop
 or application IDs on their bus. Startup failure and missing display are failures.
 
-Compiled Simple cases cover all public widgets/properties, typed
+Compiled Cwhip cases cover all public widgets/properties, typed
 clicked/changed/toggled/close signals, copied text under GC, boolean close
 responses, nested emissions, retained receivers, disconnect/disposal/shutdown
 inside handlers, recursive parent/child disposal, detached children, aliases,
@@ -88,7 +88,7 @@ GTK linkage in non-import programs and the compiler. Fixtures live in
 registered thread, cancellation, lock reentry and unregistered-thread rejection,
 as well as the pre-existing strict foreign-owner invocation failures.
 
-The editor example test exercises the Tweed language definition, text-buffer
+The editor example test exercises the Cwhip language definition, text-buffer
 editing/search, undo/redo, document/tab behavior and file operations. The
 shortcut test covers defaults, user mappings and conflicts. Run the complete
 configured suite with `ctest --test-dir build-gtk --output-on-failure`.
@@ -102,8 +102,8 @@ overwrite decisions without losing tabs or changing files on cancellation.
 and mapped parent/shutdown teardown, alongside the existing tree regressions.
 Only test fixtures use deprecated chooser APIs to drive GTK's real fallback UI;
 the package build remains checked with deprecated declarations as errors.
-`simp_tweed_binary` runs the actual `tweed` target output with the same bounded
-editor fixture, private Xvfb and session bus; its `simp_tweed_build` CTest
+`simp_tweed_binary` runs the actual `cwhip-editor` target output with the same
+bounded editor fixture, private Xvfb and session bus; its `simp_tweed_build` CTest
 fixture builds the target first. GUI options default to installed development
 dependencies on fresh configurations; the explicit options above ensure this
 test configuration fails rather than becoming compiler-only.

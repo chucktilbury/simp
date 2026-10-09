@@ -1,9 +1,15 @@
-# Simple compiler
+# Cwhip compiler
 
-Simple is a statically typed language with classes, inheritance, managed
-strings and collections, exceptions, and native bindings. This repository
-contains its C++ compiler, runtime, standard-library packages, and tests. The
-user documentation is indexed in [`doc/README.md`](doc/README.md); the
+Cwhip is a statically typed language with classes, inheritance, managed strings
+and collections, exceptions, and native bindings. The name comes from the
+coachwhip snake: fast and nonvenomous, a fitting image for a small, nimble
+compiler. The bug-eating reference is a playful metaphor for the snake's prey
+and finding software bugs, not the goad/punishment or violent sense of “whip.”
+The compiler frontend is C++17 and the runtime is written in C. The compiler
+command is `cwhip`; CPL and CWPL are optional informal shorthands. This
+repository contains the compiler, runtime, standard-library packages, and tests.
+The canonical project website is [cwhip.org](https://cwhip.org).
+The user documentation is indexed in [`doc/README.md`](doc/README.md); the
 [language reference](doc/LANGUAGE-REFERENCE.md) and [grammar](doc/GRAMMAR.md)
 describe the implemented language.
 
@@ -18,16 +24,23 @@ cmake --build build -j4
 ctest --test-dir build --output-on-failure
 ```
 
-The build places the compiler at `bin/simp` and stages the runtime, String
+The build places the canonical compiler at `bin/cwhip` and keeps `bin/simp`
+as a compatibility executable. It stages the runtime, String
 builtin, and standard modules beside it in the repository's `lib/`, `include/`,
-and `share/` directories. To compile and run a program:
+and `share/` directories. Cwhip source files use `.cw`; existing `.simp`
+sources remain supported. To compile and run a program:
 
 ```sh
-./bin/simp path/to/program.simp -o build/program
+./bin/cwhip path/to/program.cw -o build/program
 ./build/program
 ```
 
-See [`doc/simp.1`](doc/simp.1) for compiler options and
+The legacy `simp` executable and CMake target remain available for scripts and
+existing package workflows. Existing `.simp` programs remain accepted. Internal
+native ABI symbols, headers, standard-module paths, package manifests, and the
+GTK application ID retain their established `simp`/`simple` spellings for
+compatibility; they are not public Cwhip branding. See
+[`doc/cwhip.1`](doc/cwhip.1) for compiler options and
 [`doc/README.md`](doc/README.md) for all language and library documentation.
 The compiler's [test guide](tests/README.md) explains the functional fixtures
 and how to add cases; runnable language examples are in
@@ -55,7 +68,7 @@ lockfile, and complete dependency installation with explicit network consent:
 ```sh
 simpkg init
 simpkg add OWNER/REPO --yes
-simp src/app.simp
+cwhip src/app.cw
 ```
 
 No environment activation is needed. The manifest schema is in
@@ -70,8 +83,8 @@ No environment activation is needed. The manifest schema is in
 | `include/` | Runtime C headers and compiler headers |
 | `builtin/` | Built-in `String` class source |
 | `stdlib/` | Versioned standard-library packages |
-| `examples/` | Runnable examples, including the [Tweed editor and its build target](doc/TWEED-EDITOR.md) |
-| `tests/` | Compiler tests and Simple source fixtures |
+| `examples/` | Runnable `.cw` examples, including the [Cwhip Editor and its build targets](doc/CWHIP-EDITOR.md) |
+| `tests/` | Compiler tests, including legacy `.simp` compatibility fixtures |
 | `doc/` | User documentation |
 | `build/`, `bin/`, `lib/`, `share/` | Local CMake build outputs |
 

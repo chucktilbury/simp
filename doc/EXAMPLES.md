@@ -1,6 +1,7 @@
 # Build and run examples
 
-After [building the compiler](INSTALLATION.md), the following examples
+After [building the compiler](INSTALLATION.md), the runnable product examples
+in `examples/` use the canonical `.cw` suffix. The focused commands below also
 compile checked-in functional fixtures, run the resulting executables, and
 show the expected output or behavior:
 
@@ -23,37 +24,37 @@ implicit line breaks.
 specifier subset.
 
 ```sh
-./bin/simp tests/functional/positive/positive_integer_output.simp \
+./bin/cwhip tests/functional/positive/positive_integer_output.simp \
   -o bin/positive_integer_output
 ./bin/positive_integer_output
 # Prints: 42
 
-./bin/simp tests/functional/positive/positive_integer_control_flow.simp \
+./bin/cwhip tests/functional/positive/positive_integer_control_flow.simp \
   -o bin/positive_integer_control_flow
 ./bin/positive_integer_control_flow
 # Prints: 9
 
-./bin/simp tests/functional/positive/positive_string_format.simp \
+./bin/cwhip tests/functional/positive/positive_string_format.simp \
   -o bin/positive_string_format
 ./bin/positive_string_format
 # Writes "café\nvalue: 42sum 21 21"; print adds no implicit line breaks.
 
-./bin/simp tests/functional/positive/positive_class_counter.simp \
+./bin/cwhip tests/functional/positive/positive_class_counter.simp \
   -o bin/positive_class_counter
 ./bin/positive_class_counter
 # Prints: 42, then 42
 
-./bin/simp tests/functional/positive/positive_gc_object_graph.simp \
+./bin/cwhip tests/functional/positive/positive_gc_object_graph.simp \
   -o bin/positive_gc_object_graph
 ./bin/positive_gc_object_graph
 # Prints: 1, 64, and 77 after repeated collections.
 
-./bin/simp tests/functional/positive/positive_multiple_inheritance.simp \
+./bin/cwhip tests/functional/positive/positive_multiple_inheritance.simp \
   -o bin/positive_multiple_inheritance
 ./bin/positive_multiple_inheritance
 # Prints: 7, 7, 10, 20, and 3; the two Root subobjects hold separate Node references.
 
-./bin/simp tests/functional/positive/positive_secondary_bases.simp \
+./bin/cwhip tests/functional/positive/positive_secondary_bases.simp \
   -o bin/positive_secondary_bases
 ./bin/positive_secondary_bases
 # Exercises secondary-base construction, conversions, dispatch, GC tracing, and destruction.
@@ -62,7 +63,7 @@ specifier subset.
 To save the generated LLVM IR as well as building an executable:
 
 ```sh
-./bin/simp tests/functional/positive/positive_integer_output.simp \
+./bin/cwhip tests/functional/positive/positive_integer_output.simp \
   --emit-llvm build/positive_integer_output.ll -o bin/positive_integer_output
 ```
 
@@ -79,8 +80,8 @@ needs no environment activation:
 mkdir -p hello-simp/src
 cd hello-simp
 simpkg init
-# Copy examples/package_workflow.simp from this repository to src/main.simp.
-simp src/main.simp -o hello
+# Copy examples/package_workflow.cw from this repository to src/main.cw.
+cwhip src/main.cw -o hello
 ./hello
 ```
 

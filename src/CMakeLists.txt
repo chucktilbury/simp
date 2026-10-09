@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    project(simp_compiler VERSION 0.0.1 LANGUAGES C CXX)
+    project(cwhip_compiler VERSION 0.0.1 LANGUAGES C CXX)
     set(CMAKE_CXX_STANDARD 17)
     set(CMAKE_CXX_STANDARD_REQUIRED ON)
     set(CMAKE_CXX_EXTENSIONS OFF)
@@ -272,28 +272,31 @@ set_target_properties(simp_frontend PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${SIMP_LIBRARY_OUTPUT_DIRECTORY}"
 )
 
-add_executable(simp main.cpp)
-target_link_libraries(simp PRIVATE simp_frontend)
-target_compile_definitions(simp PRIVATE
-    SIMP_VERSION="${PROJECT_VERSION}"
-    SIMP_CLANG_EXECUTABLE="${SIMP_CLANG_EXECUTABLE}"
-    SIMP_TARGET_TRIPLE="${SIMP_TARGET_TRIPLE}"
-    SIMP_SANITIZER_LIST="${SIMP_SANITIZER_LIST}"
-    SIMP_COVERAGE=$<BOOL:${SIMP_COVERAGE}>
-)
-add_dependencies(simp simp_runtime)
-set_target_properties(simp PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
-)
-include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/Tweed.cmake")
+foreach(compiler_target IN ITEMS cwhip simp)
+    add_executable(${compiler_target} main.cpp)
+    target_link_libraries(${compiler_target} PRIVATE simp_frontend)
+    target_compile_definitions(${compiler_target} PRIVATE
+        SIMP_VERSION="${PROJECT_VERSION}"
+        SIMP_CLANG_EXECUTABLE="${SIMP_CLANG_EXECUTABLE}"
+        SIMP_TARGET_TRIPLE="${SIMP_TARGET_TRIPLE}"
+        SIMP_SANITIZER_LIST="${SIMP_SANITIZER_LIST}"
+        SIMP_COVERAGE=$<BOOL:${SIMP_COVERAGE}>
+    )
+    add_dependencies(${compiler_target} simp_runtime)
+    set_target_properties(${compiler_target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
+    )
+endforeach()
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/CwhipEditor.cmake")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(simp_frontend PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(cwhip PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(simp PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(simp_runtime PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-install(TARGETS simp RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(TARGETS cwhip simp RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/simpkg-install"
     DESTINATION "${CMAKE_INSTALL_BINDIR}" RENAME simpkg)
 install(TARGETS simp_runtime

@@ -1,4 +1,4 @@
-"""Drive the built Tweed editor with real X key events and window-manager close.
+"""Drive Cwhip Editor with real X key events and window-manager close.
 
 Ctrl+W must close only the focused tab, while Ctrl+Q and the window close
 button must quit cleanly; closing from inside a shortcut callback previously
@@ -85,7 +85,7 @@ class Display:
             window = self.window_at(x, y)
             if not window:
                 time.sleep(0.1)
-        assert window, "Tweed window never appeared"
+        assert window, "Cwhip Editor window never appeared"
         time.sleep(0.5)
         self.x11.XSetInputFocus(self.display, window, 1, 0)
         self.xtest.XTestFakeButtonEvent(self.display, 1, 1, 0)
@@ -117,12 +117,12 @@ class Display:
 def finish(process: subprocess.Popen, expect_running: bool) -> str:
     if expect_running:
         assert process.poll() is None, (
-            f"Tweed exited with {process.returncode}:\n{process.communicate()[0]}")
+            f"Cwhip Editor exited with {process.returncode}:\n{process.communicate()[0]}")
         process.terminate()
         output = process.communicate(timeout=10)[0]
     else:
         output = process.communicate(timeout=10)[0]
-        assert process.returncode == 0, f"Tweed exited with {process.returncode}:\n{output}"
+        assert process.returncode == 0, f"Cwhip Editor exited with {process.returncode}:\n{output}"
     for marker in ("callback error", "in-flight", "CRITICAL", "AddressSanitizer",
                    "runtime error:", "LeakSanitizer"):
         assert marker not in output, output
@@ -150,10 +150,15 @@ def scenario(executable: Path, work: Path, env: dict[str, str], name: str, actio
 def close_tabs(display: Display, process: subprocess.Popen, case: Path) -> None:
     display.focus_editor()
     display.keys("Control_L+w")  # closes b.txt only
-    assert process.poll() is None, "Ctrl+W must not quit Tweed"
+    assert process.poll() is None, "Ctrl+W must not quit Cwhip Editor"
     display.keys("x")
     display.keys("Control_L+s")
-    saved = (case / "a.txt").read_text()
+    saved_path = case / "a.txt"
+    deadline = time.monotonic() + 5
+    saved = saved_path.read_text()
+    while "x" not in saved and time.monotonic() < deadline:
+        time.sleep(0.05)
+        saved = saved_path.read_text()
     assert "x" in saved and "hello" in saved, saved
     assert (case / "b.txt").read_text() == "world\n"
     display.keys("Control_L+w")  # closes the last tab; a fresh Untitled replaces it

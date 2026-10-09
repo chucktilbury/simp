@@ -1142,7 +1142,7 @@ interchangeable.
   resolved first relative to the directory of the file containing that
   directive, then through configured include-search directories in order.
   Search directories are configured with `-p`/`--path`; see
-  [simp(1)](simp.1) for the compiler options.
+  [cwhip(1)](cwhip.1) for the compiler options.
 - Inclusion is once per compilation unit, keyed by the canonical resolved
   absolute file path. The root source file is marked included initially.
   Re-including a file already encountered is a no-op; this also terminates

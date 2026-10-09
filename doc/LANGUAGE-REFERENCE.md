@@ -1,7 +1,14 @@
-# Simple language reference
+# Cwhip language reference
 
-Simple is the object-oriented language implemented by this repository's
-compiler. This manual describes the working subset: the C++17 compiler
+Cwhip is the object-oriented language implemented by this repository's
+compiler, invoked as `cwhip`. The name comes from the coachwhip, a fast,
+nonvenomous snake; Cwhip aims to be a small, nimble compiler, and bug-eating is
+a playful metaphor for the snake's prey and finding software bugs—not a
+reference to goads, punishment, or violence. The compiler frontend is C++17
+and the runtime is written in C. CPL and CWPL are optional informal shorthand.
+The canonical project website is [cwhip.org](https://cwhip.org).
+New source files conventionally use `.cw`; `.simp` remains accepted for
+existing programs. This manual describes the working subset: the compiler
 produces textual LLVM IR and invokes Clang to link the runtime. It is not a
 description of every feature proposed in the design notes.
 
@@ -69,9 +76,9 @@ source files as one compilation unit, with exactly one `start` among them.
 
 ```simp
 // Complete program: executable statements live in start.
-// test: {"stdout": "Simple is running"}
+// test: {"stdout": "Cwhip is running"}
 start {
-    print("Simple is running")
+    print("Cwhip is running")
 }
 ```
 
@@ -663,7 +670,8 @@ CLI, project, environment, user, and installation package roots. The legacy
 `SIMP_PACKAGE_PATH` lookup mechanisms are no longer supported.
 See `import-declaration` and `module`.
 
-`include "relative/path.simp"` textually inserts source before parsing. It is
+`include "relative/path.cw"` textually inserts source before parsing. `.simp`
+include paths remain valid for existing code. It is
 only allowed before the top-level `start`; the including file's directory is
 searched first, followed by configured include paths. Each canonical file is
 included once, and included files cannot define `start`. Unlike imports,
@@ -681,7 +689,7 @@ start {
 
 ```simp
 // Fragment (include is expanded before parsing):
-include "shared/definitions.simp"
+include "shared/definitions.cw"
 start {
     print("included source participates in this compilation unit")
 }
@@ -840,11 +848,11 @@ start {
 
 Thread support is provided through classes and native bindings, not a
 threading keyword. The bundled runtime starts OS threads for thread objects
-and dispatches their `run()` method. Simple-generated code executes under one
-global runtime lock, so two Simple bodies do not execute managed code in
+and dispatches their `run()` method. Cwhip-generated code executes under one
+global runtime lock, so two Cwhip bodies do not execute managed code in
 parallel. Blocking native operations such as `join()` and semaphore waits
-release that lock, allowing another Simple thread to run. This provides
-concurrency around waits, not parallel execution of Simple instructions.
+release that lock, allowing another Cwhip thread to run. This provides
+concurrency around waits, not parallel execution of Cwhip instructions.
 The relevant source forms are `class-declaration`, `method-declaration`, and
 `postfix`; none is a dedicated thread construct.
 
@@ -867,11 +875,11 @@ class Worker : Thread {
 
 ## Compiler and executable backend
 
-The compiler lexes and parses Simple source, performs semantic analysis, emits
+The compiler lexes and parses Cwhip source, performs semantic analysis, emits
 textual LLVM IR, and invokes Clang to compile and link the executable. Use
 `--check-only` to run parsing and semantic checks without code generation, or
 `--emit-llvm FILE` to also save the generated IR. The full command-line
-interface is documented in [simp(1)](simp.1).
+interface is documented in [cwhip(1)](cwhip.1).
 The compiler does not link the LLVM C++ API or provide a configurable LLVM
 optimization pipeline; its Clang invocation is driven through the host POSIX
 shell.
@@ -888,8 +896,8 @@ organized, see [SIMPLE-LANGUAGE-NOTES.md](SIMPLE-LANGUAGE-NOTES.md) and the
 Managed objects and collection values use a precise, non-moving,
 stop-the-world mark/sweep collector. Generated functions publish explicit
 root frames; arbitrary native stack words are not scanned. The runtime
-serializes Simple execution under a global lock. OS threads can make progress
-while another thread waits in a blocking native operation, but Simple
+serializes Cwhip execution under a global lock. OS threads can make progress
+while another thread waits in a blocking native operation, but Cwhip
 instructions do not execute in parallel. Exceptions use the host C ABI's
 `setjmp`/`longjmp` mechanism rather than LLVM landing pads.
 
@@ -897,7 +905,7 @@ Known language/backend boundaries include no free-standing functions, no
 automatic user-object `toString()` dispatch, no direct String index/slice
 syntax, no Unicode code-point operations, and no native-ABI lowering for
 `any`. There is no general reflection API beyond `type(value)`. String
-methods, Simple class methods, and C-bound methods described elsewhere remain
+methods, Cwhip class methods, and C-bound methods described elsewhere remain
 available; these limitations should not be confused with the obsolete claim
 that formatted expressions or method overloading are unsupported.
 
@@ -967,11 +975,11 @@ expressions. The final field name becomes the C parameter name; two captures
 with the same final name are rejected even if their paths differ.
 
 Captures are mutable references to the actual storage slot, not copies.
-For example, `*count += 1` in C updates the captured Simple `int`. Managed
+For example, `*count += 1` in C updates the captured Cwhip `int`. Managed
 reference slots remain traced through rooted locals or the rooted receiver;
 buffers use `SimpBuffer **`, other managed references use `void **`.
 Primary, secondary, repeated nonvirtual, and shared virtual bases use the same
-receiver adjustment as Simple field assignments. The declare-and-capture
+receiver adjustment as Cwhip field assignments. The declare-and-capture
 sugar below still declares a **local**, never a field.
 
 ```simp
@@ -1002,12 +1010,12 @@ start {
 ### Application-facing inline API
 
 Application developers do not need runtime implementation source. Prefer the
-Simple standard-library class wrappers for ordinary code. Inline C automatically
+Cwhip standard-library class wrappers for ordinary code. Inline C automatically
 receives the installed, supported opaque C facade `simp/Stdlib.h`; it exposes
 the existing native implementations of the eight shipped standard packages
 without inspecting private objects. See [the standard library C API](STDLIB.md#inline-c-api)
 for the symbol mapping, errors, lifetime rules, and limitations. This is a real
-C bridge to those functions, **not** a facility for calling arbitrary Simple
+C bridge to those functions, **not** a facility for calling arbitrary Cwhip
 methods or wrapper constructors from C.
 
 Generated shims also include `stdlib.h`, `stdio.h`, `string.h`, `errno.h`,
@@ -1020,7 +1028,7 @@ headers are never silently omitted. The compiler uses its configured native
 Clang target, not a separate inline-C cross-compilation target.
 
 Inline C must preserve the language's value representation and GC invariants.
-`malloc` memory is not managed Simple storage; do not put it into a String,
+`malloc` memory is not managed Cwhip storage; do not put it into a String,
 collection, buffer, or class reference slot. Raw native resources belong in
 `handle` slots and require explicit cleanup. Do not retain capture addresses
 or string-conversion pointers beyond the block, or leave the raw body with

@@ -1,4 +1,4 @@
-# Simple grammar
+# Cwhip grammar
 
 This document describes the syntax accepted by the current compiler, not the
 larger language proposed in the design notes. The notation below is

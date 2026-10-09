@@ -56,7 +56,7 @@ Package directories have the shape `modules/NAME/VERSION/`:
 [package]
 name = "geometry"
 version = "1.2.3"
-source = "src/geometry.simp"
+source = "src/geometry.cw"
 export = "namespace:Geometry"
 
 [dependencies]
@@ -70,7 +70,7 @@ libraries = ["geometry_native"]
 library-paths = ["lib"]
 ```
 
-The package name and export name must be non-keyword Simple identifiers.
+The package name and export name must be non-keyword Cwhip identifiers.
 `name` and `version` must match the installed directory names; a fetched tag
 must match `version`. `source` must name a file within the package and cannot
 be absolute or contain `..`. `export` is either `namespace:Name` or

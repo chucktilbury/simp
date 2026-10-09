@@ -1,8 +1,8 @@
-# Tweed editor
+# Cwhip editor
 
-`examples/editor/tweed.simp` is a small Simple-written GTK editor. It keeps the
-compiler and package names unchanged; Tweed Lang is the editor/application
-branding, not a repository-wide rename. The editor uses the optional GTK
+`examples/editor/cwhip_editor.cw` is a GTK editor written in Cwhip. Its compiler
+is `cwhip`; internal runtime and package ABI names retain their historical
+`simp_*` spellings for compatibility. The editor uses the optional GTK
 package and a separate GtkSourceView-backed `sourceview` package. It provides
 File, Edit, Project and Help menus, native open/save-as file choosers, multiple notebook tabs,
 duplicate-path focusing, open/save/save-as, session
@@ -15,15 +15,16 @@ text buffers, undo/redo, modified state, cursor coordinates, search/replace,
 syntax-context queries, and shortcut registration while remaining attachable
 to existing `Gtk.Widget` containers. The document editor uses GtkSourceView's
 monospace setting; the rest of the application keeps the platform's normal
-font. The `tweed` GtkSourceView language
-definition highlights Tweed Lang keywords/types, strings, comments, and
+font. The `cwhip` GtkSourceView language
+definition highlights Cwhip keywords/types, strings, comments, and
 numbers. Highlighting is enabled only for recognized source files: a document's
-language is chosen from its file name (`*.simp` and `*.tweed` select `tweed`),
+language is chosen from its file name (`*.cw`, legacy `*.simp`, and `*.tweed`
+select `cwhip`),
 and untitled documents, `.txt` files, and other unrecognized names are plain
 text. Save As re-evaluates the language for the new name. Additional languages
 are added by installing a GtkSourceView `<id>.lang` definition in the
 sourceview package (see [GTK source editing](GTK.md#language-definitions));
-only Tweed is shipped. Documents are represented separately from notebook pages; opening an
+only Cwhip is shipped. Documents are represented separately from notebook pages; opening an
 already-open path selects its existing tab. `openDocument(path)` returns the
 existing or newly opened document independently of selection, and
 `activateDocument(document)` selects its tab; Project Explorer uses
@@ -46,26 +47,27 @@ Installed GUI development dependencies are detected on fresh configurations.
 Build the editor directly:
 
 ```sh
-cmake -S . -B build-tweed -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug
-make -C build-tweed -j4 tweed
-./bin/tweed file1.simp file2.simp
+cmake -S . -B build-cwhip -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug
+make -C build-cwhip -j4 cwhip_editor
+./bin/cwhip-editor file1.cw file2.cw
 ```
 
-Inside the configured Makefiles build directory, use `make tweed`; with any
-generator, use `cmake --build build-tweed --target tweed -j4`. The target builds
+Inside the configured Makefiles build directory, use `make cwhip_editor` (the
+legacy target name `tweed` is also available); with any
+generator, use `cmake --build build-cwhip --target cwhip_editor -j4`. The target builds
 the compiler and required support on a fresh build, generates a private package
 lock from staged modules, and compiles the editor only when its inputs change.
 An ordinary compiler build prepares the enabled peripheral support but does
-not compile the editor. The executable is `<source>/bin/tweed` by default;
-with `-DSIMP_STAGE_PREFIX=/absolute/prefix` it is `/absolute/prefix/bin/tweed`.
-No manual compiler invocation or package activation is needed. Tweed is not
+not compile the editor. The executable is `<source>/bin/cwhip-editor` by default;
+with `-DSIMP_STAGE_PREFIX=/absolute/prefix` it is `/absolute/prefix/bin/cwhip-editor`.
+No manual compiler invocation or package activation is needed. Cwhip is not
 currently an install target.
 
 Headless tests require Xvfb and `dbus-daemon`; they default to enabled when
 those tools are present, otherwise configuration explicitly reports them
-disabled without blocking Tweed. Set `-DSIMP_GTK_TESTS=ON` to require them, or
+disabled without blocking Cwhip. Set `-DSIMP_GTK_TESTS=ON` to require them, or
 `-DBUILD_TESTING=OFF` to omit all tests. Compiler-only builds
-can set `-DSIMP_GTK=OFF -DSIMP_GTK_SOURCEVIEW=OFF`; their `tweed` target reports
+can set `-DSIMP_GTK=OFF -DSIMP_GTK_SOURCEVIEW=OFF`; their `cwhip_editor` target reports
 the missing support explicitly. To enable GUI support in an already configured
 compiler-only build, reconfigure with both options `ON`. Even with GUI packages
 enabled, the compiler and non-import applications do not link GTK or
@@ -80,7 +82,7 @@ file that could not be opened. Binary files (containing NUL bytes) and files
 that are not valid UTF-8 are refused with a "not a text file" error dialog;
 they are never lossily decoded, and existing documents are unchanged.
 **Save** writes the active document to its current path, or opens **Save As...**
-for an untitled document. Save As asks for confirmation before replacing an
+for an untitled document initially named `untitled.cw`. Save As asks for confirmation before replacing an
 existing file, and refuses a destination belonging to another open document.
 Cancelling a chooser or overwrite confirmation leaves files and document
 identities unchanged. Open/read/write/flush/close failures appear in the status
@@ -161,12 +163,12 @@ results are cached until that rebuild. Replacing the root, refreshing, or
 closing the editor cancels obsolete work and prevents stale results from
 repopulating the tree. A plain folder opened this way has no saved state; the
 hidden-files toggle is never saved. Expansion, tabs and layout are saved only
-for Tweed projects (below). The Explorer does not rename/delete files or add
+for Cwhip projects (below). The Explorer does not rename/delete files or add
 Git, build settings or LSP integration.
 
 ## Projects
 
-A Tweed project is a folder containing `.tweed/project.toml`. Ordinary folders
+A Cwhip project is a folder containing `.cwhip/project.toml`. Ordinary folders
 still open through **File > Open Folder...** without any project metadata and
 use only the global Preferences. Opening or creating a project never executes
 anything: there are no build commands, LSP servers, plugins or trust prompts.
@@ -177,13 +179,13 @@ commands (`project-new`, `project-open`, `project-save`, `project-save-as`,
 Keyboard like any other command. Choosers are modal folder choosers parented
 to the editor; cancelling one changes nothing.
 
-- **New Project...** chooses a root folder and creates `.tweed/project.toml`
-  and `.tweed/workspace.toml` there (project name defaults to the folder name).
+- **New Project...** chooses a root folder and creates `.cwhip/project.toml`
+  and `.cwhip/workspace.toml` there (project name defaults to the folder name).
   Source files are never created, modified or moved. If the folder already has
-  Tweed metadata, a confirmation bar offers **Replace Metadata** or **Cancel**.
+  Cwhip metadata, a confirmation bar offers **Replace Metadata** or **Cancel**.
 - **Open Project...** chooses a folder; it must already contain
-  `.tweed/project.toml`, otherwise an alert explains how to create one.
-  Running `tweed DIR` opens `DIR` as a project when it contains that file and
+  `.cwhip/project.toml`, otherwise an alert explains how to create one.
+  Running `cwhip-editor DIR` opens `DIR` as a project when it contains that file and
   as a plain folder otherwise.
 - **Save Project** writes the current configuration and workspace state.
 - **Save Project As...** chooses a different folder and writes a copy of the
@@ -194,10 +196,10 @@ to the editor; cancelling one changes nothing.
   folder becomes the active project. Existing metadata in the target requires
   **Replace Metadata**; choosing the current root is refused.
 - **Delete Project...** asks for confirmation naming the root, then removes
-  exactly `.tweed/workspace.toml` and `.tweed/project.toml` and removes
-  `.tweed` only if it is then empty. Source files and any other files in
-  `.tweed` are preserved; nothing is deleted recursively, and a symbolic-link
-  `.tweed` is refused. The editor stays on the same folder as a plain folder,
+  exactly `.cwhip/workspace.toml` and `.cwhip/project.toml` and removes
+  `.cwhip` only if it is then empty. Source files and any other files in
+  `.cwhip` are preserved; nothing is deleted recursively, and a symbolic-link
+  `.cwhip` is refused. The editor stays on the same folder as a plain folder,
   documents stay open, and a remembered startup project for that root is
   forgotten.
 - **Configure Project...** opens a non-modal window parented to the editor:
@@ -233,7 +235,7 @@ Open. Configure Project accepts the list comma-separated.
 
 ### Storage format
 
-`.tweed/project.toml` (at most 64 KiB) is meant to be shared:
+`.cwhip/project.toml` (at most 64 KiB) is meant to be shared:
 
 ```toml
 version = 1
@@ -253,7 +255,7 @@ Editor keys and ranges are the same as user settings (`font_family`,
 `font_size`, `tab_width`, `insert_spaces`, `line_numbers`, `wrap`,
 `highlight_current_line`). Unknown keys are retained when saving.
 
-`.tweed/workspace.toml` (at most 1 MiB) is local session state:
+`.cwhip/workspace.toml` (at most 1 MiB) is local session state:
 
 ```toml
 version = 1
@@ -274,10 +276,10 @@ UTF-8 files and read errors are skipped and reported; cursors are clamped to
 the file. Widths are 0-5000 and window sizes 200-10000 x 150-10000; GTK may
 enlarge the window to its minimum size or the screen.
 
-For version control, commit `.tweed/project.toml` and ignore the local state:
+For version control, commit `.cwhip/project.toml` and ignore the local state:
 
 ```gitignore
-.tweed/workspace.toml
+.cwhip/workspace.toml
 ```
 
 Both files are written with the same asynchronous atomic replacement as user
@@ -302,14 +304,19 @@ reopen_last = true
 last_root = "/home/me/src/demo"
 ```
 
-The workspace itself stays in that project's `.tweed`. Turning the option off
+The workspace itself stays in that project's `.cwhip`. Existing projects under
+`.tweed/` are opened and saved in place; workspace state may be updated there
+when the editor saves, but the editor never moves or deletes their data
+automatically. If both `.cwhip/` and `.tweed/` exist, opening or modifying the
+project is refused until the conflict is resolved, so neither copy is silently
+ignored. Turning the option off
 clears `last_root`. At startup the project is reopened only if the option is on
 and no file or folder was given on the command line. A missing or invalid
 remembered project is reported in an alert and the editor starts normally.
 
 ## About
 
-**Help > About Tweed...** opens a small window parented to the editor showing the
+**Help > About Cwhip...** opens a small window parented to the editor showing the
 editor name, version (the repository version from `CMakeLists.txt`), a short
 description, licensing status (the repository has no license file) and the
 project URL as text. **Close** hides it; it is closed with the editor.
@@ -342,9 +349,11 @@ binding unless its default would conflict. Each section's **Reset to Defaults**
 requires **Confirm Reset**; **Cancel** changes nothing. Only document command
 shortcuts are configurable; GTK's ordinary text navigation remains native.
 
-Settings save automatically to
-`$XDG_CONFIG_HOME/tweed/settings.toml`, or
-`$HOME/.config/tweed/settings.toml` when XDG_CONFIG_HOME is unset/empty.
+New settings save automatically to `$XDG_CONFIG_HOME/cwhip/settings.toml`, or
+`$HOME/.config/cwhip/settings.toml` when XDG_CONFIG_HOME is unset/empty. If the
+Cwhip file is absent, the editor reads and continues using an existing
+`$XDG_CONFIG_HOME/tweed/settings.toml` or `$HOME/.config/tweed/settings.toml`;
+it does not move or overwrite user data during startup.
 The config root must be absolute. The settings file is user-editable UTF-8 TOML,
 with a 64 KiB limit and this version-1 schema:
 
@@ -401,7 +410,8 @@ be emitted inline. External edits/removal require restarting before saving.
 
 ### Legacy shortcut compatibility
 
-`tweed-shortcuts.conf` in the working directory is still supported when the
+`cwhip-shortcuts.conf` in the working directory takes precedence.
+`tweed-shortcuts.conf` remains a fallback when the Cwhip file is absent and the
 TOML file is absent or has no `[keyboard]` table. Each nonblank line maps one
 GTK trigger to one command:
 
@@ -440,7 +450,7 @@ repaired. A conflicting later legacy line never overrides the earlier command.
 ## Deliberately deferred
 
 There is no language server in this iteration. The repository does not provide
-a real Tweed LSP server, and the current process APIs do not yet constitute a
+a real Cwhip LSP server, and the current process APIs do not yet constitute a
 complete JSON-RPC client with correct Content-Length framing, split-message
 handling, ordered writes, request correlation, cancellation, notifications,
 and shutdown. The editor does not mislabel compiler checking as LSP. A future
@@ -461,7 +471,7 @@ file-type overrides are future work; no placeholder pages are installed.
 Run the editor-specific headless cases and existing GTK integration checks:
 
 ```sh
-ctest --test-dir build-tweed \
-  -R '^(simp_tweed_binary|simp_tweed_shortcuts|simp_tweed_preferences|simp_editor_dialogs|simp_example_editor_tweed\\.simp|simp_editor_default_shortcuts|simp_tweed_project|simp_gtk|simp_gtk_bindings)$' \
+ctest --test-dir build-cwhip \
+  -R '^(simp_tweed_binary|simp_tweed_shortcuts|simp_tweed_preferences|simp_editor_dialogs|simp_example_editor_cwhip_editor\\.cw|simp_editor_default_shortcuts|simp_tweed_project|simp_gtk|simp_gtk_bindings)$' \
   --output-on-failure
 ```

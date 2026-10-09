@@ -26,7 +26,8 @@ def main() -> None:
     args = parser.parse_args()
     cases = json.loads(args.manifest.read_text())
     sources = {p.relative_to(args.examples).as_posix()
-               for p in args.examples.rglob("*.simp")}
+               for suffix in ("*.cw", "*.simp")
+               for p in args.examples.rglob(suffix)}
     assert sources == set(cases), (
         f"Example expectations differ: missing={sources - set(cases)}, "
         f"obsolete={set(cases) - sources}")
@@ -47,15 +48,15 @@ def main() -> None:
         case = dict(cases[args.case])
         source = project / args.case
         if case.get("requires") == "sourceview":
-            (project / "editor-a.simp").write_text("start { print(\"a\") }\n")
-            (project / "editor-b.simp").write_text("start { print(\"b\") }\n")
+            (project / "editor-a.cw").write_text("start { print(\"a\") }\n")
+            (project / "editor-b.cw").write_text("start { print(\"b\") }\n")
             if not args.default_shortcuts:
                 (project / "tweed-shortcuts.conf").write_text(
                     "<Control><Alt>s=save\n<Control><Alt>s=open\n")
         if "driver" in case:
             source = project / "driver.simp"
             source.write_text(case["driver"])
-        if args.case == "scanner.simp":
+        if args.case in ("scanner.cw", "scanner.simp"):
             case["stdin"] = (project / "input_test.txt").read_text()
         if case.get("requires") in ("gtk", "sourceview"):
             assert args.gtk, "GTK example was registered without SIMP_GTK"

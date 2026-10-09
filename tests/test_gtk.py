@@ -1065,7 +1065,7 @@ start {
                 assert "gtk" in (project / "simpkg.lock").read_text()
                 source = project / "editor.simp"
                 source.write_text((Path(__file__).resolve().parent.parent /
-                                   "examples/gtk.simp").read_text())
+                                   "examples/gtk.cw").read_text())
                 result = invoke([str(prefix / "bin/simp"), str(source), "-o",
                                  str(project / "editor")], project, env)
                 assert result.returncode == 0, result.stderr

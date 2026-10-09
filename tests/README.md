@@ -47,7 +47,7 @@ case so CMake discovers it; no central test list needs editing.
 
 ## Unit and CLI tests
 
-With GTK tests enabled, `simp_project_explorer` drives the actual Tweed model,
+With GTK tests enabled, `simp_project_explorer` drives the actual Cwhip Editor model,
 native parented folder chooser and GTK tree activation under private Xvfb/dbus
 and isolated HOME/XDG directories. It covers lazy expansion, duplicate focus,
 hidden entries, refresh, read errors, non-UTF-8 filenames, symlink loops, stale

@@ -4,7 +4,7 @@ The compiler uses CMake and requires Clang on `PATH` to compile and link its
 generated LLVM IR. The project uses C11 and C++17. Building and running
 `simpkg` also requires Python 3.11 or newer; installing packages requires
 `git`. A repository build stages
-the compiler resources beside `bin/simp`, so the executable can run directly
+the compiler resources beside `bin/cwhip`, so the executable can run directly
 from the source tree:
 
 ```sh
@@ -22,6 +22,10 @@ Installed application resources include the public opaque C API
 do not need runtime implementation source. See
 [the inline C API](STDLIB.md#inline-c-api) for supported bindings.
 
+The canonical CMake project and compiler target are `cwhip`. The legacy
+executable and build target `simp` remain available for existing scripts.
+New language sources should use `.cw`; `.simp` remains accepted.
+
 The root build is the recommended build. The `include/`, `src/`, and `tests/`
 directories also have component `CMakeLists.txt` files; standalone
 configuration is optional. To build only the compiler outside the repository's
@@ -36,7 +40,7 @@ cmake --build /tmp/simp-compiler-build
 The root build places the compiler and test executables in `bin/` and the
 front-end archive in `lib/libsimp_frontend.a`.
 
-## Tweed editor and optional GTK packages
+## Cwhip Editor and optional GTK packages
 
 On a fresh configuration, CMake detects `pkg-config`, GTK 4.10+ and GtkSourceView 5
 development files and defaults `SIMP_GTK` and `SIMP_GTK_SOURCEVIEW` to the
@@ -45,37 +49,39 @@ available support. On Debian/Ubuntu the GUI development packages are
 automatically. An ordinary compiler build (including `--target simp`) builds
 the enabled native package archives and stages their sources, manifests and
 language resources. GTK and GtkSourceView link only into importing applications,
-never into `simp` or non-GUI programs.
+never into `cwhip` or non-GUI programs.
 
-With those development dependencies installed, configure once and build Tweed:
+With those development dependencies installed, configure once and build Cwhip Editor:
 
 ```sh
 cmake -S . -B build -G "Unix Makefiles" -DCMAKE_BUILD_TYPE=Debug
-make -C build -j4 tweed
-./bin/tweed file1.simp file2.simp
+make -C build -j4 cwhip_editor
+./bin/cwhip-editor file1.cw file2.cw
 ```
 
-From inside `build/`, the target is simply `make tweed`. The generator-independent
-equivalent is `cmake --build build --target tweed -j4`. This works on a fresh
-build without first building the compiler. The output is `<source>/bin/tweed`
-by default, or `<SIMP_STAGE_PREFIX>/bin/tweed` with a custom staging prefix;
+From inside `build/`, use `make cwhip_editor` (the legacy target `tweed` remains
+available). The generator-independent equivalent is
+`cmake --build build --target cwhip_editor -j4`. This works on a fresh
+build without first building the compiler. The output is
+`<source>/bin/cwhip-editor` by default, or
+`<SIMP_STAGE_PREFIX>/bin/cwhip-editor` with a custom staging prefix;
 standalone `src/` builds use their build directory as the prefix. The target
 generates a private source project and package lock under the build directory,
 using only this build's staged packages, not user HOME packages or environment
 resource overrides. Source/include, native archive, manifest, builtin and
 language-resource changes rebuild it; unchanged builds do not recompile it.
 The editor is built on demand, not by the default `all` target, and is not
-installed by `cmake --install`. See [Tweed editor](TWEED-EDITOR.md).
+installed by `cmake --install`. See [Cwhip Editor](CWHIP-EDITOR.md).
 
 For a deliberate compiler-only configuration, including on machines without
 GUI development files:
 
 ```sh
 cmake -S . -B build-compiler -DSIMP_GTK=OFF -DSIMP_GTK_SOURCEVIEW=OFF
-cmake --build build-compiler --target simp -j4
+cmake --build build-compiler --target cwhip -j4
 ```
 
-`tweed` then fails with an explicit dependency/configuration diagnostic rather
+`cwhip_editor` then fails with an explicit dependency/configuration diagnostic rather
 than claiming a successful editor build. Explicit `ON` options require their
 development dependencies and fail configuration if missing;
 `SIMP_GTK_SOURCEVIEW=ON` requires `SIMP_GTK=ON`. Defaults are cached: after
@@ -85,7 +91,7 @@ reconfigure with both options `ON`.
 With GTK enabled and `BUILD_TESTING=ON` (the root-build default), headless GUI
 tests default to enabled when Xvfb and `dbus-daemon` are found
 (`xvfb dbus-daemon` on Debian/Ubuntu). Otherwise configuration explicitly
-reports that GUI tests are disabled; this does not block building Tweed.
+reports that GUI tests are disabled; this does not block building Cwhip Editor.
 Set `-DSIMP_GTK_TESTS=ON` to require these tools and fail if missing, or use
 `-DBUILD_TESTING=OFF` to omit all tests. Enabled tests never silently skip
 missing fixtures. Xvfb can be selected with
@@ -114,22 +120,33 @@ DESTDIR=/tmp/stage cmake --install build
 ```
 
 CMake's `GNUInstallDirs` control the destinations. The installed tree contains
-the compiler in `${CMAKE_INSTALL_BINDIR}`, the runtime archive in
+both `cwhip` and its `simp` compatibility executable in
+`${CMAKE_INSTALL_BINDIR}`, the runtime archive in
 `${CMAKE_INSTALL_LIBDIR}/simp/`, runtime headers in
 `${CMAKE_INSTALL_INCLUDEDIR}/simp/`, the String builtin in
 `${CMAKE_INSTALL_DATADIR}/simp/builtin/`, standard modules in
 `${CMAKE_INSTALL_DATADIR}/simp/modules/`, and documentation in
-`${CMAKE_INSTALL_DOCDIR}` plus `${CMAKE_INSTALL_MANDIR}/man1/simp.1`.
+`${CMAKE_INSTALL_DOCDIR}` plus `${CMAKE_INSTALL_MANDIR}/man1/cwhip.1`.
 The documentation install also preserves the repository-relative
 `doc/`, `tests/`, and `stdlib/` indexes and references.
 Installation directories must remain inside `CMAKE_INSTALL_PREFIX`.
 
 The compiler derives resources relative to its executable and the installation
-prefix; an installed tree can be moved as a unit. Resource lookup can be
+prefix; an installed tree can be moved as a unit. The historical `simp/`
+runtime, header, builtin, standard-module and user-module paths remain unchanged
+to preserve native module and package compatibility. Resource lookup can be
 overridden with `SIMP_RUNTIME_DIR`, `SIMP_INCLUDE_DIR`, `SIMP_BUILTIN_DIR`, or
 `SIMP_STDLIB_MODULE_DIR` individually, or with `SIMP_HOME` for the prefix.
 `CC` selects the compiler-driver executable in place of the configured Clang
-driver. Use `simp --print-paths` to inspect the resolved executable, resources,
+driver. The editor writes preferences to `$XDG_CONFIG_HOME/cwhip/settings.toml`
+(or `~/.config/cwhip/settings.toml`) and looks up Cwhip shortcuts in
+`cwhip-shortcuts.conf`. It reads existing Tweed settings and
+`tweed-shortcuts.conf` as fallbacks without moving or deleting them; existing
+`.tweed/` project metadata also remains usable in place. If both `.cwhip/` and
+`.tweed/` metadata directories exist, the editor refuses to choose between them.
+User preferences previously read by `simpkg env` from
+`$XDG_CONFIG_HOME/simp/preferences.toml` or `~/.config/simp/preferences.toml`
+remain at those locations. Use `cwhip --print-paths` to inspect the resolved executable, resources,
 every package root and its precedence, project lock location, and Clang executable.
 
 The former `prelude/` source directory, `share/simp/prelude/` resource path,
@@ -168,7 +185,7 @@ move or replace the discovered project's manifest or lock. `-p`/`--path` sets
 the separate textual `include` search path. Package layout and APIs are
 described in the [standard library docs](STDLIB.md) and
 [`stdlib/README.md`](../stdlib/README.md); exact CLI behavior is in
-[simp(1)](simp.1).
+[cwhip(1)](cwhip.1).
 
 ### Locked project dependencies
 
@@ -205,7 +222,7 @@ mkdir hello-simp
 cd hello-simp
 simpkg init
 simpkg add OWNER/REPO --yes
-simp path/to/app.simp
+cwhip path/to/app.cw
 ```
 
 `simpkg init [PROJECT_DIR]` creates `simpkg.toml`, `simpkg.lock`, and the
@@ -249,7 +266,7 @@ verifies hashes, rather than trusting potentially moved tags. With no lock it
 resolves the direct manifest. Commit both manifest and lock; do not hand-edit
 the lock or maintain transitive version arrays. `add`, `install`, and `list`
 locate the project from nested working directories. After `add` or `install`,
-ordinary `simp src/nested/app.simp` is compile-ready with no environment eval.
+ordinary `cwhip src/nested/app.cw` is compile-ready with no environment eval.
 Legacy projects without `simpkg.toml` retain their old policy and explicit
 dependency installation contract.
 

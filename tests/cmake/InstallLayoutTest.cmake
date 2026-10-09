@@ -42,6 +42,7 @@ endfunction()
 
 function(require_installed_layout prefix)
     foreach(installed_file IN ITEMS
+            "${BINDIR}/cwhip"
             "${BINDIR}/simp"
             "${BINDIR}/simpkg"
             "${LIBDIR}/simp/${RUNTIME_LIBRARY_NAME}"
@@ -52,11 +53,14 @@ function(require_installed_layout prefix)
             "${DATADIR}/simp/builtin/String.simp"
             "${DOCDIR}/README.md"
             "${DOCDIR}/SIMPLE-LANGUAGE-NOTES.md"
-            "${MANDIR}/man1/simp.1")
+            "${MANDIR}/man1/cwhip.1")
         if(NOT EXISTS "${prefix}/${installed_file}")
             message(FATAL_ERROR "Install is missing ${prefix}/${installed_file}")
         endif()
     endforeach()
+    if(NOT EXISTS "${prefix}/${BINDIR}/simp")
+        message(FATAL_ERROR "Install is missing compatibility executable ${prefix}/${BINDIR}/simp")
+    endif()
     if(NOT IS_DIRECTORY "${prefix}/${DATADIR}/simp/modules")
         message(FATAL_ERROR "Install is missing ${prefix}/${DATADIR}/simp/modules")
     endif()
@@ -94,10 +98,21 @@ require_installed_layout("${prefix}")
 # Relocate the installed tree to prove nothing depends on the install prefix.
 set(relocated_prefix "${work_directory}/relocated")
 file(RENAME "${prefix}" "${relocated_prefix}")
-set(compiler "${relocated_prefix}/${BINDIR}/simp")
-
+set(compiler "${relocated_prefix}/${BINDIR}/cwhip")
+run_checked("installed cwhip version" "${compiler}" --version)
+set(cwhip_version "${last_output}")
+run_checked("installed simp compatibility version"
+    "${relocated_prefix}/${BINDIR}/simp" --version)
+if(NOT last_output STREQUAL cwhip_version)
+    message(FATAL_ERROR "Installed simp compatibility executable differs from cwhip")
+endif()
 set(project_directory "${work_directory}/project")
 file(MAKE_DIRECTORY "${project_directory}/modules")
+file(WRITE "${project_directory}/canonical.cw" "start {}\n")
+run_checked("installed .cw compilation" "${compiler}"
+    "${project_directory}/canonical.cw" --check-only)
+run_checked("installed simp .cw compatibility compilation"
+    "${relocated_prefix}/${BINDIR}/simp" "${project_directory}/canonical.cw" --check-only)
 file(COPY "${MODULE_FIXTURE}/" DESTINATION "${project_directory}/modules")
 get_filename_component(fixture_name "${FIXTURE}" NAME)
 file(COPY "${FIXTURE}" DESTINATION "${project_directory}")
