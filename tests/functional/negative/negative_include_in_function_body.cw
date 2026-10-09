@@ -1,0 +1,4 @@
+# Rejects an include directive inside a function body.
+start {
+    include "missing.cw"
+}

@@ -1,5 +1,0 @@
-[package]
-name = "greeting"
-version = "1.2.0"
-source = "greeting.simp"
-export = "class:Greeter"

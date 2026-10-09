@@ -18,7 +18,7 @@ class Editor {
                 return
             }
         }
-        window = Gtk.Window("Simple GTK editor")
+        window = Gtk.Window("Cwhip GTK editor")
         window.setDefaultSize(420, 200)
         Gtk.Box layout = Gtk.Box(Gtk.Box.VERTICAL, 8)
         window.setChild(layout)
@@ -52,7 +52,7 @@ class Editor {
 }
 
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Editor")
+    Gtk.Application app = Gtk.Application("org.cwhip.Editor")
     Editor editor = Editor()
     editor.editAction = editor.edit
     editor.toggleAction = editor.toggle

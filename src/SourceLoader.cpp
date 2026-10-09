@@ -1,7 +1,7 @@
-#include "simp/SourceLoader.hpp"
+#include "cwhip/SourceLoader.hpp"
 
-#include "simp/Diagnostic.hpp"
-#include "simp/Lexer.hpp"
+#include "cwhip/Diagnostic.hpp"
+#include "cwhip/Lexer.hpp"
 
 #include <fstream>
 #include <iterator>
@@ -9,7 +9,7 @@
 #include <system_error>
 #include <utility>
 
-namespace simp {
+namespace cwhip {
 
 std::vector<Token> tokenizeWithIncludes(
     const std::string& source, const std::filesystem::path& sourcePath,
@@ -118,4 +118,4 @@ std::vector<Token> tokenizeWithIncludes(
     return expanded;
 }
 
-} // namespace simp
+} // namespace cwhip

@@ -1,0 +1,5 @@
+[package]
+name = "networking"
+version = "0.1.0"
+source = "networking.cw"
+export = "namespace:Networking"

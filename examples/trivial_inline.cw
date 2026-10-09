@@ -10,7 +10,7 @@ class Foo {
     void pstr(strg s) {
 
         inline (strg s){
-            printf("this is the %s string\n", simp_string_cstr(s));
+            printf("this is the %s string\n", cwhip_string_cstr(s));
         }
     }
 

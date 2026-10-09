@@ -1,4 +1,4 @@
-"""Extract, compile and run complete Simple programs from Markdown."""
+"""Extract, compile and run complete Cwhip programs from Markdown."""
 
 import argparse
 import json
@@ -11,7 +11,7 @@ import tempfile
 from program_runner import check_program, environment
 from gtk_support import headless
 
-FENCE = re.compile(r"^```(?:simp|simple)\s*\n(.*?)^```\s*$",
+FENCE = re.compile(r"^```cwhip\s*\n(.*?)^```\s*$",
                    re.MULTILINE | re.DOTALL)
 MARKER = re.compile(r"^\s*// test: (.+)$", re.MULTILINE)
 
@@ -57,11 +57,11 @@ def main() -> None:
         assert requirement in (None, "gtk", "sourceview"), (
             f"{name}: unsupported requirement {requirement}")
         if requirement in ("gtk", "sourceview") and not args.gtk:
-            print(f"NOT CONFIGURED optional GTK program {name} (SIMP_GTK=OFF)")
+            print(f"NOT CONFIGURED optional GTK program {name} (CWHIP_GTK=OFF)")
             continue
         if requirement == "sourceview" and not args.sourceview:
             print(f"NOT CONFIGURED optional GtkSourceView program {name} "
-                  "(SIMP_GTK_SOURCEVIEW=OFF)")
+                  "(CWHIP_GTK_SOURCEVIEW=OFF)")
             continue
         with tempfile.TemporaryDirectory(dir=args.work, prefix="doc-") as directory:
             work = Path(directory)
@@ -73,7 +73,7 @@ def main() -> None:
                 shutil.copytree(args.fixtures / fixture, project, dirs_exist_ok=True)
             case = dict(expectation)
             case["stdout"] = case["stdout"].replace("<WORK_DIR>", str(project))
-            program = project / "example.simp"
+            program = project / "example.cw"
             program.write_text(source)
             try:
                 if requirement in ("gtk", "sourceview"):

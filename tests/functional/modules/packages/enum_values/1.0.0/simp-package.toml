@@ -1,7 +1,0 @@
-[package]
-name = "enum_values"
-version = "1.0.0"
-source = "src/enum_values.simp"
-export = "class:EnumValues"
-
-[dependencies]

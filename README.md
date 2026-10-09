@@ -24,22 +24,23 @@ cmake --build build -j4
 ctest --test-dir build --output-on-failure
 ```
 
-The build places the canonical compiler at `bin/cwhip` and keeps `bin/simp`
-as a compatibility executable. It stages the runtime, String
+The build places the compiler at `bin/cwhip`. It stages the runtime, String
 builtin, and standard modules beside it in the repository's `lib/`, `include/`,
-and `share/` directories. Cwhip source files use `.cw`; existing `.simp`
-sources remain supported. To compile and run a program:
+and `share/` directories. Cwhip source files use the `.cw` extension. To
+compile and run a program:
 
 ```sh
 ./bin/cwhip path/to/program.cw -o build/program
 ./build/program
 ```
 
-The legacy `simp` executable and CMake target remain available for scripts and
-existing package workflows. Existing `.simp` programs remain accepted. Internal
-native ABI symbols, headers, standard-module paths, package manifests, and the
-GTK application ID retain their established `simp`/`simple` spellings for
-compatibility; they are not public Cwhip branding. See
+The compiler, runtime API, headers, resources, package tooling, and GTK
+application IDs consistently use Cwhip names. This is a clean naming break:
+previously named executables, build targets, source extensions, package
+manifests, environment variables, and editor/project paths are not aliases.
+Existing user files are left in place and are not migrated automatically; see
+[`doc/INSTALLATION.md`](doc/INSTALLATION.md#breaking-path-changes) before
+upgrading. See
 [`doc/cwhip.1`](doc/cwhip.1) for compiler options and
 [`doc/README.md`](doc/README.md) for all language and library documentation.
 The compiler's [test guide](tests/README.md) explains the functional fixtures
@@ -62,18 +63,18 @@ documentation relative to its installation prefix. CMake install rules honor
 [`doc/INSTALLATION.md`](doc/INSTALLATION.md) for the complete installed layout,
 resource overrides, package search order, and
 [project version policies](doc/INSTALLATION.md#project-module-version-selection).
-The `simpkg` package manager provides direct dependencies, a reproducible
+The `cwhip-pkg` package manager provides direct dependencies, a reproducible
 lockfile, and complete dependency installation with explicit network consent:
 
 ```sh
-simpkg init
-simpkg add OWNER/REPO --yes
+cwhip-pkg init
+cwhip-pkg add OWNER/REPO --yes
 cwhip src/app.cw
 ```
 
 No environment activation is needed. The manifest schema is in
 [`doc/PACKAGES.md`](doc/PACKAGES.md), and command behavior is documented in
-[`doc/INSTALLATION.md`](doc/INSTALLATION.md#project-package-manager-simpkg).
+[`doc/INSTALLATION.md`](doc/INSTALLATION.md#project-package-manager-cwhip-pkg).
 
 ## Repository layout
 
@@ -84,7 +85,7 @@ No environment activation is needed. The manifest schema is in
 | `builtin/` | Built-in `String` class source |
 | `stdlib/` | Versioned standard-library packages |
 | `examples/` | Runnable `.cw` examples, including the [Cwhip Editor and its build targets](doc/CWHIP-EDITOR.md) |
-| `tests/` | Compiler tests, including legacy `.simp` compatibility fixtures |
+| `tests/` | Compiler and editor tests |
 | `doc/` | User documentation |
 | `build/`, `bin/`, `lib/`, `share/` | Local CMake build outputs |
 

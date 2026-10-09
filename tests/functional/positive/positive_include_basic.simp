@@ -1,7 +1,0 @@
-# Includes a support file that declares a class, then constructs it and calls its method.
-include "../include_parts/basic.simp"
-
-start {
-    IncludedValue value = IncludedValue()
-    print(value.answer())
-}

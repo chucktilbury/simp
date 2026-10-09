@@ -1,0 +1,6 @@
+set(CASE_NAME cwhip_cli_verbosity_phases)
+set(CASE_FIXTURE positive_integer_output.cw)
+set(CASE_NO_RUN [==[ON]==])
+set(CASE_ARGUMENTS -v --check-only)
+set(CASE_EXPECT_COMPILE_OUTPUT [==[\[verbose\] semantic analysis]==])
+set(CASE_REJECT_COMPILE_OUTPUT [==[\[paths\]]==] [==[\[command\]]==] [==[\[timing\]]==])

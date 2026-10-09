@@ -1,5 +1,0 @@
-set(CASE_NAME simp_reports_object_cast_location)
-set(CASE_FIXTURE negative_object_cast_mismatch.simp)
-set(CASE_EXPECTED_OUTPUT "")
-set(CASE_EXPECT_RUNTIME_FAILURE ON)
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[uncaught runtime exception at .*negative_object_cast_mismatch.simp:4:27: 'any' value does not hold an object reference]==])

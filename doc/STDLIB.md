@@ -7,7 +7,7 @@ package namespace; use the exported classes directly beneath it. For example,
 `import system as Sys` makes `Sys.Process` and `Sys.System` the class names
 (not `Sys.System.Process`):
 
-```simp
+```cwhip
 import system as Sys
 import math as MathLib
 // test: {"stdout": "true"}
@@ -26,19 +26,19 @@ error as a string (or an empty string when no error is recorded). It is not a
 numeric error-code API. `lastError()` is an instance method; with the `Sys`
 alias, call it as `Sys.System().lastError()`.
 
-Simple `int` parameters and results in these APIs are signed 64-bit values;
+Cwhip `int` parameters and results in these APIs are signed 64-bit values;
 `unsigned` values are unsigned 64-bit. The native-binding documentation in
 the [language reference](LANGUAGE-REFERENCE.md#native-bindings-for-library-authors)
 describes their C/LLVM ABI representations.
 
 For native APIs accepting a function pointer plus user context, the installed
-`<simp/Callbacks.h>` facade provides retained registrations and generated typed
+`<cwhip/Callbacks.h>` facade provides retained registrations and generated typed
 adapters. See [CALLBACKS.md](CALLBACKS.md) for exact signatures, disconnection,
 rooting, owner-thread restrictions, and the fail-fast exception boundary.
 
 ## Optional `gtk` interface
 
-`import gtk` is available when built with `SIMP_GTK=ON`. Construct
+`import gtk` is available when built with `CWHIP_GTK=ON`. Construct
 `Gtk.Application(String id)`, install `onActivate(callback<void()>)`, create
 widgets during activation, and call `run()`. GTK supplies desktop/single-instance
 activation; the single run ends with deterministic shutdown.
@@ -173,7 +173,7 @@ target stderr. Byte writes accept buffers. Write methods return bytes written
 and can return partial counts or `-1`. Failed reads return an empty string and
 set `lastError()`.
 
-```simp
+```cwhip
 import system as Sys
 // test: {"stdout": "hello\n"}
 
@@ -229,7 +229,7 @@ functions use radians. The constants are returned by `pi()`, `e()`, and
 `tau()`. Numeric results follow the native C math-library behavior; this
 package does not report math-domain conditions through `System.lastError()`.
 
-```simp
+```cwhip
 import math as M
 // test: {"stdout": "true"}
 
@@ -306,7 +306,7 @@ It retains the original string for `toString`; absent path defaults to `/`,
 and `http`/`https` URLs without an explicit port default to 80/443. This is a
 small parser, not a URL validator.
 
-```simp
+```cwhip
 import networking as Net
 // test: {"stdout": "true"}
 
@@ -334,7 +334,7 @@ and releases the runtime lock while waiting. Clock failures return zero;
 sleep returns `false` on overflow or system failure. These failures are
 reported through `System.lastError()`.
 
-```simp
+```cwhip
 import time as T
 // test: {"stdout": "truetrue"}
 
@@ -363,7 +363,7 @@ mismatch; they do not coerce or provide implicit conversions.
 database API. A concrete backend subclasses these classes and overrides their
 methods; assigning the backend object to the SQL base type retains runtime
 dispatch. The methods on the base types raise an exception if a backend does
-not override them. Simple does not enforce abstract methods at compile time.
+not override them. Cwhip does not enforce abstract methods at compile time.
 This API does not make SQL syntax or backend behavior portable.
 
 The shared class signatures are:
@@ -407,9 +407,9 @@ bool close()
 
 The SQLite package uses the system SQLite library. Its native shim is built and
 staged by CMake and linked with `sqlite3`; a SQLite development header/library
-must be available when configuring and building Simp, even if a particular
+must be available when configuring and building Cwhip, even if a particular
 application does not import SQLite. This is a compiler/package build-time
-dependency, distinct from application linkage: `sqlite3` and `simp_sqlite`
+dependency, distinct from application linkage: `sqlite3` and `cwhip_sqlite`
 are added to an application's link only when its resolved import graph uses
 the SQLite package. Applications that do not import SQLite do not acquire a
 SQLite runtime dependency. `Connection` opens or creates a read/write database.
@@ -446,7 +446,7 @@ deterministic lifecycle.
 Busy timeout and PRAGMA execution are SQLite-specific. Do not infer cross-
 database SQL syntax portability from the shared value API.
 
-```simp
+```cwhip
 // test: {"stdout": "{\"roundTrip\":true}"}
 import sqlite as SQLite
 import sql as SQL
@@ -550,7 +550,7 @@ Output access before waiting returns an empty string and sets an error.
 Explicitly call `close()` for each successful start; it waits/reaps an
 unwaited child and releases captured data and descriptors.
 
-```simp
+```cwhip
 import process as P
 // test: {"stdout": "truetruetrue"}
 
@@ -681,9 +681,9 @@ values. There is no finalizer: an object that becomes unreachable without
 killed when the program exits.
 
 **Threads.** This is a pull API with no callbacks. Use an object from any
-registered Simple thread; `next`, `wait`, and `close` release the runtime lock
-while blocking, so other Simple threads keep running. The pump thread never
-runs Simple code or touches managed memory. In a GTK program, read events on a
+registered Cwhip thread; `next`, `wait`, and `close` release the runtime lock
+while blocking, so other Cwhip threads keep running. The pump thread never
+runs Cwhip code or touches managed memory. In a GTK program, read events on a
 worker thread and deliver UI updates with `Gtk.Application().post` (see
 [GTK.md](GTK.md)); do not block the GTK main loop in `next(-1)` or `wait(-1)`.
 
@@ -691,7 +691,7 @@ Scope: POSIX hosts only (Linux/glibc and macOS spawn primitives); Windows is
 not supported. There is no stdin writing, environment override, or
 pseudo-terminal support.
 
-```simp
+```cwhip
 import process as P
 // test: {"stdout": "out:hello\nerr:warning\n2true"}
 
@@ -741,7 +741,7 @@ be read. Color support requires stdout to be a terminal, `TERM` to be set and
 not `dumb`, and `NO_COLOR` to be unset. These probes do not change terminal
 mode and do not report errors through `System.lastError()`.
 
-```simp
+```cwhip
 import terminal as Term
 // test: {"stdout": "true"}
 
@@ -768,7 +768,7 @@ or null for a negative size or allocation/source failure; `fill` returns
 false for an invalid buffer or source failure. Failures set
 `System.lastError()`; success clears it.
 
-```simp
+```cwhip
 import random as R
 // test: {"stdout": "truetrue"}
 
@@ -825,7 +825,7 @@ condition remains true. Closing a condition with waiters returns false and sets 
 
 `Semaphore(initialCount)` blocks in `wait()` until its count is positive,
 then consumes one count. `signal()` increments the count; neither has a
-result value. A blocked wait releases the runtime lock so other Simple threads
+result value. A blocked wait releases the runtime lock so other Cwhip threads
 can make progress. `close()` releases its native resources and must only be
 called after no thread can wait on or signal it. Semaphore operations have no
 error-return channel; invalid negative initial counts abort in the native
@@ -836,7 +836,7 @@ The mutex and condition operations above expose native error messages through
 object usable when they report `EBUSY`; close each primitive only after all
 users have stopped.
 
-```simp
+```cwhip
 import synchronization as Sync
 // test: {"stdout": "truetruetrue"}
 
@@ -850,47 +850,47 @@ start {
 
 ## Inline C API
 
-The installed header **`simp/Stdlib.h`** is the supported application-facing
+The installed header **`cwhip/Stdlib.h`** is the supported application-facing
 C facade. Generated inline shims include it automatically and link the shipped
 runtime archive; no runtime implementation source or private object structures
-are needed. Simple package imports and class wrappers continue to work normally.
+are needed. Cwhip package imports and class wrappers continue to work normally.
 The C facade reuses all 138 existing standard-package native bindings, plus
-`simp_string_cstr` and `simp_string_bytes` (140 exported functions total).
+`cwhip_string_cstr` and `cwhip_string_bytes` (140 exported functions total).
 Its declarations, not incidental declarations in `Runtime*.h`, define the
 supported C surface.
 
-| Package / Simple API | Public C functions |
+| Package / Cwhip API | Public C functions |
 |---|---|
-| `system`: Process, System | `simp_system_argc`, `argv`, `arg`, `exit`, `abort`, `getenv`, `setenv`, `last_error` (all with the `simp_system_` prefix) |
-| `system`: FileSystem | All `simp_fs_*` and `simp_path_*` declarations in the header: existence/type/size, remove/rename/copy, directories, cwd, absolute path, temporary files/directories, join/normalize/basename/dirname/extension |
-| `system`: Glob, File, StandardIO | `simp_glob_glob`, all `simp_file_*` and `simp_stdio_*` declarations: the file and stream operations listed above |
-| `math`: Math | All `simp_math_*` declarations: the numeric operations above except the Simple-only `pi`, `e`, and `tau` constants |
-| `networking`: Socket, ServerSocket | All `simp_net_socket_*` and `simp_net_server_*` declarations: native descriptor operations (not `Url` parsing or wrapper state getters) |
-| `time`: Clock | `simp_time_epoch_seconds`, `simp_time_epoch_milliseconds`, `simp_time_monotonic_milliseconds`, `simp_time_sleep_milliseconds` |
-| `terminal`: Terminal | `simp_terminal_stdin_interactive`, `simp_terminal_stdout_interactive`, `simp_terminal_columns`, `simp_terminal_rows`, `simp_terminal_supports_color` |
-| `random`: SecureRandom | `simp_random_bytes`, `simp_random_fill` |
-| `process`: Process | `simp_process_spawn`, `wait`, `exit_code`, `stdout`, `stderr`, `close` (all with the `simp_process_` prefix) |
-| `process`: AsyncProcess, OutputDecoder | `simp_process_async_start`, `next`, `event_kind`, `event_data`, `event_release`, `wait`, `cancel`, `state`, `exit_code`, `signal`, `error`, `shutdown`, `close` (all with the `simp_process_async_` prefix), `simp_process_text_decode`, `simp_process_text_incomplete_tail`. Every non-null event handle from `next` must be passed to `event_release` once; call `close` once per started handle (it implies `shutdown`) |
-| `synchronization`: Mutex, Condition, Semaphore | All `simp_mutex_*`, `simp_condition_*`, and `simp_semaphore_*` declarations; `release` is the C counterpart of wrapper `close` |
-| String conversion for C | `simp_string_cstr` accepts a captured String slot; `simp_string_bytes` accepts a managed String object and returns borrowed bytes/length |
+| `system`: Process, System | `cwhip_system_argc`, `argv`, `arg`, `exit`, `abort`, `getenv`, `setenv`, `last_error` (all with the `cwhip_system_` prefix) |
+| `system`: FileSystem | All `cwhip_fs_*` and `cwhip_path_*` declarations in the header: existence/type/size, remove/rename/copy, directories, cwd, absolute path, temporary files/directories, join/normalize/basename/dirname/extension |
+| `system`: Glob, File, StandardIO | `cwhip_glob_glob`, all `cwhip_file_*` and `cwhip_stdio_*` declarations: the file and stream operations listed above |
+| `math`: Math | All `cwhip_math_*` declarations: the numeric operations above except the Cwhip-only `pi`, `e`, and `tau` constants |
+| `networking`: Socket, ServerSocket | All `cwhip_net_socket_*` and `cwhip_net_server_*` declarations: native descriptor operations (not `Url` parsing or wrapper state getters) |
+| `time`: Clock | `cwhip_time_epoch_seconds`, `cwhip_time_epoch_milliseconds`, `cwhip_time_monotonic_milliseconds`, `cwhip_time_sleep_milliseconds` |
+| `terminal`: Terminal | `cwhip_terminal_stdin_interactive`, `cwhip_terminal_stdout_interactive`, `cwhip_terminal_columns`, `cwhip_terminal_rows`, `cwhip_terminal_supports_color` |
+| `random`: SecureRandom | `cwhip_random_bytes`, `cwhip_random_fill` |
+| `process`: Process | `cwhip_process_spawn`, `wait`, `exit_code`, `stdout`, `stderr`, `close` (all with the `cwhip_process_` prefix) |
+| `process`: AsyncProcess, OutputDecoder | `cwhip_process_async_start`, `next`, `event_kind`, `event_data`, `event_release`, `wait`, `cancel`, `state`, `exit_code`, `signal`, `error`, `shutdown`, `close` (all with the `cwhip_process_async_` prefix), `cwhip_process_text_decode`, `cwhip_process_text_incomplete_tail`. Every non-null event handle from `next` must be passed to `event_release` once; call `close` once per started handle (it implies `shutdown`) |
+| `synchronization`: Mutex, Condition, Semaphore | All `cwhip_mutex_*`, `cwhip_condition_*`, and `cwhip_semaphore_*` declarations; `release` is the C counterpart of wrapper `close` |
+| String conversion for C | `cwhip_string_cstr` accepts a captured String slot; `cwhip_string_bytes` accepts a managed String object and returns borrowed bytes/length |
 
 All package functions take a reserved first receiver argument: **pass `NULL`**.
-The native implementations do not inspect it. This is not an arbitrary Simple
-method-call ABI. Pure Simple wrapper methods, constructors, `Url`, and wrapper
-state management have no C bridge in this MVP; use them from Simple, or use
+The native implementations do not inspect it. This is not an arbitrary Cwhip
+method-call ABI. Pure Cwhip wrapper methods, constructors, `Url`, and wrapper
+state management have no C bridge in this MVP; use them from Cwhip, or use
 the listed native primitives and manage their resource state explicitly.
 General object construction, GC control, reflection/layout metadata, and
 private runtime functions are not part of this facade.
 
-```simp
+```cwhip
 start {
     // test: {"stdout": "<WORK_DIR>\n3"}
     float root = 0.0
     strg directory
     inline (float root, strg directory) {
-        *root = simp_math_sqrt(NULL, 9.0);
-        *directory = simp_fs_get_cwd(NULL);
-        printf("%s\n", simp_string_cstr(directory));
+        *root = cwhip_math_sqrt(NULL, 9.0);
+        *directory = cwhip_fs_get_cwd(NULL);
+        printf("%s\n", cwhip_string_cstr(directory));
     }
     print(root) // 3
 }
@@ -898,23 +898,23 @@ start {
 
 ### Values, ownership, and errors
 
-- Simple `int`/`unsigned` map to `int64_t`/`uint64_t`, `float` to `double`.
-  Native boolean results are `int32_t` (zero/one); a captured Simple boolean
+- Cwhip `int`/`unsigned` map to `int64_t`/`uint64_t`, `float` to `double`.
+  Native boolean results are `int32_t` (zero/one); a captured Cwhip boolean
   is `_Bool *`. String/list/buffer API arguments and results are opaque
   managed object pointers, **not C strings or private structs**. Pass `*text`,
   `*values`, or `*bytes` from the respective capture. Captured references are
-  mutable slots (`void **`, or `SimpBuffer **` for buffers).
-- A managed return value must be stored **directly in a captured Simple slot
+  mutable slots (`void **`, or `CwhipBuffer **` for buffers).
+- A managed return value must be stored **directly in a captured Cwhip slot
   before any further allocating call**. C automatic variables are not GC
   roots. Keep all managed inputs in captured/rooted slots for the entire call;
   the receiver roots fields, including inherited/base-qualified fields. The
   collector is non-moving, but an unrooted result may still be reclaimed.
   Do not `free` managed objects or store `malloc`/libc pointers in their slots.
-  To inspect or manipulate a returned collection or object, return to Simple
+  To inspect or manipulate a returned collection or object, return to Cwhip
   and use its public methods rather than accessing its layout.
-- `simp_string_cstr(slot)` copies into a per-inline-block temporary arena;
+- `cwhip_string_cstr(slot)` copies into a per-inline-block temporary arena;
   the NUL-terminated result expires when the shim returns. Do not free or
-  retain it. `simp_string_bytes(object, &bytes, &length)` borrows a byte range
+  retain it. `cwhip_string_bytes(object, &bytes, &length)` borrows a byte range
   that is not necessarily NUL-terminated, is invalidated by resizing, and
   must not outlive the rooted object. Embedded NUL bytes are preserved in
   managed strings; APIs requiring a C string may reject or truncate them.
@@ -927,15 +927,15 @@ start {
   follows the documented native abort behavior.
 - Failure sentinels and `System.lastError()` behavior are the same as for
   the corresponding package operations documented above. In C use
-  `simp_system_last_error(NULL)` and store its managed String result in a
+  `cwhip_system_last_error(NULL)` and store its managed String result in a
   capture. Retrieve it promptly, before another operation changes the
   thread-local error. Network failures use return sentinels, not that error
   channel; math uses C math-library results. **Libc `errno` is separate** and
   is not automatically converted to `lastError()`.
-- Use these APIs on the already-registered Simple thread executing the inline
+- Use these APIs on the already-registered Cwhip thread executing the inline
   shim. Arbitrary external C threads/standalone managed allocations are not
   supported by this facade. Blocking package APIs use the existing runtime
-  lock protocol; do not replace them with raw blocking calls when Simple
+  lock protocol; do not replace them with raw blocking calls when Cwhip
   thread progress is required. Raw C allocations and resources remain outside
   GC ownership. Do not use C `return`/`longjmp` to bypass shim cleanup.
 
@@ -943,7 +943,7 @@ start {
 
 The shim also supplies `stdlib.h`, `stdio.h`, `string.h`, `errno.h`, `ctype.h`,
 `stdint.h`, `limits.h`, and `unistd.h`, once before all inline bodies. These
-are platform libc APIs, distinct from the Simple standard library. Developers
+are platform libc APIs, distinct from the Cwhip standard library. Developers
 may use both surfaces without obtaining runtime source. Other private runtime
 declarations still present for legacy capture compatibility are not a public
 API contract, and the facade itself includes no private headers or structs.
@@ -963,8 +963,8 @@ headers on its include path.
 ## Native implementation helpers
 
 The package namespaces also expose `Runtime` classes used by the wrappers
-above. Their methods are public in the shipped Simple sources, but are
-low-level Simple implementation details; prefer the wrapper APIs. The deliberate
+above. Their methods are public in the shipped Cwhip sources, but are
+low-level Cwhip implementation details; prefer the wrapper APIs. The deliberate
 C surface above is supported independently; other implementation classes,
 private layouts, and bindings are not covered by that contract.
 

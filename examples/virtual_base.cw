@@ -6,12 +6,12 @@
     contain distinct Root subobjects, so an unqualified Root member or 
     conversion may be ambiguous.
 
-    In Simple, a shared virtual base is constructed once as part of the 
-    most-derived object, before its non-virtual bases. The most-derived 
-    constructor supplies arguments for a parameterized virtual base with 
-    super virtual Root(args) (or virtual super Root(args)); a zero-argument 
-    virtual base may be initialized automatically. The virtual base is 
-    destroyed once as well. This is separate from method dispatch, which has 
+    In Cwhip, a shared virtual base is constructed once as part of the
+    most-derived object, before its non-virtual bases. The most-derived
+    constructor supplies arguments for a parameterized virtual base with
+    super virtual Root(args) (or virtual super Root(args)); a zero-argument
+    virtual base may be initialized automatically. The virtual base is
+    destroyed once as well. This is separate from method dispatch, which has
     its own runtime behavior.
 
  */

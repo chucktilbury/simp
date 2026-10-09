@@ -1,5 +1,0 @@
-set(CASE_NAME simp_rejects_missing_cli_module_root)
-set(CASE_FIXTURE positive_package_version_pins.simp)
-set(CASE_MODULE_ROOT_SOURCE cli)
-set(CASE_MODULE_ROOT_MISSING [==[ON]==])
-set(CASE_EXPECTED_DIAGNOSTIC [==[module directory from -M/--module-dir does not exist or is not a directory: <MODULE_ROOT>]==])

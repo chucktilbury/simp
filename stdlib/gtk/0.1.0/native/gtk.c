@@ -1,15 +1,15 @@
 #include "gtk_private.h"
-#include <simp/Callbacks.h>
-#include <simp/RuntimeGc.h>
+#include <cwhip/Callbacks.h>
+#include <cwhip/RuntimeGc.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
 #include <gtksourceview/gtksource.h>
 #endif
 
-extern const SimpClassMeta simp_string_class_meta;
+extern const CwhipClassMeta cwhip_string_class_meta;
 
 typedef struct ShortcutBinding ShortcutBinding;
 typedef struct MenuItem {
@@ -24,7 +24,7 @@ typedef struct FileDialog {
     int64_t parent;
     GtkFileDialog *chooser;
     GCancellable *cancellable;
-    SimpCallbackContext *context;
+    CwhipCallbackContext *context;
     GSource *completion;
     GPtrArray *paths;
     bool multiple;
@@ -40,7 +40,7 @@ typedef struct WidgetRecord {
     GtkWidget *widget;
     struct WidgetRecord *parent;
     void *receiver;
-    SimpCallbackContext *root;
+    CwhipCallbackContext *root;
     ShortcutBinding *shortcuts;
     GMenu *menu;
     GPtrArray *submenus;
@@ -49,7 +49,7 @@ typedef struct WidgetRecord {
     bool native_destroying;
 } WidgetRecord;
 
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
 /* A shortcut callback may dispose its own view (closing a tab or the window).
  * While `active` is nonzero, disposal only marks the binding: the callback
  * registration is released, and an orphaned binding freed, when the outermost
@@ -57,7 +57,7 @@ typedef struct WidgetRecord {
 struct ShortcutBinding {
     ShortcutBinding *next;
     WidgetRecord *owner;
-    SimpCallbackContext *context;
+    CwhipCallbackContext *context;
     char *trigger;
     GtkEventController *controller;
     unsigned active;
@@ -71,8 +71,8 @@ static void shortcut_release(ShortcutBinding *binding) {
         binding->release_pending = true;
         return;
     }
-    simp_callback_release(binding->context);
-    simp_callback_dispose(binding->context);
+    cwhip_callback_release(binding->context);
+    cwhip_callback_dispose(binding->context);
     binding->context = NULL;
     binding->release_pending = false;
 }
@@ -86,7 +86,7 @@ typedef struct Connection {
     gulong additional[3];
     unsigned additional_count;
     unsigned closures;
-    SimpCallbackContext *context;
+    CwhipCallbackContext *context;
     unsigned active;
     bool closed;
     bool detached;
@@ -96,7 +96,7 @@ typedef struct Post {
     struct Post *next;
     int64_t token;
     GSource *source;
-    SimpCallbackTransfer *transfer;
+    CwhipCallbackTransfer *transfer;
 } Post;
 
 /* Lists and lifecycle state are protected by the runtime lock. Only the
@@ -115,7 +115,7 @@ static GtkApplication *application;
 static bool activated;
 static bool ran;
 static bool scheduler_hold;
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
 static GtkSourceLanguageManager *source_language_manager;
 /* Language ids whose <id>.lang file is installed by the sourceview package. */
 static GHashTable *registered_languages;
@@ -127,25 +127,25 @@ static void dialog_cancel(FileDialog *dialog);
 static void config_finish_shutdown(void);
 
 static _Noreturn void fatal(const char *message) {
-    fprintf(stderr, "Simple GTK error: %s\n", message);
+    fprintf(stderr, "Cwhip GTK error: %s\n", message);
     abort();
 }
 
-/* Private typed receiver bindings compensate for Simple's lack of a this expression. */
-void *simp_gtk_self(void *self) { return self; }
+/* Private typed receiver bindings compensate for Cwhip's lack of a this expression. */
+void *cwhip_gtk_self(void *self) { return self; }
 
 static void require_managed(void) {
-    if (simp_runtime_managed_enter()) fatal("operation requires the managed runtime lock");
+    if (cwhip_runtime_managed_enter()) fatal("operation requires the managed runtime lock");
 }
 
-void simp_gtk_require_owner(void) {
+void cwhip_gtk_require_owner(void) {
     if (!initialized || !pthread_equal(owner, pthread_self()))
         fatal("operation requires the GUI owner thread");
 }
 
 static void require_live(void) {
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     if (stopped) fatal("application has shut down");
 }
 
@@ -159,15 +159,15 @@ static void connection_collect(Connection *connection) {
     Connection **link = &connections;
     while (*link != connection) link = &(*link)->next;
     *link = connection->next;
-    simp_callback_release(connection->context);
-    simp_callback_dispose(connection->context);
+    cwhip_callback_release(connection->context);
+    cwhip_callback_dispose(connection->context);
     free(connection);
 }
 
 static void connection_destroy(gpointer data, GClosure *closure) {
     (void)closure;
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     Connection *connection = data;
     if (--connection->closures == 0) {
         connection->object = NULL;
@@ -175,12 +175,12 @@ static void connection_destroy(gpointer data, GClosure *closure) {
         connection->detached = true;
     }
     connection_collect(connection);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
 }
 
 static int signal_enter(Connection *connection) {
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     ++connection->active;
     return acquired;
 }
@@ -188,15 +188,15 @@ static int signal_enter(Connection *connection) {
 static void signal_leave(Connection *connection, int acquired) {
     --connection->active;
     connection_collect(connection);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
 }
 
 static void clicked(GtkButton *button, gpointer data) {
     (void)button;
     Connection *connection = data;
     int acquired = signal_enter(connection);
-    typedef void (*Adapter)(SimpCallbackContext *);
-    ((Adapter)simp_callback_adapter(connection->context))(connection->context);
+    typedef void (*Adapter)(CwhipCallbackContext *);
+    ((Adapter)cwhip_callback_adapter(connection->context))(connection->context);
     signal_leave(connection, acquired);
 }
 
@@ -207,8 +207,8 @@ static void page_switched(GtkNotebook *notebook, GtkWidget *page, guint page_num
     (void)page_num;
     Connection *connection = data;
     int acquired = signal_enter(connection);
-    typedef void (*Adapter)(SimpCallbackContext *);
-    ((Adapter)simp_callback_adapter(connection->context))(connection->context);
+    typedef void (*Adapter)(CwhipCallbackContext *);
+    ((Adapter)cwhip_callback_adapter(connection->context))(connection->context);
     signal_leave(connection, acquired);
 }
 
@@ -216,18 +216,18 @@ static void changed(GtkEditable *editable, gpointer data) {
     (void)editable;
     Connection *connection = data;
     int acquired = signal_enter(connection);
-    typedef void (*Adapter)(SimpCallbackContext *);
-    ((Adapter)simp_callback_adapter(connection->context))(connection->context);
+    typedef void (*Adapter)(CwhipCallbackContext *);
+    ((Adapter)cwhip_callback_adapter(connection->context))(connection->context);
     signal_leave(connection, acquired);
 }
 
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
 static void changed_no_args(GObject *object, gpointer data) {
     (void)object;
     Connection *connection = data;
     int acquired = signal_enter(connection);
-    typedef void (*Adapter)(SimpCallbackContext *);
-    ((Adapter)simp_callback_adapter(connection->context))(connection->context);
+    typedef void (*Adapter)(CwhipCallbackContext *);
+    ((Adapter)cwhip_callback_adapter(connection->context))(connection->context);
     signal_leave(connection, acquired);
 }
 
@@ -243,8 +243,8 @@ static void cursor_moved(GtkTextBuffer *buffer, GtkTextIter *location,
         mark != gtk_text_buffer_get_selection_bound(buffer)) return;
     Connection *connection = data;
     int acquired = signal_enter(connection);
-    typedef void (*Adapter)(SimpCallbackContext *);
-    ((Adapter)simp_callback_adapter(connection->context))(connection->context);
+    typedef void (*Adapter)(CwhipCallbackContext *);
+    ((Adapter)cwhip_callback_adapter(connection->context))(connection->context);
     signal_leave(connection, acquired);
 }
 #endif
@@ -253,21 +253,21 @@ static void text_changed(GtkEditable *editable, gpointer data) {
     Connection *connection = data;
     int acquired = signal_enter(connection);
     const char *bytes = gtk_editable_get_text(editable);
-    void *text = simp_string_new(&simp_string_class_meta, bytes, strlen(bytes));
+    void *text = cwhip_string_new(&cwhip_string_class_meta, bytes, strlen(bytes));
     void *slots[] = { &text };
-    SimpRootFrame frame = {0};
-    simp_gc_push_or_abort(&frame, slots, 1);
-    typedef void (*Adapter)(SimpCallbackContext *, void *);
-    ((Adapter)simp_callback_adapter(connection->context))(connection->context, text);
-    simp_gc_pop_or_abort(&frame);
+    CwhipRootFrame frame = {0};
+    cwhip_gc_push_or_abort(&frame, slots, 1);
+    typedef void (*Adapter)(CwhipCallbackContext *, void *);
+    ((Adapter)cwhip_callback_adapter(connection->context))(connection->context, text);
+    cwhip_gc_pop_or_abort(&frame);
     signal_leave(connection, acquired);
 }
 
 static void toggled(GtkCheckButton *button, gpointer data) {
     Connection *connection = data;
     int acquired = signal_enter(connection);
-    typedef void (*Adapter)(SimpCallbackContext *, bool);
-    ((Adapter)simp_callback_adapter(connection->context))(
+    typedef void (*Adapter)(CwhipCallbackContext *, bool);
+    ((Adapter)cwhip_callback_adapter(connection->context))(
         connection->context, gtk_check_button_get_active(button) != FALSE);
     signal_leave(connection, acquired);
 }
@@ -280,18 +280,18 @@ static void activate(GApplication *app, gpointer data) {
 static void activation_started(GApplication *app, gpointer data) {
     (void)app;
     (void)data;
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     activated = true;
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
 }
 
 static gboolean close_request(GtkWindow *window, gpointer data) {
     (void)window;
     Connection *connection = data;
     int acquired = signal_enter(connection);
-    typedef bool (*Adapter)(SimpCallbackContext *);
-    bool result = ((Adapter)simp_callback_adapter(connection->context))(connection->context);
+    typedef bool (*Adapter)(CwhipCallbackContext *);
+    bool result = ((Adapter)cwhip_callback_adapter(connection->context))(connection->context);
     signal_leave(connection, acquired);
     return result ? TRUE : FALSE;
 }
@@ -304,7 +304,7 @@ static int64_t connect_signal(GObject *object, const char *signal,
     if (!connection) fatal("allocation failed");
     connection->token = token_new();
     connection->object = object;
-    connection->context = simp_callback_acquire(callback, signature);
+    connection->context = cwhip_callback_acquire(callback, signature);
     connection->closures = 1;
     connection->next = connections;
     connections = connection;
@@ -314,7 +314,7 @@ static int64_t connect_signal(GObject *object, const char *signal,
     return connection->token;
 }
 
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
 static void connect_state(int64_t token, const char *signal) {
     Connection *connection = connections;
     while (connection && connection->token != token) connection = connection->next;
@@ -328,30 +328,30 @@ static void connect_state(int64_t token, const char *signal) {
 }
 #endif
 
-int64_t simp_gtk_connect_clicked(GtkButton *button, void *callback) {
+int64_t cwhip_gtk_connect_clicked(GtkButton *button, void *callback) {
     require_live();
     if (!GTK_IS_BUTTON(button)) fatal("clicked requires GtkButton");
     return connect_signal(G_OBJECT(button), "clicked", G_CALLBACK(clicked),
                           callback, "callback<void()>");
 }
 
-int64_t simp_gtk_connect_changed(GtkEditable *editable, void *callback) {
+int64_t cwhip_gtk_connect_changed(GtkEditable *editable, void *callback) {
     require_live();
     if (!GTK_IS_EDITABLE(editable)) fatal("changed requires GtkEditable");
     return connect_signal(G_OBJECT(editable), "changed", G_CALLBACK(changed),
                           callback, "callback<void()>");
 }
 
-int64_t simp_gtk_connect_close_request(GtkWindow *window, void *callback) {
+int64_t cwhip_gtk_connect_close_request(GtkWindow *window, void *callback) {
     require_live();
     if (!GTK_IS_WINDOW(window)) fatal("close-request requires GtkWindow");
     return connect_signal(G_OBJECT(window), "close-request", G_CALLBACK(close_request),
                           callback, "callback<bool()>");
 }
 
-bool simp_gtk_disconnect(int64_t token) {
+bool cwhip_gtk_disconnect(int64_t token) {
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     for (Connection *connection = connections; connection; connection = connection->next) {
         if (connection->token != token) continue;
         if (connection->closed) return false;
@@ -368,7 +368,7 @@ bool simp_gtk_disconnect(int64_t token) {
     return false;
 }
 
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
 static void register_languages(const char *directory) {
     GDir *dir = g_dir_open(directory, 0, NULL);
     if (!dir) return;
@@ -384,21 +384,21 @@ static void application_initialize(const char *id, bool scheduler) {
     require_managed();
     if (initialized) fatal("application initialization is single-use");
     if (!gtk_init_check()) fatal("GTK initialization failed (display unavailable)");
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
     GtkSourceLanguageManager *defaults = gtk_source_language_manager_get_default();
     const char * const *existing_paths =
         gtk_source_language_manager_get_search_path(defaults);
     GPtrArray *paths = g_ptr_array_new();
     for (size_t i = 0; existing_paths && existing_paths[i]; ++i)
         g_ptr_array_add(paths, (gpointer)existing_paths[i]);
-    if (g_file_test(SIMP_GTK_SOURCEVIEW_SOURCE_LANG_DIR, G_FILE_TEST_IS_DIR))
-        g_ptr_array_add(paths, (gpointer)SIMP_GTK_SOURCEVIEW_SOURCE_LANG_DIR);
-    if (g_file_test(SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR, G_FILE_TEST_IS_DIR))
-        g_ptr_array_add(paths, (gpointer)SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR);
+    if (g_file_test(CWHIP_GTK_SOURCEVIEW_SOURCE_LANG_DIR, G_FILE_TEST_IS_DIR))
+        g_ptr_array_add(paths, (gpointer)CWHIP_GTK_SOURCEVIEW_SOURCE_LANG_DIR);
+    if (g_file_test(CWHIP_GTK_SOURCEVIEW_INSTALL_LANG_DIR, G_FILE_TEST_IS_DIR))
+        g_ptr_array_add(paths, (gpointer)CWHIP_GTK_SOURCEVIEW_INSTALL_LANG_DIR);
     g_ptr_array_add(paths, NULL);
     registered_languages = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-    register_languages(SIMP_GTK_SOURCEVIEW_SOURCE_LANG_DIR);
-    register_languages(SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR);
+    register_languages(CWHIP_GTK_SOURCEVIEW_SOURCE_LANG_DIR);
+    register_languages(CWHIP_GTK_SOURCEVIEW_INSTALL_LANG_DIR);
     source_language_manager = gtk_source_language_manager_new();
     gtk_source_language_manager_set_search_path(source_language_manager,
                                                  (const char **)paths->pdata);
@@ -414,12 +414,12 @@ static void application_initialize(const char *id, bool scheduler) {
     scheduler_hold = scheduler;
 }
 
-void simp_gtk_initialize(void *self) {
+void cwhip_gtk_initialize(void *self) {
     (void)self;
-    application_initialize("org.simple.Scheduler", true);
+    application_initialize("org.cwhip.Scheduler", true);
 }
 
-void simp_gtk_run(void *self) {
+void cwhip_gtk_run(void *self) {
     (void)self;
     require_live();
     if (running) fatal("nested application run is not supported");
@@ -427,16 +427,16 @@ void simp_gtk_run(void *self) {
     ran = true;
     ++running;
     GtkApplication *run_application = g_object_ref(application);
-    simp_runtime_gil_release();
+    cwhip_runtime_gil_release();
     int status = g_application_run(G_APPLICATION(run_application), 0, NULL);
-    simp_runtime_gil_acquire();
+    cwhip_runtime_gil_acquire();
     --running;
     g_object_unref(run_application);
     if (status != 0) fatal("GtkApplication run failed");
-    simp_gtk_shutdown(self);
+    cwhip_gtk_shutdown(self);
 }
 
-void simp_gtk_quit(void *self) {
+void cwhip_gtk_quit(void *self) {
     (void)self;
     require_live();
     if (!running) fatal("quit requires a running application");
@@ -451,29 +451,29 @@ static void post_remove(Post *post) {
 }
 
 static gboolean dispatch(gpointer data) {
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     Post *post = data;
     post_remove(post);
-    SimpCallbackContext *context = simp_callback_transfer_accept(post->transfer);
+    CwhipCallbackContext *context = cwhip_callback_transfer_accept(post->transfer);
     g_source_unref(post->source);
     free(post);
-    typedef void (*Adapter)(SimpCallbackContext *);
-    ((Adapter)simp_callback_adapter(context))(context);
-    simp_callback_release(context);
-    simp_callback_dispose(context);
-    simp_runtime_managed_leave(acquired);
+    typedef void (*Adapter)(CwhipCallbackContext *);
+    ((Adapter)cwhip_callback_adapter(context))(context);
+    cwhip_callback_release(context);
+    cwhip_callback_dispose(context);
+    cwhip_runtime_managed_leave(acquired);
     return G_SOURCE_REMOVE;
 }
 
-int64_t simp_gtk_post(void *self, void *callback) {
+int64_t cwhip_gtk_post(void *self, void *callback) {
     (void)self;
     require_managed();
     if (!initialized || stopped) fatal("post requires a live application");
     Post *post = calloc(1, sizeof(*post));
     if (!post) fatal("allocation failed");
     post->token = token_new();
-    post->transfer = simp_callback_transfer_prepare(callback, "callback<void()>");
+    post->transfer = cwhip_callback_transfer_prepare(callback, "callback<void()>");
     post->source = g_idle_source_new();
     post->next = posts;
     posts = post;
@@ -486,11 +486,11 @@ static void post_cancel(Post *post) {
     post_remove(post);
     g_source_destroy(post->source);
     g_source_unref(post->source);
-    simp_callback_transfer_cancel(post->transfer);
+    cwhip_callback_transfer_cancel(post->transfer);
     free(post);
 }
 
-bool simp_gtk_cancel(void *self, int64_t token) {
+bool cwhip_gtk_cancel(void *self, int64_t token) {
     (void)self;
     require_live();
     for (Post *post = posts; post; post = post->next) {
@@ -502,10 +502,10 @@ bool simp_gtk_cancel(void *self, int64_t token) {
     return false;
 }
 
-void simp_gtk_shutdown(void *self) {
+void cwhip_gtk_shutdown(void *self) {
     (void)self;
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     if (stopped) return;
     stopped = true;
     g_application_quit(G_APPLICATION(application));
@@ -513,7 +513,7 @@ void simp_gtk_shutdown(void *self) {
     while (dialogs) dialog_cancel(dialogs);
     for (Connection *connection = connections; connection;) {
         Connection *next = connection->next;
-        if (!connection->closed) simp_gtk_disconnect(connection->token);
+        if (!connection->closed) cwhip_gtk_disconnect(connection->token);
         connection = next;
     }
     for (WidgetRecord *record = widgets; record; record = record->next) {
@@ -523,7 +523,7 @@ void simp_gtk_shutdown(void *self) {
     for (WidgetRecord *record = widgets; record; record = record->next)
         widget_dispose(record);
     config_finish_shutdown();
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
     g_clear_object(&source_language_manager);
     g_clear_pointer(&registered_languages, g_hash_table_unref);
 #endif
@@ -549,7 +549,7 @@ static char *text_copy(void *text) {
     if (!text) fatal("null text");
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(text, &bytes, &length);
+    cwhip_string_bytes(text, &bytes, &length);
     if (!length) bytes = "";
     if (length > G_MAXSSIZE || memchr(bytes, 0, length) ||
         !g_utf8_validate(bytes, (gssize)length, NULL))
@@ -557,7 +557,7 @@ static char *text_copy(void *text) {
     return g_strndup(bytes, length);
 }
 
-void simp_gtk_application_create(void *self, void *id) {
+void cwhip_gtk_application_create(void *self, void *id) {
     (void)self;
     require_managed();
     if (initialized) fatal("application initialization is single-use");
@@ -567,7 +567,7 @@ void simp_gtk_application_create(void *self, void *id) {
     g_free(name);
 }
 
-int64_t simp_gtk_application_activate(void *self, void *callback) {
+int64_t cwhip_gtk_application_activate(void *self, void *callback) {
     (void)self;
     require_live();
     if (ran) fatal("activation handler must be installed before run");
@@ -575,35 +575,35 @@ int64_t simp_gtk_application_activate(void *self, void *callback) {
                           callback, "callback<void()>");
 }
 
-int64_t simp_gtk_activation_signal(void *self, void *source, void *callback) {
+int64_t cwhip_gtk_activation_signal(void *self, void *source, void *callback) {
     if (!source) fatal("null signal source");
-    return simp_gtk_application_activate(self, callback);
+    return cwhip_gtk_application_activate(self, callback);
 }
 
-void *simp_gtk_application_id(void *self) {
+void *cwhip_gtk_application_id(void *self) {
     (void)self;
     require_live();
     const char *id = g_application_get_application_id(G_APPLICATION(application));
-    return simp_string_new(&simp_string_class_meta, id, strlen(id));
+    return cwhip_string_new(&cwhip_string_class_meta, id, strlen(id));
 }
 
-bool simp_gtk_connected(void *self, int64_t token) {
+bool cwhip_gtk_connected(void *self, int64_t token) {
     (void)self;
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     for (Connection *c = connections; c; c = c->next)
         if (c->token == token) return !c->closed;
     return false;
 }
 
-bool simp_gtk_connection_disconnect(void *self, int64_t token) {
+bool cwhip_gtk_connection_disconnect(void *self, int64_t token) {
     (void)self;
-    return simp_gtk_disconnect(token);
+    return cwhip_gtk_disconnect(token);
 }
 
 static WidgetRecord *record_find(int64_t token) {
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     for (WidgetRecord *r = widgets; r; r = r->next)
         if (r->token == token) return r;
     fatal("invalid or disposed widget");
@@ -621,7 +621,7 @@ static GtkWidget *widget_live(int64_t token) {
 static void disconnect_object(GObject *object) {
     for (Connection *c = connections; c;) {
         Connection *next = c->next;
-        if (c->object == object && !c->closed) simp_gtk_disconnect(c->token);
+        if (c->object == object && !c->closed) cwhip_gtk_disconnect(c->token);
         c = next;
     }
 }
@@ -660,7 +660,7 @@ static void widget_dispose(WidgetRecord *r) {
     while (r->items) {
         MenuItem *item = r->items;
         r->items = item->next;
-        simp_gtk_disconnect(item->token);
+        cwhip_gtk_disconnect(item->token);
         g_object_unref(item->action);
         free(item);
     }
@@ -671,10 +671,10 @@ static void widget_dispose(WidgetRecord *r) {
         g_clear_object(&r->menu);
     }
     disconnect_object(G_OBJECT(widget));
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
     if (GTK_SOURCE_IS_VIEW(widget))
         disconnect_object(G_OBJECT(gtk_text_view_get_buffer(GTK_TEXT_VIEW(widget))));
-    g_object_set_data(G_OBJECT(widget), "simp-font-provider", NULL);
+    g_object_set_data(G_OBJECT(widget), "cwhip-font-provider", NULL);
     for (ShortcutBinding *binding = r->shortcuts; binding;) {
         ShortcutBinding *next = binding->next;
         shortcut_release(binding);
@@ -691,27 +691,27 @@ static void widget_dispose(WidgetRecord *r) {
     if (GTK_IS_WINDOW(widget) && !r->native_destroying)
         gtk_window_destroy(GTK_WINDOW(widget));
     g_object_unref(widget);
-    simp_callback_release(r->root);
-    simp_callback_dispose(r->root);
+    cwhip_callback_release(r->root);
+    cwhip_callback_dispose(r->root);
     r->root = NULL;
     r->receiver = NULL;
 }
 
 static void widget_destroyed(GtkWidget *widget, gpointer data) {
     (void)widget;
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     WidgetRecord *r = data;
     r->native_destroying = true;
     widget_dispose(r);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
 }
 
 static void window_removed(GtkApplication *app, GtkWindow *window, gpointer data) {
     (void)app;
     (void)data;
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     for (WidgetRecord *r = widgets; r; r = r->next) {
         if (r->widget != GTK_WIDGET(window)) continue;
         g_object_ref(window);
@@ -720,19 +720,19 @@ static void window_removed(GtkApplication *app, GtkWindow *window, gpointer data
         g_object_unref(window);
         break;
     }
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
 }
 
-int64_t simp_gtk_widget_create(void *self, int64_t kind, void *text,
+int64_t cwhip_gtk_widget_create(void *self, int64_t kind, void *text,
                                int64_t orientation, int64_t spacing, void *keep_alive) {
     require_live();
     if (!activated || g_application_get_is_remote(G_APPLICATION(application)))
         fatal("widgets must be created during or after local activation");
-    void *receiver = simp_gc_root(self);
-    const SimpClassMeta *metadata = *(const SimpClassMeta *const *)receiver;
+    void *receiver = cwhip_gc_root(self);
+    const CwhipClassMeta *metadata = *(const CwhipClassMeta *const *)receiver;
     unsigned widget_bases = 0;
     for (uint64_t i = 0; i < metadata->base_class_count; ++i) {
-        const SimpClassName *base = &metadata->base_classes[i];
+        const CwhipClassName *base = &metadata->base_classes[i];
         if (base->name_length == sizeof("Gtk.Widget") - 1 &&
             memcmp(base->name, "Gtk.Widget", sizeof("Gtk.Widget") - 1) == 0 &&
             ++widget_bases > 1)
@@ -769,7 +769,7 @@ int64_t simp_gtk_widget_create(void *self, int64_t kind, void *text,
         g_object_unref(menu);
         break;
     }
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
     case 8:
         widget = GTK_WIDGET(gtk_source_view_new());
         gtk_text_buffer_set_enable_undo(
@@ -785,7 +785,7 @@ int64_t simp_gtk_widget_create(void *self, int64_t kind, void *text,
     /* Windows are already non-floating and GTK owns a reference. */
     r->widget = g_object_ref_sink(widget);
     r->receiver = receiver;
-    r->root = simp_callback_acquire(keep_alive, "callback<void()>");
+    r->root = cwhip_callback_acquire(keep_alive, "callback<void()>");
     if (kind == 10) {
         r->menu = G_MENU(g_object_ref(gtk_popover_menu_bar_get_menu_model(GTK_POPOVER_MENU_BAR(widget))));
         r->submenus = g_ptr_array_new_with_free_func(g_object_unref);
@@ -798,39 +798,39 @@ int64_t simp_gtk_widget_create(void *self, int64_t kind, void *text,
     return r->token;
 }
 
-void simp_gtk_widget_dispose(void *self, int64_t token) {
+void cwhip_gtk_widget_dispose(void *self, int64_t token) {
     (void)self;
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     if (stopped) return;
     widget_dispose(record_find(token));
 }
 
-bool simp_gtk_widget_disposed(void *self, int64_t token) {
+bool cwhip_gtk_widget_disposed(void *self, int64_t token) {
     (void)self;
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     return stopped || !record_find(token)->widget;
 }
 
-void simp_gtk_widget_visible(void *self, int64_t token, bool value) {
+void cwhip_gtk_widget_visible(void *self, int64_t token, bool value) {
     (void)self;
     gtk_widget_set_visible(widget_live(token), value);
 }
 
-void simp_gtk_widget_sensitive(void *self, int64_t token, bool value) {
+void cwhip_gtk_widget_sensitive(void *self, int64_t token, bool value) {
     (void)self;
     gtk_widget_set_sensitive(widget_live(token), value);
 }
 
-void simp_gtk_widget_expand(void *self, int64_t token, bool horizontal, bool value) {
+void cwhip_gtk_widget_expand(void *self, int64_t token, bool horizontal, bool value) {
     (void)self;
     GtkWidget *widget = widget_live(token);
     if (horizontal) gtk_widget_set_hexpand(widget, value);
     else gtk_widget_set_vexpand(widget, value);
 }
 
-void simp_gtk_widget_focus(void *self, int64_t token) {
+void cwhip_gtk_widget_focus(void *self, int64_t token) {
     (void)self;
     gtk_widget_grab_focus(widget_live(token));
 }
@@ -840,7 +840,7 @@ static WidgetRecord *menu_record(int64_t token) {
     return record_find(token);
 }
 
-int64_t simp_gtk_menu_add(void *self, int64_t token, void *label) {
+int64_t cwhip_gtk_menu_add(void *self, int64_t token, void *label) {
     (void)self;
     WidgetRecord *record = menu_record(token);
     char *text = text_copy(label);
@@ -858,7 +858,7 @@ static void menu_activated(GSimpleAction *action, GVariant *parameter, gpointer 
     clicked(NULL, data);
 }
 
-int64_t simp_gtk_menu_item_add(void *self, int64_t token, int64_t menu,
+int64_t cwhip_gtk_menu_item_add(void *self, int64_t token, int64_t menu,
                                void *label, void *callback) {
     (void)self;
     WidgetRecord *record = menu_record(token);
@@ -887,12 +887,12 @@ static GSimpleAction *menu_item(int64_t token, int64_t item) {
     fatal("invalid menu item");
 }
 
-void simp_gtk_menu_item_enabled(void *self, int64_t token, int64_t item, bool enabled) {
+void cwhip_gtk_menu_item_enabled(void *self, int64_t token, int64_t item, bool enabled) {
     (void)self;
     g_simple_action_set_enabled(menu_item(token, item), enabled);
 }
 
-void simp_gtk_menu_item_activate(void *self, int64_t token, int64_t item) {
+void cwhip_gtk_menu_item_activate(void *self, int64_t token, int64_t item) {
     (void)self;
     GSimpleAction *action = g_object_ref(menu_item(token, item));
     g_action_activate(G_ACTION(action), NULL);
@@ -900,10 +900,10 @@ void simp_gtk_menu_item_activate(void *self, int64_t token, int64_t item) {
 }
 
 static void *path_string(const char *path) {
-    return simp_string_new(&simp_string_class_meta, path, strlen(path));
+    return cwhip_string_new(&cwhip_string_class_meta, path, strlen(path));
 }
 
-/* Remove all native ownership before invoking Simple: a result handler may
+/* Remove all native ownership before invoking Cwhip: a result handler may
  * immediately dispose its parent, open another chooser, or shut down. A
  * single-file chooser delivers one path ("" when cancelled); a multi-select
  * chooser delivers each selected path and then "" to end the batch. */
@@ -924,36 +924,36 @@ static void dialog_finish(FileDialog *dialog, bool invoke) {
     }
     g_clear_object(&dialog->cancellable);
     g_clear_object(&dialog->chooser);
-    SimpCallbackContext *context = dialog->context;
+    CwhipCallbackContext *context = dialog->context;
     free(dialog);
     if (invoke && context) {
-        typedef void (*Adapter)(SimpCallbackContext *, void *);
-        Adapter adapter = (Adapter)simp_callback_adapter(context);
+        typedef void (*Adapter)(CwhipCallbackContext *, void *);
+        Adapter adapter = (Adapter)cwhip_callback_adapter(context);
         guint deliveries = multiple ? paths->len + 1 : 1;
         for (guint i = 0; i < deliveries; ++i) {
             void *text = path_string(i < paths->len ? g_ptr_array_index(paths, i) : "");
             void *slots[] = { &text };
-            SimpRootFrame frame = {0};
-            simp_gc_push_or_abort(&frame, slots, 1);
+            CwhipRootFrame frame = {0};
+            cwhip_gc_push_or_abort(&frame, slots, 1);
             adapter(context, text);
-            simp_gc_pop_or_abort(&frame);
+            cwhip_gc_pop_or_abort(&frame);
         }
     }
     g_ptr_array_unref(paths);
     if (context) {
-        simp_callback_release(context);
-        simp_callback_dispose(context);
+        cwhip_callback_release(context);
+        cwhip_callback_dispose(context);
     }
 }
 
 static gboolean dialog_complete(gpointer data) {
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     FileDialog *dialog = data;
     g_source_unref(dialog->completion);
     dialog->completion = NULL;
     dialog_finish(dialog, true);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
     return G_SOURCE_REMOVE;
 }
 
@@ -966,7 +966,7 @@ static void dialog_schedule(FileDialog *dialog) {
 
 static void dialog_append_file(FileDialog *dialog, GFile *file) {
     char *path = g_file_get_path(file);
-    /* Simple strings are UTF-8; fall back to the (ASCII) URI otherwise. */
+    /* Cwhip strings are UTF-8; fall back to the (ASCII) URI otherwise. */
     if (!path || !g_utf8_validate(path, -1, NULL)) {
         g_free(path);
         path = g_file_get_uri(file);
@@ -975,8 +975,8 @@ static void dialog_append_file(FileDialog *dialog, GFile *file) {
 }
 
 static void file_dialog_completed(GObject *source, GAsyncResult *result, gpointer data) {
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     FileDialog *dialog = data;
     dialog->request_pending = false;
     GError *error = NULL;
@@ -1011,14 +1011,14 @@ static void file_dialog_completed(GObject *source, GAsyncResult *result, gpointe
     }
     if (dialog->cancelled) dialog_finish(dialog, false);
     else dialog_schedule(dialog);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
 }
 
 static void dialog_cancel(FileDialog *dialog) {
     dialog->cancelled = true;
     dialog_unlink(dialog);
-    simp_callback_release(dialog->context);
-    simp_callback_dispose(dialog->context);
+    cwhip_callback_release(dialog->context);
+    cwhip_callback_dispose(dialog->context);
     dialog->context = NULL;
     /* GTask still owns the completion's data until its callback arrives. */
     if (dialog->request_pending) g_cancellable_cancel(dialog->cancellable);
@@ -1038,7 +1038,7 @@ static int64_t file_dialog_create(int64_t parent, bool save, bool multiple, bool
     dialog->save = save;
     dialog->folder = folder;
     dialog->paths = g_ptr_array_new_with_free_func(g_free);
-    dialog->context = simp_callback_acquire(callback, "callback<void(String)>");
+    dialog->context = cwhip_callback_acquire(callback, "callback<void(String)>");
     dialog->chooser = gtk_file_dialog_new();
     dialog->cancellable = g_cancellable_new();
     gtk_file_dialog_set_title(dialog->chooser,
@@ -1087,19 +1087,19 @@ static int64_t file_dialog_create(int64_t parent, bool save, bool multiple, bool
     return token;
 }
 
-int64_t simp_gtk_file_dialog_create(void *self, int64_t parent, bool save,
+int64_t cwhip_gtk_file_dialog_create(void *self, int64_t parent, bool save,
                                     void *initial_path, void *callback) {
     (void)self;
     return file_dialog_create(parent, save, false, false, initial_path, callback);
 }
 
-int64_t simp_gtk_file_dialog_create_multiple(void *self, int64_t parent, void *initial_path,
+int64_t cwhip_gtk_file_dialog_create_multiple(void *self, int64_t parent, void *initial_path,
                                              void *callback) {
     (void)self;
     return file_dialog_create(parent, false, true, false, initial_path, callback);
 }
 
-int64_t simp_gtk_file_dialog_create_folder(void *self, int64_t parent, void *initial_path,
+int64_t cwhip_gtk_file_dialog_create_folder(void *self, int64_t parent, void *initial_path,
                                           void *callback) {
     (void)self;
     return file_dialog_create(parent, false, false, true, initial_path, callback);
@@ -1107,10 +1107,10 @@ int64_t simp_gtk_file_dialog_create_folder(void *self, int64_t parent, void *ini
 
 /* GtkAlertDialog owns its window: it is modal, transient for the parent, and
  * destroys itself when dismissed or when the parent is destroyed. */
-void simp_gtk_alert_show(void *self, int64_t parent, void *message, void *detail) {
+void cwhip_gtk_alert_show(void *self, int64_t parent, void *message, void *detail) {
     (void)self;
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     GtkWidget *window = widget_live(parent);
     if (!GTK_IS_WINDOW(window)) fatal("AlertDialog requires Window");
     char *heading = text_copy(message);
@@ -1124,10 +1124,10 @@ void simp_gtk_alert_show(void *self, int64_t parent, void *message, void *detail
     g_free(heading);
 }
 
-void simp_gtk_file_dialog_cancel(void *self, int64_t token) {
+void cwhip_gtk_file_dialog_cancel(void *self, int64_t token) {
     (void)self;
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     for (FileDialog *dialog = dialogs; dialog; dialog = dialog->next)
         if (dialog->token == token) {
             dialog_cancel(dialog);
@@ -1135,16 +1135,16 @@ void simp_gtk_file_dialog_cancel(void *self, int64_t token) {
         }
 }
 
-bool simp_gtk_file_dialog_pending(void *self, int64_t token) {
+bool cwhip_gtk_file_dialog_pending(void *self, int64_t token) {
     (void)self;
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     for (FileDialog *dialog = dialogs; dialog; dialog = dialog->next)
         if (dialog->token == token) return true;
     return false;
 }
 
-void simp_gtk_widget_text_set(void *self, int64_t token, void *text) {
+void cwhip_gtk_widget_text_set(void *self, int64_t token, void *text) {
     (void)self;
     GtkWidget *w = g_object_ref(widget_live(token));
     char *label = text_copy(text);
@@ -1158,7 +1158,7 @@ void simp_gtk_widget_text_set(void *self, int64_t token, void *text) {
     g_object_unref(w);
 }
 
-void *simp_gtk_widget_text_get(void *self, int64_t token) {
+void *cwhip_gtk_widget_text_get(void *self, int64_t token) {
     (void)self;
     GtkWidget *w = widget_live(token);
     const char *text;
@@ -1169,10 +1169,10 @@ void *simp_gtk_widget_text_get(void *self, int64_t token) {
     else if (GTK_IS_CHECK_BUTTON(w)) text = gtk_check_button_get_label(GTK_CHECK_BUTTON(w));
     else fatal("widget has no text property");
     if (!text) text = "";
-    return simp_string_new(&simp_string_class_meta, text, strlen(text));
+    return cwhip_string_new(&cwhip_string_class_meta, text, strlen(text));
 }
 
-void simp_gtk_widget_attach(void *self, int64_t parent, int64_t child) {
+void cwhip_gtk_widget_attach(void *self, int64_t parent, int64_t child) {
     (void)self;
     GtkWidget *p = widget_live(parent);
     GtkWidget *c = widget_live(child);
@@ -1201,7 +1201,7 @@ void simp_gtk_widget_attach(void *self, int64_t parent, int64_t child) {
     cr->parent = pr;
 }
 
-void simp_gtk_widget_remove(void *self, int64_t parent, int64_t child) {
+void cwhip_gtk_widget_remove(void *self, int64_t parent, int64_t child) {
     (void)self;
     widget_live(parent);
     widget_live(child);
@@ -1210,7 +1210,7 @@ void simp_gtk_widget_remove(void *self, int64_t parent, int64_t child) {
     detach(cr);
 }
 
-void simp_gtk_window_action(void *self, int64_t token, int64_t action) {
+void cwhip_gtk_window_action(void *self, int64_t token, int64_t action) {
     (void)self;
     GtkWidget *w = g_object_ref(widget_live(token));
     if (!GTK_IS_WINDOW(w)) fatal("operation requires Window");
@@ -1224,7 +1224,7 @@ void simp_gtk_window_action(void *self, int64_t token, int64_t action) {
     g_object_unref(w);
 }
 
-void simp_gtk_window_size(void *self, int64_t token, int64_t width, int64_t height) {
+void cwhip_gtk_window_size(void *self, int64_t token, int64_t width, int64_t height) {
     (void)self;
     GtkWidget *w = widget_live(token);
     if (!GTK_IS_WINDOW(w) || width < 1 || height < 1 || width > G_MAXINT || height > G_MAXINT)
@@ -1232,7 +1232,7 @@ void simp_gtk_window_size(void *self, int64_t token, int64_t width, int64_t heig
     gtk_window_set_default_size(GTK_WINDOW(w), (int)width, (int)height);
 }
 
-int64_t simp_gtk_window_width(void *self, int64_t token) {
+int64_t cwhip_gtk_window_width(void *self, int64_t token) {
     (void)self;
     GtkWidget *w = widget_live(token);
     if (!GTK_IS_WINDOW(w)) fatal("invalid window");
@@ -1241,7 +1241,7 @@ int64_t simp_gtk_window_width(void *self, int64_t token) {
     return width;
 }
 
-int64_t simp_gtk_window_height(void *self, int64_t token) {
+int64_t cwhip_gtk_window_height(void *self, int64_t token) {
     (void)self;
     GtkWidget *w = widget_live(token);
     if (!GTK_IS_WINDOW(w)) fatal("invalid window");
@@ -1250,10 +1250,10 @@ int64_t simp_gtk_window_height(void *self, int64_t token) {
     return height;
 }
 
-void simp_gtk_window_transient_for(void *self, int64_t token, int64_t parent) {
+void cwhip_gtk_window_transient_for(void *self, int64_t token, int64_t parent) {
     (void)self;
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     GtkWidget *window = widget_live(token);
     GtkWidget *parent_window = widget_live(parent);
     if (!GTK_IS_WINDOW(window) || !GTK_IS_WINDOW(parent_window) || window == parent_window)
@@ -1262,7 +1262,7 @@ void simp_gtk_window_transient_for(void *self, int64_t token, int64_t parent) {
     gtk_window_set_destroy_with_parent(GTK_WINDOW(window), TRUE);
 }
 
-void simp_gtk_box_layout(void *self, int64_t token, int64_t orientation, int64_t spacing) {
+void cwhip_gtk_box_layout(void *self, int64_t token, int64_t orientation, int64_t spacing) {
     (void)self;
     GtkWidget *w = widget_live(token);
     if (!GTK_IS_BOX(w) || orientation < 0 || orientation > 1 || spacing < 0 || spacing > G_MAXINT)
@@ -1271,7 +1271,7 @@ void simp_gtk_box_layout(void *self, int64_t token, int64_t orientation, int64_t
     gtk_box_set_spacing(GTK_BOX(w), (int)spacing);
 }
 
-void simp_gtk_checkbox_set(void *self, int64_t token, bool active) {
+void cwhip_gtk_checkbox_set(void *self, int64_t token, bool active) {
     (void)self;
     GtkWidget *w = g_object_ref(widget_live(token));
     if (!GTK_IS_CHECK_BUTTON(w)) fatal("operation requires CheckButton");
@@ -1279,14 +1279,14 @@ void simp_gtk_checkbox_set(void *self, int64_t token, bool active) {
     g_object_unref(w);
 }
 
-bool simp_gtk_checkbox_get(void *self, int64_t token) {
+bool cwhip_gtk_checkbox_get(void *self, int64_t token) {
     (void)self;
     GtkWidget *w = widget_live(token);
     if (!GTK_IS_CHECK_BUTTON(w)) fatal("operation requires CheckButton");
     return gtk_check_button_get_active(GTK_CHECK_BUTTON(w)) != FALSE;
 }
 
-void simp_gtk_notebook_append(void *self, int64_t notebook, int64_t child, void *title) {
+void cwhip_gtk_notebook_append(void *self, int64_t notebook, int64_t child, void *title) {
     (void)self;
     GtkWidget *parent = widget_live(notebook);
     GtkWidget *page = widget_live(child);
@@ -1302,14 +1302,14 @@ void simp_gtk_notebook_append(void *self, int64_t notebook, int64_t child, void 
     cr->parent = pr;
 }
 
-int64_t simp_gtk_notebook_current(void *self, int64_t token) {
+int64_t cwhip_gtk_notebook_current(void *self, int64_t token) {
     (void)self;
     GtkWidget *widget = widget_live(token);
     if (!GTK_IS_NOTEBOOK(widget)) fatal("operation requires Notebook");
     return gtk_notebook_get_current_page(GTK_NOTEBOOK(widget));
 }
 
-void simp_gtk_notebook_set_current(void *self, int64_t token, int64_t page) {
+void cwhip_gtk_notebook_set_current(void *self, int64_t token, int64_t page) {
     (void)self;
     GtkWidget *widget = widget_live(token);
     if (!GTK_IS_NOTEBOOK(widget) || page < 0 ||
@@ -1318,14 +1318,14 @@ void simp_gtk_notebook_set_current(void *self, int64_t token, int64_t page) {
     gtk_notebook_set_current_page(GTK_NOTEBOOK(widget), (int)page);
 }
 
-int64_t simp_gtk_notebook_count(void *self, int64_t token) {
+int64_t cwhip_gtk_notebook_count(void *self, int64_t token) {
     (void)self;
     GtkWidget *widget = widget_live(token);
     if (!GTK_IS_NOTEBOOK(widget)) fatal("operation requires Notebook");
     return gtk_notebook_get_n_pages(GTK_NOTEBOOK(widget));
 }
 
-void simp_gtk_notebook_title(void *self, int64_t token, int64_t page, void *title) {
+void cwhip_gtk_notebook_title(void *self, int64_t token, int64_t page, void *title) {
     (void)self;
     GtkWidget *widget = widget_live(token);
     if (!GTK_IS_NOTEBOOK(widget) || page < 0 ||
@@ -1339,7 +1339,7 @@ void simp_gtk_notebook_title(void *self, int64_t token, int64_t page, void *titl
     g_free(label);
 }
 
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
 static GtkSourceBuffer *source_buffer(int64_t token) {
     GtkWidget *widget = widget_live(token);
     if (!GTK_SOURCE_IS_VIEW(widget)) fatal("operation requires GtkSourceView");
@@ -1354,18 +1354,18 @@ static void shortcut_free(ShortcutBinding *binding) {
 static gboolean shortcut_invoke(GtkWidget *widget, GVariant *args, gpointer data) {
     (void)widget;
     (void)args;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     ShortcutBinding *binding = data;
     if (!binding->context || binding->release_pending) return FALSE;
-    int acquired = simp_runtime_managed_enter();
+    int acquired = cwhip_runtime_managed_enter();
     ++binding->active;
-    typedef void (*Adapter)(SimpCallbackContext *);
-    ((Adapter)simp_callback_adapter(binding->context))(binding->context);
+    typedef void (*Adapter)(CwhipCallbackContext *);
+    ((Adapter)cwhip_callback_adapter(binding->context))(binding->context);
     if (--binding->active == 0) {
         if (binding->release_pending) shortcut_release(binding);
         if (binding->orphaned) shortcut_free(binding);
     }
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
     return TRUE;
 }
 
@@ -1373,8 +1373,8 @@ static gboolean shortcut_invoke(GtkWidget *widget, GVariant *args, gpointer data
  * callback is still running (the view or window was disposed from inside the
  * shortcut); shortcut_invoke then completes the release on unwind. */
 static void shortcut_context_dispose(gpointer data) {
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     ShortcutBinding *binding = data;
     if (binding->owner) {
         ShortcutBinding **link = &binding->owner->shortcuts;
@@ -1385,10 +1385,10 @@ static void shortcut_context_dispose(gpointer data) {
     shortcut_release(binding);
     if (binding->active) binding->orphaned = true;
     else shortcut_free(binding);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
 }
 
-int64_t simp_gtk_source_view_changed(void *self, int64_t token, void *callback) {
+int64_t cwhip_gtk_source_view_changed(void *self, int64_t token, void *callback) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     int64_t connection = connect_signal(G_OBJECT(buffer), "changed", G_CALLBACK(changed_no_args),
@@ -1398,7 +1398,7 @@ int64_t simp_gtk_source_view_changed(void *self, int64_t token, void *callback) 
     return connection;
 }
 
-int64_t simp_gtk_source_view_cursor_moved(void *self, int64_t token, void *callback) {
+int64_t cwhip_gtk_source_view_cursor_moved(void *self, int64_t token, void *callback) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     int64_t connection = connect_signal(G_OBJECT(buffer), "mark-set", G_CALLBACK(cursor_moved),
@@ -1407,7 +1407,7 @@ int64_t simp_gtk_source_view_cursor_moved(void *self, int64_t token, void *callb
     return connection;
 }
 
-bool simp_gtk_source_view_bind_shortcut(void *self, int64_t token, void *trigger_text,
+bool cwhip_gtk_source_view_bind_shortcut(void *self, int64_t token, void *trigger_text,
                                         void *callback) {
     (void)self;
     GtkWidget *widget = widget_live(token);
@@ -1421,7 +1421,7 @@ bool simp_gtk_source_view_bind_shortcut(void *self, int64_t token, void *trigger
     ShortcutBinding *binding = calloc(1, sizeof(*binding));
     if (!binding) fatal("allocation failed");
     binding->owner = record_find(token);
-    binding->context = simp_callback_acquire(callback, "callback<void()>");
+    binding->context = cwhip_callback_acquire(callback, "callback<void()>");
     binding->trigger = trigger_name;
     binding->next = binding->owner->shortcuts;
     binding->owner->shortcuts = binding;
@@ -1438,7 +1438,7 @@ bool simp_gtk_source_view_bind_shortcut(void *self, int64_t token, void *trigger
     return true;
 }
 
-bool simp_gtk_source_view_has_shortcut(void *self, int64_t token, void *trigger_text) {
+bool cwhip_gtk_source_view_has_shortcut(void *self, int64_t token, void *trigger_text) {
     (void)self;
     char *trigger = text_copy(trigger_text);
     WidgetRecord *record = record_find(token);
@@ -1453,62 +1453,62 @@ bool simp_gtk_source_view_has_shortcut(void *self, int64_t token, void *trigger_
     return found;
 }
 
-void simp_gtk_source_view_set_text(void *self, int64_t token, void *text) {
+void cwhip_gtk_source_view_set_text(void *self, int64_t token, void *text) {
     (void)self;
     char *bytes = text_copy(text);
     gtk_text_buffer_set_text(GTK_TEXT_BUFFER(source_buffer(token)), bytes, -1);
     g_free(bytes);
 }
 
-void *simp_gtk_source_view_get_text(void *self, int64_t token) {
+void *cwhip_gtk_source_view_get_text(void *self, int64_t token) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     GtkTextIter start, end;
     gtk_text_buffer_get_bounds(buffer, &start, &end);
     char *text = gtk_text_buffer_get_text(buffer, &start, &end, TRUE);
-    void *result = simp_string_new(&simp_string_class_meta, text, strlen(text));
+    void *result = cwhip_string_new(&cwhip_string_class_meta, text, strlen(text));
     g_free(text);
     return result;
 }
 
-bool simp_gtk_source_view_modified(void *self, int64_t token) {
+bool cwhip_gtk_source_view_modified(void *self, int64_t token) {
     (void)self;
     return gtk_text_buffer_get_modified(GTK_TEXT_BUFFER(source_buffer(token))) != FALSE;
 }
 
-void simp_gtk_source_view_mark_saved(void *self, int64_t token) {
+void cwhip_gtk_source_view_mark_saved(void *self, int64_t token) {
     (void)self;
     gtk_text_buffer_set_modified(GTK_TEXT_BUFFER(source_buffer(token)), FALSE);
 }
 
-void simp_gtk_source_view_undo(void *self, int64_t token) {
+void cwhip_gtk_source_view_undo(void *self, int64_t token) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     if (gtk_text_buffer_get_can_undo(buffer)) gtk_text_buffer_undo(buffer);
 }
 
-void simp_gtk_source_view_redo(void *self, int64_t token) {
+void cwhip_gtk_source_view_redo(void *self, int64_t token) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     if (gtk_text_buffer_get_can_redo(buffer)) gtk_text_buffer_redo(buffer);
 }
 
-bool simp_gtk_source_view_can_undo(void *self, int64_t token) {
+bool cwhip_gtk_source_view_can_undo(void *self, int64_t token) {
     (void)self;
     return gtk_text_buffer_get_can_undo(GTK_TEXT_BUFFER(source_buffer(token))) != FALSE;
 }
 
-bool simp_gtk_source_view_can_redo(void *self, int64_t token) {
+bool cwhip_gtk_source_view_can_redo(void *self, int64_t token) {
     (void)self;
     return gtk_text_buffer_get_can_redo(GTK_TEXT_BUFFER(source_buffer(token))) != FALSE;
 }
 
-bool simp_gtk_source_view_has_selection(void *self, int64_t token) {
+bool cwhip_gtk_source_view_has_selection(void *self, int64_t token) {
     (void)self;
     return gtk_text_buffer_get_has_selection(GTK_TEXT_BUFFER(source_buffer(token))) != FALSE;
 }
 
-void simp_gtk_source_view_edit(void *self, int64_t token, int64_t operation) {
+void cwhip_gtk_source_view_edit(void *self, int64_t token, int64_t operation) {
     (void)self;
     GtkTextBuffer *buffer = g_object_ref(GTK_TEXT_BUFFER(source_buffer(token)));
     GtkWidget *widget = g_object_ref(widget_live(token));
@@ -1526,14 +1526,14 @@ void simp_gtk_source_view_edit(void *self, int64_t token, int64_t operation) {
     g_object_unref(buffer);
 }
 
-void simp_gtk_source_view_monospace(void *self, int64_t token, bool monospace) {
+void cwhip_gtk_source_view_monospace(void *self, int64_t token, bool monospace) {
     (void)self;
     GtkWidget *widget = widget_live(token);
     if (!GTK_SOURCE_IS_VIEW(widget)) fatal("operation requires GtkSourceView");
     gtk_text_view_set_monospace(GTK_TEXT_VIEW(widget), monospace);
 }
 
-void simp_gtk_source_view_clear_shortcuts(void *self, int64_t token) {
+void cwhip_gtk_source_view_clear_shortcuts(void *self, int64_t token) {
     (void)self;
     GtkWidget *widget = widget_live(token);
     WidgetRecord *record = record_find(token);
@@ -1548,12 +1548,12 @@ void simp_gtk_source_view_clear_shortcuts(void *self, int64_t token) {
 
 static void font_provider_release(gpointer data) {
     GtkCssProvider *provider = data;
-    GdkDisplay *display = g_object_get_data(G_OBJECT(provider), "simp-font-display");
+    GdkDisplay *display = g_object_get_data(G_OBJECT(provider), "cwhip-font-display");
     gtk_style_context_remove_provider_for_display(display, GTK_STYLE_PROVIDER(provider));
     g_object_unref(provider);
 }
 
-void simp_gtk_source_view_configure(void *self, int64_t token, void *font_text,
+void cwhip_gtk_source_view_configure(void *self, int64_t token, void *font_text,
                                    int64_t size, int64_t tabs, bool spaces,
                                    bool numbers, bool wrap, bool highlight) {
     (void)self;
@@ -1568,10 +1568,10 @@ void simp_gtk_source_view_configure(void *self, int64_t token, void *font_text,
         g_string_append_c(quoted, *p);
     }
     g_string_append_c(quoted, '"');
-    char *style_class = g_strdup_printf("simp-font-%" G_GINT64_FORMAT, token);
+    char *style_class = g_strdup_printf("cwhip-font-%" G_GINT64_FORMAT, token);
     char *css = g_strdup_printf("textview.%s { font-family: %s; font-size: %" G_GINT64_FORMAT
                                "pt; }", style_class, quoted->str, size);
-    const char *previous_css = g_object_get_data(G_OBJECT(widget), "simp-font-css");
+    const char *previous_css = g_object_get_data(G_OBJECT(widget), "cwhip-font-css");
     if (g_strcmp0(previous_css, css) != 0) {
         GtkCssProvider *provider = gtk_css_provider_new();
 #if GTK_CHECK_VERSION(4, 12, 0)
@@ -1580,14 +1580,14 @@ void simp_gtk_source_view_configure(void *self, int64_t token, void *font_text,
         gtk_css_provider_load_from_data(provider, css, -1);
 #endif
         GdkDisplay *display = gtk_widget_get_display(widget);
-        g_object_set_data_full(G_OBJECT(provider), "simp-font-display",
+        g_object_set_data_full(G_OBJECT(provider), "cwhip-font-display",
                                g_object_ref(display), g_object_unref);
-        g_object_set_data(G_OBJECT(widget), "simp-font-provider", NULL);
+        g_object_set_data(G_OBJECT(widget), "cwhip-font-provider", NULL);
         gtk_widget_add_css_class(widget, style_class);
         gtk_style_context_add_provider_for_display(display, GTK_STYLE_PROVIDER(provider),
                                                    GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-        g_object_set_data_full(G_OBJECT(widget), "simp-font-provider", provider, font_provider_release);
-        g_object_set_data_full(G_OBJECT(widget), "simp-font-css", g_strdup(css), g_free);
+        g_object_set_data_full(G_OBJECT(widget), "cwhip-font-provider", provider, font_provider_release);
+        g_object_set_data_full(G_OBJECT(widget), "cwhip-font-css", g_strdup(css), g_free);
     }
     gtk_text_view_set_monospace(GTK_TEXT_VIEW(widget), TRUE);
     gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(widget), wrap ? GTK_WRAP_WORD_CHAR : GTK_WRAP_NONE);
@@ -1601,7 +1601,7 @@ void simp_gtk_source_view_configure(void *self, int64_t token, void *font_text,
     g_string_free(quoted, TRUE);
 }
 
-/* Search option bits shared with GtkSource.View in sourceview.simp. */
+/* Search option bits shared with GtkSource.View in sourceview.cw. */
 enum {
     SEARCH_CASE_SENSITIVE = 1,
     SEARCH_WHOLE_WORDS = 2,
@@ -1611,10 +1611,10 @@ enum {
 /* The "in selection" scope and the last match are buffer marks so they track
  * edits: the scope start has left gravity and its end right gravity, so text
  * replaced at either boundary stays inside the scope. */
-#define SCOPE_START "simp-search-scope-start"
-#define SCOPE_END "simp-search-scope-end"
-#define MATCH_START "simp-search-match-start"
-#define MATCH_END "simp-search-match-end"
+#define SCOPE_START "cwhip-search-scope-start"
+#define SCOPE_END "cwhip-search-scope-end"
+#define MATCH_START "cwhip-search-match-start"
+#define MATCH_END "cwhip-search-match-end"
 
 static void mark_set(GtkTextBuffer *buffer, const char *name, const GtkTextIter *where,
                      gboolean left_gravity) {
@@ -1700,7 +1700,7 @@ static bool source_find(int64_t token, const char *query, int64_t flags) {
     return found;
 }
 
-bool simp_gtk_source_view_search(void *self, int64_t token, void *needle, int64_t flags) {
+bool cwhip_gtk_source_view_search(void *self, int64_t token, void *needle, int64_t flags) {
     (void)self;
     char *query = text_copy(needle);
     bool found = source_find(token, query, flags);
@@ -1708,11 +1708,11 @@ bool simp_gtk_source_view_search(void *self, int64_t token, void *needle, int64_
     return found;
 }
 
-bool simp_gtk_source_view_find(void *self, int64_t token, void *needle) {
-    return simp_gtk_source_view_search(self, token, needle, 0);
+bool cwhip_gtk_source_view_find(void *self, int64_t token, void *needle) {
+    return cwhip_gtk_source_view_search(self, token, needle, 0);
 }
 
-bool simp_gtk_source_view_replace(void *self, int64_t token, void *needle, void *replacement,
+bool cwhip_gtk_source_view_replace(void *self, int64_t token, void *needle, void *replacement,
                                   int64_t flags) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
@@ -1734,14 +1734,14 @@ bool simp_gtk_source_view_replace(void *self, int64_t token, void *needle, void 
     return replaced;
 }
 
-bool simp_gtk_source_view_replace_next(void *self, int64_t token, void *needle, void *replacement) {
-    return simp_gtk_source_view_replace(self, token, needle, replacement, 0);
+bool cwhip_gtk_source_view_replace_next(void *self, int64_t token, void *needle, void *replacement) {
+    return cwhip_gtk_source_view_replace(self, token, needle, replacement, 0);
 }
 
 /* Replaces every match in the search range as one undoable action. Matches
  * are found after the previous replacement, so replacement text containing
  * the query is never matched again. */
-int64_t simp_gtk_source_view_replace_all(void *self, int64_t token, void *needle,
+int64_t cwhip_gtk_source_view_replace_all(void *self, int64_t token, void *needle,
                                          void *replacement, int64_t flags) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
@@ -1773,7 +1773,7 @@ int64_t simp_gtk_source_view_replace_all(void *self, int64_t token, void *needle
 /* Captures the current selection as the "in selection" scope. Selecting a
  * Find result does not replace the scope, so Find/Replace can be reopened while
  * a match is selected; with no selection the scope is cleared. */
-bool simp_gtk_source_view_capture_scope(void *self, int64_t token) {
+bool cwhip_gtk_source_view_capture_scope(void *self, int64_t token) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     GtkTextIter start, end, match_start, match_end, scope_start;
@@ -1790,25 +1790,25 @@ bool simp_gtk_source_view_capture_scope(void *self, int64_t token) {
     return true;
 }
 
-bool simp_gtk_source_view_has_scope(void *self, int64_t token) {
+bool cwhip_gtk_source_view_has_scope(void *self, int64_t token) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     GtkTextIter low, high;
     return search_bounds(buffer, SEARCH_IN_SELECTION, &low, &high);
 }
 
-void *simp_gtk_source_view_selected_text(void *self, int64_t token) {
+void *cwhip_gtk_source_view_selected_text(void *self, int64_t token) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     GtkTextIter start, end;
     char *text = gtk_text_buffer_get_selection_bounds(buffer, &start, &end)
                      ? gtk_text_buffer_get_text(buffer, &start, &end, TRUE) : g_strdup("");
-    void *result = simp_string_new(&simp_string_class_meta, text, strlen(text));
+    void *result = cwhip_string_new(&cwhip_string_class_meta, text, strlen(text));
     g_free(text);
     return result;
 }
 
-int64_t simp_gtk_source_view_line(void *self, int64_t token) {
+int64_t cwhip_gtk_source_view_line(void *self, int64_t token) {
     (void)self;
     GtkTextIter cursor;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
@@ -1817,7 +1817,7 @@ int64_t simp_gtk_source_view_line(void *self, int64_t token) {
 }
 
 /* Moves the insertion point to a 1-based line/column, clamped to the buffer. */
-void simp_gtk_source_view_set_cursor(void *self, int64_t token, int64_t line, int64_t column) {
+void cwhip_gtk_source_view_set_cursor(void *self, int64_t token, int64_t line, int64_t column) {
     (void)self;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
     GtkTextIter cursor;
@@ -1835,7 +1835,7 @@ void simp_gtk_source_view_set_cursor(void *self, int64_t token, int64_t line, in
                                        gtk_text_buffer_get_insert(buffer));
 }
 
-int64_t simp_gtk_source_view_column(void *self, int64_t token) {
+int64_t cwhip_gtk_source_view_column(void *self, int64_t token) {
     (void)self;
     GtkTextIter cursor;
     GtkTextBuffer *buffer = GTK_TEXT_BUFFER(source_buffer(token));
@@ -1845,7 +1845,7 @@ int64_t simp_gtk_source_view_column(void *self, int64_t token) {
 
 /* "" selects plain text (no highlighting). Other ids must name a language
  * definition shipped by the sourceview package; see doc/GTK.md. */
-bool simp_gtk_source_view_language(void *self, int64_t token, void *language_id) {
+bool cwhip_gtk_source_view_language(void *self, int64_t token, void *language_id) {
     (void)self;
     char *id = text_copy(language_id);
     GtkSourceLanguage *language = NULL;
@@ -1865,16 +1865,16 @@ bool simp_gtk_source_view_language(void *self, int64_t token, void *language_id)
     return true;
 }
 
-void *simp_gtk_source_view_language_id(void *self, int64_t token) {
+void *cwhip_gtk_source_view_language_id(void *self, int64_t token) {
     (void)self;
     GtkSourceLanguage *language = gtk_source_buffer_get_language(source_buffer(token));
     const char *id = language ? gtk_source_language_get_id(language) : "";
-    return simp_string_new(&simp_string_class_meta, id, strlen(id));
+    return cwhip_string_new(&cwhip_string_class_meta, id, strlen(id));
 }
 
 /* Maps a file name to a registered language id using the globs/mimetypes
  * metadata in the package's .lang files, or "" for plain text. */
-void *simp_gtk_source_language_for(void *self, void *path) {
+void *cwhip_gtk_source_language_for(void *self, void *path) {
     (void)self;
     require_live();
     char *name = text_copy(path);
@@ -1882,20 +1882,20 @@ void *simp_gtk_source_language_for(void *self, void *path) {
         ? gtk_source_language_manager_guess_language(source_language_manager, name, NULL) : NULL;
     const char *id = language ? gtk_source_language_get_id(language) : "";
     if (!g_hash_table_contains(registered_languages, id)) id = "";
-    void *result = simp_string_new(&simp_string_class_meta, id, strlen(id));
+    void *result = cwhip_string_new(&cwhip_string_class_meta, id, strlen(id));
     g_free(name);
     return result;
 }
 
-bool simp_gtk_source_is_text(void *self, void *data) {
+bool cwhip_gtk_source_is_text(void *self, void *data) {
     (void)self;
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(data, &bytes, &length);
+    cwhip_string_bytes(data, &bytes, &length);
     return length == 0 || !memchr(bytes, 0, length);
 }
 
-bool simp_gtk_source_view_has_context(void *self, int64_t token, void *context_name,
+bool cwhip_gtk_source_view_has_context(void *self, int64_t token, void *context_name,
                                      int64_t offset) {
     (void)self;
     GtkSourceBuffer *buffer = source_buffer(token);
@@ -1912,16 +1912,16 @@ bool simp_gtk_source_view_has_context(void *self, int64_t token, void *context_n
 }
 #endif
 
-int64_t simp_gtk_widget_signal(void *self, int64_t token, int64_t kind, void *callback) {
+int64_t cwhip_gtk_widget_signal(void *self, int64_t token, int64_t kind, void *callback) {
     (void)self;
     GtkWidget *w = widget_live(token);
-    if (kind == 0) return simp_gtk_connect_clicked(GTK_BUTTON(w), callback);
+    if (kind == 0) return cwhip_gtk_connect_clicked(GTK_BUTTON(w), callback);
     if (kind == 1) {
         if (!GTK_IS_EDITABLE(w)) fatal("changed requires Entry");
         return connect_signal(G_OBJECT(w), "changed", G_CALLBACK(text_changed),
                               callback, "callback<void(String)>");
     }
-    if (kind == 2) return simp_gtk_connect_close_request(GTK_WINDOW(w), callback);
+    if (kind == 2) return cwhip_gtk_connect_close_request(GTK_WINDOW(w), callback);
     if (kind == 3) {
         if (!GTK_IS_CHECK_BUTTON(w)) fatal("toggled requires CheckButton");
         return connect_signal(G_OBJECT(w), "toggled", G_CALLBACK(toggled),
@@ -1938,26 +1938,26 @@ int64_t simp_gtk_widget_signal(void *self, int64_t token, int64_t kind, void *ca
 static int64_t source_token(void *source) {
     require_live();
     if (!source) fatal("null signal source");
-    void *receiver = simp_gc_root(source);
+    void *receiver = cwhip_gc_root(source);
     for (WidgetRecord *r = widgets; r; r = r->next)
         if (r->receiver == receiver && r->widget) return r->token;
     fatal("widget has been disposed or is not initialized");
 }
 
-int64_t simp_gtk_button_signal(void *self, void *source, void *callback) {
-    return simp_gtk_widget_signal(self, source_token(source), 0, callback);
+int64_t cwhip_gtk_button_signal(void *self, void *source, void *callback) {
+    return cwhip_gtk_widget_signal(self, source_token(source), 0, callback);
 }
-int64_t simp_gtk_entry_signal(void *self, void *source, void *callback) {
-    return simp_gtk_widget_signal(self, source_token(source), 1, callback);
+int64_t cwhip_gtk_entry_signal(void *self, void *source, void *callback) {
+    return cwhip_gtk_widget_signal(self, source_token(source), 1, callback);
 }
-int64_t simp_gtk_window_signal(void *self, void *source, void *callback) {
-    return simp_gtk_widget_signal(self, source_token(source), 2, callback);
+int64_t cwhip_gtk_window_signal(void *self, void *source, void *callback) {
+    return cwhip_gtk_widget_signal(self, source_token(source), 2, callback);
 }
-int64_t simp_gtk_checkbox_signal(void *self, void *source, void *callback) {
-    return simp_gtk_widget_signal(self, source_token(source), 3, callback);
+int64_t cwhip_gtk_checkbox_signal(void *self, void *source, void *callback) {
+    return cwhip_gtk_widget_signal(self, source_token(source), 3, callback);
 }
-int64_t simp_gtk_notebook_signal(void *self, void *source, void *callback) {
-    return simp_gtk_widget_signal(self, source_token(source), 4, callback);
+int64_t cwhip_gtk_notebook_signal(void *self, void *source, void *callback) {
+    return cwhip_gtk_widget_signal(self, source_token(source), 4, callback);
 }
 
 #include "gtk_config.c"

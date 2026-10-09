@@ -1,0 +1,3 @@
+set(CASE_NAME cwhip_default_package_namespace)
+set(CASE_FIXTURE positive_default_package_namespace.cw)
+set(CASE_EXPECTED_OUTPUT "hellotruetruetrue")

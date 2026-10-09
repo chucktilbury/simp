@@ -1,6 +1,6 @@
-#include "simp/Diagnostic.hpp"
-#include "simp/Lexer.hpp"
-#include "simp/Parser.hpp"
+#include "cwhip/Diagnostic.hpp"
+#include "cwhip/Lexer.hpp"
+#include "cwhip/Parser.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -9,13 +9,13 @@
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     try {
-        simp::Lexer lexer(std::string(reinterpret_cast<const char*>(data), size),
+        cwhip::Lexer lexer(std::string(reinterpret_cast<const char*>(data), size),
                           "<fuzz>");
         auto tokens = lexer.tokenize();
-        simp::Parser parser(std::move(tokens));
+        cwhip::Parser parser(std::move(tokens));
         auto program = parser.parseProgram(false);
         (void)program;
-    } catch (const simp::DiagnosticError&) {
+    } catch (const cwhip::DiagnosticError&) {
         // Invalid source must be diagnosed; other exceptions and faults are bugs.
     }
     return 0;

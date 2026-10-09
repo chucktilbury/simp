@@ -1,9 +1,0 @@
-[package]
-name = "native_math"
-version = "1.0.0"
-source = "src/native_math.simp"
-export = "class:NativeMath"
-
-[link]
-libraries = ["simp_native_math"]
-library-paths = ["lib"]

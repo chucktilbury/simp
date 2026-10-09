@@ -1,0 +1,3 @@
+set(CASE_NAME cwhip_compile_and_run_integer_control_flow)
+set(CASE_FIXTURE positive_integer_control_flow.cw)
+set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/cwhip_compile_and_run_integer_control_flow.stdout")

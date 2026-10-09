@@ -3,7 +3,7 @@
 #include <string>
 
 namespace {
-using namespace simp_test;
+using namespace cwhip_test;
 
 const std::string bases =
     "class A { A() {} }\nclass B { B() {} }\n";

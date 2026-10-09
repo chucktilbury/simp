@@ -1,5 +1,0 @@
-set(CASE_NAME simp_reports_compound_division_overflow)
-set(CASE_FIXTURE negative_compound_division_overflow.simp)
-set(CASE_EXPECT_RUNTIME_FAILURE ON)
-set(CASE_EXPECT_EMPTY_OUTPUT ON)
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[simp: uncaught runtime exception at .*negative_compound_division_overflow.simp:4:11: integer overflow]==])

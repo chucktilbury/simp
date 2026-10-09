@@ -1,6 +1,0 @@
-set(CASE_NAME simp_reports_original_exception_location_after_reraise)
-set(CASE_FIXTURE negative_uncaught_reraise.simp)
-set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_reports_original_exception_location_after_reraise.stdout")
-set(CASE_EXPECT_RUNTIME_FAILURE [==[ON]==])
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[simp: uncaught runtime exception at .*negative_uncaught_reraise.simp:4:5: original source]==])
-set(CASE_EXPECT_RUNTIME_FRAMES [==[at start]==])

@@ -5,24 +5,24 @@
  *
  * See RuntimeDemoShims.h for why this file exists separately from
  * RuntimeGc.c: it has nothing to do with garbage collection and exists only
- * to give tests/functional/positive/positive_extern_functions.simp real C-bound
+ * to give tests/functional/positive/positive_extern_functions.cw real C-bound
  * method implementations to link against.
  */
-#include "simp/RuntimeDemoShims.h"
+#include "cwhip/RuntimeDemoShims.h"
 
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct SimpDemoNative {
-    const SimpClassMeta *metadata;
+typedef struct CwhipDemoNative {
+    const CwhipClassMeta *metadata;
     void *owner;
     int64_t marker;
-} SimpDemoNative;
+} CwhipDemoNative;
 
 static int demo_handle_resource;
 
 static void require_demo_native_receiver(void *receiver) {
-    const SimpDemoNative *native = (const SimpDemoNative *)receiver;
+    const CwhipDemoNative *native = (const CwhipDemoNative *)receiver;
     if (native == NULL || native->metadata == NULL ||
         native->metadata->name_length != sizeof("Native") - 1 ||
         memcmp(native->metadata->name, "Native", sizeof("Native") - 1) != 0 ||
@@ -31,50 +31,50 @@ static void require_demo_native_receiver(void *receiver) {
     }
 }
 
-int64_t simp_method_demo_abs(void *receiver, int64_t value) {
+int64_t cwhip_method_demo_abs(void *receiver, int64_t value) {
     require_demo_native_receiver(receiver);
     return value == INT64_MIN ? INT64_MAX : (value < 0 ? -value : value);
 }
 
-void simp_method_demo_ignore(void *receiver, int64_t value) {
+void cwhip_method_demo_ignore(void *receiver, int64_t value) {
     require_demo_native_receiver(receiver);
     (void)value;
 }
 
-int64_t simp_method_demo_string_length(void *receiver, void *text) {
+int64_t cwhip_method_demo_string_length(void *receiver, void *text) {
     require_demo_native_receiver(receiver);
     const char *data;
     uint64_t length;
-    simp_string_bytes(text, &data, &length);
+    cwhip_string_bytes(text, &data, &length);
     return (int64_t)length;
 }
 
-void *simp_method_demo_string_identity(void *receiver, void *text) {
+void *cwhip_method_demo_string_identity(void *receiver, void *text) {
     require_demo_native_receiver(receiver);
     return text;
 }
 
-void *simp_method_demo_identity(void *receiver, void *object) {
+void *cwhip_method_demo_identity(void *receiver, void *object) {
     require_demo_native_receiver(receiver);
     return object;
 }
 
-int64_t simp_method_demo_exception_identity(void *receiver, void *left, void *right) {
+int64_t cwhip_method_demo_exception_identity(void *receiver, void *left, void *right) {
     if (receiver == NULL) abort();
     return left == right;
 }
 
-void *simp_method_demo_handle_create(void *receiver) {
+void *cwhip_method_demo_handle_create(void *receiver) {
     require_demo_native_receiver(receiver);
     return &demo_handle_resource;
 }
 
-void simp_method_demo_handle_consume(void *receiver, void *handle) {
+void cwhip_method_demo_handle_consume(void *receiver, void *handle) {
     require_demo_native_receiver(receiver);
     if (handle == NULL) abort();
 }
 
-void *simp_method_demo_handle_identity(void *receiver, void *handle) {
+void *cwhip_method_demo_handle_identity(void *receiver, void *handle) {
     require_demo_native_receiver(receiver);
     return handle;
 }

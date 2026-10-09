@@ -1,7 +1,7 @@
 # Tests
 
 This directory contains C++ unit/structural tests, CTest case definitions, and
-functional Simple programs. Build the repository with CMake, then run the full
+functional Cwhip programs. Build the repository with CMake, then run the full
 suite from the repository root:
 
 ```sh
@@ -13,7 +13,7 @@ ctest --test-dir build --output-on-failure
 ## Adding an integration test
 
 Integration tests are discovered from individual
-`cases/*.cmake` files. Add a `positive_*.simp` or `negative_*.simp` source
+`cases/*.cmake` files. Add a `positive_*.cw` or `negative_*.cw` source
 under `functional/positive/` or `functional/negative/`, then add a case file setting
 `CASE_NAME` (the CTest name) and `CASE_FIXTURE` (the source basename).
 
@@ -39,7 +39,7 @@ Other useful options are `CASE_ARGUMENTS`, `CASE_NO_RUN`,
 `CASE_NO_SOURCE`, `CASE_EXPECT_COMPILE_OUTPUT`, and
 `CASE_REJECT_COMPILE_OUTPUT`. Output expectations may use `<MODULE_ROOT>`,
 `<PROJECT_DIR>`, and `<WORK_DIR>` placeholders. Every case runs in its own
-work directory with the `SIMP_*` path variables cleared. `CASE_DEBUG_INFO`
+work directory with the `CWHIP_*` path variables cleared. `CASE_DEBUG_INFO`
 adds a `-g` case that checks generated DWARF data and, when GDB or LLDB is
 installed, exercises a breakpoint and local-variable inspection. See a
 neighboring case file and its runner for details. Reconfigure after adding a
@@ -47,7 +47,7 @@ case so CMake discovers it; no central test list needs editing.
 
 ## Unit and CLI tests
 
-With GTK tests enabled, `simp_project_explorer` drives the actual Cwhip Editor model,
+With GTK tests enabled, `cwhip_project_explorer` drives the actual Cwhip Editor model,
 native parented folder chooser and GTK tree activation under private Xvfb/dbus
 and isolated HOME/XDG directories. It covers lazy expansion, duplicate focus,
 hidden entries, refresh, read errors, non-UTF-8 filenames, symlink loops, stale
@@ -58,13 +58,13 @@ The same fixture is used by sanitizer configurations. The permission-denied
 case expects an ordinary unprivileged test user.
 Folder chooser regressions include acceptance/cancellation, immediate repeated
 cancellation, and parent close/shutdown both before and after mapping.
-`simp_gtk_bindings` separately checks all four `GtkFileDialog` operations,
+`cwhip_gtk_bindings` separately checks all four `GtkFileDialog` operations,
 callback-root release under GC and native finalization after late cancellation
-completions; `simp_editor_dialogs` preserves Open multi-select and Save/Save As
+completions; `cwhip_editor_dialogs` preserves Open multi-select and Save/Save As
 overwrite/cancel coverage.
 
-Parser and semantic fixtures consumed by `simp_tests` use a
-`<fixture>.simp.json` file beside the `.simp` file with `friendly_name`,
+Parser and semantic fixtures consumed by `cwhip_tests` use a
+`<fixture>.cw.json` file beside the `.cw` file with `friendly_name`,
 `expected_diagnostic` (empty for accepted input), and an `enabled` boolean.
 Focused C++ structural assertions belong in a `test_*_cases.cpp` group using
 `TestGroupRegistration` from `test_cases.hpp`; CMake discovers these groups.
@@ -73,10 +73,10 @@ runner accepts a `CASE` selector so each scenario has an independent CTest
 result.
 
 The install-layout tests stage with `DESTDIR`, relocate an installed prefix,
-and exercise installed package imports, `simpkg init`, and automatic `String`
-availability and inheritance. They also move `share/simp/builtin/` out of the
-prefix to verify `SIMP_BUILTIN_DIR` lookup and missing-resource diagnostics.
-Initialized projects are checked for `simpkg.toml` and a generated `simpkg.lock`
+and exercise installed package imports, `cwhip-pkg init`, and automatic `String`
+availability and inheritance. They also move `share/cwhip/builtin/` out of the
+prefix to verify `CWHIP_BUILTIN_DIR` lookup and missing-resource diagnostics.
+Initialized projects are checked for `cwhip-pkg.toml` and a generated `cwhip-pkg.lock`
 that locks standard modules without listing `String` as a package. Tests use
 isolated HOME/XDG directories and exercise home-package lookup without relying
 on the developer's configuration.

@@ -28,8 +28,8 @@ namespace scanner {
         void open(strg fname, strg mode) {
 
             inline(handle fh, strg err, strg fname, strg mode) {
-                *fh = simp_file_open(NULL, *fname, *mode);
-                *err = simp_system_last_error(NULL);
+                *fh = cwhip_file_open(NULL, *fname, *mode);
+                *err = cwhip_system_last_error(NULL);
             }
 
             if(err.length > 0) {
@@ -39,7 +39,7 @@ namespace scanner {
 
         void close() {
             inline(handle fh) {
-                simp_file_close(NULL, *fh);
+                cwhip_file_close(NULL, *fh);
             }
         }
 
@@ -60,7 +60,7 @@ namespace scanner {
                 inline(strg err, handle fh, int ch) {
                     FILE* stream = (FILE*)*fh;
                     *ch = fgetc(stream);
-                    *err = simp_system_last_error(NULL);
+                    *err = cwhip_system_last_error(NULL);
                 }
             }
             else {

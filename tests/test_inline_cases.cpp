@@ -3,7 +3,7 @@
 #include <algorithm>
 
 namespace {
-using namespace simp_test;
+using namespace cwhip_test;
 
 const TestGroupRegistration registration{1, {
     {"inline capture paths preserve the C parameter name", [] {
@@ -22,11 +22,11 @@ const TestGroupRegistration registration{1, {
         const auto& body = child->methods[0].body;
         require(body.size() == 4, "capture statements missing");
         require(body[0].inlineCaptures[0].name == "value" &&
-                    body[0].inlineCaptures[0].target->kind == simp::ExpressionKind::Member,
+                    body[0].inlineCaptures[0].target->kind == cwhip::ExpressionKind::Member,
                 "qualified field capture AST missing");
         require(body[2].inlineCaptures[0].target->left->kind ==
-                    simp::ExpressionKind::ImplicitThis &&
-                    body[3].inlineCaptures[0].target->kind == simp::ExpressionKind::Identifier,
+                    cwhip::ExpressionKind::ImplicitThis &&
+                    body[3].inlineCaptures[0].target->kind == cwhip::ExpressionKind::Identifier,
                 "explicit receiver or local precedence lost");
     }},
     {"inline captures use field access checks and exact types", [] {

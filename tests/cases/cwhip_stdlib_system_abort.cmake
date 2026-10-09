@@ -1,0 +1,5 @@
+set(CASE_NAME cwhip_stdlib_system_abort)
+set(CASE_FIXTURE positive_stdlib_system_abort.cw)
+set(CASE_EXPECT_RUNTIME_FAILURE ON)
+set(CASE_EXPECT_RUNTIME_DIAGNOSTIC "Cwhip abort: fatal error")
+set(CASE_EXPECT_EMPTY_OUTPUT ON)

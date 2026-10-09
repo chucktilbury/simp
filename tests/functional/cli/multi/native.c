@@ -1,1 +1,1 @@
-int simp_multi_external_value(void *self) { (void)self; return 42; }
+int cwhip_multi_external_value(void *self) { (void)self; return 42; }

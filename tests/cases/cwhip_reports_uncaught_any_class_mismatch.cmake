@@ -1,0 +1,5 @@
+set(CASE_NAME cwhip_reports_uncaught_any_class_mismatch)
+set(CASE_FIXTURE negative_any_class_mismatch.cw)
+set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/cwhip_reports_uncaught_any_class_mismatch.stdout")
+set(CASE_EXPECT_RUNTIME_FAILURE [==[ON]==])
+set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[uncaught runtime exception at .*negative_any_class_mismatch.cw:20:26: 'any' value holds a different class than the requested type]==])

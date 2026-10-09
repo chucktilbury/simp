@@ -1,3 +1,0 @@
-set(CASE_NAME simp_compile_and_run_secondary_bases)
-set(CASE_FIXTURE positive_secondary_bases.simp)
-set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_compile_and_run_secondary_bases.stdout")

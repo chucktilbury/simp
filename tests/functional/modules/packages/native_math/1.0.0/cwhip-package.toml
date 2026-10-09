@@ -1,0 +1,9 @@
+[package]
+name = "native_math"
+version = "1.0.0"
+source = "src/native_math.cw"
+export = "class:NativeMath"
+
+[link]
+libraries = ["cwhip_native_math"]
+library-paths = ["lib"]

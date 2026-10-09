@@ -1,5 +1,0 @@
-[package]
-name = "networking"
-version = "0.1.0"
-source = "networking.simp"
-export = "namespace:Networking"

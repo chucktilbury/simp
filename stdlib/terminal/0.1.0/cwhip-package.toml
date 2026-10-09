@@ -1,0 +1,5 @@
+[package]
+name = "terminal"
+version = "0.1.0"
+source = "terminal.cw"
+export = "namespace:Terminal"

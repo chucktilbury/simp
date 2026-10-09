@@ -6,7 +6,7 @@ types, without names. Zero parameters use `callback<R()>`. Nested callback
 types are allowed. `any` and `type` descriptors are not supported in signatures.
 `strg` and `String` denote the same signature type.
 
-```simp
+```cwhip
 // test: {"stdout": "42"}
 class Counter {
     int base
@@ -28,7 +28,7 @@ the receiver exactly once and checks it for null and destruction. A callback
 retains the receiver, including a secondary or virtual base view, through GC.
 Dispatch uses the receiver's virtual table, including overrides, rather than a
 public method symbol. Explicit destruction still invalidates invocation; holding
-a callback does not make destruction reversible. Simple invocation propagates
+a callback does not make destruction reversible. Cwhip invocation propagates
 exceptions normally.
 
 Callbacks can be stored in locals and fields, passed, returned, and invoked.
@@ -50,40 +50,40 @@ call is ambiguous. Access and inheritance-path checks apply at capture.
 
 ## Installed C API
 
-Include `<simp/Callbacks.h>`. The header is installed and staged alongside
-`<simp/Stdlib.h>`; its functions are supplied by `libsimp_runtime`. Native-bound
+Include `<cwhip/Callbacks.h>`. The header is installed and staged alongside
+`<cwhip/Stdlib.h>`; its functions are supplied by `libcwhip_runtime`. Native-bound
 callback parameters/results use a single opaque `void *`, just like managed
 class references. Inline captures receive `void **`, the address of the
-callback's rooted Simple slot. Do not dereference a callback's private layout or
-call Simple method symbols from C.
+callback's rooted Cwhip slot. Do not dereference a callback's private layout or
+call Cwhip method symbols from C.
 
-`simp_callback_acquire(callback, signature)` creates a retained registration.
+`cwhip_callback_acquire(callback, signature)` creates a retained registration.
 The signature string is **canonical**, e.g. `callback<int(int)>`,
 `callback<String(String)>`, or `callback<Model.Cell(Model.Cell)>`, with no
 spaces. Namespace/import aliases must be expanded to the declared namespace.
 An incorrect signature is a fatal native-boundary error, not a function-pointer
-cast. `simp_callback_signature(context)` returns the immutable canonical string.
+cast. `cwhip_callback_signature(context)` returns the immutable canonical string.
 
-`simp_callback_adapter(context)` returns a function pointer that must be converted
+`cwhip_callback_adapter(context)` returns a function pointer that must be converted
 to its **exact** signature:
 
 ```c
-#include <simp/Callbacks.h>
+#include <cwhip/Callbacks.h>
 
-typedef int64_t (*OnValue)(SimpCallbackContext *, int64_t);
+typedef int64_t (*OnValue)(CwhipCallbackContext *, int64_t);
 
-/* Called by a native-bound method or inline shim on a Simple thread. */
-SimpCallbackContext *context =
-    simp_callback_acquire(callback, "callback<int(int)>");
-OnValue function = (OnValue)simp_callback_adapter(context);
+/* Called by a native-bound method or inline shim on a Cwhip thread. */
+CwhipCallbackContext *context =
+    cwhip_callback_acquire(callback, "callback<int(int)>");
+OnValue function = (OnValue)cwhip_callback_adapter(context);
 int64_t answer = function(context, 42);
 /* Disconnect the C API's registration before releasing the retained root. */
-simp_callback_release(context);
+cwhip_callback_release(context);
 /* Dispose only when the C library can no longer use the context pointer. */
-simp_callback_dispose(context);
+cwhip_callback_dispose(context);
 ```
 
-The generated adapter's ABI is `R(SimpCallbackContext *, P1, P2, ...)`.
+The generated adapter's ABI is `R(CwhipCallbackContext *, P1, P2, ...)`.
 `int` is `int64_t`, `unsigned` is `uint64_t`, `float` is `double`, `bool` is
 C `_Bool`, and managed references/handles are `void *`. A `void` result really
 returns C `void`. Parameters keep their order. Use a small statically compiled
@@ -94,7 +94,7 @@ not dynamically generated executable per-object trampolines.
 
 The same API works in a hermetic inline shim:
 
-```simp
+```cwhip
 // test: {"stdout": "42"}
 class Worker {
     int add(int value) { return value + 2 }
@@ -104,21 +104,21 @@ start {
     callback<int(int)> action = worker.add
     int result = 0
     inline(callback<int(int)> action, int result) {
-        SimpCallbackContext *context =
-            simp_callback_acquire(*action, "callback<int(int)>");
-        typedef int64_t (*OnValue)(SimpCallbackContext *, int64_t);
-        OnValue function = (OnValue)simp_callback_adapter(context);
+        CwhipCallbackContext *context =
+            cwhip_callback_acquire(*action, "callback<int(int)>");
+        typedef int64_t (*OnValue)(CwhipCallbackContext *, int64_t);
+        OnValue function = (OnValue)cwhip_callback_adapter(context);
         *result = function(context, 40);
-        simp_callback_release(context);
-        simp_callback_dispose(context);
+        cwhip_callback_release(context);
+        cwhip_callback_dispose(context);
     }
     print(result)
 }
 ```
 
-Alternatively, `simp_callback_context_invoke(context, signature, arguments,
+Alternatively, `cwhip_callback_context_invoke(context, signature, arguments,
 result)` invokes through the same boundary using an array of
-`SimpCallbackArgument` unions: `integer`, `unsigned_integer`, `floating`,
+`CwhipCallbackArgument` unions: `integer`, `unsigned_integer`, `floating`,
 `boolean`, or `pointer`, according to the signature. Pass non-null result storage
 even for void; it is not written in that case. A zero-argument call may pass null
 arguments. This low-level API requires exactly the signature's argument count
@@ -127,9 +127,9 @@ and union members, just as a C function call requires its exact argument types.
 ## Lifetime, rooting, and boundary policy
 
 Acquisition roots the callback and its captured receiver until release, even
-after all Simple locals/fields referring to them go out of scope. Managed native
+after all Cwhip locals/fields referring to them go out of scope. Managed native
 arguments are rooted throughout invocation, including allocations and reentry.
-Managed results are borrowed: immediately store them in a captured/rooted Simple
+Managed results are borrowed: immediately store them in a captured/rooted Cwhip
 slot before another allocating runtime call. Native pointers alone are not roots.
 
 The C library owns neither the callback nor the context's storage. Disconnect
@@ -143,9 +143,9 @@ and dispose registrations before their owner thread exits; exiting with an
 undisposed registration is a fatal error. Different acquisitions
 are independent registrations.
 
-All registration operations and invocation require the acquiring Simple thread,
+All registration operations and invocation require the acquiring Cwhip thread,
 registered with the runtime and currently holding its managed-code lock. Foreign
-threads, including another registered Simple thread, are rejected with an
+threads, including another registered Cwhip thread, are rejected with an
 explicit fatal diagnostic before executing managed code. Do not invoke while a
 native primitive has released the runtime lock. Same-thread synchronous reentry
 is supported: nested invocations have independent exception/root frames and
@@ -155,45 +155,45 @@ these checks.
 
 ### Rooted one-shot transport and native loop reentry
 
-For package authors implementing a scheduler, `<simp/Callbacks.h>` also exposes
-the opaque `SimpCallbackTransfer`:
+For package authors implementing a scheduler, `<cwhip/Callbacks.h>` also exposes
+the opaque `CwhipCallbackTransfer`:
 
 ```c
-SimpCallbackTransfer *transfer =
-    simp_callback_transfer_prepare(callback, "callback<void()>");
+CwhipCallbackTransfer *transfer =
+    cwhip_callback_transfer_prepare(callback, "callback<void()>");
 /* Publish to the destination using package-owned synchronization. */
-SimpCallbackContext *context = simp_callback_transfer_accept(transfer);
+CwhipCallbackContext *context = cwhip_callback_transfer_accept(transfer);
 /* The destination now owns context; transfer was consumed. */
 ```
 
 Prepare validates the canonical signature and roots the callback/receiver
 independently of the preparing thread's lifetime. Accept requires a registered
-Simple thread holding the managed lock and creates a new registration owned by
+Cwhip thread holding the managed lock and creates a new registration owned by
 that accepting thread. It consumes/frees the transfer, without any gap in root
-protection. `simp_callback_transfer_cancel(transfer)` consumes/frees it without
+protection. `cwhip_callback_transfer_cancel(transfer)` consumes/frees it without
 invocation and removes its root. Prepare/accept/cancel all require the managed
 lock; the package is responsible for queue publication, single consumption,
 shutdown cleanup, and never using a consumed pointer. Transfers are not
 invocable adapters and do not change the ownership of existing registrations.
 
-`<simp/RuntimeGc.h>` provides `simp_runtime_managed_enter()` and
-`simp_runtime_managed_leave(acquired)` for native callbacks on **already
+`<cwhip/RuntimeGc.h>` provides `cwhip_runtime_managed_enter()` and
+`cwhip_runtime_managed_leave(acquired)` for native callbacks on **already
 registered** threads. Enter returns 1 if it acquires a suspended thread's lock,
 0 if synchronous reentry already holds it. Leave restores that exact state.
-Use strict `simp_runtime_gil_release()` / `simp_runtime_gil_acquire()` around
-native blocking waits; never execute Simple or mutate managed data/roots while
+Use strict `cwhip_runtime_gil_release()` / `cwhip_runtime_gil_acquire()` around
+native blocking waits; never execute Cwhip or mutate managed data/roots while
 suspended. The helpers neither register an unknown thread nor bypass callback
 owner checks. See the GTK package for an actual scheduler and typed forwarding
 implementation, not a generic permission to invoke from a foreign C thread.
 
 **Exception policy: fail-fast.** Adapter entry installs an existing runtime
-exception boundary inside the bridge. An exception escaping the Simple callback
-is caught there, prints `Simple native callback error: uncaught Simple exception`
+exception boundary inside the bridge. An exception escaping the Cwhip callback
+is caught there, prints `Cwhip native callback error: uncaught Cwhip exception`
 and its message/stack, and calls `abort()`. No `longjmp` or unwinding crosses the
 calling C library's frames, no default native return value is fabricated, and an
-outer Simple `except` cannot catch that boundary failure. Signature/lifetime/thread
+outer Cwhip `except` cannot catch that boundary failure. Signature/lifetime/thread
 violations likewise print a native callback error and abort. Exceptions caught
-inside the callback behave normally. Use Simple code to handle recoverable
+inside the callback behave normally. Use Cwhip code to handle recoverable
 errors and return an explicit application-level error result.
 
 The hermetic fixture in `tests/functional/cli/callbacks/native.c` demonstrates

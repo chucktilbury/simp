@@ -1,0 +1,12 @@
+[package]
+name = "sqlite"
+version = "0.1.0"
+source = "sqlite.cw"
+export = "namespace:SQLite"
+
+[dependencies]
+sql = "=0.1.0"
+
+[link]
+libraries = ["cwhip_sqlite", "sqlite3"]
+library-paths = ["lib"]

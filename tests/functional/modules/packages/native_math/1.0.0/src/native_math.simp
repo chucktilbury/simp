@@ -1,5 +1,0 @@
-class NativeMath {
-    int answer()
-}
-
-int NativeMath.answer() from "simp_native_math_answer"

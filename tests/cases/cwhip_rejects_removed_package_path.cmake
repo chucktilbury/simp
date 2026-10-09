@@ -1,0 +1,7 @@
+set(CASE_NAME cwhip_rejects_removed_package_path)
+set(CASE_FIXTURE positive_integer_output.cw)
+set(CASE_NO_SOURCE ON)
+set(CASE_NO_RUN ON)
+set(CASE_ARGUMENTS --package-path old-modules)
+set(CASE_EXPECTED_DIAGNOSTIC
+    [==[cwhip: --package-path is no longer supported; use -M/--module-dir]==])

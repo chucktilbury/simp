@@ -2,7 +2,7 @@
 
 The compiler uses CMake and requires Clang on `PATH` to compile and link its
 generated LLVM IR. The project uses C11 and C++17. Building and running
-`simpkg` also requires Python 3.11 or newer; installing packages requires
+`cwhip-pkg` also requires Python 3.11 or newer; installing packages requires
 `git`. A repository build stages
 the compiler resources beside `bin/cwhip`, so the executable can run directly
 from the source tree:
@@ -18,13 +18,12 @@ and pthreads); non-POSIX targets are not supported. CMake reports a missing
 `unistd.h`, and generated inline-C compilation diagnoses any required target
 header that Clang cannot find rather than silently omitting it.
 Installed application resources include the public opaque C API
-`include/simp/Stdlib.h` and the linked runtime archive; application developers
+`include/cwhip/Stdlib.h` and the linked runtime archive; application developers
 do not need runtime implementation source. See
 [the inline C API](STDLIB.md#inline-c-api) for supported bindings.
 
-The canonical CMake project and compiler target are `cwhip`. The legacy
-executable and build target `simp` remain available for existing scripts.
-New language sources should use `.cw`; `.simp` remains accepted.
+The CMake project, compiler executable, and compiler target are `cwhip`.
+Language source inputs must use the `.cw` extension.
 
 The root build is the recommended build. The `include/`, `src/`, and `tests/`
 directories also have component `CMakeLists.txt` files; standalone
@@ -32,21 +31,21 @@ configuration is optional. To build only the compiler outside the repository's
 in-tree build directory:
 
 ```sh
-cmake -S src -B /tmp/simp-compiler-build -DSIMP_GTK=OFF -DSIMP_GTK_SOURCEVIEW=OFF
-cmake --build /tmp/simp-compiler-build
+cmake -S src -B /tmp/cwhip-compiler-build -DCWHIP_GTK=OFF -DCWHIP_GTK_SOURCEVIEW=OFF
+cmake --build /tmp/cwhip-compiler-build
 ```
 
 `tests/functional/` contains fixtures, not a separate buildable component.
 The root build places the compiler and test executables in `bin/` and the
-front-end archive in `lib/libsimp_frontend.a`.
+front-end archive in `lib/libcwhip_frontend.a`.
 
 ## Cwhip Editor and optional GTK packages
 
 On a fresh configuration, CMake detects `pkg-config`, GTK 4.10+ and GtkSourceView 5
-development files and defaults `SIMP_GTK` and `SIMP_GTK_SOURCEVIEW` to the
+development files and defaults `CWHIP_GTK` and `CWHIP_GTK_SOURCEVIEW` to the
 available support. On Debian/Ubuntu the GUI development packages are
 `pkg-config libgtk-4-dev libgtksourceview-5-dev`. No packages are installed
-automatically. An ordinary compiler build (including `--target simp`) builds
+automatically. An ordinary compiler build (including `--target cwhip`) builds
 the enabled native package archives and stages their sources, manifests and
 language resources. GTK and GtkSourceView link only into importing applications,
 never into `cwhip` or non-GUI programs.
@@ -59,12 +58,11 @@ make -C build -j4 cwhip_editor
 ./bin/cwhip-editor file1.cw file2.cw
 ```
 
-From inside `build/`, use `make cwhip_editor` (the legacy target `tweed` remains
-available). The generator-independent equivalent is
+From inside `build/`, use `make cwhip_editor`. The generator-independent equivalent is
 `cmake --build build --target cwhip_editor -j4`. This works on a fresh
 build without first building the compiler. The output is
 `<source>/bin/cwhip-editor` by default, or
-`<SIMP_STAGE_PREFIX>/bin/cwhip-editor` with a custom staging prefix;
+`<CWHIP_STAGE_PREFIX>/bin/cwhip-editor` with a custom staging prefix;
 standalone `src/` builds use their build directory as the prefix. The target
 generates a private source project and package lock under the build directory,
 using only this build's staged packages, not user HOME packages or environment
@@ -77,14 +75,14 @@ For a deliberate compiler-only configuration, including on machines without
 GUI development files:
 
 ```sh
-cmake -S . -B build-compiler -DSIMP_GTK=OFF -DSIMP_GTK_SOURCEVIEW=OFF
+cmake -S . -B build-compiler -DCWHIP_GTK=OFF -DCWHIP_GTK_SOURCEVIEW=OFF
 cmake --build build-compiler --target cwhip -j4
 ```
 
 `cwhip_editor` then fails with an explicit dependency/configuration diagnostic rather
 than claiming a successful editor build. Explicit `ON` options require their
 development dependencies and fail configuration if missing;
-`SIMP_GTK_SOURCEVIEW=ON` requires `SIMP_GTK=ON`. Defaults are cached: after
+`CWHIP_GTK_SOURCEVIEW=ON` requires `CWHIP_GTK=ON`. Defaults are cached: after
 installing GUI dependencies into an existing compiler-only configuration,
 reconfigure with both options `ON`.
 
@@ -92,14 +90,14 @@ With GTK enabled and `BUILD_TESTING=ON` (the root-build default), headless GUI
 tests default to enabled when Xvfb and `dbus-daemon` are found
 (`xvfb dbus-daemon` on Debian/Ubuntu). Otherwise configuration explicitly
 reports that GUI tests are disabled; this does not block building Cwhip Editor.
-Set `-DSIMP_GTK_TESTS=ON` to require these tools and fail if missing, or use
+Set `-DCWHIP_GTK_TESTS=ON` to require these tools and fail if missing, or use
 `-DBUILD_TESTING=OFF` to omit all tests. Enabled tests never silently skip
 missing fixtures. Xvfb can be selected with
-`-DSIMP_XVFB_EXECUTABLE=/absolute/path/to/Xvfb`. Each GUI test uses a private
+`-DCWHIP_XVFB_EXECUTABLE=/absolute/path/to/Xvfb`. Each GUI test uses a private
 display and session bus.
 
 Disabled packages are absent from staging and installation. Use separate
-`SIMP_STAGE_PREFIX` directories for simultaneous different configurations.
+`CWHIP_STAGE_PREFIX` directories for simultaneous different configurations.
 The enabled `gtk/0.1.0` manifest carries GtkSourceView link metadata when
 appropriate. See [GTK.md](GTK.md) for linkage, activation and ownership.
 
@@ -119,68 +117,79 @@ For a staged package or image, use `DESTDIR`:
 DESTDIR=/tmp/stage cmake --install build
 ```
 
-CMake's `GNUInstallDirs` control the destinations. The installed tree contains
-both `cwhip` and its `simp` compatibility executable in
+ CMake's `GNUInstallDirs` control the destinations. The installed tree contains
+the `cwhip` executable in
 `${CMAKE_INSTALL_BINDIR}`, the runtime archive in
-`${CMAKE_INSTALL_LIBDIR}/simp/`, runtime headers in
-`${CMAKE_INSTALL_INCLUDEDIR}/simp/`, the String builtin in
-`${CMAKE_INSTALL_DATADIR}/simp/builtin/`, standard modules in
-`${CMAKE_INSTALL_DATADIR}/simp/modules/`, and documentation in
+`${CMAKE_INSTALL_LIBDIR}/cwhip/`, runtime headers in
+`${CMAKE_INSTALL_INCLUDEDIR}/cwhip/`, the String builtin in
+`${CMAKE_INSTALL_DATADIR}/cwhip/builtin/`, standard modules in
+`${CMAKE_INSTALL_DATADIR}/cwhip/modules/`, and documentation in
 `${CMAKE_INSTALL_DOCDIR}` plus `${CMAKE_INSTALL_MANDIR}/man1/cwhip.1`.
 The documentation install also preserves the repository-relative
 `doc/`, `tests/`, and `stdlib/` indexes and references.
 Installation directories must remain inside `CMAKE_INSTALL_PREFIX`.
 
 The compiler derives resources relative to its executable and the installation
-prefix; an installed tree can be moved as a unit. The historical `simp/`
-runtime, header, builtin, standard-module and user-module paths remain unchanged
-to preserve native module and package compatibility. Resource lookup can be
-overridden with `SIMP_RUNTIME_DIR`, `SIMP_INCLUDE_DIR`, `SIMP_BUILTIN_DIR`, or
-`SIMP_STDLIB_MODULE_DIR` individually, or with `SIMP_HOME` for the prefix.
+prefix; an installed tree can be moved as a unit. Runtime, header, builtin,
+standard-module and user-module paths use the `cwhip/` directory. Resource lookup can be
+overridden with `CWHIP_RUNTIME_DIR`, `CWHIP_INCLUDE_DIR`, `CWHIP_BUILTIN_DIR`, or
+`CWHIP_STDLIB_MODULE_DIR` individually, or with `CWHIP_HOME` for the prefix.
 `CC` selects the compiler-driver executable in place of the configured Clang
 driver. The editor writes preferences to `$XDG_CONFIG_HOME/cwhip/settings.toml`
-(or `~/.config/cwhip/settings.toml`) and looks up Cwhip shortcuts in
-`cwhip-shortcuts.conf`. It reads existing Tweed settings and
-`tweed-shortcuts.conf` as fallbacks without moving or deleting them; existing
-`.tweed/` project metadata also remains usable in place. If both `.cwhip/` and
-`.tweed/` metadata directories exist, the editor refuses to choose between them.
-User preferences previously read by `simpkg env` from
-`$XDG_CONFIG_HOME/simp/preferences.toml` or `~/.config/simp/preferences.toml`
+(or `~/.config/cwhip/settings.toml`) and project metadata to `.cwhip/`.
+`cwhip-shortcuts.conf` in the working directory remains an optional shortcut
+import source. Older product-named settings, shortcut, and project metadata
+paths are ignored; they are left untouched and are not migrated. Copy any
+settings you want to retain into the new paths yourself.
+User preferences previously read by `cwhip-pkg env` from
+`$XDG_CONFIG_HOME/cwhip/preferences.toml` or `~/.config/cwhip/preferences.toml`
 remain at those locations. Use `cwhip --print-paths` to inspect the resolved executable, resources,
 every package root and its precedence, project lock location, and Clang executable.
 
-The former `prelude/` source directory, `share/simp/prelude/` resource path,
-and `SIMP_PRELUDE_DIR` override have been replaced by `builtin/`,
-`share/simp/builtin/`, and `SIMP_BUILTIN_DIR`. No legacy path fallback or
+The former `prelude/` source directory, `share/cwhip/prelude/` resource path,
+and `CWHIP_PRELUDE_DIR` override have been replaced by `builtin/`,
+`share/cwhip/builtin/`, and `CWHIP_BUILTIN_DIR`. No legacy path fallback or
 environment alias is supported: rebuild and reinstall the compiler and its
-resources together, and update any resource overrides. `SIMP_BUILTIN_DIR`
-names the directory containing `String.simp`, not a project package root.
+resources together, and update any resource overrides. `CWHIP_BUILTIN_DIR`
+names the directory containing `String.cw`, not a project package root.
+
+## Breaking path changes
+
+Use the `cwhip-pkg` command with a `cwhip-pkg.toml` manifest and
+`cwhip-pkg.lock`; published package directories use `cwhip-package.toml`.
+Source inputs use `.cw`, public runtime headers are under `include/cwhip/`,
+and resource overrides use `CWHIP_*` variables. Editor preferences are under
+`cwhip/settings.toml`, and editor project metadata is under `.cwhip/`.
+These names do not alias earlier product paths. Existing manifests, settings,
+shortcuts, projects, installed resources, and native libraries are neither
+deleted nor rewritten by the compiler or editor; they are not discovered or
+migrated automatically.
 
 ## Project module search
 
 The compiler discovers project configuration separately from package storage.
-The project root is the nearest ancestor of the first Simple source input
-containing `simpkg.toml` or a `modules` directory; without a marker it is the
+The project root is the nearest ancestor of the first Cwhip source input
+containing `cwhip-pkg.toml` or a `modules` directory; without a marker it is the
 source parent. With no source input, discovery starts at the current directory.
 This source-based discovery is the same for relative and absolute source paths.
-The manifest and adjacent `simpkg.lock` remain at that root regardless of
+The manifest and adjacent `cwhip-pkg.lock` remain at that root regardless of
 package-root overrides.
 
 Package imports use ordered first-match lookup through these roots:
 
 1. `-M DIR`/`--module-dir DIR`, when provided.
 2. `<project-root>/modules`.
-3. `SIMP_MODULE_DIR`, when set.
-4. The user package root `<config-home>/simp/modules`, normally
-   `~/.config/simp/modules`. If `XDG_CONFIG_HOME` is set, it is used as
-   `<XDG_CONFIG_HOME>/simp/modules` and must be absolute.
+3. `CWHIP_MODULE_DIR`, when set.
+4. The user package root `<config-home>/cwhip/modules`, normally
+   `~/.config/cwhip/modules`. If `XDG_CONFIG_HOME` is set, it is used as
+   `<XDG_CONFIG_HOME>/cwhip/modules` and must be absolute.
 5. Standard modules shipped with the compiler, normally
-   `<prefix>/share/simp/modules`, configurable with `SIMP_STDLIB_MODULE_DIR`.
+   `<prefix>/share/cwhip/modules`, configurable with `CWHIP_STDLIB_MODULE_DIR`.
 
 The first root containing a package shadows lower-priority roots, and version
 selection occurs only among versions in that root. Project and home roots are
-optional fallbacks when missing; explicit `-M` and `SIMP_MODULE_DIR` roots must
-exist for compilation. `-M` and `SIMP_MODULE_DIR` add storage roots; they never
+optional fallbacks when missing; explicit `-M` and `CWHIP_MODULE_DIR` roots must
+exist for compilation. `-M` and `CWHIP_MODULE_DIR` add storage roots; they never
 move or replace the discovered project's manifest or lock. `-p`/`--path` sets
 the separate textual `include` search path. Package layout and APIs are
 described in the [standard library docs](STDLIB.md) and
@@ -189,59 +198,60 @@ described in the [standard library docs](STDLIB.md) and
 
 ### Locked project dependencies
 
-New projects use `simpkg.toml` for direct dependencies and generated
-`simpkg.lock` for the complete exact graph. The compiler checks the lock schema,
+New projects use `cwhip-pkg.toml` for direct dependencies and generated
+`cwhip-pkg.lock` for the complete exact graph. The compiler checks the lock schema,
 manifest fingerprint, dependency pins, and hashes of packages used by the
 compilation. It never accesses the network. Missing, stale, or invalid locks
 are errors, not invitations to fall back to another version or root. A storage
 override can satisfy a lock only when the locked package name, exact version,
 dependency edges, and content hash match; a conflicting or invalid higher
 root is reported rather than bypassed. Imports not listed in the lock are
-rejected. `-M` and `SIMP_MODULE_DIR` do not select another project's policy.
+rejected. `-M` and `CWHIP_MODULE_DIR` do not select another project's policy.
 See [the package schema](PACKAGES.md).
 
-The previous `--package-path`, `SIMP_PACKAGE_PATH`, `SIMP_MODULE_REGISTRY`,
-`./simp-modules.tsv`, and `modules/modules.toml` lookup/policy mechanisms have
-been removed. They have no compatibility aliases or fallback behavior.
-Compiler diagnostics identify legacy inputs when found; migrate projects to
-`simpkg.toml` and `simpkg.lock` with `simpkg init`, then declare and install
-dependencies with `simpkg add`/`simpkg install`. `simp --print-paths` reports
-the project lock and every applicable package root with its origin and order.
+The previous `--package-path`, `CWHIP_PACKAGE_PATH`, `CWHIP_MODULE_REGISTRY`,
+`./cwhip-modules.tsv`, and `modules/modules.toml` lookup/policy mechanisms have
+been removed. They have no compatibility aliases or fallback behavior. Legacy
+policy files are not imported, changed, or automatically migrated. To adopt the
+new package workflow, create a separate project with `cwhip-pkg init`, then
+declare and install dependencies with `cwhip-pkg add`/`cwhip-pkg install`.
+`cwhip --print-paths` reports the project lock and every applicable package
+root with its origin and order.
 
-## Project package manager (`simpkg`)
+## Project package manager (`cwhip-pkg`)
 
-`simpkg` is a small project manager and GitHub package installer. The
-compiler remains responsible for compiling and building programs; `simpkg`
+`cwhip-pkg` is a small project manager and GitHub package installer. The
+compiler remains responsible for compiling and building programs; `cwhip-pkg`
 does not run programs or implement compiler build logic. It is installed beside
-`simp` and uses the standard modules shipped with that same installation.
+`cwhip` and uses the standard modules shipped with that same installation.
 
 Start a project from its root:
 
 ```sh
-mkdir hello-simp
-cd hello-simp
-simpkg init
-simpkg add OWNER/REPO --yes
+mkdir hello-cwhip
+cd hello-cwhip
+cwhip-pkg init
+cwhip-pkg add OWNER/REPO --yes
 cwhip path/to/app.cw
 ```
 
-`simpkg init [PROJECT_DIR]` creates `simpkg.toml`, `simpkg.lock`, and the
+`cwhip-pkg init [PROJECT_DIR]` creates `cwhip-pkg.toml`, `cwhip-pkg.lock`, and the
 `modules` directory, locking the installed standard modules locally without
 network access. It refuses to overwrite existing configuration. The compiler's
 `String` builtin/runtime is available by default; it is not an ordinary
 imported module and is not listed in the lockfile's module allowlist or packages.
 
-`simpkg add OWNER/REPO [VERSION] --yes` obtains a package from that GitHub
+`cwhip-pkg add OWNER/REPO [VERSION] --yes` obtains a package from that GitHub
 repository, using Git's configured authentication for private repositories
 that the user can access. With no version it picks the highest stable SemVer
 tag; with a version it checks out that exact SemVer tag (including a
 prerelease, if requested). It validates
-`simp-package.toml` and the package source, resolves all exact transitive
+`cwhip-package.toml` and the package source, resolves all exact transitive
 dependencies, and installs into `modules/<package-name>/<version>/`. It saves
-the direct dependency in `simpkg.toml` and generates the complete graph in
-`simpkg.lock`, including repository, tag, commit, content digest, and edges.
+the direct dependency in `cwhip-pkg.toml` and generates the complete graph in
+`cwhip-pkg.lock`, including repository, tag, commit, content digest, and edges.
 Existing versions are never overwritten: different contents at an existing
-destination are an integrity error. Run `simpkg list` to inspect selections.
+destination are an integrity error. Run `cwhip-pkg list` to inspect selections.
 
 GitHub `OWNER/REPO` is a direct repository shortcut, not a package catalog:
 there is no central index or guessed repository lookup. A dependency's
@@ -251,7 +261,7 @@ locally. Missing mappings and conflicting exact pins fail explicitly. Ranges,
 branches, arbitrary URLs, install scripts, and automatic builds are not
 supported.
 
-Before network access, `simpkg` prints the requested plan and requires explicit
+Before network access, `cwhip-pkg` prints the requested plan and requires explicit
 confirmation, or `--yes` for noninteractive use. Each declared repository is
 shown before it is contacted; `--yes` authorizes the declared transitive
 repositories too. Without consent, redirected/noninteractive input fails
@@ -261,19 +271,19 @@ install or modify project files. A full resolved graph is printed before
 installation. Review untrusted repositories before granting consent: fetched
 source can contain native bindings used during later compilation.
 
-`simpkg install --yes` restores a committed lockfile's exact commits and
+`cwhip-pkg install --yes` restores a committed lockfile's exact commits and
 verifies hashes, rather than trusting potentially moved tags. With no lock it
 resolves the direct manifest. Commit both manifest and lock; do not hand-edit
 the lock or maintain transitive version arrays. `add`, `install`, and `list`
 locate the project from nested working directories. After `add` or `install`,
 ordinary `cwhip src/nested/app.cw` is compile-ready with no environment eval.
-Legacy projects without `simpkg.toml` retain their old policy and explicit
+Legacy projects without `cwhip-pkg.toml` retain their old policy and explicit
 dependency installation contract.
 
-`simpkg env` prints POSIX shell exports; it does not modify the parent shell.
+`cwhip-pkg env` prints POSIX shell exports; it does not modify the parent shell.
 It reads optional user preferences from
-`$XDG_CONFIG_HOME/simp/preferences.toml`, or
-`~/.config/simp/preferences.toml` when `XDG_CONFIG_HOME` is unset. Create the
+`$XDG_CONFIG_HOME/cwhip/preferences.toml`, or
+`~/.config/cwhip/preferences.toml` when `XDG_CONFIG_HOME` is unset. Create the
 file yourself if desired; only `[environment]` string values are supported:
 
 ```toml
@@ -282,10 +292,10 @@ CC = "clang"
 MY_BUILD_SETTING = "debug"
 ```
 
-Then `eval "$(simpkg env)"` applies those values in the current shell. An
-alternate existing file can be selected with `simpkg env --preferences FILE`;
-`simpkg` never creates or edits preference files. Environment names must be
+Then `eval "$(cwhip-pkg env)"` applies those values in the current shell. An
+alternate existing file can be selected with `cwhip-pkg env --preferences FILE`;
+`cwhip-pkg` never creates or edits preference files. Environment names must be
 valid shell variable names. Package lookup needs no activation: source-based
 project discovery works from nested directories and for absolute source paths.
-User packages installed at `<config-home>/simp/modules` are searched after
+User packages installed at `<config-home>/cwhip/modules` are searched after
 project packages and before installation defaults.

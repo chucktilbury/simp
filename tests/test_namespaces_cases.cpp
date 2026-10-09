@@ -1,9 +1,9 @@
 #include "test_cases.hpp"
 
-#include "simp/Diagnostic.hpp"
-#include "simp/Lexer.hpp"
-#include "simp/Parser.hpp"
-#include "simp/Token.hpp"
+#include "cwhip/Diagnostic.hpp"
+#include "cwhip/Lexer.hpp"
+#include "cwhip/Parser.hpp"
+#include "cwhip/Token.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -11,14 +11,14 @@
 #include <vector>
 
 namespace {
-using namespace simp_test;
+using namespace cwhip_test;
 
 const TestGroupRegistration registration{5, {
         {"namespace keyword is case-insensitive and reserved", [] {
-              simp::Lexer lexer("NaMeSpAcE Foo { class Thing {} }\nstart {}",
-                                "namespace-keyword.simp");
+              cwhip::Lexer lexer("NaMeSpAcE Foo { class Thing {} }\nstart {}",
+                                "namespace-keyword.cw");
               const auto tokens = lexer.tokenize();
-              require(tokens.front().type == simp::TokenType::Namespace,
+              require(tokens.front().type == cwhip::TokenType::Namespace,
                       "namespace keyword was not recognized case-insensitively");
               expectDiagnostic("start {\n int Namespace = 1\n}",
                                "keywords are reserved");
@@ -77,7 +77,7 @@ const TestGroupRegistration registration{5, {
                   "namespace Foo { class Bar { int method() { return 42 } } }\n"
                   "start { print(Foo.Bar().method()) }");
               std::ostringstream output;
-              simp::dumpAst(program, output);
+              cwhip::dumpAst(program, output);
               require(output.str().find("ConstructorCall [Foo.Bar]") != std::string::npos,
                       "qualified constructor call was not resolved in the AST");
          }},
@@ -90,7 +90,7 @@ const TestGroupRegistration registration{5, {
                   "  }\n"
                   "}\n"
                   "start { Foo.Bar item(42)\n print(item.value) }");
-              require(program.statements.front().kind == simp::StatementKind::Declaration &&
+              require(program.statements.front().kind == cwhip::StatementKind::Declaration &&
                           program.statements.front().expressions.front()->value == "Foo.Bar",
                       "qualified direct declaration did not retain its class path");
          }},

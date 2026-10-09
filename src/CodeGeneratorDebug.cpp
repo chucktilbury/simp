@@ -1,9 +1,9 @@
-#include "simp/CodeGenerator.hpp"
+#include "cwhip/CodeGenerator.hpp"
 
 #include <filesystem>
 #include <sstream>
 
-namespace simp {
+namespace cwhip {
 
 std::string CodeGenerator::debugQuote(const std::string& value) {
     std::string result = "\"";
@@ -28,7 +28,7 @@ std::string CodeGenerator::debugNode(const std::string& contents) {
 
 std::string CodeGenerator::debugFile(const std::string& path) {
     const auto absolute = std::filesystem::absolute(
-        path.empty() ? std::filesystem::path("simple") : std::filesystem::path(path)
+        path.empty() ? std::filesystem::path("cwhip") : std::filesystem::path(path)
     ).lexically_normal();
     const auto key = absolute.string();
     const auto found = debugFiles_.find(key);
@@ -139,7 +139,7 @@ std::string CodeGenerator::debugAnnotate(const std::string& body,
     std::string line;
     auto location = debugLocation(fallback);
     while (std::getline(input, line)) {
-        constexpr char marker[] = "; simp.debug.location ";
+        constexpr char marker[] = "; cwhip.debug.location ";
         if (line.compare(0, sizeof(marker) - 1, marker) == 0) {
             location = line.substr(sizeof(marker) - 1);
             continue;
@@ -157,7 +157,7 @@ void CodeGenerator::debugMetadata(const SourceLocation& source) {
     if (!debug_) return;
     const auto file = debugFile(source.file);
     debugUnit_ = debugNode("distinct !DICompileUnit(language: DW_LANG_C, file: " +
-                          file + ", producer: \"simp\", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)");
+                          file + ", producer: \"cwhip\", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)");
 }
 
-} // namespace simp
+} // namespace cwhip

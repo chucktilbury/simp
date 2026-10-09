@@ -1,8 +1,0 @@
-[package]
-name = "sourceview"
-version = "0.1.0"
-source = "sourceview.simp"
-export = "namespace:GtkSource"
-
-[dependencies]
-gtk = "=0.1.0"

@@ -1,5 +1,0 @@
-[package]
-name = "shared"
-version = "2.0.0"
-source = "src/shared.simp"
-export = "class:SharedTwo"

@@ -102,7 +102,7 @@ Lexical details that affect parsing:
   balanced-brace block as one opaque `INLINE_BODY` token. Braces inside C
   strings and C comments do not change its brace depth.
 - `INLINE_BODY` is a lexer-only token: its contents are C source rather than
-  Simple tokens, so it has no ordinary Simple lexical production.
+  Cwhip tokens, so it has no ordinary Cwhip lexical production.
 
 ## Syntactic grammar
 
@@ -432,7 +432,7 @@ Each parser routine has a corresponding production or grammar note above:
 
 The map covers syntax-producing methods in `Parser.cpp` and `ParserClass.cpp`
 and identifies parser infrastructure and validation helpers. The
-`tests/functional/positive/*.simp` fixtures
+`tests/functional/positive/*.cw` fixtures
 exercise scalar and float literal variants, declarations and assignments,
 calls and overloads, casts and type tests, lists/dicts/buffers/handles,
 indexing/slicing/iteration, conditionals and loops, classes and inheritance

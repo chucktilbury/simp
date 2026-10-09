@@ -1,14 +1,14 @@
 #include "test_cases.hpp"
 
-#include "simp/Diagnostic.hpp"
-#include "simp/Lexer.hpp"
-#include "simp/Parser.hpp"
-#include "simp/SemanticAnalyzer.hpp"
+#include "cwhip/Diagnostic.hpp"
+#include "cwhip/Lexer.hpp"
+#include "cwhip/Parser.hpp"
+#include "cwhip/SemanticAnalyzer.hpp"
 
 #include <algorithm>
 #include <stdexcept>
 
-namespace simp_test {
+namespace cwhip_test {
 namespace {
 
 struct Group {
@@ -46,10 +46,10 @@ void require(bool condition, const std::string& message) {
     }
 }
 
-simp::Program parse(const std::string& source, const std::string& name) {
-    simp::Lexer lexer(source, name);
-    auto program = simp::Parser(lexer.tokenize()).parseProgram();
-    simp::SemanticAnalyzer analyzer;
+cwhip::Program parse(const std::string& source, const std::string& name) {
+    cwhip::Lexer lexer(source, name);
+    auto program = cwhip::Parser(lexer.tokenize()).parseProgram();
+    cwhip::SemanticAnalyzer analyzer;
     analyzer.analyze(program);
     return program;
 }
@@ -57,7 +57,7 @@ simp::Program parse(const std::string& source, const std::string& name) {
 void expectDiagnostic(const std::string& source, const std::string& expected) {
     try {
         parse(source);
-    } catch (const simp::DiagnosticError& error) {
+    } catch (const cwhip::DiagnosticError& error) {
         require(std::string(error.what()).find(expected) != std::string::npos,
                 "diagnostic did not contain: " + expected + "; got: " + error.what());
         return;
@@ -69,4 +69,4 @@ void expectValid(const std::string& source) {
     parse(source);
 }
 
-} // namespace simp_test
+} // namespace cwhip_test

@@ -4,7 +4,7 @@
 #include <glib/gstdio.h>
 #include <pango/pangocairo.h>
 
-void *simp_gtk_config_file_status(void *self, void *path_text) {
+void *cwhip_gtk_config_file_status(void *self, void *path_text) {
     (void)self;
     char *path = text_copy(path_text);
     GStatBuf info;
@@ -16,13 +16,13 @@ void *simp_gtk_config_file_status(void *self, void *path_text) {
             message = g_file_test(path, G_FILE_TEST_IS_SYMLINK) ? "Broken symbolic link" : "missing";
         } else message = g_strerror(code);
     }
-    void *result = simp_string_new(&simp_string_class_meta, message, strlen(message));
+    void *result = cwhip_string_new(&cwhip_string_class_meta, message, strlen(message));
     g_free(path);
     return result;
 }
 
 static void *config_string(const char *text) {
-    return simp_string_new(&simp_string_class_meta, text, strlen(text));
+    return cwhip_string_new(&cwhip_string_class_meta, text, strlen(text));
 }
 
 static bool config_raw_valid(const char *raw) {
@@ -79,7 +79,7 @@ static toml_table_t *config_parse(void *text, char error[256]) {
     return table;
 }
 
-void *simp_gtk_config_validate(void *self, void *text) {
+void *cwhip_gtk_config_validate(void *self, void *text) {
     (void)self;
     char error[256] = "";
     toml_table_t *table = config_parse(text, error);
@@ -91,8 +91,8 @@ static toml_table_t *config_section(toml_table_t *root, const char *section) {
     return *section ? toml_table_in(root, section) : root;
 }
 
-/* Tagged values keep conversion/type validation in the Simple model. */
-void *simp_gtk_config_value(void *self, void *text, void *section_text, void *key_text) {
+/* Tagged values keep conversion/type validation in the Cwhip model. */
+void *cwhip_gtk_config_value(void *self, void *text, void *section_text, void *key_text) {
     (void)self;
     char error[256] = "";
     toml_table_t *root = config_parse(text, error);
@@ -119,7 +119,7 @@ void *simp_gtk_config_value(void *self, void *text, void *section_text, void *ke
     return result;
 }
 
-void *simp_gtk_config_key(void *self, void *text, void *section_text, int64_t index) {
+void *cwhip_gtk_config_key(void *self, void *text, void *section_text, int64_t index) {
     (void)self;
     char error[256] = "";
     toml_table_t *root = config_parse(text, error);
@@ -142,7 +142,7 @@ static void config_quote(GString *out, const char *text) {
     g_string_append_c(out, '"');
 }
 
-void *simp_gtk_config_quote(void *self, void *text) {
+void *cwhip_gtk_config_quote(void *self, void *text) {
     (void)self;
     char *bytes = text_copy(text);
     GString *out = g_string_new("");
@@ -241,7 +241,7 @@ static void *config_render(toml_table_t *base, toml_table_t *updates, const char
     return result;
 }
 
-void *simp_gtk_config_merge(void *self, void *original, void *changes) {
+void *cwhip_gtk_config_merge(void *self, void *original, void *changes) {
     (void)self;
     char error[256] = "";
     toml_table_t *base = config_parse(original, error);
@@ -254,7 +254,7 @@ void *simp_gtk_config_merge(void *self, void *original, void *changes) {
 }
 
 /* Returns validated TOML without one key; other keys are retained and normalized. */
-void *simp_gtk_config_remove(void *self, void *text, void *section_text, void *key_text) {
+void *cwhip_gtk_config_remove(void *self, void *text, void *section_text, void *key_text) {
     (void)self;
     char error[256] = "";
     toml_table_t *base = config_parse(text, error);
@@ -283,7 +283,7 @@ static void config_tag(GString *value, toml_datum_t s, toml_datum_t i, toml_datu
 }
 
 /* Tagged array element, or a field of a table element when field is nonempty. */
-void *simp_gtk_config_item(void *self, void *text, void *section_text, void *key_text,
+void *cwhip_gtk_config_item(void *self, void *text, void *section_text, void *key_text,
                            int64_t index, void *field_text) {
     (void)self;
     char error[256] = "";
@@ -316,7 +316,7 @@ void *simp_gtk_config_item(void *self, void *text, void *section_text, void *key
 
 typedef struct ConfigSave {
     struct ConfigSave *next;
-    SimpCallbackContext *context;
+    CwhipCallbackContext *context;
     char *contents;
     GFile *file;
     char *path;
@@ -325,8 +325,8 @@ typedef struct ConfigSave {
 static ConfigSave *config_saves;
 
 static void config_complete(ConfigSave *save, GError *error) {
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     /* Unlink before invoking: the callback may shut down and drain other saves. */
     ConfigSave **link = &config_saves;
     while (*link != save) link = &(*link)->next;
@@ -334,21 +334,21 @@ static void config_complete(ConfigSave *save, GError *error) {
     if (!stopped) {
         void *message = config_string(error ? error->message : "");
         void *slots[] = { &message };
-        SimpRootFrame frame = {0};
-        simp_gc_push_or_abort(&frame, slots, 1);
-        typedef void (*Adapter)(SimpCallbackContext *, void *);
-        ((Adapter)simp_callback_adapter(save->context))(save->context, message);
-        simp_gc_pop_or_abort(&frame);
+        CwhipRootFrame frame = {0};
+        cwhip_gc_push_or_abort(&frame, slots, 1);
+        typedef void (*Adapter)(CwhipCallbackContext *, void *);
+        ((Adapter)cwhip_callback_adapter(save->context))(save->context, message);
+        cwhip_gc_pop_or_abort(&frame);
     } else if (error) fprintf(stderr, "Settings save failed: %s: %s\n", save->path, error->message);
-    simp_callback_release(save->context);
-    simp_callback_dispose(save->context);
+    cwhip_callback_release(save->context);
+    cwhip_callback_dispose(save->context);
     g_clear_error(&error);
     g_object_unref(save->file);
     g_free(save->contents);
     g_free(save->path);
     g_free(save->expected);
     free(save);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
 }
 
 static void config_saved(GObject *object, GAsyncResult *result, gpointer data) {
@@ -377,7 +377,7 @@ static void config_loaded(GObject *object, GAsyncResult *result, gpointer data) 
     g_free(etag);
 }
 
-void simp_gtk_config_save(void *self, void *path_text, void *text, void *expected, void *callback) {
+void cwhip_gtk_config_save(void *self, void *path_text, void *text, void *expected, void *callback) {
     (void)self;
     require_live();
     ConfigSave *save = calloc(1, sizeof(*save));
@@ -385,7 +385,7 @@ void simp_gtk_config_save(void *self, void *path_text, void *text, void *expecte
     save->path = text_copy(path_text);
     save->contents = text_copy(text);
     save->expected = text_copy(expected);
-    save->context = simp_callback_acquire(callback, "callback<void(String)>");
+    save->context = cwhip_callback_acquire(callback, "callback<void(String)>");
     save->file = g_file_new_for_path(save->path);
     save->next = config_saves;
     config_saves = save;
@@ -396,7 +396,7 @@ static void config_finish_shutdown(void) {
     while (config_saves) g_main_context_iteration(main_context, TRUE);
 }
 
-void *simp_gtk_keyboard_normalize(void *self, void *text) {
+void *cwhip_gtk_keyboard_normalize(void *self, void *text) {
     (void)self;
     char *bytes = text_copy(text);
     GtkShortcutTrigger *trigger = gtk_shortcut_trigger_parse_string(bytes);
@@ -410,7 +410,7 @@ void *simp_gtk_keyboard_normalize(void *self, void *text) {
     return result;
 }
 
-bool simp_gtk_font_is_monospace(void *self, void *text) {
+bool cwhip_gtk_font_is_monospace(void *self, void *text) {
     (void)self;
     char *name = text_copy(text);
     bool valid = g_ascii_strcasecmp(name, "monospace") == 0;
@@ -442,17 +442,17 @@ static gboolean config_record_key(GtkEventControllerKey *controller, guint key,
     char *trigger = key == GDK_KEY_Escape ? g_strdup("") : gtk_accelerator_name(key, state);
     void *text = config_string(trigger);
     void *slots[] = { &text };
-    SimpRootFrame frame = {0};
-    simp_gc_push_or_abort(&frame, slots, 1);
-    typedef void (*Adapter)(SimpCallbackContext *, void *);
-    ((Adapter)simp_callback_adapter(connection->context))(connection->context, text);
-    simp_gc_pop_or_abort(&frame);
+    CwhipRootFrame frame = {0};
+    cwhip_gc_push_or_abort(&frame, slots, 1);
+    typedef void (*Adapter)(CwhipCallbackContext *, void *);
+    ((Adapter)cwhip_callback_adapter(connection->context))(connection->context, text);
+    cwhip_gc_pop_or_abort(&frame);
     g_free(trigger);
     signal_leave(connection, acquired);
     return TRUE;
 }
 
-int64_t simp_gtk_keyboard_record(void *self, void *entry, void *callback) {
+int64_t cwhip_gtk_keyboard_record(void *self, void *entry, void *callback) {
     (void)self;
     GtkWidget *widget = widget_live(source_token(entry));
     GtkEventController *controller = gtk_event_controller_key_new();
@@ -464,7 +464,7 @@ int64_t simp_gtk_keyboard_record(void *self, void *entry, void *callback) {
     return token;
 }
 
-bool simp_gtk_keyboard_cancel(void *self, int64_t token) {
+bool cwhip_gtk_keyboard_cancel(void *self, int64_t token) {
     (void)self;
     require_live();
     for (Connection *connection = connections; connection; connection = connection->next) {
@@ -472,7 +472,7 @@ bool simp_gtk_keyboard_cancel(void *self, int64_t token) {
         if (!GTK_IS_EVENT_CONTROLLER_KEY(connection->object)) return false;
         GtkEventController *controller = GTK_EVENT_CONTROLLER(g_object_ref(connection->object));
         GtkWidget *widget = gtk_event_controller_get_widget(controller);
-        bool disconnected = simp_gtk_disconnect(token);
+        bool disconnected = cwhip_gtk_disconnect(token);
         if (widget) gtk_widget_remove_controller(widget, controller);
         g_object_unref(controller);
         return disconnected;

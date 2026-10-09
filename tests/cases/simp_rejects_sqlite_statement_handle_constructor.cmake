@@ -1,5 +1,0 @@
-set(CASE_NAME simp_rejects_sqlite_statement_handle_constructor)
-set(CASE_FIXTURE negative_sqlite_statement_handle_constructor.simp)
-set(CASE_MODULE_ROOT_SOURCE stdlib)
-set(CASE_MODULE_ROOT "${SIMP_STAGE_PREFIX}/${CMAKE_INSTALL_DATADIR}/simp/modules")
-set(CASE_EXPECTED_DIAGNOSTIC "constructor argument count does not match class 'SQLite.Statement'")

@@ -1,5 +1,0 @@
-include "search_target.simp"
-start {
-    SearchTarget target = SearchTarget()
-    print(target.answer())
-}

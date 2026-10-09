@@ -1,0 +1,5 @@
+set(CASE_NAME cwhip_cli_requires_input_without_print_paths)
+set(CASE_FIXTURE positive_integer_output.cw)
+set(CASE_NO_SOURCE [==[ON]==])
+set(CASE_ARGUMENTS --check-only)
+set(CASE_EXPECTED_DIAGNOSTIC [==[cwhip: required argument not found: input]==])

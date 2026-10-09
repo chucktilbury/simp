@@ -1,12 +1,12 @@
 #include "test_cases.hpp"
 
-#include "simp/CodeGenerator.hpp"
+#include "cwhip/CodeGenerator.hpp"
 
 #include <regex>
 #include <string>
 
 namespace {
-using namespace simp_test;
+using namespace cwhip_test;
 
 const TestGroupRegistration registration{2, {
     {"all scalar cast pairs and bool type values", [] {
@@ -50,7 +50,7 @@ const TestGroupRegistration registration{2, {
          }
          start {}
          )");
-         const auto ir = simp::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
+         const auto ir = cwhip::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
          const auto requireGuard = [&](const std::string& lower, const std::string& upper,
                                        const std::string& conversion) {
              const std::regex guard(
@@ -59,7 +59,7 @@ const TestGroupRegistration registration{2, {
                  "  (%t[0-9]+) = and i1 \\1, \\3\n"
                  "  br i1 \\4, label %(cast\\.valid\\.[0-9]+), label %(cast\\.invalid\\.[0-9]+)\n"
                  "\\6:\n"
-                 "  call void @simp_exception_raise\\(ptr @\\.simp\\.overflow\\.message, i64 16,[^\n]+\\)\n"
+                 "  call void @cwhip_exception_raise\\(ptr @\\.cw\\.overflow\\.message, i64 16,[^\n]+\\)\n"
                  "  unreachable\n"
                  "\\5:\n"
                  "  %t[0-9]+ = " + conversion + " double \\2 to i64\n");
@@ -75,7 +75,7 @@ const TestGroupRegistration registration{2, {
          }
          start {}
          )");
-         const auto ir = simp::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
+         const auto ir = cwhip::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
          require(ir.find(" = icmp sge i64 ") == std::string::npos,
                  "signed to unsigned conversion must accept negative values");
          require(ir.find("cast.invalid.") == std::string::npos,
@@ -89,7 +89,7 @@ const TestGroupRegistration registration{2, {
          }
          start {}
          )");
-         const auto ir = simp::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
+         const auto ir = cwhip::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
          require(std::regex_search(ir, std::regex(" = fcmp une double %t[0-9]+, 0\\.0\n")),
                  "float truth conversion must include NaN and exclude both signed zeros");
      }},

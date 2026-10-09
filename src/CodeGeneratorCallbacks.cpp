@@ -1,7 +1,7 @@
-#include "simp/CodeGenerator.hpp"
-#include "simp/CallbackType.hpp"
+#include "cwhip/CodeGenerator.hpp"
+#include "cwhip/CallbackType.hpp"
 
-namespace simp {
+namespace cwhip {
 namespace {
 
 std::string cType(const std::string& type) {
@@ -28,9 +28,9 @@ std::string CodeGenerator::emitCallbackBridge(const std::string& type) {
     const auto create = symbol + "_create";
     if (!declaredInlineSymbols_.emplace(create).second) return create;
     const auto signature = callbackSignature(type);
-    std::string parameters = "SimpCallbackContext *context";
+    std::string parameters = "CwhipCallbackContext *context";
     std::string methodParameters = "void *";
-    std::string callArguments = "simp_callback_receiver(callback)";
+    std::string callArguments = "cwhip_callback_receiver(callback)";
     std::string initialize;
     std::string managed;
     for (std::size_t index = 0; index < signature.parameters.size(); ++index) {
@@ -46,24 +46,24 @@ std::string CodeGenerator::emitCallbackBridge(const std::string& type) {
     }
     const auto count = signature.parameters.size();
     std::string source = "static void " + symbol +
-        "_invoke(void *callback, const SimpCallbackArgument *arguments, SimpCallbackArgument *result) {\n";
+        "_invoke(void *callback, const CwhipCallbackArgument *arguments, CwhipCallbackArgument *result) {\n";
     if (!count) source += "    (void)arguments;\n";
     if (signature.result == "void") source += "    (void)result;\n    ";
     else source += "    result->" + argumentMember(signature.result) + " = ";
     source += "((" + cType(signature.result) + " (*)(" + methodParameters +
-              "))simp_callback_code(callback))(" + callArguments + ");\n}\n";
+              "))cwhip_callback_code(callback))(" + callArguments + ");\n}\n";
     source += "static " + cType(signature.result) + " " + symbol + "_adapter(" + parameters +
-              ") {\n    SimpCallbackArgument arguments[" +
+              ") {\n    CwhipCallbackArgument arguments[" +
               std::to_string(count ? count : 1) + "] = {{0}};\n"
-              "    SimpCallbackArgument result = {0};\n" + initialize +
-              "    simp_callback_context_invoke(context, \"" + type +
+              "    CwhipCallbackArgument result = {0};\n" + initialize +
+              "    cwhip_callback_context_invoke(context, \"" + type +
               "\", arguments, &result);\n";
     if (signature.result != "void")
         source += "    return result." + argumentMember(signature.result) + ";\n";
     source += "}\n__attribute__((weak)) void *" + create +
               "(void *receiver, void *code) {\n"
               "    static const uint8_t managed[] = {" + (managed.empty() ? "0" : managed) + "};\n"
-              "    return simp_callback_new(receiver, code, (SimpCallbackAdapter)" +
+              "    return cwhip_callback_new(receiver, code, (CwhipCallbackAdapter)" +
               symbol + "_adapter, " + symbol + "_invoke, \"" + type + "\", " +
               std::to_string(count) + ", managed);\n}\n";
     inlineDeclarations_ += "declare ptr @" + create + "(ptr, ptr)\n";
@@ -95,7 +95,7 @@ CodeGenerator::Value CodeGenerator::emitCallbackCall(const Expression& expressio
     const auto signature = callbackSignature(expression.resolvedType);
     const auto receiver = newTemporary();
     const auto code = newTemporary();
-    instructions_ += "  " + receiver + " = call ptr @simp_callback_receiver(ptr " + callback.operand + ")\n";
+    instructions_ += "  " + receiver + " = call ptr @cwhip_callback_receiver(ptr " + callback.operand + ")\n";
     std::string arguments = "ptr " + receiver;
     for (std::size_t index = 0; index < signature.parameters.size(); ++index) {
         auto argument = emitExpression(*expression.arguments[index], signature.parameters[index]);
@@ -103,11 +103,11 @@ CodeGenerator::Value CodeGenerator::emitCallbackCall(const Expression& expressio
                                       expression.arguments[index]->location);
         arguments += ", " + llvmType(signature.parameters[index]) + " " + argument.operand;
     }
-    instructions_ += "  " + code + " = call ptr @simp_callback_code(ptr " + callback.operand + ")\n";
+    instructions_ += "  " + code + " = call ptr @cwhip_callback_code(ptr " + callback.operand + ")\n";
     const auto result = signature.result == "void" ? "" : newTemporary();
     instructions_ += "  " + (result.empty() ? "" : result + " = ") + "call " +
                      llvmType(signature.result) + " " + code + "(" + arguments + ")\n";
     return rootObjectValue({signature.result, result}, expression.location);
 }
 
-} // namespace simp
+} // namespace cwhip

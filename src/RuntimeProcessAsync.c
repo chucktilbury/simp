@@ -6,13 +6,13 @@
  * pump never touches managed memory or the runtime lock: it drains stdout and
  * stderr into an unmanaged, internally locked event queue, reaps the child,
  * escalates cancellation, and finally appends exactly one completion event.
- * Simple threads consume that queue with explicit pull operations. Blocking
+ * Cwhip threads consume that queue with explicit pull operations. Blocking
  * consumers release the runtime lock before waiting on the native mutex, and
  * never acquire the runtime lock while holding it.
  */
 #define _GNU_SOURCE
 
-#include "simp/RuntimeGc.h"
+#include "cwhip/RuntimeGc.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -31,9 +31,9 @@
 #include <unistd.h>
 
 extern char **environ;
-extern const SimpClassMeta simp_string_class_meta __attribute__((weak));
-extern void simp_runtime_set_error(int error_number);
-extern void simp_runtime_clear_error(void);
+extern const CwhipClassMeta cwhip_string_class_meta __attribute__((weak));
+extern void cwhip_runtime_set_error(int error_number);
+extern void cwhip_runtime_clear_error(void);
 
 enum {
     EVENT_STDOUT = 1,
@@ -57,14 +57,14 @@ enum {
     READS_PER_STREAM_PASS = 16
 };
 
-typedef struct SimpProcessEvent {
-    struct SimpProcessEvent *next;
+typedef struct CwhipProcessEvent {
+    struct CwhipProcessEvent *next;
     int kind;
     size_t length;
     unsigned char data[];
-} SimpProcessEvent;
+} CwhipProcessEvent;
 
-typedef struct SimpAsyncProcess {
+typedef struct CwhipAsyncProcess {
     pthread_mutex_t lock;
     pthread_cond_t changed;
     pthread_t pump;
@@ -77,8 +77,8 @@ typedef struct SimpAsyncProcess {
     int stdout_fd;
     int stderr_fd;
 
-    SimpProcessEvent *head;
-    SimpProcessEvent *tail;
+    CwhipProcessEvent *head;
+    CwhipProcessEvent *tail;
 
     int reaped;
     int completed;
@@ -97,7 +97,7 @@ typedef struct SimpAsyncProcess {
     int exit_code;
     int signal_number;
     char *error;
-} SimpAsyncProcess;
+} CwhipAsyncProcess;
 
 static int64_t monotonic_milliseconds(void) {
     struct timespec now;
@@ -132,15 +132,15 @@ static char *format_message(const char *prefix, const char *subject, int error_n
 }
 
 /* Caller holds process->lock (or exclusively owns a not-yet-shared object). */
-static void record_error_locked(SimpAsyncProcess *process, const char *prefix,
+static void record_error_locked(CwhipAsyncProcess *process, const char *prefix,
                                 const char *subject, int error_number) {
     if (process->error != NULL) return;
     process->error = format_message(prefix, subject, error_number);
 }
 
-static int append_event_locked(SimpAsyncProcess *process, int kind, const unsigned char *data,
+static int append_event_locked(CwhipAsyncProcess *process, int kind, const unsigned char *data,
                                size_t length) {
-    SimpProcessEvent *event = (SimpProcessEvent *)malloc(sizeof(*event) + length);
+    CwhipProcessEvent *event = (CwhipProcessEvent *)malloc(sizeof(*event) + length);
     if (event == NULL) return 0;
     event->next = NULL;
     event->kind = kind;
@@ -192,7 +192,7 @@ static char *copy_string(void *object) {
     }
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(object, &bytes, &length);
+    cwhip_string_bytes(object, &bytes, &length);
     if (length > SIZE_MAX - 1 || (length > 0 && memchr(bytes, '\0', (size_t)length) != NULL)) {
         errno = EINVAL;
         return NULL;
@@ -216,11 +216,11 @@ static void free_arguments(char **arguments, size_t count) {
 /* Signals the child's process group (the child is its leader), falling back to
  * the child itself. Only called with the lock held while the child is not yet
  * reaped, so the identifiers cannot have been recycled. */
-static void signal_child_locked(SimpAsyncProcess *process, int signal_number) {
+static void signal_child_locked(CwhipAsyncProcess *process, int signal_number) {
     if (kill(-process->pid, signal_number) != 0) (void)kill(process->pid, signal_number);
 }
 
-static void reap_locked(SimpAsyncProcess *process) {
+static void reap_locked(CwhipAsyncProcess *process) {
     if (process->reaped) return;
     int status = 0;
     pid_t waited;
@@ -250,7 +250,7 @@ static void reap_locked(SimpAsyncProcess *process) {
     }
 }
 
-static void drain_stream(SimpAsyncProcess *process, int *descriptor, int kind) {
+static void drain_stream(CwhipAsyncProcess *process, int *descriptor, int kind) {
     unsigned char chunk[READ_CHUNK_BYTES];
     for (int pass = 0; pass < READS_PER_STREAM_PASS && *descriptor >= 0; ++pass) {
         const ssize_t count = read(*descriptor, chunk, sizeof(chunk));
@@ -282,7 +282,7 @@ static void drain_stream(SimpAsyncProcess *process, int *descriptor, int kind) {
 }
 
 static void *pump_main(void *argument) {
-    SimpAsyncProcess *process = (SimpAsyncProcess *)argument;
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)argument;
     for (;;) {
         struct pollfd descriptors[2];
         nfds_t count = 0;
@@ -339,8 +339,8 @@ static void *pump_main(void *argument) {
     }
 }
 
-static SimpAsyncProcess *allocate_process(void) {
-    SimpAsyncProcess *process = (SimpAsyncProcess *)calloc(1, sizeof(*process));
+static CwhipAsyncProcess *allocate_process(void) {
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)calloc(1, sizeof(*process));
     if (process == NULL) return NULL;
     pthread_condattr_t attributes;
     if (pthread_condattr_init(&attributes) != 0) {
@@ -368,10 +368,10 @@ static SimpAsyncProcess *allocate_process(void) {
     return process;
 }
 
-static void destroy_process(SimpAsyncProcess *process) {
-    SimpProcessEvent *event = process->head;
+static void destroy_process(CwhipAsyncProcess *process) {
+    CwhipProcessEvent *event = process->head;
     while (event != NULL) {
-        SimpProcessEvent *next = event->next;
+        CwhipProcessEvent *next = event->next;
         free(event);
         event = next;
     }
@@ -383,7 +383,7 @@ static void destroy_process(SimpAsyncProcess *process) {
 
 /* Launch failures still produce a handle in the completed LAUNCH_FAILED state
  * whose only event is the completion event. */
-static SimpAsyncProcess *fail_launch(SimpAsyncProcess *process, const char *prefix,
+static CwhipAsyncProcess *fail_launch(CwhipAsyncProcess *process, const char *prefix,
                                      const char *subject, int error_number) {
     if (error_number == 0) error_number = EIO;
     process->state = STATE_LAUNCH_FAILED;
@@ -391,20 +391,20 @@ static SimpAsyncProcess *fail_launch(SimpAsyncProcess *process, const char *pref
     process->completed = 1;
     record_error_locked(process, prefix, subject, error_number);
     (void)append_event_locked(process, EVENT_COMPLETED, NULL, 0);
-    simp_runtime_set_error(error_number);
+    cwhip_runtime_set_error(error_number);
     return process;
 }
 
 #if defined(__GLIBC__) || defined(__APPLE__)
-#define SIMP_HAVE_SPAWN_CHDIR 1
+#define CWHIP_HAVE_SPAWN_CHDIR 1
 #endif
 
-void *simp_process_async_start(void *self, void *executable, void *arguments,
+void *cwhip_process_async_start(void *self, void *executable, void *arguments,
                                void *working_directory) {
     (void)self;
-    SimpAsyncProcess *process = allocate_process();
+    CwhipAsyncProcess *process = allocate_process();
     if (process == NULL) {
-        simp_runtime_set_error(ENOMEM);
+        cwhip_runtime_set_error(ENOMEM);
         return NULL;
     }
     char *program = copy_string(executable);
@@ -427,13 +427,13 @@ void *simp_process_async_start(void *self, void *executable, void *arguments,
         if (stat(directory, &information) != 0) reason = errno == 0 ? ENOENT : errno;
         else if (!S_ISDIR(information.st_mode)) reason = ENOTDIR;
         if (reason != 0) {
-            SimpAsyncProcess *failed =
+            CwhipAsyncProcess *failed =
                 fail_launch(process, "cannot use working directory", directory, reason);
             free(directory);
             free(program);
             return failed;
         }
-#ifndef SIMP_HAVE_SPAWN_CHDIR
+#ifndef CWHIP_HAVE_SPAWN_CHDIR
         free(directory);
         free(program);
         return fail_launch(process, "working directories are unsupported on this platform", NULL,
@@ -445,7 +445,7 @@ void *simp_process_async_start(void *self, void *executable, void *arguments,
         free(program);
         return fail_launch(process, "invalid argument list", NULL, EINVAL);
     }
-    const SimpArray *array = (const SimpArray *)arguments;
+    const CwhipArray *array = (const CwhipArray *)arguments;
     if (array->length > SIZE_MAX / sizeof(char *) - 2) {
         free(directory);
         free(program);
@@ -460,8 +460,8 @@ void *simp_process_async_start(void *self, void *executable, void *arguments,
     }
     argv[0] = program;
     for (size_t index = 0; index < argument_count; ++index) {
-        const SimpArrayValue *value = &array->values[index];
-        if ((value->tag != SIMP_ARRAY_STRING && value->tag != SIMP_ARRAY_OBJECT) ||
+        const CwhipArrayValue *value = &array->values[index];
+        if ((value->tag != CWHIP_ARRAY_STRING && value->tag != CWHIP_ARRAY_OBJECT) ||
             value->pointer == NULL) {
             free_arguments(argv, index + 1);
             free(directory);
@@ -521,7 +521,7 @@ void *simp_process_async_start(void *self, void *executable, void *arguments,
     if (status == 0) {
         status = posix_spawn_file_actions_adddup2(&actions, error_pipe[1], STDERR_FILENO);
     }
-#ifdef SIMP_HAVE_SPAWN_CHDIR
+#ifdef CWHIP_HAVE_SPAWN_CHDIR
     if (status == 0 && directory != NULL) {
         status = posix_spawn_file_actions_addchdir_np(&actions, directory);
     }
@@ -536,7 +536,7 @@ void *simp_process_async_start(void *self, void *executable, void *arguments,
     if (status != 0) {
         close_fd(&output_pipe[0]);
         close_fd(&error_pipe[0]);
-        SimpAsyncProcess *failed =
+        CwhipAsyncProcess *failed =
             setup_failed ? fail_launch(process, "cannot prepare launch of", program, status)
                          : fail_launch(process, "cannot start", program, status);
         free_arguments(argv, argument_count + 1);
@@ -563,7 +563,7 @@ void *simp_process_async_start(void *self, void *executable, void *arguments,
         close_fd(&process->stdout_fd);
         close_fd(&process->stderr_fd);
         process->pid = -1;
-        SimpAsyncProcess *failed = fail_launch(process, "cannot start output thread for", program,
+        CwhipAsyncProcess *failed = fail_launch(process, "cannot start output thread for", program,
                                                status);
         free_arguments(argv, argument_count + 1);
         free(directory);
@@ -572,19 +572,19 @@ void *simp_process_async_start(void *self, void *executable, void *arguments,
     process->pump_started = 1;
     free_arguments(argv, argument_count + 1);
     free(directory);
-    simp_runtime_clear_error();
+    cwhip_runtime_clear_error();
     return process;
 }
 
 /* Every operation pins the object while the caller still holds the runtime
  * lock, so a concurrent close cannot free it underneath a blocked call. */
-static void retain(SimpAsyncProcess *process) {
+static void retain(CwhipAsyncProcess *process) {
     (void)pthread_mutex_lock(&process->lock);
     ++process->references;
     (void)pthread_mutex_unlock(&process->lock);
 }
 
-static void release(SimpAsyncProcess *process) {
+static void release(CwhipAsyncProcess *process) {
     (void)pthread_mutex_lock(&process->lock);
     const int remaining = --process->references;
     (void)pthread_mutex_unlock(&process->lock);
@@ -592,7 +592,7 @@ static void release(SimpAsyncProcess *process) {
 }
 
 /* Callers re-check their predicate; the runtime lock is never held here. */
-static void wait_changed_locked(SimpAsyncProcess *process, int64_t timeout,
+static void wait_changed_locked(CwhipAsyncProcess *process, int64_t timeout,
                                 const struct timespec *deadline) {
     if (timeout < 0) (void)pthread_cond_wait(&process->changed, &process->lock);
     else (void)pthread_cond_timedwait(&process->changed, &process->lock, deadline);
@@ -602,19 +602,19 @@ static int deadline_passed(int64_t timeout, int64_t start) {
     return timeout >= 0 && monotonic_milliseconds() - start >= timeout;
 }
 
-void *simp_process_async_next(void *self, void *object, int64_t timeout) {
+void *cwhip_process_async_next(void *self, void *object, int64_t timeout) {
     (void)self;
-    SimpAsyncProcess *process = (SimpAsyncProcess *)object;
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)object;
     if (process == NULL) {
-        simp_runtime_set_error(EINVAL);
+        cwhip_runtime_set_error(EINVAL);
         return NULL;
     }
     retain(process);
-    SimpProcessEvent *event = NULL;
+    CwhipProcessEvent *event = NULL;
     (void)pthread_mutex_lock(&process->lock);
     if (process->head == NULL && timeout != 0 && !process->completion_taken && !process->closing) {
         (void)pthread_mutex_unlock(&process->lock);
-        simp_runtime_gil_release();
+        cwhip_runtime_gil_release();
         struct timespec deadline;
         const int64_t start = monotonic_milliseconds();
         if (timeout > 0) deadline_after(&deadline, timeout);
@@ -624,7 +624,7 @@ void *simp_process_async_next(void *self, void *object, int64_t timeout) {
             wait_changed_locked(process, timeout, &deadline);
         }
         (void)pthread_mutex_unlock(&process->lock);
-        simp_runtime_gil_acquire();
+        cwhip_runtime_gil_acquire();
         (void)pthread_mutex_lock(&process->lock);
     }
     if (process->head != NULL) {
@@ -639,32 +639,32 @@ void *simp_process_async_next(void *self, void *object, int64_t timeout) {
     return event;
 }
 
-int64_t simp_process_async_event_kind(void *self, void *object) {
+int64_t cwhip_process_async_event_kind(void *self, void *object) {
     (void)self;
-    const SimpProcessEvent *event = (const SimpProcessEvent *)object;
+    const CwhipProcessEvent *event = (const CwhipProcessEvent *)object;
     return event == NULL ? 0 : event->kind;
 }
 
-void *simp_process_async_event_data(void *self, void *object) {
+void *cwhip_process_async_event_data(void *self, void *object) {
     (void)self;
-    const SimpProcessEvent *event = (const SimpProcessEvent *)object;
+    const CwhipProcessEvent *event = (const CwhipProcessEvent *)object;
     if (event == NULL || event->kind == EVENT_COMPLETED) return NULL;
-    SimpBuffer *buffer =
-        (SimpBuffer *)simp_buffer_new((int64_t)event->length, "<stdlib>", 8, 0, 0);
+    CwhipBuffer *buffer =
+        (CwhipBuffer *)cwhip_buffer_new((int64_t)event->length, "<stdlib>", 8, 0, 0);
     if (event->length > 0) memcpy(buffer->data, event->data, event->length);
     return buffer;
 }
 
-void simp_process_async_event_release(void *self, void *object) {
+void cwhip_process_async_event_release(void *self, void *object) {
     (void)self;
     free(object);
 }
 
-int32_t simp_process_async_wait(void *self, void *object, int64_t timeout) {
+int32_t cwhip_process_async_wait(void *self, void *object, int64_t timeout) {
     (void)self;
-    SimpAsyncProcess *process = (SimpAsyncProcess *)object;
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)object;
     if (process == NULL) {
-        simp_runtime_set_error(EINVAL);
+        cwhip_runtime_set_error(EINVAL);
         return 0;
     }
     retain(process);
@@ -672,7 +672,7 @@ int32_t simp_process_async_wait(void *self, void *object, int64_t timeout) {
     int completed = process->completed;
     (void)pthread_mutex_unlock(&process->lock);
     if (!completed && timeout != 0) {
-        simp_runtime_gil_release();
+        cwhip_runtime_gil_release();
         struct timespec deadline;
         const int64_t start = monotonic_milliseconds();
         if (timeout > 0) deadline_after(&deadline, timeout);
@@ -682,17 +682,17 @@ int32_t simp_process_async_wait(void *self, void *object, int64_t timeout) {
         }
         completed = process->completed;
         (void)pthread_mutex_unlock(&process->lock);
-        simp_runtime_gil_acquire();
+        cwhip_runtime_gil_acquire();
     }
     release(process);
     return completed;
 }
 
-int32_t simp_process_async_cancel(void *self, void *object, int64_t grace) {
+int32_t cwhip_process_async_cancel(void *self, void *object, int64_t grace) {
     (void)self;
-    SimpAsyncProcess *process = (SimpAsyncProcess *)object;
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)object;
     if (process == NULL || grace < 0) {
-        simp_runtime_set_error(EINVAL);
+        cwhip_runtime_set_error(EINVAL);
         return 0;
     }
     int accepted = 0;
@@ -714,48 +714,48 @@ int32_t simp_process_async_cancel(void *self, void *object, int64_t grace) {
         }
     }
     (void)pthread_mutex_unlock(&process->lock);
-    simp_runtime_clear_error();
+    cwhip_runtime_clear_error();
     return accepted;
 }
 
-static int read_int_locked(SimpAsyncProcess *process, const int *field) {
+static int read_int_locked(CwhipAsyncProcess *process, const int *field) {
     (void)pthread_mutex_lock(&process->lock);
     const int value = process->completed ? *field : -2;
     (void)pthread_mutex_unlock(&process->lock);
     return value;
 }
 
-int64_t simp_process_async_state(void *self, void *object) {
+int64_t cwhip_process_async_state(void *self, void *object) {
     (void)self;
-    SimpAsyncProcess *process = (SimpAsyncProcess *)object;
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)object;
     if (process == NULL) return STATE_LAUNCH_FAILED;
     const int value = read_int_locked(process, &process->state);
     return value == -2 ? STATE_RUNNING : value;
 }
 
-int64_t simp_process_async_exit_code(void *self, void *object) {
+int64_t cwhip_process_async_exit_code(void *self, void *object) {
     (void)self;
-    SimpAsyncProcess *process = (SimpAsyncProcess *)object;
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)object;
     if (process == NULL) return -1;
     const int value = read_int_locked(process, &process->exit_code);
     return value == -2 ? -1 : value;
 }
 
-int64_t simp_process_async_signal(void *self, void *object) {
+int64_t cwhip_process_async_signal(void *self, void *object) {
     (void)self;
-    SimpAsyncProcess *process = (SimpAsyncProcess *)object;
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)object;
     if (process == NULL) return 0;
     const int value = read_int_locked(process, &process->signal_number);
     return value == -2 ? 0 : value;
 }
 
-void *simp_process_async_error(void *self, void *object) {
+void *cwhip_process_async_error(void *self, void *object) {
     (void)self;
-    if (&simp_string_class_meta == NULL) abort();
-    SimpAsyncProcess *process = (SimpAsyncProcess *)object;
+    if (&cwhip_string_class_meta == NULL) abort();
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)object;
     if (process == NULL) {
         static const char message[] = "process could not be allocated";
-        return simp_string_new(&simp_string_class_meta, message, sizeof(message) - 1);
+        return cwhip_string_new(&cwhip_string_class_meta, message, sizeof(message) - 1);
     }
     char *copy = NULL;
     size_t length = 0;
@@ -766,7 +766,7 @@ void *simp_process_async_error(void *self, void *object) {
         if (copy != NULL) memcpy(copy, process->error, length + 1);
     }
     (void)pthread_mutex_unlock(&process->lock);
-    void *result = simp_string_new(&simp_string_class_meta, copy == NULL ? "" : copy,
+    void *result = cwhip_string_new(&cwhip_string_class_meta, copy == NULL ? "" : copy,
                                    copy == NULL ? 0 : length);
     free(copy);
     return result;
@@ -775,9 +775,9 @@ void *simp_process_async_error(void *self, void *object) {
 /* Kills a still-running child immediately, abandons any output still held
  * open by descendants, and joins the pump. Safe to call concurrently and
  * repeatedly; afterwards the process is completed. */
-void simp_process_async_shutdown(void *self, void *object) {
+void cwhip_process_async_shutdown(void *self, void *object) {
     (void)self;
-    SimpAsyncProcess *process = (SimpAsyncProcess *)object;
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)object;
     if (process == NULL) return;
     retain(process);
     (void)pthread_mutex_lock(&process->lock);
@@ -801,7 +801,7 @@ void simp_process_async_shutdown(void *self, void *object) {
     const int wait_for_joiner = !join && process->pump_joining && !process->pump_joined;
     (void)pthread_mutex_unlock(&process->lock);
     if (join || wait_for_joiner) {
-        simp_runtime_gil_release();
+        cwhip_runtime_gil_release();
         if (join) {
             (void)pthread_join(process->pump, NULL);
             (void)pthread_mutex_lock(&process->lock);
@@ -813,16 +813,16 @@ void simp_process_async_shutdown(void *self, void *object) {
             while (!process->pump_joined) (void)pthread_cond_wait(&process->changed, &process->lock);
             (void)pthread_mutex_unlock(&process->lock);
         }
-        simp_runtime_gil_acquire();
+        cwhip_runtime_gil_acquire();
     }
     release(process);
 }
 
-void simp_process_async_close(void *self, void *object) {
+void cwhip_process_async_close(void *self, void *object) {
     (void)self;
-    SimpAsyncProcess *process = (SimpAsyncProcess *)object;
+    CwhipAsyncProcess *process = (CwhipAsyncProcess *)object;
     if (process == NULL) return;
-    simp_process_async_shutdown(self, process);
+    cwhip_process_async_shutdown(self, process);
     release(process);
 }
 
@@ -901,34 +901,34 @@ static size_t scan_utf8(const uint8_t *bytes, size_t length, uint8_t *out, size_
     return tail;
 }
 
-void *simp_process_text_decode(void *self, void *bytes) {
+void *cwhip_process_text_decode(void *self, void *bytes) {
     (void)self;
-    if (&simp_string_class_meta == NULL) abort();
-    const SimpBuffer *buffer = (const SimpBuffer *)bytes;
+    if (&cwhip_string_class_meta == NULL) abort();
+    const CwhipBuffer *buffer = (const CwhipBuffer *)bytes;
     if (buffer == NULL || buffer->length == 0) {
-        return simp_string_new(&simp_string_class_meta, "", 0);
+        return cwhip_string_new(&cwhip_string_class_meta, "", 0);
     }
     size_t length = (size_t)buffer->length;
     size_t decoded_length = 0;
     scan_utf8(buffer->data, length, NULL, &decoded_length);
     if (decoded_length == length) {
-        return simp_string_new(&simp_string_class_meta, (const char *)buffer->data, length);
+        return cwhip_string_new(&cwhip_string_class_meta, (const char *)buffer->data, length);
     }
     uint8_t *decoded = malloc(decoded_length);
     if (decoded == NULL) {
         static const char message[] = "out of memory decoding process output";
-        simp_exception_raise(message, sizeof(message) - 1, "<native process>", 16, 0, 0);
+        cwhip_exception_raise(message, sizeof(message) - 1, "<native process>", 16, 0, 0);
         return NULL;
     }
     scan_utf8(buffer->data, length, decoded, &decoded_length);
-    void *text = simp_string_new(&simp_string_class_meta, (const char *)decoded, decoded_length);
+    void *text = cwhip_string_new(&cwhip_string_class_meta, (const char *)decoded, decoded_length);
     free(decoded);
     return text;
 }
 
-int64_t simp_process_text_incomplete_tail(void *self, void *bytes) {
+int64_t cwhip_process_text_incomplete_tail(void *self, void *bytes) {
     (void)self;
-    const SimpBuffer *buffer = (const SimpBuffer *)bytes;
+    const CwhipBuffer *buffer = (const CwhipBuffer *)bytes;
     if (buffer == NULL || buffer->length == 0) return 0;
     return (int64_t)scan_utf8(buffer->data, (size_t)buffer->length, NULL, NULL);
 }

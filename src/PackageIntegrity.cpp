@@ -1,4 +1,4 @@
-#include "simp/PackageIntegrity.hpp"
+#include "cwhip/PackageIntegrity.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace simp {
+namespace cwhip {
 namespace {
 
 class Sha256 {
@@ -149,4 +149,4 @@ std::string packageTreeSha256(const std::filesystem::path& root) {
     return hash.finish();
 }
 
-} // namespace simp
+} // namespace cwhip

@@ -363,7 +363,7 @@ class ExplorerLifetime {
             true, _self().received)
     }
 }
-ExplorerLifetime ExplorerLifetime._self() from "simp_gtk_self"
+ExplorerLifetime ExplorerLifetime._self() from "cwhip_gtk_self"
 """
 
 
@@ -408,14 +408,14 @@ def main() -> None:
             "        lifetime.editor = editor\n"
             "        app.onActivate(lifetime.activate)\n"
             "    }")
-        source = work / "explorer.simp"
+        source = work / "explorer.cw"
         source.write_text(text[:index] + DRIVER + setup)
         project = work / "project"
         project.mkdir()
         for name in ("empty", "gone", "sub", ".hidden-dir"):
             (project / name).mkdir()
         (project / "a.txt").write_text("alpha\n")
-        (project / "z.simp").write_text("start {}\n")
+        (project / "z.cw").write_text("start {}\n")
         (project / "sub/nested.txt").write_text("nested\n")
         (project / ".hidden.txt").write_text("hidden\n")
         (project / "binary.dat").write_bytes(b"text\0binary")

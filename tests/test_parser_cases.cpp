@@ -1,10 +1,10 @@
 #include "test_cases.hpp"
 
-#include "simp/Diagnostic.hpp"
-#include "simp/CodeGenerator.hpp"
-#include "simp/Lexer.hpp"
-#include "simp/Parser.hpp"
-#include "simp/Token.hpp"
+#include "cwhip/Diagnostic.hpp"
+#include "cwhip/CodeGenerator.hpp"
+#include "cwhip/Lexer.hpp"
+#include "cwhip/Parser.hpp"
+#include "cwhip/Token.hpp"
 
 #include <algorithm>
 #include <limits>
@@ -13,15 +13,15 @@
 #include <vector>
 
 namespace {
-using namespace simp_test;
+using namespace cwhip_test;
 
 const TestGroupRegistration registration{1, {
         {"deep recursive syntax produces a nesting diagnostic", [] {
              const auto rejected = [](const std::string& source) {
                  try {
-                     simp::Lexer lexer(source, "nesting.simp");
-                     (void)simp::Parser(lexer.tokenize()).parseProgram(false);
-                 } catch (const simp::DiagnosticError& error) {
+                     cwhip::Lexer lexer(source, "nesting.cw");
+                     (void)cwhip::Parser(lexer.tokenize()).parseProgram(false);
+                 } catch (const cwhip::DiagnosticError& error) {
                      require(std::string(error.what()).find("parser nesting exceeds 128") !=
                                  std::string::npos,
                              "deep syntax produced the wrong diagnostic");
@@ -44,9 +44,9 @@ const TestGroupRegistration registration{1, {
              rejected("start { print(" + calls + "1" + std::string(1000, ')') + ") }");
          }},
         {"ordinary nested syntax remains accepted", [] {
-             simp::Lexer lexer("start { print(" + std::string(100, '(') + "1" +
-                               std::string(100, ')') + ") }", "nesting.simp");
-             (void)simp::Parser(lexer.tokenize()).parseProgram();
+             cwhip::Lexer lexer("start { print(" + std::string(100, '(') + "1" +
+                               std::string(100, ')') + ") }", "nesting.cw");
+             (void)cwhip::Parser(lexer.tokenize()).parseProgram();
          }},
         {"flat expression and inline capture chains have bounded AST depth", [] {
              std::string addition = "1";
@@ -57,9 +57,9 @@ const TestGroupRegistration registration{1, {
              }
              const auto rejected = [](const std::string& source) {
                  try {
-                     simp::Lexer lexer(source, "tree-depth.simp");
-                     (void)simp::Parser(lexer.tokenize()).parseProgram();
-                 } catch (const simp::DiagnosticError& error) {
+                     cwhip::Lexer lexer(source, "tree-depth.cw");
+                     (void)cwhip::Parser(lexer.tokenize()).parseProgram();
+                 } catch (const cwhip::DiagnosticError& error) {
                      require(std::string(error.what()).find("expression tree depth exceeds 128") !=
                                  std::string::npos,
                              "deep expression tree produced the wrong diagnostic");
@@ -72,32 +72,32 @@ const TestGroupRegistration registration{1, {
              rejected("start { inline(int " + members + ") {} }");
              std::string accepted = "1";
              for (int index = 0; index < 127; ++index) accepted += "+1";
-             simp::Lexer lexer("start { print(" + accepted + ") }", "tree-depth.simp");
-             (void)simp::Parser(lexer.tokenize()).parseProgram();
+             cwhip::Lexer lexer("start { print(" + accepted + ") }", "tree-depth.cw");
+             (void)cwhip::Parser(lexer.tokenize()).parseProgram();
              rejected("start { print(" + accepted + "+1) }");
              std::string wideList = "1";
              for (int index = 0; index < 1000; ++index) wideList += ",1";
-             simp::Lexer wideLexer("start { list values = [" + wideList + "] }",
-                                   "wide-list.simp");
-             (void)simp::Parser(wideLexer.tokenize()).parseProgram();
+             cwhip::Lexer wideLexer("start { list values = [" + wideList + "] }",
+                                   "wide-list.cw");
+             (void)cwhip::Parser(wideLexer.tokenize()).parseProgram();
          }},
         {"top-level import syntax is represented in the AST", [] {
-             simp::Lexer lexer("import network as Net\nstart {}", "import.simp");
-             auto program = simp::Parser(lexer.tokenize()).parseProgram();
+             cwhip::Lexer lexer("import network as Net\nstart {}", "import.cw");
+             auto program = cwhip::Parser(lexer.tokenize()).parseProgram();
              require(program.imports.size() == 1 &&
                          program.imports.front().moduleName == "network" &&
                          program.imports.front().alias == "Net",
                      "import module name or alias missing from AST");
          }},
         {"import without an alias defers its binding to the package export", [] {
-             simp::Lexer lexer("import network\nstart {}", "import.simp");
-             const auto program = simp::Parser(lexer.tokenize()).parseProgram();
+             cwhip::Lexer lexer("import network\nstart {}", "import.cw");
+             const auto program = cwhip::Parser(lexer.tokenize()).parseProgram();
              require(program.imports.size() == 1 &&
                          program.imports.front().moduleName == "network" &&
                          program.imports.front().alias.empty(),
                      "an omitted alias must be resolved from the manifest export");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              require(output.str().find("Import [network]\n") != std::string::npos,
                      "AST output must not invent an empty explicit alias");
              expectDiagnostic("import network as\nstart {}", "expected import alias");
@@ -111,9 +111,9 @@ const TestGroupRegistration registration{1, {
                               "'import' is only allowed at top level");
          }},
         {"create is no longer a reserved keyword", [] {
-             simp::Lexer lexer("start {\n int create = 1\n print(create)\n}", "identifier.simp");
+             cwhip::Lexer lexer("start {\n int create = 1\n print(create)\n}", "identifier.cw");
              const auto tokens = lexer.tokenize();
-             require(tokens[4].type == simp::TokenType::Identifier &&
+             require(tokens[4].type == cwhip::TokenType::Identifier &&
                          tokens[4].text == "create",
                      "create should be lexed as an identifier");
          }},
@@ -129,7 +129,7 @@ const TestGroupRegistration registration{1, {
              const auto program = parse(
                  "class Box { Box() {} }\nstart { Box box = Box() }");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              require(output.str().find("ConstructorCall [Box]") != std::string::npos,
                      "class-name constructor call missing from AST");
          }},
@@ -160,7 +160,7 @@ const TestGroupRegistration registration{1, {
                   "class Values { enum { FIRST = 3 } }\n"
                   "start { Values value = Values()\n print(value.FIRST) }");
               const auto ir =
-                  simp::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
+                  cwhip::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
               require(ir.find("%Class.Values = type { ptr, ptr }") != std::string::npos,
                       "enum constants must not add per-instance storage");
           }},
@@ -245,16 +245,16 @@ const TestGroupRegistration registration{1, {
                  "}");
              const auto& empty = program.statements[0];
              const auto& filled = program.statements[1];
-             require(empty.kind == simp::StatementKind::Declaration &&
+             require(empty.kind == cwhip::StatementKind::Declaration &&
                          empty.expressions.size() == 1 &&
                          empty.expressions.front()->kind ==
-                             simp::ExpressionKind::ConstructorCall &&
+                             cwhip::ExpressionKind::ConstructorCall &&
                          !empty.expressions.front()->resolvedSignature.empty(),
                      "zero-argument declaration did not preserve constructor-call AST");
-             require(filled.kind == simp::StatementKind::Declaration &&
+             require(filled.kind == cwhip::StatementKind::Declaration &&
                          filled.expressions.size() == 1 &&
                          filled.expressions.front()->kind ==
-                             simp::ExpressionKind::ConstructorCall &&
+                             cwhip::ExpressionKind::ConstructorCall &&
                          !filled.expressions.front()->resolvedSignature.empty(),
                      "overloaded declaration did not record selected constructor");
          }},
@@ -279,7 +279,7 @@ const TestGroupRegistration registration{1, {
                  "class Child : Base { Child(int value) { super Base(value) } }\n"
                  "start { Child child = Child(1) }");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              require(output.str().find("Class [Child : public Base]") != std::string::npos,
                      "base class missing from AST");
              require(output.str().find("Super constructor [Base]") != std::string::npos,
@@ -293,7 +293,7 @@ const TestGroupRegistration registration{1, {
                  "}\n"
                  "start { Leaf leaf = Leaf(1) }");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              require(output.str().find("Super virtual constructor [Root]") !=
                          std::string::npos,
                      "virtual base initializer missing from AST");
@@ -309,7 +309,7 @@ const TestGroupRegistration registration{1, {
                  "}\n"
                  "start { First first = First(1)\n Second second = Second(2) }");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              const auto tree = output.str();
              const auto first = tree.find("Super virtual constructor [Root]");
              require(first != std::string::npos &&
@@ -343,7 +343,7 @@ const TestGroupRegistration registration{1, {
                  "class Other : virtual public Root {}\n"
                  "start {}");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              require(output.str().find("Class [Left : public virtual Root]") !=
                          std::string::npos,
                      "virtual base modifier missing from AST");
@@ -355,21 +355,21 @@ const TestGroupRegistration registration{1, {
              const auto program = parse("start {\n int x = 1 + 2 * 3\n print(x)\n}");
              require(program.statements.size() == 2, "expected declaration and print");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              const auto tree = output.str();
              require(tree.find("Binary [+]") != std::string::npos, "addition absent from AST");
              require(tree.find("Binary [*]") != std::string::npos, "multiplication absent from AST");
          }},
         {"compound assignments are assignment statements in the AST", [] {
-             simp::Lexer lexer(
+             cwhip::Lexer lexer(
                  "start {\n int value = 12\n value += 1\n value -= 1\n value *= 2\n"
                  " value /= 2\n value %= 3\n}",
-                 "compound-assignment.simp");
-             const auto program = simp::Parser(lexer.tokenize()).parseProgram();
+                 "compound-assignment.cw");
+             const auto program = cwhip::Parser(lexer.tokenize()).parseProgram();
              require(program.statements.size() == 6,
                      "compound assignments did not parse as separate statements");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              for (const auto* operation : {"+=", "-=", "*=", "/=", "%="}) {
                  require(output.str().find("Assignment [" + std::string(operation) + "]") !=
                              std::string::npos,
@@ -380,7 +380,7 @@ const TestGroupRegistration registration{1, {
              const auto program = parse(
                  "start {\n dict values = {\"answer\": 42}\n}");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              require(output.str().find("MapLiteral") != std::string::npos,
                      "dict literal missing from AST");
          }},
@@ -393,7 +393,7 @@ const TestGroupRegistration registration{1, {
                  "  print(bytes[0])\n"
                  "}");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              require(output.str().find("BufferLiteral") != std::string::npos &&
                          output.str().find("TypeName [buffer]") != std::string::npos &&
                          output.str().find("ArrayLiteral") == std::string::npos,
@@ -417,7 +417,7 @@ const TestGroupRegistration registration{1, {
                  "finally { print(\"done\") }\n"
                  "}");
              std::ostringstream output;
-             simp::dumpAst(program, output);
+             cwhip::dumpAst(program, output);
              require(output.str().find("Try") != std::string::npos &&
                          output.str().find("Raise") != std::string::npos &&
                          output.str().find("Except") != std::string::npos &&
@@ -546,9 +546,9 @@ const TestGroupRegistration registration{1, {
                               "expected newline after statement");
          }},
         {"parser trace", [] {
-             simp::Lexer lexer("start {}", "trace.simp");
+             cwhip::Lexer lexer("start {}", "trace.cw");
              std::ostringstream trace;
-             simp::Parser parser(lexer.tokenize(), &trace);
+             cwhip::Parser parser(lexer.tokenize(), &trace);
              parser.parseProgram();
              require(trace.str().find("[parser]") != std::string::npos, "parser trace was empty");
          }}

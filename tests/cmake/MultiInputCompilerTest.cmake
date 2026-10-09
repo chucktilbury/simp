@@ -10,13 +10,13 @@ set(work "${WORK_DIR}/multi input tests/${CASE}")
 # Start from an empty directory so artifacts from earlier runs cannot leak in.
 file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${work}")
-set(helper "${work}/helper.simp")
-set(main "${work}/main.simp")
+set(helper "${work}/helper.cw")
+set(main "${work}/main.cw")
 set(executable "${work}/combined executable")
 set(ir "${work}/combined.ll")
-foreach(fixture IN ITEMS helper.simp main.simp native.simp native.c module.simp
-        import.simp second-start.simp no-start.simp
-        duplicate-a.simp duplicate-b.simp)
+foreach(fixture IN ITEMS helper.cw main.cw native.cw native.c module.cw
+        import.cw second-start.cw no-start.cw
+        duplicate-a.cw duplicate-b.cw)
     configure_file("${FIXTURES}/${fixture}" "${work}/${fixture}" COPYONLY)
 endforeach()
 
@@ -71,7 +71,7 @@ endif()
 endif()
 
 if(CASE STREQUAL "all" OR CASE STREQUAL "mixed" OR CASE STREQUAL "library")
-set(native "${work}/native.simp")
+set(native "${work}/native.cw")
 set(c_source "${work}/native.c")
 set(c_object "${work}/native.o")
 set(c_obj_object "${work}/native.obj")
@@ -132,14 +132,14 @@ endif()
 endif()
 
 if(CASE STREQUAL "all" OR CASE STREQUAL "module")
-set(module_source "${work}/module.simp")
+set(module_source "${work}/module.cw")
 set(module_root "${work}/modules/multi_module/1.0.0")
 file(MAKE_DIRECTORY "${module_root}")
-configure_file("${module_source}" "${module_root}/module.simp" COPYONLY)
-file(WRITE "${module_root}/simp-package.toml"
+configure_file("${module_source}" "${module_root}/module.cw" COPYONLY)
+file(WRITE "${module_root}/cwhip-package.toml"
     "[package]\nname = \"multi_module\"\nversion = \"1.0.0\"\n"
-    "source = \"module.simp\"\nexport = \"class:Imported\"\n")
-set(import_source "${work}/import.simp")
+    "source = \"module.cw\"\nexport = \"class:Imported\"\n")
+set(import_source "${work}/import.cw")
 set(import_object "${work}/import.o")
 set(import_executable "${work}/import executable")
 execute_process(
@@ -179,7 +179,7 @@ if(CASE MATCHES "^(invalid_compile_object|invalid_emit_object)$")
 endif()
 if(CASE STREQUAL "all" OR CASE STREQUAL "invalid_start")
 execute_process(
-    COMMAND "${COMPILER}" "${main}" "${work}/second-start.simp" -o "${work}/bad"
+    COMMAND "${COMPILER}" "${main}" "${work}/second-start.cw" -o "${work}/bad"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )
 if(result EQUAL 0 OR NOT stderr MATCHES "more than one top-level 'start' block")
@@ -189,7 +189,7 @@ endif()
 
 if(CASE STREQUAL "all" OR CASE STREQUAL "invalid_missing_start")
 execute_process(
-    COMMAND "${COMPILER}" "${work}/no-start.simp" -o "${work}/missing-entry"
+    COMMAND "${COMPILER}" "${work}/no-start.cw" -o "${work}/missing-entry"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )
 if(result EQUAL 0 OR NOT stderr MATCHES "programs must contain exactly one top-level 'start' block")
@@ -198,7 +198,7 @@ endif()
 endif()
 if(CASE STREQUAL "all" OR CASE STREQUAL "invalid_duplicate_symbol")
 execute_process(
-    COMMAND "${COMPILER}" "${work}/duplicate-a.simp" "${work}/duplicate-b.simp"
+    COMMAND "${COMPILER}" "${work}/duplicate-a.cw" "${work}/duplicate-b.cw"
             -o "${work}/duplicate-symbols"
     RESULT_VARIABLE result OUTPUT_VARIABLE stdout ERROR_VARIABLE stderr
 )

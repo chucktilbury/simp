@@ -1,6 +1,6 @@
 /**
  * @file json_lite.hpp
- * @brief Minimal JSON parser for per-fixture .simp.json objects with string
+ * @brief Minimal JSON parser for per-fixture .cw.json objects with string
  *        and boolean fields. This is intentionally not a general-purpose
  *        JSON library (no numbers or Unicode escapes); the test driver uses
  *        it without vendoring a third-party dependency.
@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace simp_test_json {
+namespace cwhip_test_json {
 
 /// Thrown for any malformed or unsupported JSON input. Kept distinct from
 /// std::runtime_error only in name, so callers can catch either.
@@ -200,4 +200,4 @@ private:
     }
 };
 
-} // namespace simp_test_json
+} // namespace cwhip_test_json

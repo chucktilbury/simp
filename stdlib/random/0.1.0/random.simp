@@ -1,9 +1,0 @@
-namespace Random {
-    class SecureRandom {
-        buffer bytes(int size)
-        bool fill(buffer target)
-    }
-
-    buffer SecureRandom.bytes(int size) from "simp_random_bytes"
-    bool SecureRandom.fill(buffer target) from "simp_random_fill"
-}

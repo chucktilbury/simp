@@ -1,12 +1,12 @@
 # Documentation
 
-- [Historical Simple language notes](SIMPLE-LANGUAGE-NOTES.md)
+- [Historical Cwhip language notes](CWHIP-LANGUAGE-NOTES.md)
 - [Cwhip grammar reference](GRAMMAR.md)
 - [Cwhip language reference](LANGUAGE-REFERENCE.md)
 - [Bound-method callbacks and native callback ABI](CALLBACKS.md)
 - [Compiler build and installation](INSTALLATION.md)
 - [Project package search order and user module directory](INSTALLATION.md#project-module-search)
-- [Project package manager (`simpkg`)](INSTALLATION.md#project-package-manager-simpkg)
+- [Project package manager (`cwhip-pkg`)](INSTALLATION.md#project-package-manager-cwhip-pkg)
 - [Package manifests and lockfile schema](PACKAGES.md)
 - [Debugging Cwhip programs](DEBUGGING.md)
 - [Build and run examples](EXAMPLES.md)

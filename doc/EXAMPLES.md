@@ -7,7 +7,7 @@ show the expected output or behavior:
 
 Formatting uses literal templates, not calls on string literals:
 
-```simp
+```cwhip
 // test: {"stdout": "this is 420000002AASCII: Aliteral {}"}
 start {
     strg message = format("this is {}", 42)
@@ -24,37 +24,37 @@ implicit line breaks.
 specifier subset.
 
 ```sh
-./bin/cwhip tests/functional/positive/positive_integer_output.simp \
+./bin/cwhip tests/functional/positive/positive_integer_output.cw \
   -o bin/positive_integer_output
 ./bin/positive_integer_output
 # Prints: 42
 
-./bin/cwhip tests/functional/positive/positive_integer_control_flow.simp \
+./bin/cwhip tests/functional/positive/positive_integer_control_flow.cw \
   -o bin/positive_integer_control_flow
 ./bin/positive_integer_control_flow
 # Prints: 9
 
-./bin/cwhip tests/functional/positive/positive_string_format.simp \
+./bin/cwhip tests/functional/positive/positive_string_format.cw \
   -o bin/positive_string_format
 ./bin/positive_string_format
 # Writes "café\nvalue: 42sum 21 21"; print adds no implicit line breaks.
 
-./bin/cwhip tests/functional/positive/positive_class_counter.simp \
+./bin/cwhip tests/functional/positive/positive_class_counter.cw \
   -o bin/positive_class_counter
 ./bin/positive_class_counter
 # Prints: 42, then 42
 
-./bin/cwhip tests/functional/positive/positive_gc_object_graph.simp \
+./bin/cwhip tests/functional/positive/positive_gc_object_graph.cw \
   -o bin/positive_gc_object_graph
 ./bin/positive_gc_object_graph
 # Prints: 1, 64, and 77 after repeated collections.
 
-./bin/cwhip tests/functional/positive/positive_multiple_inheritance.simp \
+./bin/cwhip tests/functional/positive/positive_multiple_inheritance.cw \
   -o bin/positive_multiple_inheritance
 ./bin/positive_multiple_inheritance
 # Prints: 7, 7, 10, 20, and 3; the two Root subobjects hold separate Node references.
 
-./bin/cwhip tests/functional/positive/positive_secondary_bases.simp \
+./bin/cwhip tests/functional/positive/positive_secondary_bases.cw \
   -o bin/positive_secondary_bases
 ./bin/positive_secondary_bases
 # Exercises secondary-base construction, conversions, dispatch, GC tracing, and destruction.
@@ -63,7 +63,7 @@ specifier subset.
 To save the generated LLVM IR as well as building an executable:
 
 ```sh
-./bin/cwhip tests/functional/positive/positive_integer_output.simp \
+./bin/cwhip tests/functional/positive/positive_integer_output.cw \
   --emit-llvm build/positive_integer_output.ll -o bin/positive_integer_output
 ```
 
@@ -73,13 +73,13 @@ snippets. The grammar and language reference describe each feature; see
 
 ## Package workflow
 
-After installing `simp` and `simpkg` on `PATH`, a project with nested sources
+After installing `cwhip` and `cwhip-pkg` on `PATH`, a project with nested sources
 needs no environment activation:
 
 ```sh
-mkdir -p hello-simp/src
-cd hello-simp
-simpkg init
+mkdir -p hello-cwhip/src
+cd hello-cwhip
+cwhip-pkg init
 # Copy examples/package_workflow.cw from this repository to src/main.cw.
 cwhip src/main.cw -o hello
 ./hello
@@ -88,7 +88,7 @@ cwhip src/main.cw -o hello
 The example uses the default exported `System` namespace, a `math` alias,
 and the implicit `String` prelude. `init` locks the bundled packages locally,
 without network access. For an external dependency, review its repository and
-run `simpkg add OWNER/REPO VERSION --yes`; the command installs the complete
-declared graph and updates the manifest/lock. `simpkg install --yes` restores
+run `cwhip-pkg add OWNER/REPO VERSION --yes`; the command installs the complete
+declared graph and updates the manifest/lock. `cwhip-pkg install --yes` restores
 that lock on another checkout. See [package schemas and plan/consent
 behavior](PACKAGES.md) before adding untrusted dependencies.

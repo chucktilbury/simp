@@ -1,0 +1,504 @@
+namespace Gtk {
+    class Config {
+        String validate(String text)
+        String fileStatus(String path)
+        String value(String text, String section, String key)
+        String key(String text, String section, int index)
+        String quote(String text)
+        String merge(String original, String updates)
+        String remove(String text, String section, String key)
+        String item(String text, String section, String key, int index, String field)
+        void save(String path, String text, String expected, callback<void(String)> result)
+    }
+    String Config.validate(String text) from "cwhip_gtk_config_validate"
+    String Config.fileStatus(String path) from "cwhip_gtk_config_file_status"
+    String Config.value(String text, String section, String key) from "cwhip_gtk_config_value"
+    String Config.key(String text, String section, int index) from "cwhip_gtk_config_key"
+    String Config.quote(String text) from "cwhip_gtk_config_quote"
+    String Config.merge(String original, String updates) from "cwhip_gtk_config_merge"
+    String Config.remove(String text, String section, String key) from "cwhip_gtk_config_remove"
+    String Config.item(String text, String section, String key, int index, String field)
+        from "cwhip_gtk_config_item"
+    void Config.save(String path, String text, String expected, callback<void(String)> result)
+        from "cwhip_gtk_config_save"
+
+    class Keyboard {
+        String normalize(String trigger)
+        int record(Entry entry, callback<void(String)> result)
+        bool cancel(int token)
+    }
+    String Keyboard.normalize(String trigger) from "cwhip_gtk_keyboard_normalize"
+    int Keyboard.record(Entry entry, callback<void(String)> result) from "cwhip_gtk_keyboard_record"
+    bool Keyboard.cancel(int token) from "cwhip_gtk_keyboard_cancel"
+
+    class Font {
+        bool isMonospace(String family)
+    }
+    bool Font.isMonospace(String family) from "cwhip_gtk_font_is_monospace"
+    class Application {
+        private:
+        void _create(String id)
+        Application _self()
+        public:
+        Application() {}
+        Application(String id) { _create(id) }
+        void initialize()
+        String id()
+        SignalConnection onActivate(callback<void()> action) {
+            return SignalConnection(_self(), action)
+        }
+        void run()
+        void quit()
+        void shutdown()
+        int post(callback<void()> action)
+        bool cancel(int token)
+    }
+
+    class SignalConnection {
+        private:
+        int _token
+        int _activate(Application source, callback<void()> action)
+        int _click(Button source, callback<void()> action)
+        int _changed(Entry source, callback<void(String)> action)
+        int _close(Window source, callback<bool()> action)
+        int _close(TransientWindow source, callback<bool()> action)
+        int _toggled(CheckButton source, callback<void(bool)> action)
+        int _pageChanged(Notebook source, callback<void()> action)
+        bool _disconnect(int token)
+        bool _connected(int token)
+        public:
+        SignalConnection(Application source, callback<void()> action) {
+            _token = _activate(source, action)
+        }
+        SignalConnection(Button source, callback<void()> action) {
+            _token = _click(source, action)
+        }
+        SignalConnection(Entry source, callback<void(String)> action) {
+            _token = _changed(source, action)
+        }
+        SignalConnection(Window source, callback<bool()> action) {
+            _token = _close(source, action)
+        }
+        SignalConnection(TransientWindow source, callback<bool()> action) {
+            _token = _close(source, action)
+        }
+        SignalConnection(CheckButton source, callback<void(bool)> action) {
+            _token = _toggled(source, action)
+        }
+        SignalConnection(Notebook source, callback<void()> action) {
+            _token = _pageChanged(source, action)
+        }
+        bool disconnect() { return _disconnect(_token) }
+        bool connected() { return _connected(_token) }
+    }
+
+    class Widget {
+        private:
+        int _id
+        Widget _self()
+        void _keepAlive() {}
+        int _create(int kind, String text, int orientation, int spacing, callback<void()> root)
+        void _dispose(int token)
+        bool _disposed(int token)
+        void _visible(int token, bool value)
+        void _sensitive(int token, bool value)
+        void _expand(int token, bool horizontal, bool value)
+        void _focus(int token)
+        void _textSet(int token, String text)
+        String _textGet(int token)
+        void _attach(int parent, int child)
+        void _remove(int parent, int child)
+        void _windowAction(int token, int action)
+        void _windowSize(int token, int width, int height)
+        int _windowWidth(int token)
+        int _windowHeight(int token)
+        void _windowTransientFor(int token, int parent)
+        void _layout(int token, int orientation, int spacing)
+        void _activeSet(int token, bool value)
+        bool _activeGet(int token)
+        protected:
+        void _notebookAppend(int notebook, int child, String title)
+        int _notebookCurrent(int notebook)
+        void _notebookSetCurrent(int notebook, int page)
+        int _notebookCount(int notebook)
+        void _notebookTitle(int notebook, int page, String title)
+        Widget(int kind, String text, int orientation, int spacing) {
+            _id = _create(kind, text, orientation, spacing, _self()._keepAlive)
+        }
+        void _setText(String text) { _textSet(_id, text) }
+        String _getText() { return _textGet(_id) }
+        void _attachChild(Widget child) { _attach(_id, child._id) }
+        void _removeChild(Widget child) { _remove(_id, child._id) }
+        void _presentWindow() { _windowAction(_id, 0) }
+        void _closeWindow() { _windowAction(_id, 1) }
+        void _sizeWindow(int width, int height) { _windowSize(_id, width, height) }
+        int _defaultWidth() { return _windowWidth(_id) }
+        int _defaultHeight() { return _windowHeight(_id) }
+        void _setTransientFor(int parent) { _windowTransientFor(_id, parent) }
+        void _boxLayout(int orientation, int spacing) { _layout(_id, orientation, spacing) }
+        void _setActive(bool value) { _activeSet(_id, value) }
+        bool _getActive() { return _activeGet(_id) }
+        void _grabFocus() { _focus(_id) }
+        public:
+        int _widgetToken() { return _id }
+        void dispose() { _dispose(_id) }
+        bool disposed() { return _disposed(_id) }
+        void setVisible(bool value) { _visible(_id, value) }
+        void setSensitive(bool value) { _sensitive(_id, value) }
+        void setHExpand(bool value) { _expand(_id, true, value) }
+        void setVExpand(bool value) { _expand(_id, false, value) }
+    }
+
+    class Window : Widget {
+        private:
+        Window _windowSelf()
+        public:
+        Window(String title) { super Widget(1, title, 0, 0) }
+        void setTitle(String title) { _setText(title) }
+        String title() { return _getText() }
+        void setDefaultSize(int width, int height) { _sizeWindow(width, height) }
+        int defaultWidth() { return _defaultWidth() }
+        int defaultHeight() { return _defaultHeight() }
+        void setTransientFor(Window parent) {
+            _setTransientFor(parent._widgetToken())
+        }
+        void setChild(Widget child) { _attachChild(child) }
+        void remove(Widget child) { _removeChild(child) }
+        void present() { _presentWindow() }
+        void close() { _closeWindow() }
+        SignalConnection onCloseRequest(callback<bool()> action) {
+            return SignalConnection(_windowSelf(), action)
+        }
+    }
+
+    class TransientWindow : Widget {
+        private:
+        TransientWindow _transientSelf()
+        public:
+        TransientWindow(String title) { super Widget(11, title, 0, 0) }
+        void setTitle(String title) { _setText(title) }
+        String title() { return _getText() }
+        void setDefaultSize(int width, int height) { _sizeWindow(width, height) }
+        void setTransientFor(Window parent) {
+            _setTransientFor(parent._widgetToken())
+        }
+        void setChild(Widget child) { _attachChild(child) }
+        void remove(Widget child) { _removeChild(child) }
+        void present() { _presentWindow() }
+        void close() { _closeWindow() }
+        SignalConnection onCloseRequest(callback<bool()> action) {
+            return SignalConnection(_transientSelf(), action)
+        }
+    }
+
+    class Box : Widget {
+        public:
+        enum { HORIZONTAL = 0, VERTICAL = 1 }
+        Box(int orientation, int spacing) { super Widget(2, "", orientation, spacing) }
+        void setLayout(int orientation, int spacing) { _boxLayout(orientation, spacing) }
+        void append(Widget child) { _attachChild(child) }
+        void remove(Widget child) { _removeChild(child) }
+    }
+
+    class Label : Widget {
+        public:
+        Label(String text) { super Widget(3, text, 0, 0) }
+        void setText(String text) { _setText(text) }
+        String text() { return _getText() }
+    }
+
+    class Button : Widget {
+        private:
+        Button _buttonSelf()
+        public:
+        Button(String label) { super Widget(4, label, 0, 0) }
+        void setLabel(String label) { _setText(label) }
+        String label() { return _getText() }
+        SignalConnection onClicked(callback<void()> action) {
+            return SignalConnection(_buttonSelf(), action)
+        }
+    }
+
+    class Entry : Widget {
+        private:
+        Entry _entrySelf()
+        public:
+        Entry(String text) { super Widget(5, text, 0, 0) }
+        void setText(String text) { _setText(text) }
+        String text() { return _getText() }
+        SignalConnection onChanged(callback<void(String)> action) {
+            return SignalConnection(_entrySelf(), action)
+        }
+        void focus() { _grabFocus() }
+    }
+
+    class MenuBar : Widget {
+        private:
+        int _addMenu(int token, String label)
+        int _addItem(int token, int menu, String label, callback<void()> action)
+        void _enabled(int token, int item, bool value)
+        void _activate(int token, int item)
+        public:
+        MenuBar() { super Widget(10, "", 0, 0) }
+        int addMenu(String label) { return _addMenu(_widgetToken(), label) }
+        int addItem(int menu, String label, callback<void()> action) {
+            return _addItem(_widgetToken(), menu, label, action)
+        }
+        void setItemEnabled(int item, bool enabled) { _enabled(_widgetToken(), item, enabled) }
+        void activateItem(int item) { _activate(_widgetToken(), item) }
+    }
+
+    class FileSelection {
+        private:
+        list _paths
+        callback<void(list)> _result
+        public:
+        FileSelection(callback<void(list)> result) {
+            _paths = []
+            _result = result
+        }
+        void add(String path) {
+            if (!path.equals("")) {
+                _paths.append(path)
+                return
+            }
+            list paths = _paths
+            _paths = []
+            _result(paths)
+        }
+    }
+
+    class FileDialog {
+        private:
+        int _token
+        FileSelection _selection
+        int _create(int parent, bool save, String initialPath, callback<void(String)> result)
+        int _createMultiple(int parent, String initialPath, callback<void(String)> path)
+        int _createFolder(int parent, String initialPath, callback<void(String)> result)
+        void _cancel(int token)
+        bool _pending(int token)
+        public:
+        FileDialog(Window parent, bool save, String initialPath, callback<void(String)> result) {
+            _token = _create(parent._widgetToken(), save, initialPath, result)
+        }
+        FileDialog(Window parent, String initialPath, callback<void(list)> results) {
+            _selection = FileSelection(results)
+            _token = _createMultiple(parent._widgetToken(), initialPath, _selection.add)
+        }
+        FileDialog(Window parent, String initialPath, callback<void(String)> folder) {
+            _token = _createFolder(parent._widgetToken(), initialPath, folder)
+        }
+        void cancel() { _cancel(_token) }
+        bool pending() { return _pending(_token) }
+    }
+
+    class AlertDialog {
+        private:
+        void _show(int parent, String message, String detail)
+        public:
+        // Shows a modal error/information alert over parent; it closes itself.
+        void show(Window parent, String message, String detail) {
+            _show(parent._widgetToken(), message, detail)
+        }
+    }
+
+    class CheckButton : Widget {
+        private:
+        CheckButton _checkSelf()
+        public:
+        CheckButton(String label) { super Widget(6, label, 0, 0) }
+        void setLabel(String label) { _setText(label) }
+        String label() { return _getText() }
+        void setActive(bool value) { _setActive(value) }
+        bool active() { return _getActive() }
+        SignalConnection onToggled(callback<void(bool)> action) {
+            return SignalConnection(_checkSelf(), action)
+        }
+    }
+
+    class ScrolledWindow : Widget {
+        public:
+        ScrolledWindow() { super Widget(7, "", 0, 0) }
+        void setChild(Widget child) { _attachChild(child) }
+        void remove(Widget child) { _removeChild(child) }
+    }
+
+    class Notebook : Widget {
+        private:
+        Notebook _notebookSelf()
+        public:
+        Notebook() { super Widget(9, "", 0, 0) }
+        void appendPage(Widget child, String title) {
+            _notebookAppend(_widgetToken(), child._widgetToken(), title)
+        }
+        int currentPage() { return _notebookCurrent(_widgetToken()) }
+        void setCurrentPage(int page) { _notebookSetCurrent(_widgetToken(), page) }
+        int pageCount() { return _notebookCount(_widgetToken()) }
+        void setPageTitle(int page, String title) {
+            _notebookTitle(_widgetToken(), page, title)
+        }
+        void remove(Widget child) { _removeChild(child) }
+        SignalConnection onPageChanged(callback<void()> action) {
+            return SignalConnection(_notebookSelf(), action)
+        }
+    }
+
+    class Paned : Widget {
+        private:
+        void _position(int token, int position)
+        int _getPosition(int token)
+        public:
+        Paned() { super Widget(12, "", 0, 0) }
+        void append(Widget child) { _attachChild(child) }
+        void setPosition(int position) { _position(_widgetToken(), position) }
+        int position() { return _getPosition(_widgetToken()) }
+    }
+
+    class Tree : Widget {
+        private:
+        void _setup(int token, callback<void(int)> request, callback<void(int)> activate)
+        void _add(int token, int parent, int id, String label, String icon, bool expandable, String value, int data)
+        void _clear(int token, int parent)
+        void _expandRow(int token, int id, bool expanded)
+        bool _isExpanded(int token, int id)
+        String _value(int token, int id)
+        int _data(int token, int id)
+        int _find(int token, String value)
+        int _count(int token, int parent)
+        public:
+        Tree(callback<void(int)> request, callback<void(int)> activate) {
+            super Widget(13, "", 0, 0)
+            _setup(_widgetToken(), request, activate)
+        }
+        void add(int parent, int id, String label, String icon, bool expandable, String value, int data) {
+            _add(_widgetToken(), parent, id, label, icon, expandable, value, data)
+        }
+        void clear(int parent) { _clear(_widgetToken(), parent) }
+        void setExpanded(int id, bool expanded) { _expandRow(_widgetToken(), id, expanded) }
+        bool expanded(int id) { return _isExpanded(_widgetToken(), id) }
+        String value(int id) { return _value(_widgetToken(), id) }
+        int data(int id) { return _data(_widgetToken(), id) }
+        int findValue(String value) { return _find(_widgetToken(), value) }
+        int childCount(int parent) { return _count(_widgetToken(), parent) }
+    }
+
+    class DirectoryScan {
+        private:
+        int _token
+        int _start(int owner, String path, bool hidden, callback<void(int, String)> result)
+        int _startFiltered(int owner, String path, bool hidden, String root, String excludes,
+            callback<void(int, String)> result)
+        void _cancel(int token)
+        void _append(int token, int tree, int parent, int firstId, int count, String icons)
+        public:
+        DirectoryScan(Tree owner, String path, bool hidden, callback<void(int, String)> result) {
+            _token = _start(owner._widgetToken(), path, hidden, result)
+        }
+        DirectoryScan(Tree owner, String path, bool hidden, String root, String excludes,
+            callback<void(int, String)> result) {
+            _token = _startFiltered(owner._widgetToken(), path, hidden, root, excludes, result)
+        }
+        void cancel() { _cancel(_token) }
+        void append(Tree owner, int parent, int firstId, int count, String icons) {
+            _append(_token, owner._widgetToken(), parent, firstId, count, icons)
+        }
+    }
+
+    class SourceViewWidget : Widget {
+        public:
+        SourceViewWidget() { super Widget(8, "", 0, 0) }
+        int nativeToken() { return _widgetToken() }
+    }
+
+    void Application._create(String id) from "cwhip_gtk_application_create"
+    Application Application._self() from "cwhip_gtk_self"
+    Widget Widget._self() from "cwhip_gtk_self"
+    Window Window._windowSelf() from "cwhip_gtk_self"
+    TransientWindow TransientWindow._transientSelf() from "cwhip_gtk_self"
+    Button Button._buttonSelf() from "cwhip_gtk_self"
+    Entry Entry._entrySelf() from "cwhip_gtk_self"
+    CheckButton CheckButton._checkSelf() from "cwhip_gtk_self"
+    Notebook Notebook._notebookSelf() from "cwhip_gtk_self"
+    void Application.initialize() from "cwhip_gtk_initialize"
+    String Application.id() from "cwhip_gtk_application_id"
+    void Application.run() from "cwhip_gtk_run"
+    void Application.quit() from "cwhip_gtk_quit"
+    void Application.shutdown() from "cwhip_gtk_shutdown"
+    int Application.post(callback<void()> action) from "cwhip_gtk_post"
+    bool Application.cancel(int token) from "cwhip_gtk_cancel"
+    int SignalConnection._activate(Application source, callback<void()> action)
+        from "cwhip_gtk_activation_signal"
+    int SignalConnection._click(Button source, callback<void()> action) from "cwhip_gtk_button_signal"
+    int SignalConnection._changed(Entry source, callback<void(String)> action) from "cwhip_gtk_entry_signal"
+    int SignalConnection._close(Window source, callback<bool()> action) from "cwhip_gtk_window_signal"
+    int SignalConnection._close(TransientWindow source, callback<bool()> action)
+        from "cwhip_gtk_window_signal"
+    int SignalConnection._toggled(CheckButton source, callback<void(bool)> action) from "cwhip_gtk_checkbox_signal"
+    int SignalConnection._pageChanged(Notebook source, callback<void()> action)
+        from "cwhip_gtk_notebook_signal"
+    bool SignalConnection._disconnect(int token) from "cwhip_gtk_connection_disconnect"
+    bool SignalConnection._connected(int token) from "cwhip_gtk_connected"
+    int Widget._create(int kind, String text, int orientation, int spacing, callback<void()> root)
+        from "cwhip_gtk_widget_create"
+    void Widget._dispose(int token) from "cwhip_gtk_widget_dispose"
+    bool Widget._disposed(int token) from "cwhip_gtk_widget_disposed"
+    void Widget._visible(int token, bool value) from "cwhip_gtk_widget_visible"
+    void Widget._sensitive(int token, bool value) from "cwhip_gtk_widget_sensitive"
+    void Widget._expand(int token, bool horizontal, bool value) from "cwhip_gtk_widget_expand"
+    void Widget._focus(int token) from "cwhip_gtk_widget_focus"
+    int MenuBar._addMenu(int token, String label) from "cwhip_gtk_menu_add"
+    int MenuBar._addItem(int token, int menu, String label, callback<void()> action)
+        from "cwhip_gtk_menu_item_add"
+    void MenuBar._enabled(int token, int item, bool value) from "cwhip_gtk_menu_item_enabled"
+    void MenuBar._activate(int token, int item) from "cwhip_gtk_menu_item_activate"
+    int FileDialog._create(int parent, bool save, String initialPath, callback<void(String)> result)
+        from "cwhip_gtk_file_dialog_create"
+    int FileDialog._createMultiple(int parent, String initialPath, callback<void(String)> path)
+        from "cwhip_gtk_file_dialog_create_multiple"
+    int FileDialog._createFolder(int parent, String initialPath, callback<void(String)> result)
+        from "cwhip_gtk_file_dialog_create_folder"
+    void Paned._position(int token, int position) from "cwhip_gtk_paned_position"
+    int Paned._getPosition(int token) from "cwhip_gtk_paned_get_position"
+    bool Tree._isExpanded(int token, int id) from "cwhip_gtk_tree_is_expanded"
+    int DirectoryScan._startFiltered(int owner, String path, bool hidden, String root,
+        String excludes, callback<void(int, String)> result) from "cwhip_gtk_directory_start_filtered"
+    void Tree._setup(int token, callback<void(int)> request, callback<void(int)> activate)
+        from "cwhip_gtk_tree_setup"
+    void Tree._add(int token, int parent, int id, String label, String icon, bool expandable, String value, int data)
+        from "cwhip_gtk_tree_add"
+    String Tree._value(int token, int id) from "cwhip_gtk_tree_value"
+    int Tree._data(int token, int id) from "cwhip_gtk_tree_data"
+    int Tree._find(int token, String value) from "cwhip_gtk_tree_find"
+    int Tree._count(int token, int parent) from "cwhip_gtk_tree_count"
+    void Tree._clear(int token, int parent) from "cwhip_gtk_tree_clear"
+    void Tree._expandRow(int token, int id, bool expanded) from "cwhip_gtk_tree_expand"
+    int DirectoryScan._start(int owner, String path, bool hidden, callback<void(int, String)> result)
+        from "cwhip_gtk_directory_start"
+    void DirectoryScan._cancel(int token) from "cwhip_gtk_directory_cancel"
+    void DirectoryScan._append(int token, int tree, int parent, int firstId, int count, String icons)
+        from "cwhip_gtk_directory_append"
+    void AlertDialog._show(int parent, String message, String detail) from "cwhip_gtk_alert_show"
+    void FileDialog._cancel(int token) from "cwhip_gtk_file_dialog_cancel"
+    bool FileDialog._pending(int token) from "cwhip_gtk_file_dialog_pending"
+    void Widget._textSet(int token, String text) from "cwhip_gtk_widget_text_set"
+    String Widget._textGet(int token) from "cwhip_gtk_widget_text_get"
+    void Widget._attach(int parent, int child) from "cwhip_gtk_widget_attach"
+    void Widget._remove(int parent, int child) from "cwhip_gtk_widget_remove"
+    void Widget._windowAction(int token, int action) from "cwhip_gtk_window_action"
+    void Widget._windowSize(int token, int width, int height) from "cwhip_gtk_window_size"
+    int Widget._windowWidth(int token) from "cwhip_gtk_window_width"
+    int Widget._windowHeight(int token) from "cwhip_gtk_window_height"
+    void Widget._windowTransientFor(int token, int parent)
+        from "cwhip_gtk_window_transient_for"
+    void Widget._layout(int token, int orientation, int spacing) from "cwhip_gtk_box_layout"
+    void Widget._activeSet(int token, bool value) from "cwhip_gtk_checkbox_set"
+    bool Widget._activeGet(int token) from "cwhip_gtk_checkbox_get"
+    void Widget._notebookAppend(int notebook, int child, String title)
+        from "cwhip_gtk_notebook_append"
+    int Widget._notebookCurrent(int notebook) from "cwhip_gtk_notebook_current"
+    void Widget._notebookSetCurrent(int notebook, int page)
+        from "cwhip_gtk_notebook_set_current"
+    int Widget._notebookCount(int notebook) from "cwhip_gtk_notebook_count"
+    void Widget._notebookTitle(int notebook, int page, String title)
+        from "cwhip_gtk_notebook_title"
+}

@@ -8,18 +8,18 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     set(CMAKE_C_STANDARD 11)
     set(CMAKE_C_STANDARD_REQUIRED ON)
     set(CMAKE_C_EXTENSIONS OFF)
-    find_program(SIMP_CLANG_EXECUTABLE NAMES clang)
-    if(NOT SIMP_CLANG_EXECUTABLE)
+    find_program(CWHIP_CLANG_EXECUTABLE NAMES clang)
+    if(NOT CWHIP_CLANG_EXECUTABLE)
         message(FATAL_ERROR "Clang is required to turn generated LLVM IR into an executable")
     endif()
     execute_process(
-        COMMAND "${SIMP_CLANG_EXECUTABLE}" -dumpmachine
-        OUTPUT_VARIABLE SIMP_TARGET_TRIPLE
+        COMMAND "${CWHIP_CLANG_EXECUTABLE}" -dumpmachine
+        OUTPUT_VARIABLE CWHIP_TARGET_TRIPLE
         OUTPUT_STRIP_TRAILING_WHITESPACE
-        RESULT_VARIABLE SIMP_TARGET_TRIPLE_RESULT
+        RESULT_VARIABLE CWHIP_TARGET_TRIPLE_RESULT
     )
-    if(NOT SIMP_TARGET_TRIPLE_RESULT EQUAL 0 OR SIMP_TARGET_TRIPLE STREQUAL "")
-        message(FATAL_ERROR "Could not query the target triple from ${SIMP_CLANG_EXECUTABLE}")
+    if(NOT CWHIP_TARGET_TRIPLE_RESULT EQUAL 0 OR CWHIP_TARGET_TRIPLE STREQUAL "")
+        message(FATAL_ERROR "Could not query the target triple from ${CWHIP_CLANG_EXECUTABLE}")
     endif()
     add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../include"
                      "${CMAKE_CURRENT_BINARY_DIR}/include")
@@ -31,205 +31,205 @@ find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
 
 # The staged prefix mirrors the install layout so the compiler finds its
 # resources relative to its own executable both in a build and after install.
-if(NOT DEFINED SIMP_STAGE_PREFIX)
-    set(SIMP_STAGE_PREFIX "${CMAKE_CURRENT_BINARY_DIR}")
+if(NOT DEFINED CWHIP_STAGE_PREFIX)
+    set(CWHIP_STAGE_PREFIX "${CMAKE_CURRENT_BINARY_DIR}")
 endif()
-if(NOT DEFINED SIMP_RUNTIME_OUTPUT_DIRECTORY)
-    set(SIMP_RUNTIME_OUTPUT_DIRECTORY "${SIMP_STAGE_PREFIX}/${CMAKE_INSTALL_BINDIR}")
+if(NOT DEFINED CWHIP_RUNTIME_OUTPUT_DIRECTORY)
+    set(CWHIP_RUNTIME_OUTPUT_DIRECTORY "${CWHIP_STAGE_PREFIX}/${CMAKE_INSTALL_BINDIR}")
 endif()
-if(NOT DEFINED SIMP_LIBRARY_OUTPUT_DIRECTORY)
-    set(SIMP_LIBRARY_OUTPUT_DIRECTORY "${SIMP_STAGE_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
+if(NOT DEFINED CWHIP_LIBRARY_OUTPUT_DIRECTORY)
+    set(CWHIP_LIBRARY_OUTPUT_DIRECTORY "${CWHIP_STAGE_PREFIX}/${CMAKE_INSTALL_LIBDIR}")
 endif()
-if("${SIMP_RUNTIME_OUTPUT_DIRECTORY};${SIMP_LIBRARY_OUTPUT_DIRECTORY}" MATCHES "[ \t]")
+if("${CWHIP_RUNTIME_OUTPUT_DIRECTORY};${CWHIP_LIBRARY_OUTPUT_DIRECTORY}" MATCHES "[ \t]")
     # GNU ld depfiles do not escape spaces; retain CMake's explicit link dependencies.
     set(CMAKE_LINK_DEPENDS_USE_LINKER FALSE)
 endif()
 
 # Resource locations are compiled in only as paths relative to the prefix.
-foreach(simp_install_kind BINDIR LIBDIR INCLUDEDIR DATADIR)
-    file(RELATIVE_PATH SIMP_RELATIVE_${simp_install_kind}
-         "${CMAKE_INSTALL_PREFIX}" "${CMAKE_INSTALL_FULL_${simp_install_kind}}")
-    if(SIMP_RELATIVE_${simp_install_kind} STREQUAL ""
-       OR SIMP_RELATIVE_${simp_install_kind} MATCHES "^\\.\\.(/|$)")
+foreach(cwhip_install_kind BINDIR LIBDIR INCLUDEDIR DATADIR)
+    file(RELATIVE_PATH CWHIP_RELATIVE_${cwhip_install_kind}
+         "${CMAKE_INSTALL_PREFIX}" "${CMAKE_INSTALL_FULL_${cwhip_install_kind}}")
+    if(CWHIP_RELATIVE_${cwhip_install_kind} STREQUAL ""
+       OR CWHIP_RELATIVE_${cwhip_install_kind} MATCHES "^\\.\\.(/|$)")
         message(FATAL_ERROR
-            "CMAKE_INSTALL_${simp_install_kind} (${CMAKE_INSTALL_FULL_${simp_install_kind}}) "
+            "CMAKE_INSTALL_${cwhip_install_kind} (${CMAKE_INSTALL_FULL_${cwhip_install_kind}}) "
             "must be inside CMAKE_INSTALL_PREFIX (${CMAKE_INSTALL_PREFIX}) for a "
-            "relocatable simp installation")
+            "relocatable cwhip installation")
     endif()
 endforeach()
-set(SIMP_STAGE_RUNTIME_DIRECTORY "${SIMP_STAGE_PREFIX}/${SIMP_RELATIVE_LIBDIR}/simp")
-set(SIMP_STAGE_INCLUDE_DIRECTORY "${SIMP_STAGE_PREFIX}/${SIMP_RELATIVE_INCLUDEDIR}/simp")
-set(SIMP_STAGE_BUILTIN_DIRECTORY "${SIMP_STAGE_PREFIX}/${SIMP_RELATIVE_DATADIR}/simp/builtin")
-set(SIMP_STAGE_MODULE_DIRECTORY "${SIMP_STAGE_PREFIX}/${SIMP_RELATIVE_DATADIR}/simp/modules")
-file(RELATIVE_PATH SIMPKG_STDLIB_RELATIVE_PATH
-    "${SIMP_RUNTIME_OUTPUT_DIRECTORY}" "${SIMP_STAGE_MODULE_DIRECTORY}")
-file(RELATIVE_PATH SIMPKG_PREFIX_STDLIB_RELATIVE_PATH
-    "${CMAKE_INSTALL_PREFIX}" "${CMAKE_INSTALL_FULL_DATADIR}/simp/modules")
-file(MAKE_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}")
+set(CWHIP_STAGE_RUNTIME_DIRECTORY "${CWHIP_STAGE_PREFIX}/${CWHIP_RELATIVE_LIBDIR}/cwhip")
+set(CWHIP_STAGE_INCLUDE_DIRECTORY "${CWHIP_STAGE_PREFIX}/${CWHIP_RELATIVE_INCLUDEDIR}/cwhip")
+set(CWHIP_STAGE_BUILTIN_DIRECTORY "${CWHIP_STAGE_PREFIX}/${CWHIP_RELATIVE_DATADIR}/cwhip/builtin")
+set(CWHIP_STAGE_MODULE_DIRECTORY "${CWHIP_STAGE_PREFIX}/${CWHIP_RELATIVE_DATADIR}/cwhip/modules")
+file(RELATIVE_PATH CWHIP_PKG_STDLIB_RELATIVE_PATH
+    "${CWHIP_RUNTIME_OUTPUT_DIRECTORY}" "${CWHIP_STAGE_MODULE_DIRECTORY}")
+file(RELATIVE_PATH CWHIP_PKG_PREFIX_STDLIB_RELATIVE_PATH
+    "${CMAKE_INSTALL_PREFIX}" "${CMAKE_INSTALL_FULL_DATADIR}/cwhip/modules")
+file(MAKE_DIRECTORY "${CWHIP_RUNTIME_OUTPUT_DIRECTORY}")
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../tools/simpkg.py.in"
-    "${SIMP_RUNTIME_OUTPUT_DIRECTORY}/simpkg"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tools/cwhip-pkg.py.in"
+    "${CWHIP_RUNTIME_OUTPUT_DIRECTORY}/cwhip-pkg"
     @ONLY
 )
-file(RELATIVE_PATH SIMPKG_STDLIB_RELATIVE_PATH
-    "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_FULL_DATADIR}/simp/modules")
+file(RELATIVE_PATH CWHIP_PKG_STDLIB_RELATIVE_PATH
+    "${CMAKE_INSTALL_FULL_BINDIR}" "${CMAKE_INSTALL_FULL_DATADIR}/cwhip/modules")
 configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/../tools/simpkg.py.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/simpkg-install"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../tools/cwhip-pkg.py.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/cwhip-pkg-install"
     @ONLY
 )
-set(SIMP_SOURCE_INCLUDE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../include/simp")
-set(SIMP_SOURCE_BUILTIN_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../builtin")
-set(SIMP_SOURCE_STDLIB_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib")
-set(SIMP_RUNTIME_HEADERS
-    "${SIMP_SOURCE_INCLUDE_DIRECTORY}/Callbacks.h"
-    "${SIMP_SOURCE_INCLUDE_DIRECTORY}/Stdlib.h"
-    "${SIMP_SOURCE_INCLUDE_DIRECTORY}/RuntimeDemoShims.h"
-    "${SIMP_SOURCE_INCLUDE_DIRECTORY}/RuntimeGc.h"
-    "${SIMP_SOURCE_INCLUDE_DIRECTORY}/RuntimeThreads.h"
+set(CWHIP_SOURCE_INCLUDE_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../include/cwhip")
+set(CWHIP_SOURCE_BUILTIN_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../builtin")
+set(CWHIP_SOURCE_STDLIB_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stdlib")
+set(CWHIP_RUNTIME_HEADERS
+    "${CWHIP_SOURCE_INCLUDE_DIRECTORY}/Callbacks.h"
+    "${CWHIP_SOURCE_INCLUDE_DIRECTORY}/Stdlib.h"
+    "${CWHIP_SOURCE_INCLUDE_DIRECTORY}/RuntimeDemoShims.h"
+    "${CWHIP_SOURCE_INCLUDE_DIRECTORY}/RuntimeGc.h"
+    "${CWHIP_SOURCE_INCLUDE_DIRECTORY}/RuntimeThreads.h"
 )
-set(SIMP_BUILTIN_SOURCES "${SIMP_SOURCE_BUILTIN_DIRECTORY}/String.simp")
-file(GLOB_RECURSE SIMP_STDLIB_SOURCES CONFIGURE_DEPENDS
-    "${SIMP_SOURCE_STDLIB_DIRECTORY}/*")
+set(CWHIP_BUILTIN_SOURCES "${CWHIP_SOURCE_BUILTIN_DIRECTORY}/String.cw")
+file(GLOB_RECURSE CWHIP_STDLIB_SOURCES CONFIGURE_DEPENDS
+    "${CWHIP_SOURCE_STDLIB_DIRECTORY}/*")
 
 find_package(Threads REQUIRED)
 find_package(SQLite3 REQUIRED)
 
 include(CheckIncludeFile)
-check_include_file(unistd.h SIMP_HAVE_UNISTD_H)
-if(NOT SIMP_HAVE_UNISTD_H)
-    message(FATAL_ERROR "simp requires a POSIX target with unistd.h (including inline C)")
+check_include_file(unistd.h CWHIP_HAVE_UNISTD_H)
+if(NOT CWHIP_HAVE_UNISTD_H)
+    message(FATAL_ERROR "cwhip requires a POSIX target with unistd.h (including inline C)")
 endif()
 
-add_library(simp_runtime STATIC RuntimeGc.c RuntimeStdlib.c RuntimeOS.c RuntimeProcess.c
+add_library(cwhip_runtime STATIC RuntimeGc.c RuntimeStdlib.c RuntimeOS.c RuntimeProcess.c
     RuntimeProcessAsync.c
     RuntimeDemoShims.c RuntimeThreads.c)
-target_link_libraries(simp_runtime PUBLIC simp_headers Threads::Threads)
-set_target_properties(simp_runtime PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${SIMP_STAGE_RUNTIME_DIRECTORY}"
-    LIBRARY_OUTPUT_DIRECTORY "${SIMP_STAGE_RUNTIME_DIRECTORY}"
+target_link_libraries(cwhip_runtime PUBLIC cwhip_headers Threads::Threads)
+set_target_properties(cwhip_runtime PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CWHIP_STAGE_RUNTIME_DIRECTORY}"
+    LIBRARY_OUTPUT_DIRECTORY "${CWHIP_STAGE_RUNTIME_DIRECTORY}"
 )
 
-set(simp_stage_commands
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${SIMP_STAGE_BUILTIN_DIRECTORY}"
-    COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${SIMP_BUILTIN_SOURCES}
-            "${SIMP_STAGE_BUILTIN_DIRECTORY}/"
-    COMMAND "${CMAKE_COMMAND}" -E make_directory "${SIMP_STAGE_MODULE_DIRECTORY}"
-    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${SIMP_SOURCE_STDLIB_DIRECTORY}"
-            "${SIMP_STAGE_MODULE_DIRECTORY}"
+set(cwhip_stage_commands
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CWHIP_STAGE_BUILTIN_DIRECTORY}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${CWHIP_BUILTIN_SOURCES}
+            "${CWHIP_STAGE_BUILTIN_DIRECTORY}/"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${CWHIP_STAGE_MODULE_DIRECTORY}"
+    COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CWHIP_SOURCE_STDLIB_DIRECTORY}"
+            "${CWHIP_STAGE_MODULE_DIRECTORY}"
 )
-get_filename_component(simp_source_include_real "${SIMP_SOURCE_INCLUDE_DIRECTORY}" REALPATH)
-get_filename_component(simp_stage_include_real "${SIMP_STAGE_INCLUDE_DIRECTORY}" REALPATH)
-if(NOT simp_source_include_real STREQUAL simp_stage_include_real)
-    list(APPEND simp_stage_commands
-        COMMAND "${CMAKE_COMMAND}" -E make_directory "${SIMP_STAGE_INCLUDE_DIRECTORY}"
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${SIMP_RUNTIME_HEADERS}
-                "${SIMP_STAGE_INCLUDE_DIRECTORY}/")
+get_filename_component(cwhip_source_include_real "${CWHIP_SOURCE_INCLUDE_DIRECTORY}" REALPATH)
+get_filename_component(cwhip_stage_include_real "${CWHIP_STAGE_INCLUDE_DIRECTORY}" REALPATH)
+if(NOT cwhip_source_include_real STREQUAL cwhip_stage_include_real)
+    list(APPEND cwhip_stage_commands
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CWHIP_STAGE_INCLUDE_DIRECTORY}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different ${CWHIP_RUNTIME_HEADERS}
+                "${CWHIP_STAGE_INCLUDE_DIRECTORY}/")
 endif()
-set(SIMP_SQLITE_PACKAGE_LIBRARY_DIRECTORY
-    "${SIMP_STAGE_MODULE_DIRECTORY}/sqlite/0.1.0/lib")
-file(MAKE_DIRECTORY "${SIMP_SQLITE_PACKAGE_LIBRARY_DIRECTORY}")
-add_library(simp_sqlite_native STATIC
-    "${SIMP_SOURCE_STDLIB_DIRECTORY}/sqlite/0.1.0/native/sqlite.c")
-target_link_libraries(simp_sqlite_native PRIVATE simp_headers SQLite::SQLite3)
-set_target_properties(simp_sqlite_native PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${SIMP_SQLITE_PACKAGE_LIBRARY_DIRECTORY}"
-    OUTPUT_NAME simp_sqlite
+set(CWHIP_SQLITE_PACKAGE_LIBRARY_DIRECTORY
+    "${CWHIP_STAGE_MODULE_DIRECTORY}/sqlite/0.1.0/lib")
+file(MAKE_DIRECTORY "${CWHIP_SQLITE_PACKAGE_LIBRARY_DIRECTORY}")
+add_library(cwhip_sqlite_native STATIC
+    "${CWHIP_SOURCE_STDLIB_DIRECTORY}/sqlite/0.1.0/native/sqlite.c")
+target_link_libraries(cwhip_sqlite_native PRIVATE cwhip_headers SQLite::SQLite3)
+set_target_properties(cwhip_sqlite_native PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CWHIP_SQLITE_PACKAGE_LIBRARY_DIRECTORY}"
+    OUTPUT_NAME cwhip_sqlite
 )
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(GTK4 QUIET IMPORTED_TARGET "gtk4>=4.10")
     pkg_check_modules(GTK_SOURCEVIEW QUIET IMPORTED_TARGET gtksourceview-5)
 endif()
-option(SIMP_GTK "Build the GTK 4 interface package (default: detect installed dependencies)" ${GTK4_FOUND})
-set(simp_sourceview_default OFF)
-if(SIMP_GTK AND GTK_SOURCEVIEW_FOUND)
-    set(simp_sourceview_default ON)
+option(CWHIP_GTK "Build the GTK 4 interface package (default: detect installed dependencies)" ${GTK4_FOUND})
+set(cwhip_sourceview_default OFF)
+if(CWHIP_GTK AND GTK_SOURCEVIEW_FOUND)
+    set(cwhip_sourceview_default ON)
 endif()
-option(SIMP_GTK_SOURCEVIEW "Build the GtkSourceView editor package (default: detect installed dependencies)" ${simp_sourceview_default})
-if(SIMP_GTK_SOURCEVIEW AND NOT SIMP_GTK)
-    message(FATAL_ERROR "SIMP_GTK_SOURCEVIEW requires SIMP_GTK=ON")
+option(CWHIP_GTK_SOURCEVIEW "Build the GtkSourceView editor package (default: detect installed dependencies)" ${cwhip_sourceview_default})
+if(CWHIP_GTK_SOURCEVIEW AND NOT CWHIP_GTK)
+    message(FATAL_ERROR "CWHIP_GTK_SOURCEVIEW requires CWHIP_GTK=ON")
 endif()
-if(SIMP_GTK)
+if(CWHIP_GTK)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET "gtk4>=4.10")
-    add_library(simp_gtk_native STATIC
-        "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/gtk.c"
-        "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/toml.c")
-    target_link_libraries(simp_gtk_native PRIVATE simp_headers PkgConfig::GTK4 Threads::Threads)
-    if(SIMP_GTK_SOURCEVIEW)
+    add_library(cwhip_gtk_native STATIC
+        "${CWHIP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/gtk.c"
+        "${CWHIP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/native/toml.c")
+    target_link_libraries(cwhip_gtk_native PRIVATE cwhip_headers PkgConfig::GTK4 Threads::Threads)
+    if(CWHIP_GTK_SOURCEVIEW)
         pkg_check_modules(GTK_SOURCEVIEW REQUIRED IMPORTED_TARGET gtksourceview-5)
-        target_link_libraries(simp_gtk_native PRIVATE PkgConfig::GTK_SOURCEVIEW)
-        target_compile_definitions(simp_gtk_native PRIVATE
-            SIMP_GTK_SOURCEVIEW=1
-            SIMP_GTK_SOURCEVIEW_SOURCE_LANG_DIR="${SIMP_SOURCE_STDLIB_DIRECTORY}/sourceview/0.1.0/language-specs"
-            SIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR="${CMAKE_INSTALL_FULL_DATADIR}/simp/modules/sourceview/0.1.0/language-specs")
-        set(SIMP_GTK_SOURCEVIEW_MANIFEST
-            "${CMAKE_CURRENT_BINARY_DIR}/gtk-sourceview-simp-package.toml")
+        target_link_libraries(cwhip_gtk_native PRIVATE PkgConfig::GTK_SOURCEVIEW)
+        target_compile_definitions(cwhip_gtk_native PRIVATE
+            CWHIP_GTK_SOURCEVIEW=1
+            CWHIP_GTK_SOURCEVIEW_SOURCE_LANG_DIR="${CWHIP_SOURCE_STDLIB_DIRECTORY}/sourceview/0.1.0/language-specs"
+            CWHIP_GTK_SOURCEVIEW_INSTALL_LANG_DIR="${CMAKE_INSTALL_FULL_DATADIR}/cwhip/modules/sourceview/0.1.0/language-specs")
+        set(CWHIP_GTK_SOURCEVIEW_MANIFEST
+            "${CMAKE_CURRENT_BINARY_DIR}/gtk-sourceview-cwhip-package.toml")
         configure_file(
-            "${SIMP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/simp-package-sourceview.toml.in"
-            "${SIMP_GTK_SOURCEVIEW_MANIFEST}" @ONLY)
-        list(APPEND simp_stage_commands
+            "${CWHIP_SOURCE_STDLIB_DIRECTORY}/gtk/0.1.0/cwhip-package-sourceview.toml.in"
+            "${CWHIP_GTK_SOURCEVIEW_MANIFEST}" @ONLY)
+        list(APPEND cwhip_stage_commands
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${SIMP_GTK_SOURCEVIEW_MANIFEST}"
-                "${SIMP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/simp-package.toml")
+                "${CWHIP_GTK_SOURCEVIEW_MANIFEST}"
+                "${CWHIP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/cwhip-package.toml")
     else()
-        list(APPEND simp_stage_commands
+        list(APPEND cwhip_stage_commands
             COMMAND "${CMAKE_COMMAND}" -E remove_directory
-                "${SIMP_STAGE_MODULE_DIRECTORY}/sourceview")
+                "${CWHIP_STAGE_MODULE_DIRECTORY}/sourceview")
     endif()
-    target_compile_options(simp_gtk_native PRIVATE -Wall -Wextra -Wpedantic)
-    set_target_properties(simp_gtk_native PROPERTIES
-        ARCHIVE_OUTPUT_DIRECTORY "${SIMP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/lib"
-        OUTPUT_NAME simp_gtk)
+    target_compile_options(cwhip_gtk_native PRIVATE -Wall -Wextra -Wpedantic)
+    set_target_properties(cwhip_gtk_native PROPERTIES
+        ARCHIVE_OUTPUT_DIRECTORY "${CWHIP_STAGE_MODULE_DIRECTORY}/gtk/0.1.0/lib"
+        OUTPUT_NAME cwhip_gtk)
     message(STATUS "GTK 4 interface enabled; GTK links only into importing applications")
-    if(SIMP_GTK_SOURCEVIEW)
+    if(CWHIP_GTK_SOURCEVIEW)
         message(STATUS "GtkSourceView editor package enabled")
     endif()
 else()
     # Do not advertise an unusable source-only package in a non-GTK prefix.
-    list(APPEND simp_stage_commands
-        COMMAND "${CMAKE_COMMAND}" -E remove_directory "${SIMP_STAGE_MODULE_DIRECTORY}/gtk")
-    list(APPEND simp_stage_commands
+    list(APPEND cwhip_stage_commands
+        COMMAND "${CMAKE_COMMAND}" -E remove_directory "${CWHIP_STAGE_MODULE_DIRECTORY}/gtk")
+    list(APPEND cwhip_stage_commands
         COMMAND "${CMAKE_COMMAND}" -E remove_directory
-            "${SIMP_STAGE_MODULE_DIRECTORY}/sourceview")
-    message(STATUS "GTK 4 interface disabled (enable with -DSIMP_GTK=ON)")
+            "${CWHIP_STAGE_MODULE_DIRECTORY}/sourceview")
+    message(STATUS "GTK 4 interface disabled (enable with -DCWHIP_GTK=ON)")
 endif()
 
-set(simp_stage_outputs "${SIMP_STAGE_BUILTIN_DIRECTORY}/String.simp")
-if(NOT simp_source_include_real STREQUAL simp_stage_include_real)
-    foreach(header IN LISTS SIMP_RUNTIME_HEADERS)
+set(cwhip_stage_outputs "${CWHIP_STAGE_BUILTIN_DIRECTORY}/String.cw")
+if(NOT cwhip_source_include_real STREQUAL cwhip_stage_include_real)
+    foreach(header IN LISTS CWHIP_RUNTIME_HEADERS)
         get_filename_component(name "${header}" NAME)
-        list(APPEND simp_stage_outputs "${SIMP_STAGE_INCLUDE_DIRECTORY}/${name}")
+        list(APPEND cwhip_stage_outputs "${CWHIP_STAGE_INCLUDE_DIRECTORY}/${name}")
     endforeach()
 endif()
-foreach(source IN LISTS SIMP_STDLIB_SOURCES)
-    file(RELATIVE_PATH relative "${SIMP_SOURCE_STDLIB_DIRECTORY}" "${source}")
-    if((NOT SIMP_GTK AND relative MATCHES "^gtk/")
-       OR (NOT SIMP_GTK_SOURCEVIEW AND relative MATCHES "^sourceview/"))
+foreach(source IN LISTS CWHIP_STDLIB_SOURCES)
+    file(RELATIVE_PATH relative "${CWHIP_SOURCE_STDLIB_DIRECTORY}" "${source}")
+    if((NOT CWHIP_GTK AND relative MATCHES "^gtk/")
+       OR (NOT CWHIP_GTK_SOURCEVIEW AND relative MATCHES "^sourceview/"))
         continue()
     endif()
-    list(APPEND simp_stage_outputs "${SIMP_STAGE_MODULE_DIRECTORY}/${relative}")
+    list(APPEND cwhip_stage_outputs "${CWHIP_STAGE_MODULE_DIRECTORY}/${relative}")
 endforeach()
-set(SIMP_RESOURCE_STAMP "${CMAKE_CURRENT_BINARY_DIR}/simp-resources.stamp")
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/simp-resource-options.txt"
-    CONTENT "GTK=${SIMP_GTK}\nSOURCEVIEW=${SIMP_GTK_SOURCEVIEW}\n")
+set(CWHIP_RESOURCE_STAMP "${CMAKE_CURRENT_BINARY_DIR}/cwhip-resources.stamp")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/cwhip-resource-options.txt"
+    CONTENT "GTK=${CWHIP_GTK}\nSOURCEVIEW=${CWHIP_GTK_SOURCEVIEW}\n")
 add_custom_command(
-    OUTPUT "${SIMP_RESOURCE_STAMP}" ${simp_stage_outputs}
-    ${simp_stage_commands}
-    COMMAND "${CMAKE_COMMAND}" -E touch "${SIMP_RESOURCE_STAMP}"
-    DEPENDS ${SIMP_BUILTIN_SOURCES} ${SIMP_RUNTIME_HEADERS} ${SIMP_STDLIB_SOURCES}
-        ${SIMP_GTK_SOURCEVIEW_MANIFEST}
-        "${CMAKE_CURRENT_LIST_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/simp-resource-options.txt"
-    COMMENT "Staging simp builtin, runtime headers, and module directories"
+    OUTPUT "${CWHIP_RESOURCE_STAMP}" ${cwhip_stage_outputs}
+    ${cwhip_stage_commands}
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CWHIP_RESOURCE_STAMP}"
+    DEPENDS ${CWHIP_BUILTIN_SOURCES} ${CWHIP_RUNTIME_HEADERS} ${CWHIP_STDLIB_SOURCES}
+        ${CWHIP_GTK_SOURCEVIEW_MANIFEST}
+        "${CMAKE_CURRENT_LIST_FILE}" "${CMAKE_CURRENT_BINARY_DIR}/cwhip-resource-options.txt"
+    COMMENT "Staging cwhip builtin, runtime headers, and module directories"
     VERBATIM)
-add_custom_target(simp_resources ALL DEPENDS "${SIMP_RESOURCE_STAMP}" ${simp_stage_outputs})
-add_dependencies(simp_resources simp_sqlite_native)
-if(SIMP_GTK)
-    add_dependencies(simp_resources simp_gtk_native)
+add_custom_target(cwhip_resources ALL DEPENDS "${CWHIP_RESOURCE_STAMP}" ${cwhip_stage_outputs})
+add_dependencies(cwhip_resources cwhip_sqlite_native)
+if(CWHIP_GTK)
+    add_dependencies(cwhip_resources cwhip_gtk_native)
 endif()
 
-add_library(simp_frontend
+add_library(cwhip_frontend
     Ast.cpp
     CommandLine.cpp
     CodeGenerator.cpp
@@ -255,55 +255,52 @@ add_library(simp_frontend
     SemanticStatements.cpp
     SourceLoader.cpp
 )
-target_link_libraries(simp_frontend PUBLIC simp_headers)
-if(SIMP_FUZZ)
-    target_compile_options(simp_frontend PRIVATE -fsanitize=fuzzer-no-link)
+target_link_libraries(cwhip_frontend PUBLIC cwhip_headers)
+if(CWHIP_FUZZ)
+    target_compile_options(cwhip_frontend PRIVATE -fsanitize=fuzzer-no-link)
 endif()
-target_compile_definitions(simp_frontend PRIVATE
-    SIMP_INSTALL_BINDIR="${SIMP_RELATIVE_BINDIR}"
-    SIMP_INSTALL_LIBDIR="${SIMP_RELATIVE_LIBDIR}"
-    SIMP_INSTALL_INCLUDEDIR="${SIMP_RELATIVE_INCLUDEDIR}"
-    SIMP_INSTALL_DATADIR="${SIMP_RELATIVE_DATADIR}"
-    SIMP_RUNTIME_LIBRARY_NAME="$<TARGET_FILE_NAME:simp_runtime>"
+target_compile_definitions(cwhip_frontend PRIVATE
+    CWHIP_INSTALL_BINDIR="${CWHIP_RELATIVE_BINDIR}"
+    CWHIP_INSTALL_LIBDIR="${CWHIP_RELATIVE_LIBDIR}"
+    CWHIP_INSTALL_INCLUDEDIR="${CWHIP_RELATIVE_INCLUDEDIR}"
+    CWHIP_INSTALL_DATADIR="${CWHIP_RELATIVE_DATADIR}"
+    CWHIP_RUNTIME_LIBRARY_NAME="$<TARGET_FILE_NAME:cwhip_runtime>"
 )
-add_dependencies(simp_frontend simp_resources simp_runtime)
-set_target_properties(simp_frontend PROPERTIES
-    ARCHIVE_OUTPUT_DIRECTORY "${SIMP_LIBRARY_OUTPUT_DIRECTORY}"
-    LIBRARY_OUTPUT_DIRECTORY "${SIMP_LIBRARY_OUTPUT_DIRECTORY}"
+add_dependencies(cwhip_frontend cwhip_resources cwhip_runtime)
+set_target_properties(cwhip_frontend PROPERTIES
+    ARCHIVE_OUTPUT_DIRECTORY "${CWHIP_LIBRARY_OUTPUT_DIRECTORY}"
+    LIBRARY_OUTPUT_DIRECTORY "${CWHIP_LIBRARY_OUTPUT_DIRECTORY}"
 )
 
-foreach(compiler_target IN ITEMS cwhip simp)
-    add_executable(${compiler_target} main.cpp)
-    target_link_libraries(${compiler_target} PRIVATE simp_frontend)
-    target_compile_definitions(${compiler_target} PRIVATE
-        SIMP_VERSION="${PROJECT_VERSION}"
-        SIMP_CLANG_EXECUTABLE="${SIMP_CLANG_EXECUTABLE}"
-        SIMP_TARGET_TRIPLE="${SIMP_TARGET_TRIPLE}"
-        SIMP_SANITIZER_LIST="${SIMP_SANITIZER_LIST}"
-        SIMP_COVERAGE=$<BOOL:${SIMP_COVERAGE}>
-    )
-    add_dependencies(${compiler_target} simp_runtime)
-    set_target_properties(${compiler_target} PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY "${SIMP_RUNTIME_OUTPUT_DIRECTORY}"
-    )
-endforeach()
+add_executable(cwhip main.cpp)
+target_link_libraries(cwhip PRIVATE cwhip_frontend)
+target_compile_definitions(cwhip PRIVATE
+    CWHIP_VERSION="${PROJECT_VERSION}"
+    CWHIP_CLANG_EXECUTABLE="${CWHIP_CLANG_EXECUTABLE}"
+    CWHIP_TARGET_TRIPLE="${CWHIP_TARGET_TRIPLE}"
+    CWHIP_SANITIZER_LIST="${CWHIP_SANITIZER_LIST}"
+    CWHIP_COVERAGE=$<BOOL:${CWHIP_COVERAGE}>
+)
+add_dependencies(cwhip cwhip_runtime)
+set_target_properties(cwhip PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CWHIP_RUNTIME_OUTPUT_DIRECTORY}"
+)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/CwhipEditor.cmake")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(simp_frontend PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(cwhip_frontend PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(cwhip PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(simp PRIVATE -Wall -Wextra -Wpedantic)
-    target_compile_options(simp_runtime PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(cwhip_runtime PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 
-install(TARGETS cwhip simp RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/simpkg-install"
-    DESTINATION "${CMAKE_INSTALL_BINDIR}" RENAME simpkg)
-install(TARGETS simp_runtime
-    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}/simp"
-    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/simp"
+install(TARGETS cwhip RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/cwhip-pkg-install"
+    DESTINATION "${CMAKE_INSTALL_BINDIR}" RENAME cwhip-pkg)
+install(TARGETS cwhip_runtime
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}/cwhip"
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}/cwhip"
 )
-install(FILES ${SIMP_RUNTIME_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/simp")
-install(FILES ${SIMP_BUILTIN_SOURCES} DESTINATION "${CMAKE_INSTALL_DATADIR}/simp/builtin")
-install(DIRECTORY "${SIMP_STAGE_MODULE_DIRECTORY}/"
-    DESTINATION "${CMAKE_INSTALL_DATADIR}/simp/modules")
+install(FILES ${CWHIP_RUNTIME_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/cwhip")
+install(FILES ${CWHIP_BUILTIN_SOURCES} DESTINATION "${CMAKE_INSTALL_DATADIR}/cwhip/builtin")
+install(DIRECTORY "${CWHIP_STAGE_MODULE_DIRECTORY}/"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/cwhip/modules")

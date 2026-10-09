@@ -14,22 +14,22 @@ include(cmake/Instrumentation.cmake)
 # Root builds stage a developer prefix in the source tree: <source>/bin/cwhip
 # finds its runtime, headers, builtin, and standard modules in sibling
 # directories with the same relative shape as an installed prefix.
-set(SIMP_STAGE_PREFIX "${CMAKE_SOURCE_DIR}" CACHE PATH "Developer resource staging prefix")
-set(SIMP_RUNTIME_OUTPUT_DIRECTORY "${SIMP_STAGE_PREFIX}/bin")
-set(SIMP_LIBRARY_OUTPUT_DIRECTORY "${SIMP_STAGE_PREFIX}/lib")
+set(CWHIP_STAGE_PREFIX "${CMAKE_SOURCE_DIR}" CACHE PATH "Developer resource staging prefix")
+set(CWHIP_RUNTIME_OUTPUT_DIRECTORY "${CWHIP_STAGE_PREFIX}/bin")
+set(CWHIP_LIBRARY_OUTPUT_DIRECTORY "${CWHIP_STAGE_PREFIX}/lib")
 
-find_program(SIMP_CLANG_EXECUTABLE NAMES clang)
-if(NOT SIMP_CLANG_EXECUTABLE)
+find_program(CWHIP_CLANG_EXECUTABLE NAMES clang)
+if(NOT CWHIP_CLANG_EXECUTABLE)
     message(FATAL_ERROR "Clang is required to turn generated LLVM IR into an executable")
 endif()
 execute_process(
-    COMMAND "${SIMP_CLANG_EXECUTABLE}" -dumpmachine
-    OUTPUT_VARIABLE SIMP_TARGET_TRIPLE
+    COMMAND "${CWHIP_CLANG_EXECUTABLE}" -dumpmachine
+    OUTPUT_VARIABLE CWHIP_TARGET_TRIPLE
     OUTPUT_STRIP_TRAILING_WHITESPACE
-    RESULT_VARIABLE SIMP_TARGET_TRIPLE_RESULT
+    RESULT_VARIABLE CWHIP_TARGET_TRIPLE_RESULT
 )
-if(NOT SIMP_TARGET_TRIPLE_RESULT EQUAL 0 OR SIMP_TARGET_TRIPLE STREQUAL "")
-    message(FATAL_ERROR "Could not query the target triple from ${SIMP_CLANG_EXECUTABLE}")
+if(NOT CWHIP_TARGET_TRIPLE_RESULT EQUAL 0 OR CWHIP_TARGET_TRIPLE STREQUAL "")
+    message(FATAL_ERROR "Could not query the target triple from ${CWHIP_CLANG_EXECUTABLE}")
 endif()
 
 include(CTest)
@@ -49,7 +49,7 @@ if(DOXYGEN_FOUND)
     )
 endif()
 
-install(FILES README.md doc/SIMPLE-LANGUAGE-NOTES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
+install(FILES README.md doc/CWHIP-LANGUAGE-NOTES.md DESTINATION "${CMAKE_INSTALL_DOCDIR}")
 install(DIRECTORY doc/ DESTINATION "${CMAKE_INSTALL_DOCDIR}/doc"
     FILES_MATCHING PATTERN "*.md")
 install(FILES doc/cwhip.1 DESTINATION "${CMAKE_INSTALL_DOCDIR}/doc")

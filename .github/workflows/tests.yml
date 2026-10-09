@@ -28,18 +28,18 @@ jobs:
         run: |
           flags=()
           if [[ "${{ matrix.configuration }}" == sanitizers ]]; then
-            flags+=('-DSIMP_SANITIZE=address;undefined')
+            flags+=('-DCWHIP_SANITIZE=address;undefined')
           fi
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DSIMP_STAGE_PREFIX="$PWD/build/stage" "${flags[@]}"
+            -DCWHIP_STAGE_PREFIX="$PWD/build/stage" "${flags[@]}"
       - name: Build
         run: cmake --build build -j4
       - name: Test
         shell: bash
         run: |
-          mkdir -p "$RUNNER_TEMP/simp-home" "$RUNNER_TEMP/simp-config"
-          HOME="$RUNNER_TEMP/simp-home" XDG_CONFIG_HOME="$RUNNER_TEMP/simp-config" \
+          mkdir -p "$RUNNER_TEMP/cwhip-home" "$RUNNER_TEMP/cwhip-config"
+          HOME="$RUNNER_TEMP/cwhip-home" XDG_CONFIG_HOME="$RUNNER_TEMP/cwhip-config" \
             ctest --test-dir build --output-on-failure -j4
       - name: Upload failure logs
         if: failure()

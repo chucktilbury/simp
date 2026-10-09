@@ -11,27 +11,27 @@ typedef struct TreeItem {
 typedef struct TreeItemClass {
     GObjectClass parent;
 } TreeItemClass;
-G_DEFINE_TYPE(TreeItem, simp_tree_item, G_TYPE_OBJECT)
+G_DEFINE_TYPE(TreeItem, cwhip_tree_item, G_TYPE_OBJECT)
 
-static void simp_tree_item_finalize(GObject *object) {
+static void cwhip_tree_item_finalize(GObject *object) {
     TreeItem *item = (TreeItem *)object;
     g_free(item->label);
     g_free(item->icon);
     g_free(item->value);
     g_clear_object(&item->children);
-    G_OBJECT_CLASS(simp_tree_item_parent_class)->finalize(object);
+    G_OBJECT_CLASS(cwhip_tree_item_parent_class)->finalize(object);
 }
-static void simp_tree_item_class_init(TreeItemClass *klass) {
-    G_OBJECT_CLASS(klass)->finalize = simp_tree_item_finalize;
+static void cwhip_tree_item_class_init(TreeItemClass *klass) {
+    G_OBJECT_CLASS(klass)->finalize = cwhip_tree_item_finalize;
 }
-static void simp_tree_item_init(TreeItem *item) { (void)item; }
+static void cwhip_tree_item_init(TreeItem *item) { (void)item; }
 
 typedef struct TreeState {
     unsigned refs;
     unsigned active;
     bool stopped;
-    SimpCallbackContext *request;
-    SimpCallbackContext *activate;
+    CwhipCallbackContext *request;
+    CwhipCallbackContext *activate;
     GListStore *roots;
     GHashTable *items;
 } TreeState;
@@ -43,11 +43,11 @@ static TreeState *tree_ref(TreeState *tree) {
 static void tree_release_callbacks(TreeState *tree) {
     if (tree->active) return;
     if (tree->request) {
-        simp_callback_release(tree->request);
-        simp_callback_dispose(tree->request);
+        cwhip_callback_release(tree->request);
+        cwhip_callback_dispose(tree->request);
         tree->request = NULL;
-        simp_callback_release(tree->activate);
-        simp_callback_dispose(tree->activate);
+        cwhip_callback_release(tree->activate);
+        cwhip_callback_dispose(tree->activate);
         tree->activate = NULL;
     }
 }
@@ -59,7 +59,7 @@ static void tree_unref(gpointer data) {
     free(tree);
 }
 static void tree_stop(GtkWidget *widget) {
-    TreeState *tree = g_object_get_data(G_OBJECT(widget), "simp-tree");
+    TreeState *tree = g_object_get_data(G_OBJECT(widget), "cwhip-tree");
     if (!tree) return;
     tree->stopped = true;
     tree_release_callbacks(tree);
@@ -68,17 +68,17 @@ static void tree_widget_destroy(gpointer data) { tree_unref(data); }
 
 static void tree_invoke(TreeState *tree, bool request, int64_t id) {
     if (tree->stopped) return;
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     tree_ref(tree);
     ++tree->active;
-    SimpCallbackContext *context = request ? tree->request : tree->activate;
-    typedef void (*Adapter)(SimpCallbackContext *, int64_t);
-    ((Adapter)simp_callback_adapter(context))(context, id);
+    CwhipCallbackContext *context = request ? tree->request : tree->activate;
+    typedef void (*Adapter)(CwhipCallbackContext *, int64_t);
+    ((Adapter)cwhip_callback_adapter(context))(context, id);
     --tree->active;
     if (tree->stopped) tree_release_callbacks(tree);
     tree_unref(tree);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
 }
 
 static GListModel *tree_children(gpointer object, gpointer data) {
@@ -139,22 +139,22 @@ static void tree_activated(GtkListView *view, guint position, gpointer data) {
 }
 static TreeState *tree_live(int64_t token) {
     GtkWidget *widget = widget_live(token);
-    TreeState *tree = g_object_get_data(G_OBJECT(widget), "simp-tree");
+    TreeState *tree = g_object_get_data(G_OBJECT(widget), "cwhip-tree");
     if (!tree || tree->stopped) fatal("operation requires a live Tree");
     return tree;
 }
-void simp_gtk_tree_setup(void *self, int64_t token, void *request, void *activate) {
+void cwhip_gtk_tree_setup(void *self, int64_t token, void *request, void *activate) {
     (void)self;
     GtkWidget *widget = widget_live(token);
-    if (!GTK_IS_LIST_VIEW(widget) || g_object_get_data(G_OBJECT(widget), "simp-tree"))
+    if (!GTK_IS_LIST_VIEW(widget) || g_object_get_data(G_OBJECT(widget), "cwhip-tree"))
         fatal("invalid Tree setup");
     TreeState *tree = calloc(1, sizeof(*tree));
     if (!tree) fatal("allocation failed");
     tree->refs = 1;
-    tree->roots = g_list_store_new(simp_tree_item_get_type());
+    tree->roots = g_list_store_new(cwhip_tree_item_get_type());
     tree->items = g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, g_object_unref);
-    tree->request = simp_callback_acquire(request, "callback<void(int)>");
-    tree->activate = simp_callback_acquire(activate, "callback<void(int)>");
+    tree->request = cwhip_callback_acquire(request, "callback<void(int)>");
+    tree->activate = cwhip_callback_acquire(activate, "callback<void(int)>");
     GtkTreeListModel *model =
         gtk_tree_list_model_new(G_LIST_MODEL(g_object_ref(tree->roots)), FALSE, FALSE,
                                 tree_children, tree_ref(tree), tree_unref);
@@ -164,15 +164,15 @@ void simp_gtk_tree_setup(void *self, int64_t token, void *request, void *activat
     g_object_unref(selection);
     GtkListItemFactory *factory = gtk_signal_list_item_factory_new();
     g_signal_connect(factory, "setup", G_CALLBACK(tree_setup_row), NULL);
-    g_object_set_data_full(G_OBJECT(factory), "simp-tree", tree_ref(tree), tree_unref);
+    g_object_set_data_full(G_OBJECT(factory), "cwhip-tree", tree_ref(tree), tree_unref);
     g_signal_connect(factory, "bind", G_CALLBACK(tree_bind_row), tree);
     g_signal_connect(factory, "unbind", G_CALLBACK(tree_unbind_row), tree);
     gtk_list_view_set_factory(GTK_LIST_VIEW(widget), factory);
     g_object_unref(factory);
-    g_object_set_data_full(G_OBJECT(widget), "simp-tree", tree, tree_widget_destroy);
+    g_object_set_data_full(G_OBJECT(widget), "cwhip-tree", tree, tree_widget_destroy);
     g_signal_connect(widget, "activate", G_CALLBACK(tree_activated), tree);
 }
-void simp_gtk_tree_add(void *self, int64_t token, int64_t parent, int64_t id, void *label,
+void cwhip_gtk_tree_add(void *self, int64_t token, int64_t parent, int64_t id, void *label,
                        void *icon, bool expandable, void *value, int64_t item_data) {
     (void)self;
     TreeState *tree = tree_live(token);
@@ -180,13 +180,13 @@ void simp_gtk_tree_add(void *self, int64_t token, int64_t parent, int64_t id, vo
     GListStore *store = parent ? (ancestor ? ancestor->children : NULL) : tree->roots;
     if (!store || id <= 0 || g_hash_table_contains(tree->items, &id))
         fatal("invalid Tree parent or duplicate id");
-    TreeItem *item = g_object_new(simp_tree_item_get_type(), NULL);
+    TreeItem *item = g_object_new(cwhip_tree_item_get_type(), NULL);
     item->id = id;
     item->label = text_copy(label);
     item->icon = text_copy(icon);
     item->value = text_copy(value);
     item->data = item_data;
-    if (expandable) item->children = g_list_store_new(simp_tree_item_get_type());
+    if (expandable) item->children = g_list_store_new(cwhip_tree_item_get_type());
     int64_t *key = g_new(int64_t, 1);
     *key = id;
     g_hash_table_insert(tree->items, key, item);
@@ -197,16 +197,16 @@ static TreeItem *tree_item_live(int64_t token, int64_t id) {
     if (!item) fatal("invalid Tree item");
     return item;
 }
-void *simp_gtk_tree_value(void *self, int64_t token, int64_t id) {
+void *cwhip_gtk_tree_value(void *self, int64_t token, int64_t id) {
     (void)self;
     const char *value = tree_item_live(token, id)->value;
-    return simp_string_new(&simp_string_class_meta, value, strlen(value));
+    return cwhip_string_new(&cwhip_string_class_meta, value, strlen(value));
 }
-int64_t simp_gtk_tree_data(void *self, int64_t token, int64_t id) {
+int64_t cwhip_gtk_tree_data(void *self, int64_t token, int64_t id) {
     (void)self;
     return tree_item_live(token, id)->data;
 }
-int64_t simp_gtk_tree_find(void *self, int64_t token, void *value) {
+int64_t cwhip_gtk_tree_find(void *self, int64_t token, void *value) {
     (void)self;
     TreeState *tree = tree_live(token);
     char *text = text_copy(value);
@@ -221,7 +221,7 @@ int64_t simp_gtk_tree_find(void *self, int64_t token, void *value) {
     g_free(text);
     return id;
 }
-int64_t simp_gtk_tree_count(void *self, int64_t token, int64_t parent) {
+int64_t cwhip_gtk_tree_count(void *self, int64_t token, int64_t parent) {
     (void)self;
     TreeState *tree = tree_live(token);
     GListStore *store = parent ? tree_item_live(token, parent)->children : tree->roots;
@@ -238,7 +238,7 @@ static void tree_forget(TreeState *tree, GListStore *store) {
     }
     g_list_store_remove_all(store);
 }
-void simp_gtk_tree_clear(void *self, int64_t token, int64_t parent) {
+void cwhip_gtk_tree_clear(void *self, int64_t token, int64_t parent) {
     (void)self;
     TreeState *tree = tree_live(token);
     TreeItem *item = parent ? g_hash_table_lookup(tree->items, &parent) : NULL;
@@ -246,7 +246,7 @@ void simp_gtk_tree_clear(void *self, int64_t token, int64_t parent) {
     if (!store) fatal("invalid Tree parent");
     tree_forget(tree, store);
 }
-void simp_gtk_tree_expand(void *self, int64_t token, int64_t id, bool expanded) {
+void cwhip_gtk_tree_expand(void *self, int64_t token, int64_t id, bool expanded) {
     (void)self;
     TreeState *tree = tree_ref(tree_live(token));
     TreeItem *target = g_hash_table_lookup(tree->items, &id);
@@ -271,7 +271,7 @@ void simp_gtk_tree_expand(void *self, int64_t token, int64_t id, bool expanded) 
     tree_unref(tree);
     if (!found) fatal("Tree row is not visible; expand its ancestors first");
 }
-bool simp_gtk_tree_is_expanded(void *self, int64_t token, int64_t id) {
+bool cwhip_gtk_tree_is_expanded(void *self, int64_t token, int64_t id) {
     (void)self;
     tree_live(token);
     GtkSelectionModel *selection =
@@ -289,13 +289,13 @@ bool simp_gtk_tree_is_expanded(void *self, int64_t token, int64_t id) {
     g_object_unref(selection);
     return expanded;
 }
-int64_t simp_gtk_paned_get_position(void *self, int64_t token) {
+int64_t cwhip_gtk_paned_get_position(void *self, int64_t token) {
     (void)self;
     GtkWidget *widget = widget_live(token);
     if (!GTK_IS_PANED(widget)) fatal("invalid Paned");
     return gtk_paned_get_position(GTK_PANED(widget));
 }
-void simp_gtk_paned_position(void *self, int64_t token, int64_t position) {
+void cwhip_gtk_paned_position(void *self, int64_t token, int64_t position) {
     (void)self;
     GtkWidget *widget = widget_live(token);
     if (!GTK_IS_PANED(widget) || position < 0 || position > G_MAXINT)
@@ -323,7 +323,7 @@ typedef struct DirectoryJob {
     char *error;
     guint position;
     GSource *source;
-    SimpCallbackContext *context;
+    CwhipCallbackContext *context;
     unsigned active;
     bool closed;
 } DirectoryJob;
@@ -423,8 +423,8 @@ static gpointer directory_worker(gpointer data) {
 }
 static void directory_release(DirectoryJob *job) {
     if (job->active || !job->context) return;
-    simp_callback_release(job->context);
-    simp_callback_dispose(job->context);
+    cwhip_callback_release(job->context);
+    cwhip_callback_dispose(job->context);
     job->context = NULL;
 }
 static void directory_close(DirectoryJob *job) {
@@ -449,22 +449,22 @@ static void directory_cancel_owner(int64_t owner_token) {
     }
 }
 static void directory_deliver(DirectoryJob *job, int64_t count, const char *error) {
-    void *error_value = simp_string_new(&simp_string_class_meta, error, strlen(error));
+    void *error_value = cwhip_string_new(&cwhip_string_class_meta, error, strlen(error));
     void *slots[] = {&error_value};
-    SimpRootFrame frame = {0};
-    simp_gc_push_or_abort(&frame, slots, 1);
+    CwhipRootFrame frame = {0};
+    cwhip_gc_push_or_abort(&frame, slots, 1);
     ++job->active;
-    typedef void (*Adapter)(SimpCallbackContext *, int64_t, void *);
-    ((Adapter)simp_callback_adapter(job->context))(job->context, count, error_value);
+    typedef void (*Adapter)(CwhipCallbackContext *, int64_t, void *);
+    ((Adapter)cwhip_callback_adapter(job->context))(job->context, count, error_value);
     --job->active;
     if (job->closed) directory_release(job);
-    simp_gc_pop_or_abort(&frame);
+    cwhip_gc_pop_or_abort(&frame);
 }
 static gboolean directory_dispatch(gpointer data) {
     DirectoryJob *job = data;
     if (!g_atomic_int_get(&job->done)) return G_SOURCE_CONTINUE;
-    simp_gtk_require_owner();
-    int acquired = simp_runtime_managed_enter();
+    cwhip_gtk_require_owner();
+    int acquired = cwhip_runtime_managed_enter();
     g_atomic_int_inc(&job->refs);
     if (job->position < job->entries->len) {
         guint count = MIN(64u, job->entries->len - job->position);
@@ -477,7 +477,7 @@ static gboolean directory_dispatch(gpointer data) {
     }
     bool closed = job->closed;
     directory_unref(job);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
     return closed ? G_SOURCE_REMOVE : G_SOURCE_CONTINUE;
 }
 static int64_t directory_start(int64_t owner_token, void *path, bool hidden, void *root,
@@ -497,31 +497,31 @@ static int64_t directory_start(int64_t owner_token, void *path, bool hidden, voi
     }
     job->entries = g_ptr_array_new_with_free_func(directory_entry_free);
     job->cancel = g_cancellable_new();
-    job->context = simp_callback_acquire(callback, "callback<void(int,String)>");
+    job->context = cwhip_callback_acquire(callback, "callback<void(int,String)>");
     job->source = g_timeout_source_new(5);
     g_source_set_callback(job->source, directory_dispatch, job, NULL);
     g_source_attach(job->source, main_context);
     job->next = directory_jobs;
     directory_jobs = job;
-    GThread *thread = g_thread_new("simp-directory", directory_worker, job);
+    GThread *thread = g_thread_new("cwhip-directory", directory_worker, job);
     g_thread_unref(thread);
     return job->token;
 }
-int64_t simp_gtk_directory_start(void *self, int64_t owner_token, void *path, bool hidden,
+int64_t cwhip_gtk_directory_start(void *self, int64_t owner_token, void *path, bool hidden,
                                  void *callback) {
     (void)self;
     return directory_start(owner_token, path, hidden, NULL, NULL, callback);
 }
-int64_t simp_gtk_directory_start_filtered(void *self, int64_t owner_token, void *path,
+int64_t cwhip_gtk_directory_start_filtered(void *self, int64_t owner_token, void *path,
                                           bool hidden, void *root, void *excludes,
                                           void *callback) {
     (void)self;
     return directory_start(owner_token, path, hidden, root, excludes, callback);
 }
-void simp_gtk_directory_cancel(void *self, int64_t token) {
+void cwhip_gtk_directory_cancel(void *self, int64_t token) {
     (void)self;
     require_managed();
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     for (DirectoryJob *job = directory_jobs; job; job = job->next) {
         if (job->token == token) {
             directory_close(job);
@@ -529,7 +529,7 @@ void simp_gtk_directory_cancel(void *self, int64_t token) {
         }
     }
 }
-void simp_gtk_directory_append(void *self, int64_t token, int64_t tree_token, int64_t parent,
+void cwhip_gtk_directory_append(void *self, int64_t token, int64_t tree_token, int64_t parent,
                                int64_t first_id, int64_t count, void *icons) {
     (void)self;
     TreeState *tree = tree_ref(tree_live(tree_token));
@@ -570,13 +570,13 @@ void simp_gtk_directory_append(void *self, int64_t token, int64_t tree_token, in
                 }
             }
         }
-        TreeItem *item = g_object_new(simp_tree_item_get_type(), NULL);
+        TreeItem *item = g_object_new(cwhip_tree_item_get_type(), NULL);
         item->id = id;
         item->label = g_strdup(entry->name);
         item->icon = g_strdup(icon);
         item->value = g_strdup(entry->path);
         item->data = entry->kind;
-        if (entry->kind == 1) item->children = g_list_store_new(simp_tree_item_get_type());
+        if (entry->kind == 1) item->children = g_list_store_new(cwhip_tree_item_get_type());
         int64_t *key = g_new(int64_t, 1);
         *key = id;
         g_hash_table_insert(tree->items, key, item);

@@ -1,0 +1,5 @@
+set(CASE_NAME cwhip_rejects_missing_environment_module_root)
+set(CASE_FIXTURE positive_package_version_pins.cw)
+set(CASE_MODULE_ROOT_SOURCE env)
+set(CASE_MODULE_ROOT_MISSING [==[ON]==])
+set(CASE_EXPECTED_DIAGNOSTIC [==[module directory from CWHIP_MODULE_DIR does not exist or is not a directory: <MODULE_ROOT>]==])

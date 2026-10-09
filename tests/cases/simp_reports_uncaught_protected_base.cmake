@@ -1,6 +1,0 @@
-set(CASE_NAME simp_reports_uncaught_protected_base)
-set(CASE_FIXTURE negative_uncaught_protected_base.simp)
-set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_reports_uncaught_protected_base.stdout")
-set(CASE_EXPECT_RUNTIME_FAILURE ON)
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[simp: uncaught runtime exception at .*negative_uncaught_protected_base.simp:2:13: original base failure]==])
-set(CASE_EXPECT_RUNTIME_FRAMES [==[at Foo.constructor|at Bar.constructor|at start]==])

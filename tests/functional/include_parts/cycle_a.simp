@@ -1,7 +1,0 @@
-include "cycle_b.simp"
-
-class CycleValue {
-    int answer() {
-        return 9
-    }
-}

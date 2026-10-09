@@ -1,7 +1,7 @@
 #include "json_lite.hpp"
 #include "test_cases.hpp"
 
-#include "simp/Diagnostic.hpp"
+#include "cwhip/Diagnostic.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -36,40 +36,40 @@ std::string readFile(const std::filesystem::path& path) {
 }
 
 void runFunctional(const std::string& filename, const std::string& expectedError) {
-    const auto path = std::filesystem::path(SIMP_TEST_SOURCE_DIR) / filename;
+    const auto path = std::filesystem::path(CWHIP_TEST_SOURCE_DIR) / filename;
     try {
-        simp_test::parse(readFile(path), path.string());
-    } catch (const simp::DiagnosticError& error) {
+        cwhip_test::parse(readFile(path), path.string());
+    } catch (const cwhip::DiagnosticError& error) {
         if (expectedError.empty()) {
             throw;
         }
-        simp_test::require(std::string(error.what()).find(expectedError) != std::string::npos,
+        cwhip_test::require(std::string(error.what()).find(expectedError) != std::string::npos,
                            "unexpected diagnostic: " + std::string(error.what()));
         return;
     }
-    simp_test::require(expectedError.empty(), "expected functional program to fail: " + filename);
+    cwhip_test::require(expectedError.empty(), "expected functional program to fail: " + filename);
 }
 
 FunctionalCase loadFunctionalCase(const std::filesystem::path& metadata,
                                   const std::filesystem::path& root) {
     auto fixture = metadata;
     fixture.replace_extension();
-    if (!std::filesystem::is_regular_file(fixture) || fixture.extension() != ".simp") {
-        throw std::runtime_error(metadata.string() + ": missing matching .simp fixture");
+    if (!std::filesystem::is_regular_file(fixture) || fixture.extension() != ".cw") {
+        throw std::runtime_error(metadata.string() + ": missing matching .cw fixture");
     }
 
-    simp_test_json::JsonValue entry;
+    cwhip_test_json::JsonValue entry;
     try {
-        entry = simp_test_json::JsonParser(readFile(metadata)).parse();
-        if (entry.type != simp_test_json::JsonType::Object) {
+        entry = cwhip_test_json::JsonParser(readFile(metadata)).parse();
+        if (entry.type != cwhip_test_json::JsonType::Object) {
             throw std::runtime_error("expected a JSON object");
         }
         const auto& friendlyName = entry.at("friendly_name");
         const auto& expectedDiagnostic = entry.at("expected_diagnostic");
         const auto& enabled = entry.at("enabled");
-        if (friendlyName.type != simp_test_json::JsonType::String ||
-            expectedDiagnostic.type != simp_test_json::JsonType::String ||
-            enabled.type != simp_test_json::JsonType::Boolean) {
+        if (friendlyName.type != cwhip_test_json::JsonType::String ||
+            expectedDiagnostic.type != cwhip_test_json::JsonType::String ||
+            enabled.type != cwhip_test_json::JsonType::Boolean) {
             throw std::runtime_error("field has the wrong JSON type");
         }
         return {friendlyName.stringValue, fixture.lexically_relative(root).generic_string(),
@@ -83,7 +83,7 @@ std::vector<FunctionalCase> loadFunctionalCases(const std::filesystem::path& roo
     std::vector<std::filesystem::path> metadata;
     for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
         const auto filename = entry.path().filename().string();
-        const std::string suffix = ".simp.json";
+        const std::string suffix = ".cw.json";
         if (entry.is_regular_file() && filename.size() >= suffix.size() &&
             filename.compare(filename.size() - suffix.size(), suffix.size(), suffix) == 0) {
             metadata.push_back(entry.path());
@@ -101,8 +101,8 @@ std::vector<FunctionalCase> loadFunctionalCases(const std::filesystem::path& roo
 } // namespace
 
 int main() {
-    const auto tests = simp_test::registeredTests();
-    const auto functionalCases = loadFunctionalCases(SIMP_TEST_SOURCE_DIR);
+    const auto tests = cwhip_test::registeredTests();
+    const auto functionalCases = loadFunctionalCases(CWHIP_TEST_SOURCE_DIR);
 
     std::vector<RunEntry> runEntries;
     runEntries.reserve(tests.size() + functionalCases.size());

@@ -1,5 +1,0 @@
-set(CASE_NAME simp_reports_format_ascii_location)
-set(CASE_FIXTURE negative_format_ascii_uncaught.simp)
-set(CASE_EXPECTED_OUTPUT [==[]==])
-set(CASE_EXPECT_RUNTIME_FAILURE ON)
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[uncaught runtime exception at .*negative_format_ascii_uncaught.simp:3:37: ASCII character format requires a value in 0..127]==])

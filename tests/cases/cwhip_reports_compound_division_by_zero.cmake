@@ -1,0 +1,5 @@
+set(CASE_NAME cwhip_reports_compound_division_by_zero)
+set(CASE_FIXTURE negative_compound_division_by_zero.cw)
+set(CASE_EXPECT_RUNTIME_FAILURE ON)
+set(CASE_EXPECT_EMPTY_OUTPUT ON)
+set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[cwhip: uncaught runtime exception at .*negative_compound_division_by_zero.cw:4:11: division by zero]==])

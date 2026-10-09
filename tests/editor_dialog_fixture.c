@@ -1,6 +1,6 @@
 #include "gtk_private.h"
-#include <simp/RuntimeGc.h>
-#include <simp/Stdlib.h>
+#include <cwhip/RuntimeGc.h>
+#include <cwhip/Stdlib.h>
 #include <gtksourceview/gtksource.h>
 #include <stdlib.h>
 #include <string.h>
@@ -240,11 +240,11 @@ static gboolean answer_chooser(gpointer unused) {
 
 void fixture_editor_choose(void *self, void *path, int64_t response, int64_t overwrite) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     if (automation) abort();
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(path, &bytes, &length);
+    cwhip_string_bytes(path, &bytes, &length);
     g_free(chosen_path);
     chosen_path = g_strndup(bytes, length);
     g_clear_pointer(&many_folder, g_free);
@@ -258,11 +258,11 @@ void fixture_editor_choose(void *self, void *path, int64_t response, int64_t ove
 
 void fixture_editor_choose_many(void *self, void *folder, int64_t count) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     if (automation) abort();
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(folder, &bytes, &length);
+    cwhip_string_bytes(folder, &bytes, &length);
     g_free(many_folder);
     many_folder = g_strndup(bytes, length);
     many_count = (guint)count;
@@ -287,10 +287,10 @@ static void label_text(GtkWidget *widget, GString *text) {
  * found. */
 bool fixture_editor_alert(void *self, void *expected) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(expected, &bytes, &length);
+    cwhip_string_bytes(expected, &bytes, &length);
     char *fragments_text = g_strndup(bytes, length);
     char **fragments = g_strsplit(fragments_text, "|", -1);
     GtkWindow *editor = editor_window();
@@ -321,7 +321,7 @@ bool fixture_editor_alert(void *self, void *expected) {
 
 bool fixture_editor_alert_open(void *self) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     GtkWindow *editor = editor_window();
     GListModel *windows = gtk_window_get_toplevels();
     bool open = false;
@@ -337,7 +337,7 @@ bool fixture_editor_alert_open(void *self) {
 
 void fixture_editor_select(void *self, int64_t start, int64_t end) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     GtkWidget *view = find_view(GTK_WIDGET(editor_window()));
     if (!view) abort();
     GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
@@ -349,7 +349,7 @@ void fixture_editor_select(void *self, int64_t start, int64_t end) {
 
 void fixture_editor_collect(void *self) {
     (void)self;
-    simp_gc_collect();
+    cwhip_gc_collect();
 }
 
 static GtkWindow *preferences_window(void) {
@@ -376,7 +376,7 @@ bool fixture_preferences_click(void *self, void *label) {
     (void)self;
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(label, &bytes, &length);
+    cwhip_string_bytes(label, &bytes, &length);
     char *text = g_strndup(bytes, length);
     GtkWindow *window = preferences_window();
     GtkWidget *button = window ? find_button(GTK_WIDGET(window), text) : NULL;
@@ -401,7 +401,7 @@ bool fixture_preferences_command_visible(void *self, void *name_text) {
     (void)self;
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(name_text, &bytes, &length);
+    cwhip_string_bytes(name_text, &bytes, &length);
     char *name = g_strndup(bytes, length);
     GtkWindow *window = preferences_window();
     GtkWidget *row = window ? preference_command(GTK_WIDGET(window), name) : NULL;
@@ -415,9 +415,9 @@ bool fixture_preferences_command_click(void *self, void *name_text, void *label_
     (void)self;
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(name_text, &bytes, &length);
+    cwhip_string_bytes(name_text, &bytes, &length);
     char *name = g_strndup(bytes, length);
-    simp_string_bytes(label_text, &bytes, &length);
+    cwhip_string_bytes(label_text, &bytes, &length);
     char *label = g_strndup(bytes, length);
     GtkWindow *window = preferences_window();
     GtkWidget *row = window ? preference_command(GTK_WIDGET(window), name) : NULL;
@@ -486,7 +486,7 @@ bool fixture_preferences_record(void *self, void *trigger_text) {
     (void)self;
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(trigger_text, &bytes, &length);
+    cwhip_string_bytes(trigger_text, &bytes, &length);
     char *text = g_strndup(bytes, length);
     guint key = 0;
     GdkModifierType modifiers = 0;
@@ -521,10 +521,10 @@ void fixture_preferences_tick(void *self) {
 
 void fixture_editor_edit(void *self, void *text) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(text, &bytes, &length);
+    cwhip_string_bytes(text, &bytes, &length);
     GtkWidget *view = find_view(GTK_WIDGET(editor_window()));
     if (!view || length > G_MAXINT) abort();
     GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(view));
@@ -538,10 +538,10 @@ void fixture_editor_edit(void *self, void *text) {
 
 bool fixture_editor_shortcut(void *self, void *trigger) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(trigger, &bytes, &length);
+    cwhip_string_bytes(trigger, &bytes, &length);
     char *text = g_strndup(bytes, length);
     GtkShortcutTrigger *requested = gtk_shortcut_trigger_parse_string(text);
     g_free(text);
@@ -573,7 +573,7 @@ bool fixture_editor_shortcut(void *self, void *trigger) {
 
 int64_t fixture_editor_height(void *self) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     GtkWidget *view = find_view(GTK_WIDGET(editor_window()));
     if (!view) abort();
     return gtk_widget_get_height(view);
@@ -581,16 +581,16 @@ int64_t fixture_editor_height(void *self) {
 
 void fixture_editor_resize(void *self) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     gtk_window_set_default_size(editor_window(), 1000, 750);
 }
 
 bool fixture_editor_entry_focus(void *self, void *text) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(text, &bytes, &length);
+    cwhip_string_bytes(text, &bytes, &length);
     GListModel *windows = gtk_window_get_toplevels();
     for (guint i = 0; i < g_list_model_get_n_items(windows); ++i) {
         GtkWindow *window = g_list_model_get_item(windows, i);
@@ -610,7 +610,7 @@ bool fixture_editor_entry_focus(void *self, void *text) {
 
 bool fixture_editor_search_dialog(void *self, bool replace_mode) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     GtkWindow *dialog = search_window();
     if (!dialog) return false;
     const char *title = replace_mode ? "Find and Replace" : "Find";
@@ -626,7 +626,7 @@ bool fixture_editor_search_dialog(void *self, bool replace_mode) {
 
 bool fixture_editor_close_search_dialog(void *self) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     GtkWindow *dialog = search_window();
     if (!dialog) return false;
     gtk_window_close(dialog);
@@ -637,7 +637,7 @@ bool fixture_editor_close_search_dialog(void *self) {
 
 bool fixture_editor_monospace(void *self) {
     (void)self;
-    simp_gtk_require_owner();
+    cwhip_gtk_require_owner();
     GtkWidget *view = find_view(GTK_WIDGET(editor_window()));
     return view && GTK_SOURCE_IS_VIEW(view) &&
         gtk_text_view_get_monospace(GTK_TEXT_VIEW(view));

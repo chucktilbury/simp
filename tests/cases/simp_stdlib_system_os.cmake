@@ -1,5 +1,0 @@
-set(CASE_NAME simp_stdlib_system_os)
-set(CASE_FIXTURE positive_stdlib_system_os.simp)
-set(CASE_STDIN_FILE "data/standard_io.stdin")
-set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_stdlib_system_os.stdout")
-set(CASE_EXPECT_RUNTIME_STDERR_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_stdlib_system_os.stderr")

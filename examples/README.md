@@ -1,3 +1,3 @@
-# Simple Programming Language examples
+# Cwhip Programming Language examples
 
-These are stand-alone programs that demonstrate practical aspects of the **Simple** language.
+These are stand-alone programs that demonstrate practical aspects of the **Cwhip** language.

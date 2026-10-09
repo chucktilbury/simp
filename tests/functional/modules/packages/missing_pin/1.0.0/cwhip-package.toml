@@ -1,0 +1,8 @@
+[package]
+name = "missing_pin"
+version = "1.0.0"
+source = "src/missing_pin.cw"
+export = "class:MissingPin"
+
+[dependencies]
+shared = "=9.0.0"

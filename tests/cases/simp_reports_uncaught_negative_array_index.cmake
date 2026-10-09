@@ -1,5 +1,0 @@
-set(CASE_NAME simp_reports_uncaught_negative_array_index)
-set(CASE_FIXTURE negative_array_index_bounds_uncaught.simp)
-set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_reports_uncaught_array_slice_bounds.stdout")
-set(CASE_EXPECT_RUNTIME_FAILURE [==[ON]==])
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[uncaught runtime exception at .*negative_array_index_bounds_uncaught.simp:4:23: list index out of bounds]==])

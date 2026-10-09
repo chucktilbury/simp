@@ -1,9 +1,9 @@
 #include "test_cases.hpp"
 
-#include "simp/CodeGenerator.hpp"
+#include "cwhip/CodeGenerator.hpp"
 
 namespace {
-using namespace simp_test;
+using namespace cwhip_test;
 
 const TestGroupRegistration registration{2, {
     {"parenthesized cast receivers support standalone void method calls", [] {
@@ -134,13 +134,13 @@ const TestGroupRegistration registration{2, {
          auto program = parse(R"(class Foo { int read() { return 7 } }
              start { print(([Foo()][0] as Foo).read() + 1) })");
          const auto& sum = *program.statements.front().expressions.front();
-         require(sum.kind == simp::ExpressionKind::Binary, "addition must be outside cast");
-         require(sum.left->kind == simp::ExpressionKind::Call, "cast must compose with call");
+         require(sum.kind == cwhip::ExpressionKind::Binary, "addition must be outside cast");
+         require(sum.left->kind == cwhip::ExpressionKind::Call, "cast must compose with call");
          const auto& cast = *sum.left->left->left;
-         require(cast.kind == simp::ExpressionKind::ObjectCast, "expected explicit object cast");
-         require(cast.left->kind == simp::ExpressionKind::Index, "index must bind before cast");
-         const auto ir = simp::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
-         require(ir.find("call ptr @simp_value_cast_class") != std::string::npos,
+         require(cast.kind == cwhip::ExpressionKind::ObjectCast, "expected explicit object cast");
+         require(cast.left->kind == cwhip::ExpressionKind::Index, "index must bind before cast");
+         const auto ir = cwhip::CodeGenerator("x86_64-unknown-linux-gnu").generate(program);
+         require(ir.find("call ptr @cwhip_value_cast_class") != std::string::npos,
                  "cast must invoke returning runtime check");
      }},
 }};

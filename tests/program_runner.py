@@ -8,7 +8,7 @@ import subprocess
 def environment(work: Path) -> dict[str, str]:
     env = os.environ.copy()
     for key in list(env):
-        if key.startswith("SIMP_") or key in ("CC", "DESTDIR"):
+        if key.startswith("CWHIP_") or key in ("CC", "DESTDIR"):
             del env[key]
     for key, directory in (("HOME", "home"), ("XDG_CONFIG_HOME", "xdg")):
         path = work / directory

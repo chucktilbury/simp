@@ -1,4 +1,4 @@
-#include "simp/CommandLine.hpp"
+#include "cwhip/CommandLine.hpp"
 
 #include <functional>
 #include <iostream>
@@ -24,47 +24,47 @@ void expectFailure(const std::function<void()>& action, const std::string& expec
     throw std::runtime_error("expected command-line parse failure: " + expected);
 }
 
-simp::CommandLine makeCommandLine() {
-    simp::CommandLine commandLine("test", "test options", "1.2");
-    simp::CommandLineOption alpha;
+cwhip::CommandLine makeCommandLine() {
+    cwhip::CommandLine commandLine("test", "test options", "1.2");
+    cwhip::CommandLineOption alpha;
     alpha.shortName = 'a';
     alpha.longName = "alpha";
     alpha.name = "alpha";
     commandLine.addOption(alpha);
 
-    simp::CommandLineOption beta;
+    cwhip::CommandLineOption beta;
     beta.shortName = 'b';
     beta.longName = "beta";
     beta.name = "beta";
     commandLine.addOption(beta);
 
-    simp::CommandLineOption path;
+    cwhip::CommandLineOption path;
     path.shortName = 'p';
     path.longName = "path";
     path.name = "path";
-    path.valueType = simp::CommandLineValueType::String;
+    path.valueType = cwhip::CommandLineValueType::String;
     path.list = true;
     commandLine.addOption(path);
 
-    simp::CommandLineOption output;
+    cwhip::CommandLineOption output;
     output.shortName = 'o';
     output.longName = "output";
     output.name = "output";
-    output.valueType = simp::CommandLineValueType::String;
+    output.valueType = cwhip::CommandLineValueType::String;
     output.defaultValue = "default.out";
     commandLine.addOption(output);
 
-    simp::CommandLineOption count;
+    cwhip::CommandLineOption count;
     count.longName = "count";
     count.name = "count";
-    count.valueType = simp::CommandLineValueType::Number;
+    count.valueType = cwhip::CommandLineValueType::Number;
     count.required = true;
     commandLine.addOption(count);
 
-    simp::CommandLineOption help;
+    cwhip::CommandLineOption help;
     help.longName = "help";
     help.name = "help";
-    help.action = simp::CommandLineAction::Help;
+    help.action = cwhip::CommandLineAction::Help;
     commandLine.addOption(help);
     commandLine.addPositional({"source", "source file", true, true});
     return commandLine;
@@ -73,8 +73,8 @@ simp::CommandLine makeCommandLine() {
 void testShortGroupsAttachedValuesAndLists() {
     auto commandLine = makeCommandLine();
     commandLine.parse({"-ab", "-p", "one:two", "-pthree", "-o=first",
-                       "--output=last", "--count", "-5", "first.simp",
-                       "--", "-input.simp"});
+                       "--output=last", "--count", "-5", "first.cw",
+                       "--", "-input.cw"});
     require(commandLine.switchValue("alpha") && commandLine.switchValue("beta"),
             "short option groups should set each switch");
     require(commandLine.values("path") ==
@@ -87,14 +87,14 @@ void testShortGroupsAttachedValuesAndLists() {
     require(commandLine.value("count") == std::optional<std::string>("-5"),
             "separate option values may begin with a dash");
     require(commandLine.positionalValues() ==
-                std::vector<std::string>{"first.simp", "-input.simp"},
+                std::vector<std::string>{"first.cw", "-input.cw"},
             "list positionals should preserve each complete path");
 }
 
 void testDefaultsAndActions() {
     auto commandLine = makeCommandLine();
     commandLine.parse({"--help"});
-    require(commandLine.action() == simp::CommandLineAction::Help,
+    require(commandLine.action() == cwhip::CommandLineAction::Help,
             "help should stop parsing before required values are checked");
     require(commandLine.value("output") == std::optional<std::string>("default.out"),
             "registered defaults should be available after parsing");
@@ -108,11 +108,11 @@ void testDefaultsAndActions() {
 
 void testInvalidArguments() {
     auto commandLine = makeCommandLine();
-    expectFailure([&] { commandLine.parse({"source.simp"}); },
+    expectFailure([&] { commandLine.parse({"source.cw"}); },
                   "required option");
-    commandLine.parse({"--count", "1", "source.simp", "other.simp"});
+    commandLine.parse({"--count", "1", "source.cw", "other.cw"});
     require(commandLine.positionalValues() ==
-                std::vector<std::string>{"source.simp", "other.simp"},
+                std::vector<std::string>{"source.cw", "other.cw"},
             "list positionals should accept multiple input files");
     expectFailure([&] { commandLine.parse({"--unknown", "--count", "1", "x"}); },
                   "unknown option");
@@ -124,21 +124,21 @@ void testInvalidArguments() {
 }
 
 void testCountersAndListSeparators() {
-    simp::CommandLine commandLine("test", "test options", "1.2");
-    simp::CommandLineOption verbose;
+    cwhip::CommandLine commandLine("test", "test options", "1.2");
+    cwhip::CommandLineOption verbose;
     verbose.shortName = 'v';
     verbose.name = "verbose";
-    verbose.valueType = simp::CommandLineValueType::Counter;
+    verbose.valueType = cwhip::CommandLineValueType::Counter;
     commandLine.addOption(verbose);
-    simp::CommandLineOption quiet;
+    cwhip::CommandLineOption quiet;
     quiet.shortName = 'q';
     quiet.name = "quiet";
     commandLine.addOption(quiet);
-    simp::CommandLineOption trace;
+    cwhip::CommandLineOption trace;
     trace.shortName = 't';
     trace.longName = "trace";
     trace.name = "trace";
-    trace.valueType = simp::CommandLineValueType::String;
+    trace.valueType = cwhip::CommandLineValueType::String;
     trace.list = true;
     trace.listSeparator = ',';
     commandLine.addOption(trace);
@@ -155,11 +155,11 @@ void testCountersAndListSeparators() {
     require(commandLine.count("verbose") == 0, "counts should reset between parses");
     expectFailure([&] { commandLine.parse({"-v=2"}); }, "does not accept an argument");
 
-    simp::CommandLine invalid("test", "test options", "1.2");
-    simp::CommandLineOption listCounter;
+    cwhip::CommandLine invalid("test", "test options", "1.2");
+    cwhip::CommandLineOption listCounter;
     listCounter.shortName = 'c';
     listCounter.name = "count";
-    listCounter.valueType = simp::CommandLineValueType::Counter;
+    listCounter.valueType = cwhip::CommandLineValueType::Counter;
     listCounter.list = true;
     expectFailure([&] { invalid.addOption(listCounter); }, "list");
 }

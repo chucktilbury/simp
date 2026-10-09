@@ -79,7 +79,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.BindingMenus")
+    Gtk.Application app = Gtk.Application("org.cwhip.BindingMenus")
     app.onActivate(UI().activate)
     app.run()
 }
@@ -119,19 +119,19 @@ class UI {
             return
         }
         if (phase == 2) {
-            show(true, "fresh.tweed")
-            F().respond("fresh.tweed", true)
+            show(true, "fresh.cw")
+            F().respond("fresh.cw", true)
             return
         }
         if (phase == 3) {
-            show(true, "existing.tweed")
-            F().respond("existing.tweed", true)
+            show(true, "existing.cw")
+            F().respond("existing.cw", true)
             F().confirm(false)
             return
         }
         if (phase == 4) {
-            show(true, "existing.tweed")
-            F().respond("existing.tweed", true)
+            show(true, "existing.cw")
+            F().respond("existing.cw", true)
             F().confirm(true)
             return
         }
@@ -163,12 +163,12 @@ class UI {
     void activate() {
         window = Gtk.Window("Dialog bindings")
         window.present()
-        show(false, "existing.tweed")
-        F().respond("existing.tweed", true)
+        show(false, "existing.cw")
+        F().respond("existing.cw", true)
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.BindingDialogs")
+    Gtk.Application app = Gtk.Application("org.cwhip.BindingDialogs")
     UI ui = UI()
     ui.resultAction = ui.result
     app.onActivate(ui.activate)
@@ -230,7 +230,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.BindingLifetime")
+    Gtk.Application app = Gtk.Application("org.cwhip.BindingLifetime")
     UI ui = UI()
     app.onActivate(ui.activate)
     app.run()
@@ -308,7 +308,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.BindingAllocation")
+    Gtk.Application app = Gtk.Application("org.cwhip.BindingAllocation")
     UI ui = UI()
     ui.allocatedAction = ui.allocated
     ui.resizedAction = ui.resized
@@ -375,7 +375,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.BindingShortcuts")
+    Gtk.Application app = Gtk.Application("org.cwhip.BindingShortcuts")
     app.onActivate(UI().activate)
     app.run()
     F().collect()
@@ -402,9 +402,9 @@ def main():
         text=True))
     if args.sourceview:
         languages = root / "stdlib/sourceview/0.1.0/language-specs"
-        flags += ["-DSIMP_GTK_SOURCEVIEW=1",
-                  f'-DSIMP_GTK_SOURCEVIEW_SOURCE_LANG_DIR="{languages}"',
-                  f'-DSIMP_GTK_SOURCEVIEW_INSTALL_LANG_DIR="{languages}"']
+        flags += ["-DCWHIP_GTK_SOURCEVIEW=1",
+                  f'-DCWHIP_GTK_SOURCEVIEW_SOURCE_LANG_DIR="{languages}"',
+                  f'-DCWHIP_GTK_SOURCEVIEW_INSTALL_LANG_DIR="{languages}"']
     if args.sanitize:
         flags.append(f"-fsanitize={args.sanitize}")
     native = work / "fixture.o"
@@ -413,12 +413,12 @@ def main():
                      "-c", str(root / "tests/gtk_bindings_fixture.c"), "-o",
                      str(native), *flags], work, env)
     assert result.returncode == 0, result.stderr
-    existing = work / "existing.tweed"
+    existing = work / "existing.cw"
     existing.write_text("unchanged")
-    fresh = work / "fresh.tweed"
+    fresh = work / "fresh.cw"
     fresh.unlink(missing_ok=True)
-    dialog = DIALOG.replace('"existing.tweed"', f'"{existing}"').replace(
-        '"fresh.tweed"', f'"{fresh}"')
+    dialog = DIALOG.replace('"existing.cw"', f'"{existing}"').replace(
+        '"fresh.cw"', f'"{fresh}"')
     expected_dialog = (f"true{existing};false0true;false0true{fresh};false0"
                        f"true;false0true{existing};false0truetrue"
                        "truefalse0truetruefalse0truetruefalse0true88")
@@ -431,7 +431,7 @@ def main():
                       "truetrueclosed;truequit;true2"))
     with headless(args.xvfb, work, env) as env:
         for name, program, expected in cases:
-            source = work / f"{name}.simp"
+            source = work / f"{name}.cw"
             source.write_text(NATIVE + program)
             output = work / name
             result = invoke([str(args.compiler.resolve()), str(source), str(native),

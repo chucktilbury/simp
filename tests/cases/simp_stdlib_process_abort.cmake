@@ -1,5 +1,0 @@
-set(CASE_NAME simp_stdlib_process_abort)
-set(CASE_FIXTURE positive_stdlib_process_abort.simp)
-set(CASE_EXPECT_RUNTIME_FAILURE ON)
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC "Simple abort: fatal error")
-set(CASE_EXPECT_EMPTY_OUTPUT ON)

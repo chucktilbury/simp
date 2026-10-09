@@ -1,8 +1,7 @@
 # Cwhip editor
 
 `examples/editor/cwhip_editor.cw` is a GTK editor written in Cwhip. Its compiler
-is `cwhip`; internal runtime and package ABI names retain their historical
-`simp_*` spellings for compatibility. The editor uses the optional GTK
+is `cwhip`; runtime and package ABI names use the `cwhip_*` prefix. The editor uses the optional GTK
 package and a separate GtkSourceView-backed `sourceview` package. It provides
 File, Edit, Project and Help menus, native open/save-as file choosers, multiple notebook tabs,
 duplicate-path focusing, open/save/save-as, session
@@ -18,8 +17,7 @@ monospace setting; the rest of the application keeps the platform's normal
 font. The `cwhip` GtkSourceView language
 definition highlights Cwhip keywords/types, strings, comments, and
 numbers. Highlighting is enabled only for recognized source files: a document's
-language is chosen from its file name (`*.cw`, legacy `*.simp`, and `*.tweed`
-select `cwhip`),
+language is chosen from its `.cw` file suffix and selects `cwhip`,
 and untitled documents, `.txt` files, and other unrecognized names are plain
 text. Save As re-evaluates the language for the new name. Additional languages
 are added by installing a GtkSourceView `<id>.lang` definition in the
@@ -52,22 +50,21 @@ make -C build-cwhip -j4 cwhip_editor
 ./bin/cwhip-editor file1.cw file2.cw
 ```
 
-Inside the configured Makefiles build directory, use `make cwhip_editor` (the
-legacy target name `tweed` is also available); with any
+Inside the configured Makefiles build directory, use `make cwhip_editor`; with any
 generator, use `cmake --build build-cwhip --target cwhip_editor -j4`. The target builds
 the compiler and required support on a fresh build, generates a private package
 lock from staged modules, and compiles the editor only when its inputs change.
 An ordinary compiler build prepares the enabled peripheral support but does
 not compile the editor. The executable is `<source>/bin/cwhip-editor` by default;
-with `-DSIMP_STAGE_PREFIX=/absolute/prefix` it is `/absolute/prefix/bin/cwhip-editor`.
+with `-DCWHIP_STAGE_PREFIX=/absolute/prefix` it is `/absolute/prefix/bin/cwhip-editor`.
 No manual compiler invocation or package activation is needed. Cwhip is not
 currently an install target.
 
 Headless tests require Xvfb and `dbus-daemon`; they default to enabled when
 those tools are present, otherwise configuration explicitly reports them
-disabled without blocking Cwhip. Set `-DSIMP_GTK_TESTS=ON` to require them, or
+disabled without blocking Cwhip. Set `-DCWHIP_GTK_TESTS=ON` to require them, or
 `-DBUILD_TESTING=OFF` to omit all tests. Compiler-only builds
-can set `-DSIMP_GTK=OFF -DSIMP_GTK_SOURCEVIEW=OFF`; their `cwhip_editor` target reports
+can set `-DCWHIP_GTK=OFF -DCWHIP_GTK_SOURCEVIEW=OFF`; their `cwhip_editor` target reports
 the missing support explicitly. To enable GUI support in an already configured
 compiler-only build, reconfigure with both options `ON`. Even with GUI packages
 enabled, the compiler and non-import applications do not link GTK or
@@ -147,7 +144,7 @@ Single-click selects a row without changing the document.
 Only expanded directories are enumerated. Filesystem enumeration and
 directories-first, case-sensitive UTF-8 byte-order sorting run off the GUI
 thread; entries are delivered in small, bounded batches. GTK virtualizes
-rows, and Simple retains loading state only for directories actually expanded,
+rows, and Cwhip retains loading state only for directories actually expanded,
 not a managed object for every file in a large folder. Folder, source/text,
 image, symlink and special-file icons distinguish entries. Symlinks are shown
 as leaves, never recursively expanded; a link to a regular text file can still
@@ -261,12 +258,12 @@ Editor keys and ranges are the same as user settings (`font_family`,
 version = 1
 
 [workspace]
-active = "src/a.simp"
+active = "src/a.cw"
 explorer_width = 300
 window_width = 980
 window_height = 720
 expanded = ["src"]
-files = [{ path = "src/a.simp", line = 2, column = 3 }]
+files = [{ path = "src/a.cw", line = 2, column = 3 }]
 ```
 
 All paths are relative to the project root; absolute paths, `..` segments
@@ -304,12 +301,9 @@ reopen_last = true
 last_root = "/home/me/src/demo"
 ```
 
-The workspace itself stays in that project's `.cwhip`. Existing projects under
-`.tweed/` are opened and saved in place; workspace state may be updated there
-when the editor saves, but the editor never moves or deletes their data
-automatically. If both `.cwhip/` and `.tweed/` exist, opening or modifying the
-project is refused until the conflict is resolved, so neither copy is silently
-ignored. Turning the option off
+The workspace itself stays in that project's `.cwhip`. Only this metadata path
+is recognized. Older product-named project metadata is ignored and left
+untouched; the editor does not copy, rename, or migrate it. Turning the option off
 clears `last_root`. At startup the project is reopened only if the option is on
 and no file or folder was given on the command line. A missing or invalid
 remembered project is reported in an alert and the editor starts normally.
@@ -350,10 +344,9 @@ requires **Confirm Reset**; **Cancel** changes nothing. Only document command
 shortcuts are configurable; GTK's ordinary text navigation remains native.
 
 New settings save automatically to `$XDG_CONFIG_HOME/cwhip/settings.toml`, or
-`$HOME/.config/cwhip/settings.toml` when XDG_CONFIG_HOME is unset/empty. If the
-Cwhip file is absent, the editor reads and continues using an existing
-`$XDG_CONFIG_HOME/tweed/settings.toml` or `$HOME/.config/tweed/settings.toml`;
-it does not move or overwrite user data during startup.
+`$HOME/.config/cwhip/settings.toml` when XDG_CONFIG_HOME is unset/empty.
+Settings in older product-named directories are ignored and left untouched;
+the editor does not copy or migrate them.
 The config root must be absolute. The settings file is user-editable UTF-8 TOML,
 with a 64 KiB limit and this version-1 schema:
 
@@ -408,11 +401,11 @@ outside the keyboard command map are retained. Serialization normalizes
 formatting and does not retain comments; nested unrelated tables/arrays may
 be emitted inline. External edits/removal require restarting before saving.
 
-### Legacy shortcut compatibility
+### Shortcut import file
 
 `cwhip-shortcuts.conf` in the working directory takes precedence.
-`tweed-shortcuts.conf` remains a fallback when the Cwhip file is absent and the
-TOML file is absent or has no `[keyboard]` table. Each nonblank line maps one
+It is read when the TOML settings file is absent or has no `[keyboard]` table.
+Product-named shortcut files are ignored and left untouched. Each nonblank line maps one
 GTK trigger to one command:
 
 ```text
@@ -472,6 +465,6 @@ Run the editor-specific headless cases and existing GTK integration checks:
 
 ```sh
 ctest --test-dir build-cwhip \
-  -R '^(simp_tweed_binary|simp_tweed_shortcuts|simp_tweed_preferences|simp_editor_dialogs|simp_example_editor_cwhip_editor\\.cw|simp_editor_default_shortcuts|simp_tweed_project|simp_gtk|simp_gtk_bindings)$' \
+  -R '^(cwhip_editor_binary|cwhip_editor_shortcuts|cwhip_editor_preferences|cwhip_editor_dialogs|cwhip_example_editor_cwhip_editor\\.cw|cwhip_editor_default_shortcuts|cwhip_editor_project|cwhip_project_explorer|cwhip_gtk|cwhip_gtk_bindings)$' \
   --output-on-failure
 ```

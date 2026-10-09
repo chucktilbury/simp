@@ -1,4 +1,4 @@
-# Fibonacci sequence in Simple
+# Fibonacci sequence in Cwhip
 
 namespace Math {
     class Fib {

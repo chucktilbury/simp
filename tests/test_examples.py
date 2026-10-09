@@ -26,7 +26,7 @@ def main() -> None:
     args = parser.parse_args()
     cases = json.loads(args.manifest.read_text())
     sources = {p.relative_to(args.examples).as_posix()
-               for suffix in ("*.cw", "*.simp")
+               for suffix in ("*.cw", "*.cw")
                for p in args.examples.rglob(suffix)}
     assert sources == set(cases), (
         f"Example expectations differ: missing={sources - set(cases)}, "
@@ -51,17 +51,17 @@ def main() -> None:
             (project / "editor-a.cw").write_text("start { print(\"a\") }\n")
             (project / "editor-b.cw").write_text("start { print(\"b\") }\n")
             if not args.default_shortcuts:
-                (project / "tweed-shortcuts.conf").write_text(
+                (project / "cwhip-shortcuts.conf").write_text(
                     "<Control><Alt>s=save\n<Control><Alt>s=open\n")
         if "driver" in case:
-            source = project / "driver.simp"
+            source = project / "driver.cw"
             source.write_text(case["driver"])
-        if args.case in ("scanner.cw", "scanner.simp"):
+        if args.case in ("scanner.cw", "scanner.cw"):
             case["stdin"] = (project / "input_test.txt").read_text()
         if case.get("requires") in ("gtk", "sourceview"):
-            assert args.gtk, "GTK example was registered without SIMP_GTK"
+            assert args.gtk, "GTK example was registered without CWHIP_GTK"
             if case.get("requires") == "sourceview":
-                assert args.sourceview, "GtkSourceView example requires SIMP_GTK_SOURCEVIEW"
+                assert args.sourceview, "GtkSourceView example requires CWHIP_GTK_SOURCEVIEW"
             with headless(args.xvfb, work, env) as gtk_env:
                 check_program(args.compiler.resolve(), source, project, case, gtk_env,
                               args.executable.resolve() if args.executable else None)

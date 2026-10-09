@@ -8,25 +8,25 @@ It is not a complete GTK binding or a generic GUI framework.
 
 ## Build and package linkage
 
-Fresh configurations enable `SIMP_GTK` when GTK 4.10 or newer development files and
-`pkg-config` are available, and enable `SIMP_GTK_SOURCEVIEW` when GtkSourceView 5
+Fresh configurations enable `CWHIP_GTK` when GTK 4.10 or newer development files and
+`pkg-config` are available, and enable `CWHIP_GTK_SOURCEVIEW` when GtkSourceView 5
 is also available. Explicit `ON` options require the corresponding dependencies.
 With `BUILD_TESTING=ON`, headless tests default to enabled when Xvfb and
-`dbus-daemon` are found; `SIMP_GTK_TESTS=ON` requires them explicitly.
-With `SIMP_GTK=OFF` and `SIMP_GTK_SOURCEVIEW=OFF`, the GTK package is absent from staged/installed
-standard modules. With it on, `lib/libsimp_gtk.a` resides inside
-`share/simp/modules/gtk/0.1.0/`, beside the source and manifest.
+`dbus-daemon` are found; `CWHIP_GTK_TESTS=ON` requires them explicitly.
+With `CWHIP_GTK=OFF` and `CWHIP_GTK_SOURCEVIEW=OFF`, the GTK package is absent from staged/installed
+standard modules. With it on, `lib/libcwhip_gtk.a` resides inside
+`share/cwhip/modules/gtk/0.1.0/`, beside the source and manifest.
 
-Package `[link]` metadata links importing applications with `simp_gtk`, `gtk-4`,
+Package `[link]` metadata links importing applications with `cwhip_gtk`, `gtk-4`,
 `gio-2.0`, `gobject-2.0`, `glib-2.0`, `pango-1.0`, and `pangocairo-1.0`. The compiler and non-import applications
 remain unlinked to GTK. Compile-only objects retain package link sidecars.
-Installed consumers use the normal `simpkg init` / `simpkg install` lock flow.
+Installed consumers use the normal `cwhip-pkg init` / `cwhip-pkg install` lock flow.
 GTK runtime libraries and a usable display are external requirements; they
 are not bundled. The native platform remains POSIX.
 
 ## Application and activation
 
-Construct exactly one `Application(String id)` on the registered Simple thread
+Construct exactly one `Application(String id)` on the registered Cwhip thread
 that will own GTK. The ID must be a valid GApplication ID, such as
 `"org.example.Editor"`. `onActivate(callback<void()> action)` returns a connection;
 install activation handlers **before** `run()`. Create windows and widgets
@@ -39,7 +39,7 @@ bus. A second process with the same ID forwards activation to the primary
 process; its local activation handlers do not run. Activation can occur more
 than once in the primary process, so handlers should present existing windows
 when appropriate. No command-line/open-file API is provided yet; the GTK run
-call does not consume Simple's program arguments.
+call does not consume Cwhip's program arguments.
 
 Closing the last application window normally ends the run. `quit()` requests
 exit and requires an active run; it does not pretend that closing was approved.
@@ -70,7 +70,7 @@ For foundation compatibility, `Application()` is a stateless reference to this
 same process-wide lifecycle (useful for `post`, `cancel`, `quit`, and `shutdown`
 inside handlers). It creates no second application. Legacy
 `Application().initialize()` initializes a real GtkApplication with ID
-`org.simple.Scheduler` and an explicit hold until `quit`/`shutdown`, so
+`org.cwhip.Scheduler` and an explicit hold until `quit`/`shutdown`, so
 scheduler-only foundation programs still work. Prefer the ID constructor for
 new GUI programs. The old custom context-iteration loop is gone; repeated
 `run()` and connecting/posting after a run intentionally no longer work.
@@ -123,7 +123,7 @@ the parent destroys the transient and releases its registrations; hiding it
 does not. `Box` accepts multiple children. A child must be live and unparented;
 windows cannot be children. Self-parenting, cycles, already-parented children,
 occupied single-child containers, and removing from the wrong parent are errors.
-GTK may internally insert a viewport in a scrolled window; the Simple ownership
+GTK may internally insert a viewport in a scrolled window; the Cwhip ownership
 relationship still refers to the child supplied by the caller.
 
 Expansion uses GTK's actual `hexpand`/`vexpand` layout properties. For an editor,
@@ -170,7 +170,7 @@ cancel pending choosers and release their callback roots without invocation.
 `pending()` becomes false before the result handler runs and remains usable
 after cancellation or shutdown. Dropping a dialog variable does not cancel it.
 Callbacks may collect, retain their result, open another chooser, dispose the
-parent, or shut down. GTK's asynchronous request completes before the Simple
+parent, or shut down. GTK's asynchronous request completes before the Cwhip
 result handler runs, using a one-shot GUI idle dispatch; no nested main loop
 or blocking wait is used.
 
@@ -204,7 +204,7 @@ file constructors. The overload preserves existing open/save/multiple APIs.
 All constructors use cancellable GTK asynchronous requests. Programmatic
 cancellation unlinks the pending token and releases the callback root immediately;
 native request storage remains alive until GTK delivers its completion. A late
-completion after cancellation, parent teardown or shutdown never invokes Simple
+completion after cancellation, parent teardown or shutdown never invokes Cwhip
 code. Folder selection is not treated as an open-file request.
 
 ## Trees and asynchronous directory enumeration
@@ -292,7 +292,7 @@ remain responsible for generation checks and for their loading/error rows.
 
 ## Source editing
 
-Configure `-DSIMP_GTK_SOURCEVIEW=ON` together with GTK to enable `import sourceview`
+Configure `-DCWHIP_GTK_SOURCEVIEW=ON` together with GTK to enable `import sourceview`
 and `GtkSource.View`. `widget()` supplies its `Gtk.SourceViewWidget` for normal
 parenting and expansion. `setMonospace(bool)` selects GTK's text-view
 monospaced-font mode without changing the font of other widgets. Besides text,
@@ -394,10 +394,10 @@ The language protocol uses standard GtkSourceView 5 `.lang` files:
    metadata, through GtkSourceView's language manager. `languageFor(path)`
    matches the file name only (no content sniffing) and returns `""` for
    untitled paths, unknown extensions, or unregistered languages.
-3. `cwhip.lang` is the only shipped definition (`*.cw;*.simp;*.tweed`). Supporting
+3. `cwhip.lang` is the only shipped definition (`*.cw;*.cw;*.cw`). Supporting
    another language means adding its `.lang` file; no code changes are needed.
 
-`isText` returns false for data containing NUL bytes. Simple strings are always
+`isText` returns false for data containing NUL bytes. Cwhip strings are always
 valid UTF-8, so `File.readAll` raises on undecodable input; applications should
 treat that as a binary/non-text file.
 
@@ -418,7 +418,7 @@ until cancelled, its entry is destroyed, or application shutdown; callers must
 cancel after receiving a result and coordinate which entry is recording.
 
 `Gtk.Config` exposes the small TOML/persistence primitives used by Cwhip Editor's
-Simple-written settings model, not a settings framework:
+Cwhip-written settings model, not a settings framework:
 
 | Operation | Result/contract |
 | --- | --- |
@@ -446,12 +446,12 @@ is not used as a general user-settings parser.
 The package sinks floating GObject references and owns an independent native
 reference for every concrete wrapper; GTK's parent/application references remain
 GTK's responsibility. Its private records and retained, non-invoked receiver
-callbacks keep wrappers alive until disposal or shutdown. Dropping a Simple
+callbacks keep wrappers alive until disposal or shutdown. Dropping a Cwhip
 variable does **not** dispose its native object. Detached widgets remain
 application-owned resources until explicitly disposed or shut down.
 
 `dispose()` is explicit, GUI-thread-only and idempotent. It disconnects the
-source's signals, recursively disposes its **currently attached Simple children**,
+source's signals, recursively disposes its **currently attached Cwhip children**,
 detaches from its parent, destroys windows, and releases owned references.
 `remove(child)` detaches without disposing: the child remains usable and can
 be attached elsewhere. A child disposed directly is removed from its parent.
@@ -473,7 +473,7 @@ registration cannot silently select another widget base. The shipped hierarchy
 does not provide a general custom/native-widget subclass framework.
 
 No widget, connection, or application GC finalizer performs GTK teardown.
-Use `dispose()`, not Simple's language-level `destroy()`, for GUI lifetime.
+Use `dispose()`, not Cwhip's language-level `destroy()`, for GUI lifetime.
 Custom subclass finalizers must not call GTK: GC can run on a worker, and native
 teardown is exclusively a GUI-thread operation.
 
@@ -488,7 +488,7 @@ Typed `SignalConnection(source, action)` constructors are also available for
 callback signatures as their registration methods. They expose no native
 handle or connection-token constructor.
 
-Handlers receive Simple values, never raw GTK instance pointers:
+Handlers receive Cwhip values, never raw GTK instance pointers:
 `Button` invokes `callback<void()>`; `Entry` invokes `callback<void(String)>`
 with a copied, rooted managed string; `CheckButton` invokes
 `callback<void(bool)>` with its current active state. A
@@ -500,7 +500,7 @@ Connections retain callback receivers until disconnection/source disposal/
 shutdown and the last in-flight invocation **and** GLib closure user have
 finished. Disconnecting or disposing inside a handler, including nested
 emissions, is supported. A disconnected handler does not receive later emissions.
-The native text pointer is copied before entering Simple; callbacks can allocate,
+The native text pointer is copied before entering Cwhip; callbacks can allocate,
 collect, retain the string, and mutate/dispose the source without invalidating
 the payload. GTK may coalesce or suppress recursive editable changes; no extra
 synthetic notifications are promised.
@@ -513,7 +513,7 @@ documentation program terminate automatically. For an interactive editor with
 a checkbox, scrolled content, and a close button, see `examples/gtk.cw`
 (run without `--test`).
 
-```simp
+```cwhip
 // test: {"stdout": "Hello GTK", "requires": "gtk"}
 import gtk
 
@@ -525,7 +525,7 @@ class Demo {
     callback<void()> finishAction
 
     void activate() {
-        window = Gtk.Window("Simple")
+        window = Gtk.Window("Cwhip")
         Gtk.Box layout = Gtk.Box(Gtk.Box.VERTICAL, 8)
         window.setChild(layout)
         entry = Gtk.Entry("")
@@ -545,7 +545,7 @@ class Demo {
 }
 
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Demo")
+    Gtk.Application app = Gtk.Application("org.cwhip.Demo")
     Demo demo = Demo()
     demo.changedAction = demo.changed
     demo.finishAction = demo.finish
@@ -565,15 +565,15 @@ adapters. Package-native forwarding, callback transfers, and thread/lock checks
 are private implementation machinery, not public raw-pointer APIs.
 
 `run()` releases the managed lock across `g_application_run()` so workers progress
-while GTK waits. Every native-to-Simple signal acquires the lock with
-`simp_runtime_managed_enter()` and restores it with `managed_leave(acquired)`.
+while GTK waits. Every native-to-Cwhip signal acquires the lock with
+`cwhip_runtime_managed_enter()` and restores it with `managed_leave(acquired)`.
 Synchronous/nested reentry preserves lock ownership; foreign threads are never
 registered implicitly. One-shot worker posts prepare a rooted, non-invocable
-`SimpCallbackTransfer`; GUI dispatch accepts it into a fresh GUI-owned context.
+`CwhipCallbackTransfer`; GUI dispatch accepts it into a fresh GUI-owned context.
 Cancellation consumes the transfer without invocation.
 
 Native contract violations print a diagnostic and abort; null managed receiver
-access follows the existing Simple runtime diagnostic. Exceptions escaping any
+access follows the existing Cwhip runtime diagnostic. Exceptions escaping any
 native callback abort **inside** the bridge, never unwind through GTK or fabricate
 a return value. Catch recoverable exceptions inside handlers. Bridge ownership
 checks are unchanged.

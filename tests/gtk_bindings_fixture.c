@@ -25,7 +25,7 @@ static void fixture_finalized(gpointer data, GObject *object) {
 
 void binding_collect(void *self) {
     (void)self;
-    simp_gc_collect();
+    cwhip_gc_collect();
 }
 
 int64_t binding_dialogs(void *self) {
@@ -83,7 +83,7 @@ static GtkDialog *fallback_chooser(void) {
 
 static gboolean respond_when_selected(gpointer data) {
     Response *request = data;
-    int acquired = simp_runtime_managed_enter();
+    int acquired = cwhip_runtime_managed_enter();
     assert(dialogs && dialogs->chooser);
     GtkDialog *chooser = fallback_chooser();
     if (request->tries == 20 && request->response == GTK_RESPONSE_ACCEPT) {
@@ -118,7 +118,7 @@ static gboolean respond_when_selected(gpointer data) {
         free(request);
     }
     g_object_unref(chooser);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
     return ready ? G_SOURCE_REMOVE : G_SOURCE_CONTINUE;
 }
 
@@ -138,7 +138,7 @@ typedef struct Confirm {
 
 static gboolean confirm_when_ready(gpointer data) {
     Confirm *request = data;
-    int acquired = simp_runtime_managed_enter();
+    int acquired = cwhip_runtime_managed_enter();
     assert(++request->tries < 100);
     bool ready = false;
     GListModel *windows = gtk_window_get_toplevels();
@@ -162,7 +162,7 @@ static gboolean confirm_when_ready(gpointer data) {
         if (ready) break;
     }
     if (ready) free(request);
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
     return ready ? G_SOURCE_REMOVE : G_SOURCE_CONTINUE;
 }
 
@@ -178,24 +178,24 @@ typedef struct SizeRequest {
     int width;
     int height;
     unsigned tries;
-    SimpCallbackContext *context;
+    CwhipCallbackContext *context;
 } SizeRequest;
 
 static gboolean allocation_ready(gpointer data) {
     SizeRequest *request = data;
-    int acquired = simp_runtime_managed_enter();
+    int acquired = cwhip_runtime_managed_enter();
     GtkWidget *widget = widget_live(request->token);
     bool ready = gtk_widget_get_width(widget) >= request->width &&
                  gtk_widget_get_height(widget) >= request->height;
     assert(++request->tries < 200);
     if (ready) {
-        typedef void (*Adapter)(SimpCallbackContext *);
-        ((Adapter)simp_callback_adapter(request->context))(request->context);
-        simp_callback_release(request->context);
-        simp_callback_dispose(request->context);
+        typedef void (*Adapter)(CwhipCallbackContext *);
+        ((Adapter)cwhip_callback_adapter(request->context))(request->context);
+        cwhip_callback_release(request->context);
+        cwhip_callback_dispose(request->context);
         free(request);
     }
-    simp_runtime_managed_leave(acquired);
+    cwhip_runtime_managed_leave(acquired);
     return ready ? G_SOURCE_REMOVE : G_SOURCE_CONTINUE;
 }
 
@@ -206,7 +206,7 @@ void binding_wait_size(void *self, int64_t token, int64_t width, int64_t height,
     request->token = token;
     request->width = (int)width;
     request->height = (int)height;
-    request->context = simp_callback_acquire(callback, "callback<void()>");
+    request->context = cwhip_callback_acquire(callback, "callback<void()>");
     g_timeout_add(25, allocation_ready, request);
 }
 
@@ -223,7 +223,7 @@ void binding_resize(void *self, int64_t token, int64_t width, int64_t height) {
     gtk_window_set_default_size(GTK_WINDOW(widget_live(token)), (int)width, (int)height);
 }
 
-#ifdef SIMP_GTK_SOURCEVIEW
+#ifdef CWHIP_GTK_SOURCEVIEW
 /* Activates a bound shortcut through its real GtkShortcutController action,
  * holding references the way GTK's key dispatch does. */
 bool binding_shortcut(void *self, int64_t token, void *trigger_text) {

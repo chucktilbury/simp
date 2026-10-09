@@ -1,4 +1,4 @@
-"""Exercise the actual Simple editor's menus and asynchronous native choosers."""
+"""Exercise the actual Cwhip editor's menus and asynchronous native choosers."""
 
 import argparse
 from pathlib import Path
@@ -133,37 +133,37 @@ class EditorChecks {
             saved.view.setText("updated\n")
             editor.menu.activateItem(editor.documentItems[0] as int)
             require(contents(saved.path).equals("updated\n") && !saved.view.modified(), "named Save")
-            Fixture().choose(path("overwrite.simp"), 1, -1)
+            Fixture().choose(path("overwrite.cw"), 1, -1)
             editor.menu.activateItem(editor.documentItems[1] as int)
         }
         if (stage == 3) {
-            require(saved.path.equals(path("created.cw")) && contents(path("overwrite.simp")).equals("original\n"), "overwrite cancel preserves identity and contents")
-            Fixture().choose(path("overwrite.simp"), 1, 1)
+            require(saved.path.equals(path("created.cw")) && contents(path("overwrite.cw")).equals("original\n"), "overwrite cancel preserves identity and contents")
+            Fixture().choose(path("overwrite.cw"), 1, 1)
             editor.menu.activateItem(editor.documentItems[1] as int)
         }
         if (stage == 4) {
-            require(saved.path.equals(path("overwrite.simp")) && contents(saved.path).equals("updated\n"), "overwrite confirmed")
+            require(saved.path.equals(path("overwrite.cw")) && contents(saved.path).equals("updated\n"), "overwrite confirmed")
             Fixture().choose(saved.path, 1, 0)
             editor.menu.activateItem(editor.openItem)
         }
         if (stage == 5) {
             require(editor.documents.length == 2 && editor.currentDocument() == saved, "duplicate Open focuses tab")
-            Fixture().choose(path("other.simp"), 1, 0)
+            Fixture().choose(path("other.cw"), 1, 0)
             require(Fixture().shortcut("<Control>o"), "shortcut Open routes to chooser")
         }
         if (stage == 6) {
             require(editor.documents.length == 3 && editor.currentDocument().view.text().equals("other\n"), "Open reads selected file")
-            editor.openFile(path("missing.simp"))
+            editor.openFile(path("missing.cw"))
             require(editor.status.text().contains("Open failed") && editor.documents.length == 3, "invalid open reported")
             editor.openFile(System.FileSystem().getCwd())
             require(editor.status.text().contains("not a regular file"), "directory rejected")
             editor.activateDocument(saved)
             saved.view.setText("must not overwrite other\n")
-            Fixture().choose(path("other.simp"), 1, 1)
+            Fixture().choose(path("other.cw"), 1, 1)
             editor.menu.activateItem(editor.documentItems[1] as int)
         }
         if (stage == 7) {
-            require(editor.status.text().contains("another open document") && contents(path("other.simp")).equals("other\n") && saved.path.equals(path("overwrite.simp")), "identity collision rejected")
+            require(editor.status.text().contains("another open document") && contents(path("other.cw")).equals("other\n") && saved.path.equals(path("overwrite.cw")), "identity collision rejected")
             editor.menu.activateItem(editor.newItem)
             editor.currentDocument().view.setText("unsaved\n")
             editor.menu.activateItem(editor.documentItems[2] as int)
@@ -174,18 +174,18 @@ class EditorChecks {
         if (stage == 8) {
             require(editor.documents.length == 4 && editor.currentDocument().view.modified() && editor.pendingCloseDocument == null && !editor.pendingCloseAll, "close-save chooser Cancel does not close")
             editor.closeCurrentDocument()
-            Fixture().choose(path("close-save.simp"), 1, 0)
+            Fixture().choose(path("close-save.cw"), 1, 0)
             editor.closeSaveAction()
         }
         if (stage == 9) {
-            require(editor.documents.length == 3 && contents(path("close-save.simp")).equals("unsaved\n"), "close-save chooser accept saves then closes")
+            require(editor.documents.length == 3 && contents(path("close-save.cw")).equals("unsaved\n"), "close-save chooser accept saves then closes")
             editor.activateDocument(saved)
             editor.closeCurrentDocument()
             editor.closeCancelAction()
             require(editor.documents.length == 3 && saved.view.modified(), "dirty Close Cancel")
             editor.closeCurrentDocument()
             editor.closeSaveAction()
-            require(editor.documents.length == 2 && contents(path("overwrite.simp")).equals("must not overwrite other\n"), "dirty Close Save")
+            require(editor.documents.length == 2 && contents(path("overwrite.cw")).equals("must not overwrite other\n"), "dirty Close Save")
             editor.menu.activateItem(editor.newItem)
             editor.currentDocument().view.setText("discard\n")
             require(Fixture().shortcut("<Control>w"), "shortcut Close")
@@ -196,17 +196,17 @@ class EditorChecks {
         }
         if (stage == 10) {
             require(editor.documents.length == 2, "Open Cancel preserves tabs")
-            Fixture().choose(path("vanishing.simp"), 1, 0)
+            Fixture().choose(path("vanishing.cw"), 1, 0)
             editor.menu.activateItem(editor.openItem)
         }
         if (stage == 11) {
             require(editor.documents.length == 2 && editor.status.text().contains("Open failed"), "accepted file disappearing before Open is reported")
-            require(Fixture().alert("Could not open|vanishing.simp") && !Fixture().alertOpen(), "chooser Open failure dialog dismissed")
+            require(Fixture().alert("Could not open|vanishing.cw") && !Fixture().alertOpen(), "chooser Open failure dialog dismissed")
             EditorDocument document = editor.currentDocument()
-            require(!editor.writeDocument(document, path("missing-folder/save.simp")) && document.path.equals(path("other.simp")), "invalid save preserves identity")
-            editor.openFile("sftp://invalid.example/file.simp")
+            require(!editor.writeDocument(document, path("missing-folder/save.cw")) && document.path.equals(path("other.cw")), "invalid save preserves identity")
+            editor.openFile("sftp://invalid.example/file.cw")
             require(editor.status.text().contains("only local filesystem paths"), "nonlocal Open reported")
-            require(!editor.writeDocument(document, "sftp://invalid.example/file.simp") && document.path.equals(path("other.simp")), "nonlocal Save rejected")
+            require(!editor.writeDocument(document, "sftp://invalid.example/file.cw") && document.path.equals(path("other.cw")), "nonlocal Save rejected")
             Fixture().edit("undo this\n")
             editor.menu.activateItem(editor.undoItem)
             require(!editor.currentDocument().view.text().equals("undo this\n"), "menu Undo")
@@ -249,8 +249,8 @@ class EditorChecks {
             editor.closeCurrentDocument()
             editor.openFile(path("many/binary.dat"))
             require(editor.status.text().contains("not a text file") && Fixture().alert("Could not open file|binary.dat"), "binary Open shows a parented error dialog")
-            editor.openFile(path("many/one.simp"))
-            require(editor.currentDocument().path.equals(path("many/one.simp")), "open first file")
+            editor.openFile(path("many/one.cw"))
+            require(editor.currentDocument().path.equals(path("many/one.cw")), "open first file")
             documentsBeforeMany = editor.documents.length
             Fixture().choose("", 0, 0)
             require(Fixture().shortcut("<Control>o"), "multi-select Open routes to chooser for cancellation")
@@ -268,9 +268,9 @@ class EditorChecks {
             EditorDocument text = documentAt("many/two.txt")
             require(text != null && text.view.text().equals("class Demo {}\n"), "text file opened")
             require(Fixture().monospace(), "editor source view uses monospace font")
-            require(editor.currentDocument() == text || editor.currentDocument() == documentAt("many/one.simp"), "last opened file is current")
+            require(editor.currentDocument() == text || editor.currentDocument() == documentAt("many/one.cw"), "last opened file is current")
             require(text.view.language().equals("") && !text.view.hasContextAt("keyword", 0), "plain text not highlighted")
-            EditorDocument source = documentAt("many/one.simp")
+            EditorDocument source = documentAt("many/one.cw")
             require(source.view.language().equals("cwhip") && source.view.hasContextAt("keyword", 0), "source highlighted")
             require(editor.writeDocument(text, path("many/renamed.cw")) && text.view.language().equals("cwhip"), "Save As Cwhip source enables highlighting")
             search = text
@@ -301,7 +301,7 @@ class EditorChecks {
             search.view.setText("alpha beta alphabet Alpha\nalpha gamma\n")
             Fixture().select(0, 25)
             require(Fixture().shortcut("<Control>h"), "Replace captures selection scope")
-            EditorDocument sourceScope = documentAt("many/one.simp")
+            EditorDocument sourceScope = documentAt("many/one.cw")
             editor.activateDocument(sourceScope)
             Fixture().select(0, 5)
             editor.activateDocument(search)
@@ -395,12 +395,12 @@ def main():
             "    app.onActivate(checks.activate)")
         source = work / "editor.cw"
         source.write_text(text[:index] + DRIVER + setup)
-        (work / "overwrite.simp").write_text("original\n")
-        (work / "other.simp").write_text("other\n")
-        (work / "vanishing.simp").write_text("removed before reading\n")
+        (work / "overwrite.cw").write_text("original\n")
+        (work / "other.cw").write_text("other\n")
+        (work / "vanishing.cw").write_text("removed before reading\n")
         many = work / "many"
         many.mkdir()
-        (many / "one.simp").write_text("class One {}\n")
+        (many / "one.cw").write_text("class One {}\n")
         (many / "two.txt").write_text("class Demo {}\n")
         (many / "binary.dat").write_bytes(b"text\0with NUL\n")
         (many / "invalid.txt").write_bytes(b"caf\xe9\n")

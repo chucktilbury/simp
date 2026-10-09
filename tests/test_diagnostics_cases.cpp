@@ -1,9 +1,9 @@
 #include "test_cases.hpp"
 
-#include "simp/Diagnostic.hpp"
-#include "simp/Lexer.hpp"
-#include "simp/Parser.hpp"
-#include "simp/Token.hpp"
+#include "cwhip/Diagnostic.hpp"
+#include "cwhip/Lexer.hpp"
+#include "cwhip/Parser.hpp"
+#include "cwhip/Token.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -11,15 +11,15 @@
 #include <vector>
 
 namespace {
-using namespace simp_test;
+using namespace cwhip_test;
 
 const TestGroupRegistration registration{2, {
         {"diagnostic source location", [] {
              try {
-                 simp::Lexer lexer("start {\n @\n}", "location.simp");
+                 cwhip::Lexer lexer("start {\n @\n}", "location.cw");
                  lexer.tokenize();
-             } catch (const simp::DiagnosticError& error) {
-                 require(std::string(error.what()).find("location.simp:2:2: error:") == 0,
+             } catch (const cwhip::DiagnosticError& error) {
+                 require(std::string(error.what()).find("location.cw:2:2: error:") == 0,
                          "diagnostic location was incorrect");
                  return;
              }
@@ -30,9 +30,9 @@ const TestGroupRegistration registration{2, {
              source.push_back(static_cast<char>(0xc0));
              source += "\"); }";
              try {
-                 simp::Lexer lexer(source, "invalid-utf8.simp");
+                 cwhip::Lexer lexer(source, "invalid-utf8.cw");
                  lexer.tokenize();
-             } catch (const simp::DiagnosticError& error) {
+             } catch (const cwhip::DiagnosticError& error) {
                  require(std::string(error.what()).find("string literal is not valid UTF-8") !=
                              std::string::npos,
                          "invalid UTF-8 diagnostic was missing");
@@ -81,9 +81,9 @@ const TestGroupRegistration registration{2, {
          }},
         {"formatted string placeholder diagnostics include source location", [] {
              try {
-                 (void)parse("start {\n print(format(\"{bad-name}\", bad=1))\n}", "format.simp");
-             } catch (const simp::DiagnosticError& error) {
-                 require(std::string(error.what()).find("format.simp:2:8: error:") == 0,
+                 (void)parse("start {\n print(format(\"{bad-name}\", bad=1))\n}", "format.cw");
+             } catch (const cwhip::DiagnosticError& error) {
+                 require(std::string(error.what()).find("format.cw:2:8: error:") == 0,
                          "malformed format placeholder diagnostic did not identify its source");
                  return;
              }

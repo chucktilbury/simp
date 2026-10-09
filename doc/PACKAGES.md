@@ -1,10 +1,10 @@
 # Package manifests and reproducible projects
 
-`simpkg` manages packages; `simp` compiles installed source without accessing
-the network. See [installation](INSTALLATION.md#project-package-manager-simpkg)
+`cwhip-pkg` manages packages; `cwhip` compiles installed source without accessing
+the network. See [installation](INSTALLATION.md#project-package-manager-cwhip-pkg)
 for the common `init`, `add`, and `install` workflow.
 
-## Project manifest: `simpkg.toml`
+## Project manifest: `cwhip-pkg.toml`
 
 Schema 1 is human-readable TOML with exact SemVer pins. Only direct
 dependencies belong in `[dependencies.NAME]`; dependency order is irrelevant.
@@ -23,7 +23,7 @@ vectors = "your-org/vectors"
 
 The repository names above are illustrative, not a public package catalog.
 `version` supports only `=VERSION`, including explicit prereleases; ranges
-are not supported. `simpkg add OWNER/REPO [VERSION] --yes` reads the package
+are not supported. `cwhip-pkg add OWNER/REPO [VERSION] --yes` reads the package
 name from the downloaded manifest and records a direct exact pin. Omitting
 VERSION selects the highest stable SemVer tag at that time; subsequent installs
 use the lock's commit, not a fresh version selection.
@@ -38,17 +38,18 @@ package or an incompatible exact dependency on an older bundled version fails
 explicitly rather than producing fallback arrays. `String` is the implicit
 compiler prelude, not a package entry.
 
-Commit `simpkg.toml` and `simpkg.lock`. To change a direct pin, use `add`, or edit
-the manifest, remove the stale lock, and resolve with `simpkg install --yes`.
+Commit `cwhip-pkg.toml` and `cwhip-pkg.lock`. To change a direct pin, use `add`, or edit
+the manifest, remove the stale lock, and resolve with `cwhip-pkg install --yes`.
 `add` rejects an already stale lock before contacting any repository. The compiler
 always reads the lock from the discovered source project; `-M` and
-`SIMP_MODULE_DIR` only add higher-priority package storage roots. A root can
+`CWHIP_MODULE_DIR` only add higher-priority package storage roots. A root can
 satisfy a locked package only with the exact locked version, dependency edges,
-and content hash. The lock remains the import allowlist. Legacy
-`modules/modules.toml`, registry, and compatibility path workflows are removed;
-create a manifest/lock project and declare dependencies with `simpkg`.
+and content hash. The lock remains the import allowlist. Legacy `modules/modules.toml`, registry,
+and compatibility path workflows are removed; their configuration is not
+imported or rewritten. Create a separate manifest/lock project and manually
+declare dependencies with `cwhip-pkg`.
 
-## Published package: `simp-package.toml`
+## Published package: `cwhip-package.toml`
 
 Package directories have the shape `modules/NAME/VERSION/`:
 
@@ -89,7 +90,7 @@ Optional `[link]` entries provide arrays of native library names (without a
 already be present; the installer never executes package build scripts.
 Package installation rejects symbolic links and special files.
 
-```simp
+```cwhip
 import geometry
 import geometry as G
 // test: {"stdout": "", "fixture": "geometry"}
@@ -107,7 +108,7 @@ is the manifest's declared export (`Geometry`), not the package identifier
 (`geometry`). Colliding local/import bindings and conflicting package namespaces
 are diagnosed. An exported class similarly binds its own name by default.
 
-## Generated graph: `simpkg.lock`
+## Generated graph: `cwhip-pkg.lock`
 
 Schema 1 locks every resolved node, including the bundled standard packages.
 The following excerpt illustrates a node with one dependency; a real lock
@@ -145,7 +146,7 @@ installed contents; they are not publisher signatures or proof that code is
 safe. Review repositories before authorizing download or compiling their
 native bindings.
 
-`simpkg install --yes` verifies manifest freshness, schema, exact versions,
+`cwhip-pkg install --yes` verifies manifest freshness, schema, exact versions,
 commit identities, edges, and content before restoring missing packages. It
 does not overwrite mismatching existing directories. The compiler independently
 checks lock structure/freshness and the hashes and declared edges of packages

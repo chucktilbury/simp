@@ -1,7 +1,0 @@
-# Passes a Simple string into inline C and prints it through the runtime string helper.
-start {
-    strg message = "hello from C"
-    inline (strg message) {
-        printf("%s\n", simp_string_cstr(message));
-    }
-}

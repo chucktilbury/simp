@@ -80,9 +80,6 @@ class CwhipSettings {
             configHome = System.FileSystem().join(System.Process().getEnv("HOME"), ".config")
         }
         path = System.FileSystem().join(configHome, "cwhip/settings.toml")
-        String oldSettings = System.FileSystem().join(configHome, "tweed/settings.toml")
-        if (Gtk.Config().fileStatus(path).equals("missing") &&
-            !Gtk.Config().fileStatus(oldSettings).equals("missing")) { path = oldSettings }
         if (!configHome.startsWith("/")) {
             error("XDG_CONFIG_HOME (or HOME fallback) must be an absolute path")
         }
@@ -134,9 +131,6 @@ class CwhipSettings {
 
     void loadLegacy() {
         String legacy = "cwhip-shortcuts.conf"
-        if (Gtk.Config().fileStatus(legacy).equals("missing")) {
-            legacy = "tweed-shortcuts.conf"
-        }
         String presence = Gtk.Config().fileStatus(legacy)
         if (presence.equals("missing")) { return }
         if (presence.length > 0) {
@@ -451,7 +445,7 @@ class KeyboardPreference {
     }
 }
 
-KeyboardPreference KeyboardPreference._self() from "simp_gtk_self"
+KeyboardPreference KeyboardPreference._self() from "cwhip_gtk_self"
 
 class WorkspaceFile {
     String path
@@ -464,9 +458,8 @@ class WorkspaceFile {
     }
 }
 
-// Cwhip projects use .cwhip; existing .tweed projects remain in place. Metadata
-// paths are
-// always derived from the canonical root, never from persisted contents.
+// Project metadata paths are always derived from the canonical root, never
+// from persisted contents.
 class CwhipProject {
     String root
     String directory
@@ -505,24 +498,12 @@ class CwhipProject {
     list expanded
     list files
     String readError
-    String metadataConflict
     bool readMissing
     bool readContent
 
     CwhipProject(String projectRoot) {
         root = projectRoot
-        metadataConflict = ""
-        String currentDirectory = System.FileSystem().join(root, ".cwhip")
-        String legacyDirectory = System.FileSystem().join(root, ".tweed")
-        if (System.FileSystem().exists(currentDirectory) &&
-            System.FileSystem().exists(legacyDirectory)) {
-            metadataConflict = format("Both {} and {} contain project data; resolve the conflict without deleting either folder",
-                currentDirectory, legacyDirectory)
-            directory = currentDirectory
-        } else {
-            if (System.FileSystem().exists(legacyDirectory)) { directory = legacyDirectory }
-            else { directory = currentDirectory }
-        }
+        directory = System.FileSystem().join(root, ".cwhip")
         configPath = System.FileSystem().join(directory, "project.toml")
         workspacePath = System.FileSystem().join(directory, "workspace.toml")
         name = System.FileSystem().basename(root)
@@ -621,7 +602,6 @@ class CwhipProject {
     // Refuses symlinked or non-regular metadata so writes and deletes stay
     // inside the project's metadata directory.
     String metadataProblem() {
-        if (!metadataConflict.equals("")) { return metadataConflict }
         if (!System.FileSystem().exists(directory)) { return "" }
         if (!System.FileSystem().isDir(directory) ||
             !System.FileSystem().absolutePath(directory).equals(directory)) {
@@ -1019,7 +999,7 @@ class OverrideRow {
         toggled(overridden)
     }
 }
-OverrideRow OverrideRow._self() from "simp_gtk_self"
+OverrideRow OverrideRow._self() from "cwhip_gtk_self"
 
 class EditorDocument {
     GtkSource.View view
@@ -1112,7 +1092,7 @@ class ProjectNode {
         explorer.nextId = explorer.nextId + count
     }
 }
-ProjectNode ProjectNode._self() from "simp_gtk_self"
+ProjectNode ProjectNode._self() from "cwhip_gtk_self"
 
 class ProjectExplorer {
     ProjectExplorer _self()
@@ -1136,7 +1116,7 @@ class ProjectExplorer {
         rootPath = ""
         excludes = ""
         pending = []
-        icons = "0=text-x-generic-symbolic\n1=folder-symbolic\n2=emblem-symbolic-link-symbolic\n3=dialog-warning-symbolic\n.cw=text-x-script-symbolic\n.simp=text-x-script-symbolic\n.tweed=text-x-script-symbolic\n.c=text-x-script-symbolic\n.h=text-x-script-symbolic\n.py=text-x-script-symbolic\n.png=image-x-generic-symbolic\n.jpg=image-x-generic-symbolic\n.svg=image-x-generic-symbolic"
+        icons = "0=text-x-generic-symbolic\n1=folder-symbolic\n2=emblem-symbolic-link-symbolic\n3=dialog-warning-symbolic\n.cw=text-x-script-symbolic\n.c=text-x-script-symbolic\n.h=text-x-script-symbolic\n.py=text-x-script-symbolic\n.png=image-x-generic-symbolic\n.jpg=image-x-generic-symbolic\n.svg=image-x-generic-symbolic"
         sidebar = Gtk.Box(Gtk.Box.VERTICAL, 4)
         sidebar.setVExpand(true)
         title = Gtk.Label("Project Explorer")
@@ -1256,7 +1236,7 @@ class ProjectExplorer {
         if (kind >= 0 && kind != 1) { open(tree.value(id)) }
     }
 }
-ProjectExplorer ProjectExplorer._self() from "simp_gtk_self"
+ProjectExplorer ProjectExplorer._self() from "cwhip_gtk_self"
 
 class CwhipEditor {
     CwhipEditor _self()
@@ -1986,7 +1966,7 @@ class CwhipEditor {
     // ---- Projects -------------------------------------------------------
 
     String version() {
-        // Keep in sync with project(simp VERSION ...) in CMakeLists.txt.
+        // Keep in sync with project(cwhip VERSION ...) in CMakeLists.txt.
         return "0.0.1"
     }
 
@@ -2016,8 +1996,7 @@ class CwhipEditor {
         String root = canonicalFolder(path, title)
         if (root.equals("")) { return null }
         // Choosing a metadata folder itself selects its project root.
-        if ((System.FileSystem().basename(root).equals(".cwhip") ||
-             System.FileSystem().basename(root).equals(".tweed")) &&
+        if (System.FileSystem().basename(root).equals(".cwhip") &&
             System.FileSystem().isFile(System.FileSystem().join(root, "project.toml"))) {
             root = System.FileSystem().dirname(root)
         }
@@ -2037,8 +2016,7 @@ class CwhipEditor {
         }
         String root = canonicalFolder(path, "Could not open folder")
         if (root.equals("")) { return }
-        if (System.FileSystem().isFile(System.FileSystem().join(root, ".cwhip/project.toml")) ||
-            System.FileSystem().isFile(System.FileSystem().join(root, ".tweed/project.toml"))) {
+        if (System.FileSystem().isFile(System.FileSystem().join(root, ".cwhip/project.toml"))) {
             CwhipProject candidate = loadProject(root, "Could not open project")
             if (candidate != null) { activateProject(candidate, true) }
             return
@@ -2729,7 +2707,7 @@ class CwhipEditor {
             root.append(Gtk.Label("A GTK editor for Cwhip, written in Cwhip\nwith GtkSourceView syntax highlighting, a project explorer,\nand per-project configuration."))
             root.append(Gtk.Label("License: no license file is included in the repository."))
             root.append(Gtk.Label("Website: https://cwhip.org"))
-            root.append(Gtk.Label("Project repository: https://github.com/chucktilbury/simp"))
+            root.append(Gtk.Label("Project repository: https://github.com/chucktilbury/cwhip"))
             Gtk.Button close = Gtk.Button("Close")
             close.onClicked(_self().closeAbout)
             root.append(close)
@@ -3590,8 +3568,7 @@ class CwhipEditor {
         bool tabSwitchUpdatesStatus = pageChanges > 0
         bool remapped = false
         bool defaults = false
-        if (System.FileSystem().exists("cwhip-shortcuts.conf") ||
-            System.FileSystem().exists("tweed-shortcuts.conf")) {
+        if (System.FileSystem().exists("cwhip-shortcuts.conf")) {
             remapped = document.view.hasShortcut("<Control><Alt>s") && !document.view.hasShortcut("<Control>s")
         } else {
             defaults = document.view.hasShortcut("<Control>s") && document.view.hasShortcut("<Control>o")
@@ -3646,10 +3623,10 @@ class CwhipEditor {
     }
 }
 
-CwhipEditor CwhipEditor._self() from "simp_gtk_self"
+CwhipEditor CwhipEditor._self() from "cwhip_gtk_self"
 
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Editor")
+    Gtk.Application app = Gtk.Application("org.cw.Editor")
     CwhipEditor editor = CwhipEditor()
     editor.changedAction = editor.changed
     editor.cursorAction = editor.updateStatus

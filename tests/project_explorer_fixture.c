@@ -1,30 +1,30 @@
 #include "editor_dialog_fixture.c"
-#include <simp/Callbacks.h>
+#include <cwhip/Callbacks.h>
 
 static gint64 heartbeat_time;
 static gint64 heartbeat_gap;
 static guint heartbeat_count;
 static guint heartbeat_source;
 static guint next_source;
-static SimpCallbackTransfer *next_transfer;
+static CwhipCallbackTransfer *next_transfer;
 
 static gboolean explorer_next(gpointer unused) {
     (void)unused;
-    int acquired = simp_runtime_managed_enter();
-    SimpCallbackContext *context = simp_callback_transfer_accept(next_transfer);
+    int acquired = cwhip_runtime_managed_enter();
+    CwhipCallbackContext *context = cwhip_callback_transfer_accept(next_transfer);
     next_source = 0;
     next_transfer = NULL;
-    typedef void (*Adapter)(SimpCallbackContext *);
-    ((Adapter)simp_callback_adapter(context))(context);
-    simp_callback_release(context);
-    simp_callback_dispose(context);
-    simp_runtime_managed_leave(acquired);
+    typedef void (*Adapter)(CwhipCallbackContext *);
+    ((Adapter)cwhip_callback_adapter(context))(context);
+    cwhip_callback_release(context);
+    cwhip_callback_dispose(context);
+    cwhip_runtime_managed_leave(acquired);
     return G_SOURCE_REMOVE;
 }
 void explorer_later(void *self, void *callback) {
     (void)self;
     if (next_source) abort();
-    next_transfer = simp_callback_transfer_prepare(callback, "callback<void()>");
+    next_transfer = cwhip_callback_transfer_prepare(callback, "callback<void()>");
     next_source = g_timeout_add(20, explorer_next, NULL);
 }
 
@@ -61,7 +61,7 @@ void explorer_stop(void *self) {
     heartbeat_source = 0;
     if (next_source) {
         g_source_remove(next_source);
-        simp_callback_transfer_cancel(next_transfer);
+        cwhip_callback_transfer_cancel(next_transfer);
         next_source = 0;
         next_transfer = NULL;
     }

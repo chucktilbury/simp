@@ -1,0 +1,280 @@
+namespace Networking {
+    class Runtime {
+        int socketCreate()
+        bool socketConnect(int fd, String host, int port)
+        int socketSend(int fd, buffer data)
+        int socketSendString(int fd, String data)
+        buffer socketRecv(int fd, int maxBytes)
+        String socketRecvString(int fd, int maxBytes)
+        void socketClose(int fd)
+        void socketSetTimeout(int fd, int milliseconds)
+        int serverBind(String host, int port, int backlog)
+        int serverAccept(int fd)
+        int serverPort(int fd)
+        bool serverListen(int fd, int backlog)
+    }
+
+    class Socket {
+        private:
+        int _fd
+        bool _connected
+        String _host
+        int _port
+
+        public:
+        Socket() {
+            _fd = Runtime().socketCreate()
+            _connected = false
+            _host = ""
+            _port = 0
+        }
+
+        Socket(int fd) {
+            _fd = fd
+            _connected = fd >= 0
+            _host = ""
+            _port = 0
+        }
+
+        bool connect(String host, int port) {
+            _connected = Runtime().socketConnect(_fd, host, port)
+            if (_connected) {
+                _host = host
+                _port = port
+            }
+            return _connected
+        }
+
+        int send(buffer data) {
+            return Runtime().socketSend(_fd, data)
+        }
+
+        int sendString(String data) {
+            return Runtime().socketSendString(_fd, data)
+        }
+
+        buffer recv(int maxBytes) {
+            return Runtime().socketRecv(_fd, maxBytes)
+        }
+
+        String recvString(int maxBytes) {
+            return Runtime().socketRecvString(_fd, maxBytes)
+        }
+
+        void close() {
+            if (_fd >= 0) {
+                Runtime().socketClose(_fd)
+                _fd = -1
+                _connected = false
+            }
+        }
+
+        bool isConnected() {
+            return _connected
+        }
+
+        void setTimeout(int milliseconds) {
+            Runtime().socketSetTimeout(_fd, milliseconds)
+        }
+
+        int getPort() {
+            return _port
+        }
+
+        String getHost() {
+            return _host
+        }
+    }
+
+    class ServerSocket {
+        private:
+        int _fd
+        int _port
+
+        public:
+        ServerSocket() {
+            _fd = -1
+            _port = 0
+        }
+
+        bool bind(int port) {
+            if (_fd >= 0) {
+                Runtime().socketClose(_fd)
+            }
+            _fd = Runtime().serverBind("", port, 16)
+            if (_fd >= 0) {
+                _port = Runtime().serverPort(_fd)
+            }
+            return _fd >= 0
+        }
+
+        bool bindAddress(String host, int port) {
+            if (_fd >= 0) {
+                Runtime().socketClose(_fd)
+            }
+            _fd = Runtime().serverBind(host, port, 16)
+            if (_fd >= 0) {
+                _port = Runtime().serverPort(_fd)
+            }
+            return _fd >= 0
+        }
+
+        bool listen(int backlog) {
+            return Runtime().serverListen(_fd, backlog)
+        }
+
+        Socket accept() {
+            return Socket(Runtime().serverAccept(_fd))
+        }
+
+        void close() {
+            if (_fd >= 0) {
+                Runtime().socketClose(_fd)
+                _fd = -1
+                _port = 0
+            }
+        }
+
+        bool isBound() {
+            return _fd >= 0
+        }
+
+        int getPort() {
+            return _port
+        }
+    }
+
+    class Url {
+        private:
+        String _url
+        String _scheme
+        String _host
+        int _port
+        String _path
+        String _query
+        String _fragment
+
+        public:
+        Url(String urlString) {
+            _url = urlString
+            _scheme = ""
+            _host = ""
+            _port = 0
+            _path = "/"
+            _query = ""
+            _fragment = ""
+
+            String rest = urlString
+            int schemeEnd = rest.find("://")
+            if (schemeEnd >= 0) {
+                _scheme = rest.slice(0, schemeEnd)
+                rest = rest.slice(schemeEnd + 3, rest.length)
+            }
+
+            int fragmentStart = rest.find("#")
+            if (fragmentStart >= 0) {
+                _fragment = rest.slice(fragmentStart + 1, rest.length)
+                rest = rest.slice(0, fragmentStart)
+            }
+            int queryStart = rest.find("?")
+            if (queryStart >= 0) {
+                _query = rest.slice(queryStart + 1, rest.length)
+                rest = rest.slice(0, queryStart)
+            }
+
+            int pathStart = rest.find("/")
+            String authority = rest
+            if (pathStart >= 0) {
+                authority = rest.slice(0, pathStart)
+                _path = rest.slice(pathStart, rest.length)
+            }
+
+            int atSign = authority.find("@")
+            if (atSign >= 0) {
+                authority = authority.slice(atSign + 1, authority.length)
+            }
+            if (authority.startsWith("[")) {
+                int bracketEnd = authority.find("]")
+                if (bracketEnd >= 0) {
+                    _host = authority.slice(1, bracketEnd)
+                    if (bracketEnd + 1 < authority.length) {
+                        String portText = authority.slice(bracketEnd + 2, authority.length)
+                        if (portText.length > 0) {
+                            _port = portText.toInt()
+                        }
+                    } else {
+                        if (_scheme.equals("http")) {
+                            _port = 80
+                        } else {
+                            if (_scheme.equals("https")) {
+                                _port = 443
+                            }
+                        }
+                    }
+                } else {
+                    _host = authority
+                }
+            } else {
+                int colon = authority.find(":")
+                if (colon >= 0) {
+                    _host = authority.slice(0, colon)
+                    String portText = authority.slice(colon + 1, authority.length)
+                    if (portText.length > 0) {
+                        _port = portText.toInt()
+                    }
+                } else {
+                    _host = authority
+                    if (_scheme.equals("http")) {
+                        _port = 80
+                    } else {
+                        if (_scheme.equals("https")) {
+                            _port = 443
+                        }
+                    }
+                }
+            }
+        }
+
+        String scheme() {
+            return _scheme
+        }
+
+        String host() {
+            return _host
+        }
+
+        int port() {
+            return _port
+        }
+
+        String path() {
+            return _path
+        }
+
+        String query() {
+            return _query
+        }
+
+        String fragment() {
+            return _fragment
+        }
+
+        String toString() {
+            return _url
+        }
+    }
+
+    int Runtime.socketCreate() from "cwhip_net_socket_create"
+    bool Runtime.socketConnect(int fd, String host, int port) from "cwhip_net_socket_connect"
+    int Runtime.socketSend(int fd, buffer data) from "cwhip_net_socket_send"
+    int Runtime.socketSendString(int fd, String data) from "cwhip_net_socket_send_string"
+    buffer Runtime.socketRecv(int fd, int maxBytes) from "cwhip_net_socket_recv"
+    String Runtime.socketRecvString(int fd, int maxBytes) from "cwhip_net_socket_recv_string"
+    void Runtime.socketClose(int fd) from "cwhip_net_socket_close"
+    void Runtime.socketSetTimeout(int fd, int milliseconds) from "cwhip_net_socket_set_timeout"
+
+    int Runtime.serverBind(String host, int port, int backlog) from "cwhip_net_server_bind"
+    int Runtime.serverAccept(int fd) from "cwhip_net_server_accept"
+    int Runtime.serverPort(int fd) from "cwhip_net_server_port"
+    bool Runtime.serverListen(int fd, int backlog) from "cwhip_net_server_listen"
+}

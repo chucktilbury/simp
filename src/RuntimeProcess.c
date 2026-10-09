@@ -4,7 +4,7 @@
  */
 #define _POSIX_C_SOURCE 200809L
 
-#include "simp/RuntimeGc.h"
+#include "cwhip/RuntimeGc.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -20,11 +20,11 @@
 #include <unistd.h>
 
 extern char **environ;
-extern const SimpClassMeta simp_string_class_meta __attribute__((weak));
-extern void simp_runtime_set_error(int error_number);
-extern void simp_runtime_clear_error(void);
+extern const CwhipClassMeta cwhip_string_class_meta __attribute__((weak));
+extern void cwhip_runtime_set_error(int error_number);
+extern void cwhip_runtime_clear_error(void);
 
-typedef struct SimpProcess {
+typedef struct CwhipProcess {
     pid_t pid;
     int stdout_fd;
     int stderr_fd;
@@ -39,7 +39,7 @@ typedef struct SimpProcess {
     char *stderr_bytes;
     size_t stderr_length;
     size_t stderr_capacity;
-} SimpProcess;
+} CwhipProcess;
 
 static char *copy_string(void *object) {
     if (object == NULL) {
@@ -48,7 +48,7 @@ static char *copy_string(void *object) {
     }
     const char *bytes;
     uint64_t length;
-    simp_string_bytes(object, &bytes, &length);
+    cwhip_string_bytes(object, &bytes, &length);
     if (length > SIZE_MAX - 1 || memchr(bytes, '\0', (size_t)length) != NULL) {
         errno = EINVAL;
         return NULL;
@@ -91,42 +91,42 @@ static void free_arguments(char **arguments, size_t count) {
     free(arguments);
 }
 
-void *simp_process_spawn(void *self, void *executable, void *arguments) {
+void *cwhip_process_spawn(void *self, void *executable, void *arguments) {
     (void)self;
     char *program = copy_string(executable);
     if (program == NULL || program[0] == '\0' || arguments == NULL) {
         const int saved = errno == 0 ? EINVAL : errno;
         free(program);
-        simp_runtime_set_error(saved);
+        cwhip_runtime_set_error(saved);
         return NULL;
     }
-    const SimpArray *array = (const SimpArray *)arguments;
+    const CwhipArray *array = (const CwhipArray *)arguments;
     if (array->length > SIZE_MAX / sizeof(char *) - 2) {
         free(program);
-        simp_runtime_set_error(E2BIG);
+        cwhip_runtime_set_error(E2BIG);
         return NULL;
     }
     const size_t argument_count = (size_t)array->length;
     char **argv = (char **)calloc(argument_count + 2, sizeof(*argv));
     if (argv == NULL) {
         free(program);
-        simp_runtime_set_error(ENOMEM);
+        cwhip_runtime_set_error(ENOMEM);
         return NULL;
     }
     argv[0] = program;
     for (size_t index = 0; index < argument_count; ++index) {
-        const SimpArrayValue *value = &array->values[index];
-        if ((value->tag != SIMP_ARRAY_STRING && value->tag != SIMP_ARRAY_OBJECT) ||
+        const CwhipArrayValue *value = &array->values[index];
+        if ((value->tag != CWHIP_ARRAY_STRING && value->tag != CWHIP_ARRAY_OBJECT) ||
             value->pointer == NULL) {
             free_arguments(argv, index + 1);
-            simp_runtime_set_error(EINVAL);
+            cwhip_runtime_set_error(EINVAL);
             return NULL;
         }
         argv[index + 1] = copy_string(value->pointer);
         if (argv[index + 1] == NULL) {
             const int saved = errno == 0 ? ENOMEM : errno;
             free_arguments(argv, index + 1);
-            simp_runtime_set_error(saved);
+            cwhip_runtime_set_error(saved);
             return NULL;
         }
     }
@@ -140,7 +140,7 @@ void *simp_process_spawn(void *self, void *executable, void *arguments) {
         close_fd(&error_pipe[0]);
         close_fd(&error_pipe[1]);
         free_arguments(argv, argument_count + 1);
-        simp_runtime_set_error(saved);
+        cwhip_runtime_set_error(saved);
         return NULL;
     }
 
@@ -178,24 +178,24 @@ void *simp_process_spawn(void *self, void *executable, void *arguments) {
     if (action_status != 0) {
         close_fd(&output_pipe[0]);
         close_fd(&error_pipe[0]);
-        simp_runtime_set_error(action_status);
+        cwhip_runtime_set_error(action_status);
         return NULL;
     }
 
-    SimpProcess *process = (SimpProcess *)calloc(1, sizeof(*process));
+    CwhipProcess *process = (CwhipProcess *)calloc(1, sizeof(*process));
     if (process == NULL) {
         (void)kill(pid, SIGTERM);
         while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {
         }
         close_fd(&output_pipe[0]);
         close_fd(&error_pipe[0]);
-        simp_runtime_set_error(ENOMEM);
+        cwhip_runtime_set_error(ENOMEM);
         return NULL;
     }
     process->pid = pid;
     process->stdout_fd = output_pipe[0];
     process->stderr_fd = error_pipe[0];
-    simp_runtime_clear_error();
+    cwhip_runtime_clear_error();
     return process;
 }
 
@@ -228,7 +228,7 @@ static int append_output(char **data, size_t *length, size_t *capacity,
     return 1;
 }
 
-static void drain_pipe(SimpProcess *process, int *descriptor, int is_error) {
+static void drain_pipe(CwhipProcess *process, int *descriptor, int is_error) {
     char chunk[8192];
     for (;;) {
         const ssize_t count = read(*descriptor, chunk, sizeof(chunk));
@@ -262,18 +262,18 @@ static void drain_pipe(SimpProcess *process, int *descriptor, int is_error) {
     }
 }
 
-int32_t simp_process_wait(void *self, void *object) {
+int32_t cwhip_process_wait(void *self, void *object) {
     (void)self;
-    SimpProcess *process = (SimpProcess *)object;
+    CwhipProcess *process = (CwhipProcess *)object;
     if (process == NULL) {
-        simp_runtime_set_error(EINVAL);
+        cwhip_runtime_set_error(EINVAL);
         return 0;
     }
     if (process->waited) return 1;
     int child_reaped = 0;
     int wait_status = 0;
     int wait_error = 0;
-    simp_runtime_gil_release();
+    cwhip_runtime_gil_release();
     while (!child_reaped || process->stdout_fd >= 0 || process->stderr_fd >= 0) {
         struct pollfd descriptors[2] = {
             {process->stdout_fd, POLLIN | POLLHUP, 0},
@@ -300,56 +300,56 @@ int32_t simp_process_wait(void *self, void *object) {
             break;
         }
     }
-    simp_runtime_gil_acquire();
+    cwhip_runtime_gil_acquire();
     if (wait_error != 0) {
-        simp_runtime_set_error(wait_error);
+        cwhip_runtime_set_error(wait_error);
         return 0;
     }
     process->status = WIFEXITED(wait_status)
                           ? WEXITSTATUS(wait_status)
                           : WIFSIGNALED(wait_status) ? -WTERMSIG(wait_status) : -1;
     process->waited = 1;
-    if (process->output_error != 0) simp_runtime_set_error(process->output_error);
-    else simp_runtime_clear_error();
+    if (process->output_error != 0) cwhip_runtime_set_error(process->output_error);
+    else cwhip_runtime_clear_error();
     return 1;
 }
 
-int64_t simp_process_exit_code(void *self, void *object) {
+int64_t cwhip_process_exit_code(void *self, void *object) {
     (void)self;
-    SimpProcess *process = (SimpProcess *)object;
+    CwhipProcess *process = (CwhipProcess *)object;
     return process == NULL || !process->waited ? -1 : process->status;
 }
 
 static void *captured_string(const char *bytes, size_t length) {
-    if (&simp_string_class_meta == NULL) abort();
-    return simp_string_new(&simp_string_class_meta, bytes, length);
+    if (&cwhip_string_class_meta == NULL) abort();
+    return cwhip_string_new(&cwhip_string_class_meta, bytes, length);
 }
 
-void *simp_process_stdout(void *self, void *object) {
+void *cwhip_process_stdout(void *self, void *object) {
     (void)self;
-    SimpProcess *process = (SimpProcess *)object;
+    CwhipProcess *process = (CwhipProcess *)object;
     if (process == NULL || !process->waited) {
-        simp_runtime_set_error(EINVAL);
+        cwhip_runtime_set_error(EINVAL);
         return captured_string("", 0);
     }
     return captured_string(process->stdout_bytes, process->stdout_length);
 }
 
-void *simp_process_stderr(void *self, void *object) {
+void *cwhip_process_stderr(void *self, void *object) {
     (void)self;
-    SimpProcess *process = (SimpProcess *)object;
+    CwhipProcess *process = (CwhipProcess *)object;
     if (process == NULL || !process->waited) {
-        simp_runtime_set_error(EINVAL);
+        cwhip_runtime_set_error(EINVAL);
         return captured_string("", 0);
     }
     return captured_string(process->stderr_bytes, process->stderr_length);
 }
 
-void simp_process_close(void *self, void *object) {
+void cwhip_process_close(void *self, void *object) {
     (void)self;
-    SimpProcess *process = (SimpProcess *)object;
+    CwhipProcess *process = (CwhipProcess *)object;
     if (process == NULL) return;
-    if (!process->waited) (void)simp_process_wait(self, process);
+    if (!process->waited) (void)cwhip_process_wait(self, process);
     close_fd(&process->stdout_fd);
     close_fd(&process->stderr_fd);
     free(process->stdout_bytes);

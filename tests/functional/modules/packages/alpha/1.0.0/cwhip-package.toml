@@ -1,0 +1,8 @@
+[package]
+name = "alpha"
+version = "1.0.0"
+source = "src/alpha.cw"
+export = "class:Alpha"
+
+[dependencies]
+shared = "=1.0.0"

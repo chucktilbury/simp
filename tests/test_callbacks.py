@@ -61,8 +61,8 @@ def main():
         assert result.returncode == 0, result.stderr
         result = invoke([args.clang, "-x", "c++", "-std=c++17", "-fsyntax-only",
                          "-I", str(args.include.resolve()), "-"], work, env,
-                        '#include <simp/Callbacks.h>\n'
-                        'static_assert(sizeof(SimpCallbackArgument) >= sizeof(void *));\n')
+                        '#include <cwhip/Callbacks.h>\n'
+                        'static_assert(sizeof(CwhipCallbackArgument) >= sizeof(void *));\n')
         assert result.returncode == 0, result.stderr
         cases = [
             ("transfer_roots", NATIVE + """
@@ -95,15 +95,15 @@ start {
             ("managed_reentry", """
 start {
     inline() {
-        if (simp_runtime_managed_enter() != 0) abort();
-        simp_runtime_managed_leave(0);
-        simp_runtime_gil_release();
-        int acquired = simp_runtime_managed_enter();
-        if (acquired != 1 || simp_runtime_managed_enter() != 0) abort();
-        simp_gc_collect();
-        simp_runtime_managed_leave(0);
-        simp_runtime_managed_leave(acquired);
-        simp_runtime_gil_acquire();
+        if (cwhip_runtime_managed_enter() != 0) abort();
+        cwhip_runtime_managed_leave(0);
+        cwhip_runtime_gil_release();
+        int acquired = cwhip_runtime_managed_enter();
+        if (acquired != 1 || cwhip_runtime_managed_enter() != 0) abort();
+        cwhip_gc_collect();
+        cwhip_runtime_managed_leave(0);
+        cwhip_runtime_managed_leave(acquired);
+        cwhip_runtime_gil_acquire();
     }
     print("reentered")
 }
@@ -116,7 +116,7 @@ class Payload { void run() {} }
 start {
     callback<void()> cb = Payload().run
     inline(callback<void()> cb) {
-        simp_callback_transfer_prepare(*cb, "callback<int(int)>");
+        cwhip_callback_transfer_prepare(*cb, "callback<int(int)>");
     }
 }
 """, "", "signature mismatch"),
@@ -162,46 +162,46 @@ start {
            callback<callback<int(int)>(callback<int(int)>)> echo,
            callback<int(int)> add, callback<int(int)> echoed,
            strg text, strg output, list xs, dict d, buffer bytes) {
-        SimpCallbackContext *c = simp_callback_acquire(*mixed,
+        CwhipCallbackContext *c = cwhip_callback_acquire(*mixed,
             "callback<String(String,int,unsigned,float,bool,list,dict,buffer,handle)>");
-        typedef void *(*Mixed)(SimpCallbackContext *, void *, int64_t, uint64_t,
+        typedef void *(*Mixed)(CwhipCallbackContext *, void *, int64_t, uint64_t,
                               double, _Bool, void *, void *, void *, void *);
-        *output = ((Mixed)simp_callback_adapter(c))(c, *text, -4,
+        *output = ((Mixed)cwhip_callback_adapter(c))(c, *text, -4,
             UINT64_C(18446744073709551615), 1.5, 1, *xs, *d, *bytes, NULL);
-        simp_callback_release(c);
-        simp_callback_dispose(c);
-        c = simp_callback_acquire(*yes, "callback<bool(bool)>");
-        if (((_Bool (*)(SimpCallbackContext *, _Bool))simp_callback_adapter(c))(c, 1))
+        cwhip_callback_release(c);
+        cwhip_callback_dispose(c);
+        c = cwhip_callback_acquire(*yes, "callback<bool(bool)>");
+        if (((_Bool (*)(CwhipCallbackContext *, _Bool))cwhip_callback_adapter(c))(c, 1))
             abort();
-        simp_callback_release(c);
-        simp_callback_dispose(c);
-        c = simp_callback_acquire(*twice, "callback<unsigned(unsigned)>");
-        if (((uint64_t (*)(SimpCallbackContext *, uint64_t))simp_callback_adapter(c))(c, 10) != 20)
+        cwhip_callback_release(c);
+        cwhip_callback_dispose(c);
+        c = cwhip_callback_acquire(*twice, "callback<unsigned(unsigned)>");
+        if (((uint64_t (*)(CwhipCallbackContext *, uint64_t))cwhip_callback_adapter(c))(c, 10) != 20)
             abort();
-        simp_callback_release(c);
-        simp_callback_dispose(c);
-        c = simp_callback_acquire(*half, "callback<float(float)>");
-        if (((double (*)(SimpCallbackContext *, double))simp_callback_adapter(c))(c, 7.0) != 3.5)
+        cwhip_callback_release(c);
+        cwhip_callback_dispose(c);
+        c = cwhip_callback_acquire(*half, "callback<float(float)>");
+        if (((double (*)(CwhipCallbackContext *, double))cwhip_callback_adapter(c))(c, 7.0) != 3.5)
             abort();
-        simp_callback_release(c);
-        simp_callback_dispose(c);
-        c = simp_callback_acquire(*ping, "callback<void()>");
-        ((void (*)(SimpCallbackContext *))simp_callback_adapter(c))(c);
-        simp_callback_release(c);
-        simp_callback_dispose(c);
-        c = simp_callback_acquire(*keep, "callback<list(list)>");
-        void *only_argument = simp_gc_alloc_array(5);
-        *kept = ((void *(*)(SimpCallbackContext *, void *))simp_callback_adapter(c))(c, only_argument);
-        simp_callback_release(c);
-        simp_callback_dispose(c);
-        c = simp_callback_acquire(*echo, "callback<callback<int(int)>(callback<int(int)>)>");
-        SimpCallbackArgument arguments[1] = {{0}}, result = {0};
+        cwhip_callback_release(c);
+        cwhip_callback_dispose(c);
+        c = cwhip_callback_acquire(*ping, "callback<void()>");
+        ((void (*)(CwhipCallbackContext *))cwhip_callback_adapter(c))(c);
+        cwhip_callback_release(c);
+        cwhip_callback_dispose(c);
+        c = cwhip_callback_acquire(*keep, "callback<list(list)>");
+        void *only_argument = cwhip_gc_alloc_array(5);
+        *kept = ((void *(*)(CwhipCallbackContext *, void *))cwhip_callback_adapter(c))(c, only_argument);
+        cwhip_callback_release(c);
+        cwhip_callback_dispose(c);
+        c = cwhip_callback_acquire(*echo, "callback<callback<int(int)>(callback<int(int)>)>");
+        CwhipCallbackArgument arguments[1] = {{0}}, result = {0};
         arguments[0].pointer = *add;
-        simp_callback_context_invoke(c, "callback<callback<int(int)>(callback<int(int)>)>",
+        cwhip_callback_context_invoke(c, "callback<callback<int(int)>(callback<int(int)>)>",
                                      arguments, &result);
         *echoed = result.pointer;
-        simp_callback_release(c);
-        simp_callback_dispose(c);
+        cwhip_callback_release(c);
+        cwhip_callback_dispose(c);
     }
     print(output)
     print(echoed(40))
@@ -388,7 +388,7 @@ start {
     handle registration = n.register(w.fail)
     try { print(n.invoke(registration, 0)) } except(Exception) as e { print("escaped") }
 }
-""", "", "uncaught Simple exception"),
+""", "", "uncaught Cwhip exception"),
             ("released", NATIVE + """
 class Worker { int run(int n) { return n } }
 start {
@@ -407,7 +407,7 @@ start {
     handle registration = n.register(w.run)
     n.foreign(registration)
 }
-""", "", "registered Simple thread"),
+""", "", "registered Cwhip thread"),
             ("reentrant", NATIVE + """
 class Worker {
     Native native
@@ -455,7 +455,7 @@ start {
     W w = W()
     callback<int(int)> cb = w.run
     inline(callback<int(int)> cb) {
-        simp_callback_acquire(*cb, "callback<float(float)>");
+        cwhip_callback_acquire(*cb, "callback<float(float)>");
     }
 }
 """, "", "signature mismatch"),
@@ -550,7 +550,7 @@ start {
 """, "dead", None),
         ]
         for name, source, output, diagnostic in cases:
-            path = work / f"{name}.simp"
+            path = work / f"{name}.cw"
             path.write_text(source)
             executable = work / name
             result = invoke([str(args.compiler.resolve()), str(path), str(native),
@@ -610,17 +610,17 @@ class Both : A, B {}
 class Hidden : private A {}
 """
         for name, statement, diagnostic in negative:
-            path = work / f"negative_{name}.simp"
+            path = work / f"negative_{name}.cw"
             path.write_text(prefix + "start {\n W w = W()\n" + statement + "\n}\n")
             result = invoke([str(args.compiler.resolve()), str(path), "--check-only"], work, env)
             assert result.returncode != 0 and diagnostic in result.stderr, (name, result)
             print(f"PASS negative_{name}")
         module = work / "modules" / "callbacks" / "1.0.0"
         module.mkdir(parents=True)
-        (module / "simp-package.toml").write_text(
+        (module / "cwhip-package.toml").write_text(
             '[package]\nname = "callbacks"\nversion = "1.0.0"\n'
-            'source = "model.simp"\nexport = "namespace:Model"\n')
-        (module / "model.simp").write_text("""
+            'source = "model.cw"\nexport = "namespace:Model"\n')
+        (module / "model.cw").write_text("""
 namespace Model {
     class Cell {
         int n
@@ -631,7 +631,7 @@ namespace Model {
     }
 }
 """)
-        path = work / "imported.simp"
+        path = work / "imported.cw"
         path.write_text("""
 import callbacks as Cb
 start {
@@ -640,10 +640,10 @@ start {
     Cb.Cell result = cb(cell)
     print(result.n)
     inline(callback<Cb.Cell(Cb.Cell)> cb, Cb.Cell cell, Cb.Cell result) {
-        SimpCallbackContext *context = simp_callback_acquire(*cb, "callback<Model.Cell(Model.Cell)>");
-        *result = ((void *(*)(SimpCallbackContext *, void *))simp_callback_adapter(context))(context, *cell);
-        simp_callback_release(context);
-        simp_callback_dispose(context);
+        CwhipCallbackContext *context = cwhip_callback_acquire(*cb, "callback<Model.Cell(Model.Cell)>");
+        *result = ((void *(*)(CwhipCallbackContext *, void *))cwhip_callback_adapter(context))(context, *cell);
+        cwhip_callback_release(context);
+        cwhip_callback_dispose(context);
     }
     print(result.n)
 }

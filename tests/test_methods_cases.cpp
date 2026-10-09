@@ -1,9 +1,9 @@
 #include "test_cases.hpp"
 
-#include "simp/Diagnostic.hpp"
-#include "simp/Lexer.hpp"
-#include "simp/Parser.hpp"
-#include "simp/Token.hpp"
+#include "cwhip/Diagnostic.hpp"
+#include "cwhip/Lexer.hpp"
+#include "cwhip/Parser.hpp"
+#include "cwhip/Token.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -11,7 +11,7 @@
 #include <vector>
 
 namespace {
-using namespace simp_test;
+using namespace cwhip_test;
 
 const TestGroupRegistration registration{3, {
         {"implicit base qualifiers use the current instance", [] {
@@ -132,7 +132,7 @@ const TestGroupRegistration registration{3, {
                  "/*\n"
                  "    Demonstrate the unknown class bug.\n"
                  "    Produces error:\n"
-                 "    only_method_calls.simp:9:24: error: only method calls may be used as expression statements\n"
+                 "    only_method_calls.cw:9:24: error: only method calls may be used as expression statements\n"
                  "    should be valid code.\n"
                  " */\n"
                  "class TheTest {\n"
@@ -153,7 +153,7 @@ const TestGroupRegistration registration{3, {
                  "/*\n"
                  "    Demonstrate the unknown class bug.\n"
                  "    Produces error:\n"
-                 "    unknown_class.simp:10:20: error: unknown class 'some_function'\n"
+                 "    unknown_class.cw:10:20: error: unknown class 'some_function'\n"
                  " */\n"
                  "class TheTest {\n"
                  "    int some_function(int n) {\n"
@@ -254,20 +254,20 @@ const TestGroupRegistration registration{3, {
         {"external method validates and calls through ordinary method syntax", [] {
              expectValid(
                  "class Native {\n  int absolute(int value)\n}\n"
-                 "int Native.absolute(int value) from \"simp_method_demo_abs\"\n"
+                 "int Native.absolute(int value) from \"cwhip_method_demo_abs\"\n"
                  "start {\n  print(Native().absolute(5))\n}");
          }},
         {"external method argument count is validated", [] {
              expectDiagnostic(
                  "class Native {\n  int absolute(int value)\n}\n"
-                 "int Native.absolute(int value) from \"simp_method_demo_abs\"\n"
+                 "int Native.absolute(int value) from \"cwhip_method_demo_abs\"\n"
                  "start {\n  print(Native().absolute(1, 2))\n}",
                  "method 'absolute' argument count mismatch");
          }},
         {"external method argument type is validated", [] {
              expectDiagnostic(
                  "class Native {\n  int absolute(int value)\n}\n"
-                 "int Native.absolute(int value) from \"simp_method_demo_abs\"\n"
+                 "int Native.absolute(int value) from \"cwhip_method_demo_abs\"\n"
                  "start {\n  strg text = \"x\"\n  print(Native().absolute(text))\n}",
                  "method argument type does not match parameter 'value'");
          }},

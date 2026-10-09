@@ -1,0 +1,7 @@
+set(CASE_NAME cwhip_package_import_and_object_link)
+set(CASE_FIXTURE positive_package_import.cw)
+set(CASE_COMPILE_ONLY [==[ON]==])
+set(CASE_MODULE_ROOT packages)
+set(CASE_PACKAGE_NATIVE_SOURCE "native_math/1.0.0/native/cwhip_native_math.c")
+set(CASE_PACKAGE_NATIVE_LIBRARY "cwhip_native_math")
+set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/cwhip_package_import_and_object_link.stdout")

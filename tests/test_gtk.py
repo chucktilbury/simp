@@ -1,4 +1,4 @@
-"""Real GTK 4 adapters and worker scheduling through compiled Simple programs."""
+"""Real GTK 4 adapters and worker scheduling through compiled Cwhip programs."""
 
 import argparse
 from pathlib import Path
@@ -73,16 +73,16 @@ class Thread {
     handle launch()
     void join(handle thread)
 }
-handle Thread.launch() from "simp_thread_start"
-void Thread.join(handle thread) from "simp_thread_join"
+handle Thread.launch() from "cwhip_thread_start"
+void Thread.join(handle thread) from "cwhip_thread_join"
 class Sem {
     handle create(int n)
     void wait(handle sem)
     void release(handle sem)
 }
-handle Sem.create(int n) from "simp_semaphore_create"
-void Sem.wait(handle sem) from "simp_semaphore_wait"
-void Sem.release(handle sem) from "simp_semaphore_release"
+handle Sem.create(int n) from "cwhip_semaphore_create"
+void Sem.wait(handle sem) from "cwhip_semaphore_wait"
+void Sem.release(handle sem) from "cwhip_semaphore_release"
 """
 
 SUBCLASS_FIXTURE = """
@@ -154,7 +154,7 @@ class UI {
     void activate() {
         print(F().registered())
         print(Gtk.Application().id())
-        window = Gtk.Window("Simple")
+        window = Gtk.Window("Cwhip")
         window.setDefaultSize(400, 300)
         box = Gtk.Box(1, 6)
         window.setChild(box)
@@ -231,14 +231,14 @@ class Setup {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Public")
+    Gtk.Application app = Gtk.Application("org.cwhip.Public")
     Setup().install()
     F().collect()
     app.run()
     app.shutdown()
     app.shutdown()
 }
-""", "trueorg.simple.PublicReadyClickEnabledfirstfirstfirstfirstlaterfirsttruetrueclicktrueclickfalsetruepreventfalsetrueallowtruetruefalsefalsefalse", None),
+""", "trueorg.cwhip.PublicReadyClickEnabledfirstfirstfirstfirstlaterfirsttruetrueclicktrueclickfalsetruepreventfalsetrueallowtruetruefalsefalsefalse", None),
     ("public_parenting", """
 class UI {
     Gtk.Window window
@@ -273,7 +273,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Parent")
+    Gtk.Application app = Gtk.Application("org.cwhip.Parent")
     UI ui = UI()
     ui.clickAction = ui.action
     app.onActivate(ui.activate)
@@ -303,7 +303,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Dispose")
+    Gtk.Application app = Gtk.Application("org.cwhip.Dispose")
     UI ui = UI()
     ui.clickAction = ui.click
     app.onActivate(ui.activate)
@@ -531,7 +531,7 @@ class Handler { void run() { raise(Exception("gtk boundary")) } }
 start { Gtk.Application().initialize()
     Gtk.Application().post(Handler().run)
     Gtk.Application().run() }
-""", "", "Simple native callback error: uncaught Simple exception: gtk boundary"),
+""", "", "Cwhip native callback error: uncaught Cwhip exception: gtk boundary"),
 ]
 
 
@@ -549,7 +549,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Misuse")
+    Gtk.Application app = Gtk.Application("org.cwhip.Misuse")
     app.onActivate(UI().activate)
     app.run()
     app.shutdown()
@@ -583,7 +583,7 @@ CASES += [
     misuse("unpresented_close", "window.close()", "close requires a presented window"),
     misuse("nested_run", "Gtk.Application().run()", "nested application run"),
     ("before_activation", """
-start { Gtk.Application app = Gtk.Application("org.simple.Early")
+start { Gtk.Application app = Gtk.Application("org.cwhip.Early")
     Gtk.Window window = Gtk.Window("early") }
 """, "", "widgets must be created during or after local activation"),
     ("invalid_id", 'start { Gtk.Application app = Gtk.Application("invalid") }',
@@ -605,7 +605,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Thread")
+    Gtk.Application app = Gtk.Application("org.cwhip.Thread")
     app.onActivate(UI().activate)
     app.run()
 }
@@ -632,7 +632,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Shutdown")
+    Gtk.Application app = Gtk.Application("org.cwhip.Shutdown")
     UI ui = UI()
     ui.action = ui.click
     app.onActivate(ui.activate)
@@ -643,7 +643,7 @@ start {
     ("null_signal_source", """
 class Handler { void run() {} }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Null")
+    Gtk.Application app = Gtk.Application("org.cwhip.Null")
     Gtk.Button button = null
     Gtk.SignalConnection connection = Gtk.SignalConnection(button, Handler().run)
 }
@@ -683,7 +683,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.EntryDispose")
+    Gtk.Application app = Gtk.Application("org.cwhip.EntryDispose")
     app.onActivate(UI().activate)
     app.run()
 }
@@ -708,7 +708,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.CloseDispose")
+    Gtk.Application app = Gtk.Application("org.cwhip.CloseDispose")
     app.onActivate(UI().activate)
     app.run()
 }
@@ -730,7 +730,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.References")
+    Gtk.Application app = Gtk.Application("org.cwhip.References")
     app.onActivate(UI().activate)
     app.run()
 }
@@ -783,7 +783,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Worker")
+    Gtk.Application app = Gtk.Application("org.cwhip.Worker")
     UI ui = UI()
     ui.pending = ui.never
     app.onActivate(ui.activate)
@@ -805,11 +805,11 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Exception")
+    Gtk.Application app = Gtk.Application("org.cwhip.Exception")
     app.onActivate(UI().activate)
     app.run()
 }
-""", "", "Simple native callback error: uncaught Simple exception: close boundary"),
+""", "", "Cwhip native callback error: uncaught Cwhip exception: close boundary"),
     ("public_toggle_dispose", """
 class Handler {
     Gtk.CheckButton check
@@ -838,21 +838,21 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.ToggleDispose")
+    Gtk.Application app = Gtk.Application("org.cwhip.ToggleDispose")
     app.onActivate(UI().activate)
     app.run()
 }
 """, "truefalsecaughttrue", None),
     ("quit_before_run", """
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Quit")
+    Gtk.Application app = Gtk.Application("org.cwhip.Quit")
     app.quit()
 }
 """, "", "quit requires a running application"),
     ("rerun", """
 class Handler { void activate() { Gtk.Application().quit() } }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Rerun")
+    Gtk.Application app = Gtk.Application("org.cwhip.Rerun")
     app.onActivate(Handler().activate)
     app.run()
     app.run()
@@ -861,7 +861,7 @@ start {
     ("multiple_widget_bases", """
 class UI { void activate() { Gtk.FixturePair pair = Gtk.FixturePair() } }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Multiple")
+    Gtk.Application app = Gtk.Application("org.cwhip.Multiple")
     app.onActivate(UI().activate)
     app.run()
 }
@@ -887,7 +887,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.Secondary")
+    Gtk.Application app = Gtk.Application("org.cwhip.Secondary")
     app.onActivate(UI().activate)
     app.run()
 }
@@ -943,17 +943,17 @@ def main():
                          "-I", str(args.include.resolve()), "-I", str(args.native.resolve()),
                          "-c", str(args.fixture.resolve()), "-o", str(native)] + flags, work, env)
         assert result.returncode == 0, result.stderr
-        # Constructor super names are currently unqualified in Simple. Put
+        # Constructor super names are currently unqualified in Cwhip. Put
         # test-only hierarchy extensions in the package's own compilation unit.
         module_root = work / "subclass-modules"
         package = module_root / "gtk/0.1.0"
-        staged = args.compiler.resolve().parent.parent / "share/simp/modules/gtk/0.1.0"
+        staged = args.compiler.resolve().parent.parent / "share/cwhip/modules/gtk/0.1.0"
         shutil.copytree(staged, package)
-        source = package / "gtk.simp"
+        source = package / "gtk.cw"
         source.write_text(source.read_text() + SUBCLASS_FIXTURE)
         with headless(args.xvfb, work, env) as env:
             for name, program, expected, diagnostic in CASES:
-                source = work / f"{name}.simp"
+                source = work / f"{name}.cw"
                 source.write_text(NATIVE + program)
                 output = work / name
                 command = [str(args.compiler.resolve()), str(source), str(native),
@@ -975,13 +975,13 @@ def main():
                     assert "CRITICAL" not in result.stderr and "ERROR" not in result.stderr, result.stderr
                 print(f"PASS {name}")
             for name, program, diagnostic in COMPILE_CASES:
-                source = work / f"{name}.simp"
+                source = work / f"{name}.cw"
                 source.write_text("import gtk\n" + program)
                 result = invoke([str(args.compiler.resolve()), str(source), "-o",
                                  str(work / name)], work, env)
                 assert result.returncode != 0 and diagnostic in result.stderr, (name, result.stderr)
                 print(f"PASS {name}")
-            source = work / "single-instance.simp"
+            source = work / "single-instance.cw"
             source.write_text("""import gtk
 import system
 class UI {
@@ -1001,7 +1001,7 @@ class UI {
     }
 }
 start {
-    Gtk.Application app = Gtk.Application("org.simple.SingleInstance")
+    Gtk.Application app = Gtk.Application("org.cwhip.SingleInstance")
     app.onActivate(UI().activate)
     app.run()
 }
@@ -1016,7 +1016,7 @@ start {
             print("PASS real GtkApplication single-instance forwarding")
             # The package's native dependencies must survive separate
             # compilation in the existing object link sidecar.
-            source = work / "signals.simp"
+            source = work / "signals.cw"
             object_file = work / "signals.o"
             result = invoke([str(args.compiler.resolve()), str(source), "-c",
                              "-o", str(object_file)], work, env)
@@ -1032,7 +1032,7 @@ start {
                 result = invoke(["cmake", "--install", str(args.build.resolve()),
                                  "--prefix", str(prefix)], work, env)
                 assert result.returncode == 0, result.stderr
-                source = work / "installed.simp"
+                source = work / "installed.cw"
                 source.write_text("""import gtk
 class Handler {
     void run() { print("installed")
@@ -1045,13 +1045,13 @@ start {
     Gtk.Application().shutdown()
 }
 """)
-                result = invoke([str(prefix / "bin/simp"), str(source), "-o",
+                result = invoke([str(prefix / "bin/cwhip"), str(source), "-o",
                                  str(work / "installed") + "-program"], work, env)
                 assert result.returncode == 0, result.stderr
                 result = gui_run(str(work / "installed") + "-program", work, env)
                 assert result.returncode == 0 and result.stdout == "installed", result.stderr
                 print("PASS installed consumer")
-                result = invoke([str(prefix / "bin/simp"), str(work / "signals.simp"),
+                result = invoke([str(prefix / "bin/cwhip"), str(work / "signals.cw"),
                                  str(native), "-o", str(work / "installed-signals")], work, env)
                 assert result.returncode == 0, result.stderr
                 result = gui_run(work / "installed-signals", work, env)
@@ -1060,28 +1060,28 @@ start {
                 project = work / "locked-consumer"
                 project.mkdir()
                 for command in ("init", "install"):
-                    result = invoke([str(prefix / "bin/simpkg"), command], project, env)
+                    result = invoke([str(prefix / "bin/cwhip-pkg"), command], project, env)
                     assert result.returncode == 0, result.stderr
-                assert "gtk" in (project / "simpkg.lock").read_text()
-                source = project / "editor.simp"
+                assert "gtk" in (project / "cwhip-pkg.lock").read_text()
+                source = project / "editor.cw"
                 source.write_text((Path(__file__).resolve().parent.parent /
                                    "examples/gtk.cw").read_text())
-                result = invoke([str(prefix / "bin/simp"), str(source), "-o",
+                result = invoke([str(prefix / "bin/cwhip"), str(source), "-o",
                                  str(project / "editor")], project, env)
                 assert result.returncode == 0, result.stderr
                 result = gui_run(project / "editor", project, env, ["--test"])
                 assert result.returncode == 0 and result.stdout == "Hello GTK" and not result.stderr, result
-                print("PASS installed public widgets with simpkg init/install lock")
-                source = project / "plain.simp"
+                print("PASS installed public widgets with cwhip-pkg init/install lock")
+                source = project / "plain.cw"
                 source.write_text('start { print("plain") }\n')
-                result = invoke([str(prefix / "bin/simp"), str(source), "-o",
+                result = invoke([str(prefix / "bin/cwhip"), str(source), "-o",
                                  str(project / "plain")], project, env)
                 assert result.returncode == 0, result.stderr
                 result = invoke(["ldd", str(project / "plain")], project, env)
                 assert result.returncode == 0 and not any(
                     name in result.stdout for name in ("libgtk", "libgio", "libgobject")), result.stdout
                 print("PASS no-import consumer with a lock containing GTK")
-            source = work / "no-import.simp"
+            source = work / "no-import.cw"
             source.write_text('start { print("no gtk") }\n')
             result = invoke([str(args.compiler.resolve()), str(source), "-o",
                              str(work / "no-import")], work, env)

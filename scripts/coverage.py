@@ -32,7 +32,7 @@ def main() -> None:
         run(["ctest", "--test-dir", str(build), "--output-on-failure", "-j4"])
     raw = sorted(profiles.glob("*.profraw"))
     if not raw:
-        raise RuntimeError("No profiles: configure with SIMP_COVERAGE and run CTest first")
+        raise RuntimeError("No profiles: configure with CWHIP_COVERAGE and run CTest first")
     profile_list = report / "profiles.list"
     profile_list.write_text("\n".join(str(path) for path in raw) + "\n")
     merged = report / "merged.profdata"

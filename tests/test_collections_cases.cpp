@@ -1,9 +1,9 @@
 #include "test_cases.hpp"
 
-#include "simp/Diagnostic.hpp"
-#include "simp/Lexer.hpp"
-#include "simp/Parser.hpp"
-#include "simp/Token.hpp"
+#include "cwhip/Diagnostic.hpp"
+#include "cwhip/Lexer.hpp"
+#include "cwhip/Parser.hpp"
+#include "cwhip/Token.hpp"
 
 #include <algorithm>
 #include <sstream>
@@ -11,7 +11,7 @@
 #include <vector>
 
 namespace {
-using namespace simp_test;
+using namespace cwhip_test;
 
 const TestGroupRegistration registration{4, {
         {"list literals accept mixed int, string, and class values", [] {

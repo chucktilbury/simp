@@ -1,4 +1,4 @@
-#include "simp/CommandLine.hpp"
+#include "cwhip/CommandLine.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -7,7 +7,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace simp {
+namespace cwhip {
 namespace {
 
 std::vector<std::string> splitListValue(const std::string& value, char separatorCharacter) {
@@ -347,4 +347,4 @@ std::string CommandLine::versionText() const {
     return programName_ + ": v" + version_ + '\n';
 }
 
-} // namespace simp
+} // namespace cwhip

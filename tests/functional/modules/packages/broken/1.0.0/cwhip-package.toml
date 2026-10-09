@@ -1,0 +1,6 @@
+[package]
+name = "broken"
+version = "1.0.0"
+source = "src/broken.cw"
+export = "class:Broken"
+unknown-option = "reject me"

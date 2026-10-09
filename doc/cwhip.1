@@ -9,10 +9,8 @@ cwhip \- compiler for the Cwhip programming language
 \-\-print\-paths [\fB\-M\fR \fIdir\fR] [\fIinput\fR...]
 .SH DESCRIPTION
 .B cwhip
-compiles Cwhip source files
-.RI ( .cw
-or legacy
-.IR .simp )
+compiles Cwhip source files ending in
+.IR .cw .
 to LLVM IR and invokes
 .BR clang (1)
 to produce an executable, or a relocatable object with
@@ -108,7 +106,7 @@ Link with library
 An
 .B import
 resolves a package from
-.IR root / name / version /simp\-package.toml .
+.IR root / name / version /cwhip\-package.toml .
 Package roots are searched in this order:
 .IP 1. 4
 The CLI root given by
@@ -118,43 +116,43 @@ The discovered project's
 .IR project\-root /modules
 directory. Project discovery starts at the first source parent (or current
 directory without source input) and selects the nearest ancestor containing
-.I simpkg.toml
+.I cwhip-pkg.toml
 or a
 .I modules
 directory. Without a marker, the source parent is used.
 .IP 3. 4
 The environment root
-.BR SIMP_MODULE_DIR .
+.BR CWHIP_MODULE_DIR .
 .IP 4. 4
 The user root
-.IR <config\-home>/simp/modules ,
+.IR <config\-home>/cwhip/modules ,
 normally
-.IR ~/.config/simp/modules .
+.IR ~/.config/cwhip/modules .
 When
 .B XDG_CONFIG_HOME
 is set, it is used as the config home and must be absolute.
 .IP 5. 4
 The standard module directory shipped with the compiler, normally
-.IR <prefix>/share/simp/modules .
+.IR <prefix>/share/cwhip/modules .
 .PP
 The first module root containing a package shadows lower\-priority roots. Without
 a project lock, the highest stable version is selected only from the versions
 in that root. The CLI and environment roots must exist; absent project and user
 roots are optional.
 .PP
-New projects use simpkg.toml for direct dependencies and simpkg.lock for the
+New projects use cwhip-pkg.toml for direct dependencies and cwhip-pkg.lock for the
 complete exact graph. The manifest and lock are always discovered from the
-source project and cannot be relocated by \-M or SIMP_MODULE_DIR.
+source project and cannot be relocated by \-M or CWHIP_MODULE_DIR.
 The compiler checks the lock schema, manifest freshness, selected package
 contents, and graph edges without network access. Missing or invalid locks
 are errors. Imports absent from the lock are rejected. A package found in an
 override root must match the locked version, edges, and content hash; an invalid
 higher\-priority candidate is not silently bypassed.
-Use simpkg init, simpkg add OWNER/REPO \-\-yes, and simpkg install \-\-yes;
-ordinary compilation does not require evaluating simpkg env.
+Use cwhip-pkg init, cwhip-pkg add OWNER/REPO \-\-yes, and cwhip-pkg install \-\-yes;
+ordinary compilation does not require evaluating cwhip-pkg env.
 .PP
-The legacy \-\-package\-path, SIMP_PACKAGE_PATH, SIMP_MODULE_REGISTRY,
-./simp-modules.tsv, and modules/modules.toml mechanisms are removed.
+The legacy \-\-package\-path, CWHIP_PACKAGE_PATH, CWHIP_MODULE_REGISTRY,
+./cwhip-modules.tsv, and modules/modules.toml mechanisms are removed.
 .PP
 An unaliased import binds the manifest's declared export name; import system
 exposes System.Process. An explicit import system as Sys exposes Sys.Process
@@ -164,22 +162,22 @@ When a module cannot be found, the diagnostic lists every module root and
 its origin.
 .SH ENVIRONMENT
 .TP
-.B SIMP_MODULE_DIR
+.B CWHIP_MODULE_DIR
 Additional package storage root searched after the discovered project root and
 before user and installation roots. A set but missing directory is an error.
 .TP
 .B XDG_CONFIG_HOME
 Absolute user config directory; user packages are searched in
-.IR $XDG_CONFIG_HOME/simp/modules .
+.IR $XDG_CONFIG_HOME/cwhip/modules .
 Defaults to
-.IR ~/.config/simp/modules .
+.IR ~/.config/cwhip/modules .
 .TP
-.B SIMP_HOME
+.B CWHIP_HOME
 Installation prefix used instead of the executable location.
 .TP
-.BR SIMP_RUNTIME_DIR ", " SIMP_INCLUDE_DIR ", " SIMP_BUILTIN_DIR ", " SIMP_STDLIB_MODULE_DIR
+.BR CWHIP_RUNTIME_DIR ", " CWHIP_INCLUDE_DIR ", " CWHIP_BUILTIN_DIR ", " CWHIP_STDLIB_MODULE_DIR
 Override individual resource directories; each takes precedence over
-.BR SIMP_HOME .
+.BR CWHIP_HOME .
 .TP
 .B CC
 C compiler driver used instead of the configured
@@ -188,21 +186,21 @@ C compiler driver used instead of the configured
 Paths are relative to the installation prefix (the parent of the
 .I bin
 directory holding
-.BR simp ).
+.BR cwhip ).
 .TP
 .I bin/cwhip
 The compiler.
 .TP
-.I lib/simp/libsimp_runtime.a
+.I lib/cwhip/libcwhip_runtime.a
 The garbage\-collected runtime linked into every executable.
 .TP
-.I include/simp/
+.I include/cwhip/
 Runtime C headers used by inline C shims.
 .TP
-.I share/simp/builtin/String.simp
+.I share/cwhip/builtin/String.cw
 The String builtin.
 .TP
-.I share/simp/modules/
+.I share/cwhip/modules/
 Standard modules.
 .SH EXIT STATUS
 0 on success (including \-\-help, \-\-version, and \-\-print\-paths);
@@ -212,7 +210,7 @@ non\-zero on failure. Invalid command lines and unreadable inputs exit with 2.
 cwhip hello.cw
 cwhip \-vv \-M ./deps app/main.cw \-o app
 cwhip \-t parser,symbols \-\-check\-only main.cw
-simp \-\-print\-paths
+cwhip \-\-print\-paths
 .fi
 .SH SEE ALSO
 .BR clang (1)

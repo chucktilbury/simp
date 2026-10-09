@@ -1,34 +1,34 @@
 # Standard library source layout
 
-This directory contains the source packages shipped with the Simple compiler.
+This directory contains the source packages shipped with the Cwhip compiler.
 For the package APIs, see the [standard library reference](../doc/STDLIB.md).
 
 ## Layout
 
-Each package is stored as `<package>/<semver>/simp-package.toml` plus its
-Simple source files (and any optional native assets):
+Each package is stored as `<package>/<semver>/cwhip-package.toml` plus its
+Cwhip source files (and any optional native assets):
 
 ```text
 stdlib/
 └── <package-name>/
     └── <semver>/
-        ├── simp-package.toml
-        └── <sources>.simp
+        ├── cwhip-package.toml
+        └── <sources>.cw
 ```
 
-The package directory name is its valid Simple package identifier. The version
+The package directory name is its valid Cwhip package identifier. The version
 directory is a SemVer version and must match the manifest's `version` value.
 
 ## Manifest format
 
-Every version directory contains `simp-package.toml` with a `[package]`
+Every version directory contains `cwhip-package.toml` with a `[package]`
 section. For example:
 
 ```toml
 [package]
 name = "example"
 version = "0.1.0"
-source = "example.simp"
+source = "example.cw"
 export = "namespace:example"    # or class:ClassName
 ```
 
@@ -48,20 +48,20 @@ An unaliased import binds the declared export name, not the package name.
 CMake stages and installs package contents automatically:
 
 - During a build, contents are staged into
-  `<prefix>/share/simp/modules/` during the build.
+  `<prefix>/share/cwhip/modules/` during the build.
 - During installation, contents go to
-  `${CMAKE_INSTALL_DATADIR}/simp/modules/`.
+  `${CMAKE_INSTALL_DATADIR}/cwhip/modules/`.
 
 The `gtk/0.1.0` source tree is optional: it is staged/installed only with
-`SIMP_GTK=ON`, together with its package-native archive. Its native directory
+`CWHIP_GTK=ON`, together with its package-native archive. Its native directory
 is package implementation detail. See [the GTK foundation guide](../doc/GTK.md).
 
 The `sourceview/0.1.0` package is enabled by
-`SIMP_GTK_SOURCEVIEW=ON` and depends on the optional GTK package and GtkSourceView
+`CWHIP_GTK_SOURCEVIEW=ON` and depends on the optional GTK package and GtkSourceView
 5. It provides editor-oriented source buffers/views, search and replace,
-undo/redo, cursor information, and shortcut binding. The Tweed language syntax
-definition lives with that package. The Simple-written first-iteration editor
-is in `examples/editor/`; see [its guide](../doc/TWEED-EDITOR.md). Neither
+undo/redo, cursor information, and shortcut binding. The cwhip language syntax
+definition lives with that package. The Cwhip-written first-iteration editor
+is in `examples/editor/`; see [its guide](../doc/cwhip-EDITOR.md). Neither
 optional package is linked into the compiler or programs that do not import it.
 Fresh configurations default these options to available development dependencies;
 see [build and installation](../doc/INSTALLATION.md) for compiler-only settings.

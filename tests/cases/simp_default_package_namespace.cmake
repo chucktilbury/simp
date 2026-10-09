@@ -1,3 +1,0 @@
-set(CASE_NAME simp_default_package_namespace)
-set(CASE_FIXTURE positive_default_package_namespace.simp)
-set(CASE_EXPECTED_OUTPUT "hellotruetruetrue")

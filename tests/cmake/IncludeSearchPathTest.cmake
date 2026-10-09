@@ -11,14 +11,14 @@ set(second_search_directory "${work}/second search directory")
 file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${source_directory}" "${first_search_directory}" "${second_search_directory}")
 
-set(search_source "${source_directory}/search.simp")
-configure_file("${FIXTURES}/search.simp" "${search_source}" COPYONLY)
-configure_file("${FIXTURES}/first/search_target.simp"
-    "${first_search_directory}/search_target.simp" COPYONLY)
-configure_file("${FIXTURES}/second/search_target.simp"
-    "${second_search_directory}/search_target.simp" COPYONLY)
-configure_file("${FIXTURES}/second/nested_value.simp"
-    "${second_search_directory}/nested_value.simp" COPYONLY)
+set(search_source "${source_directory}/search.cw")
+configure_file("${FIXTURES}/search.cw" "${search_source}" COPYONLY)
+configure_file("${FIXTURES}/first/search_target.cw"
+    "${first_search_directory}/search_target.cw" COPYONLY)
+configure_file("${FIXTURES}/second/search_target.cw"
+    "${second_search_directory}/search_target.cw" COPYONLY)
+configure_file("${FIXTURES}/second/nested_value.cw"
+    "${second_search_directory}/nested_value.cw" COPYONLY)
 
 if(CASE STREQUAL "missing")
 execute_process(
@@ -34,7 +34,7 @@ if(NOT stdout STREQUAL "")
     message(FATAL_ERROR "Missing-path compilation wrote unexpected stdout: '${stdout}'")
 endif()
 if(NOT stderr MATCHES
-   "^.*search\\.simp:1:9: error: cannot resolve included source 'search_target\\.simp'\n$")
+   "^.*search\\.cw:1:9: error: cannot resolve included source 'search_target\\.cw'\n$")
     message(FATAL_ERROR "Missing-path compilation wrote an unexpected diagnostic:\n${stderr}")
 endif()
 elseif(CASE STREQUAL "ordered")
@@ -69,10 +69,10 @@ endif()
 elseif(CASE STREQUAL "relative")
 set(relative_source_directory "${work}/relative source")
 file(MAKE_DIRECTORY "${relative_source_directory}")
-set(relative_source "${relative_source_directory}/relative.simp")
-configure_file("${FIXTURES}/relative/relative.simp" "${relative_source}" COPYONLY)
-configure_file("${FIXTURES}/relative/search_target.simp"
-    "${relative_source_directory}/search_target.simp" COPYONLY)
+set(relative_source "${relative_source_directory}/relative.cw")
+configure_file("${FIXTURES}/relative/relative.cw" "${relative_source}" COPYONLY)
+configure_file("${FIXTURES}/relative/search_target.cw"
+    "${relative_source_directory}/search_target.cw" COPYONLY)
 
 set(relative_executable "${work}/relative executable")
 execute_process(

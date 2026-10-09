@@ -7,7 +7,7 @@ a playful metaphor for the snake's prey and finding software bugs—not a
 reference to goads, punishment, or violence. The compiler frontend is C++17
 and the runtime is written in C. CPL and CWPL are optional informal shorthand.
 The canonical project website is [cwhip.org](https://cwhip.org).
-New source files conventionally use `.cw`; `.simp` remains accepted for
+New source files use `.cw`; no alternate source suffix is accepted for
 existing programs. This manual describes the working subset: the compiler
 produces textual LLVM IR and invokes Clang to link the runtime. It is not a
 description of every feature proposed in the design notes.
@@ -54,7 +54,7 @@ lines. Double quotes support `\e` (ESC, byte `0x1b`), `\n`, `\r`, `\t`,
 `\\`, and `\"`; single quotes do not interpret escapes. See `INTEGER`,
 `UNSIGNED_INT`, `FLOAT`, `STRING`, and `ESCAPE`.
 
-```simp
+```cwhip
 // Complete program: literal spellings and a formatted string.
 // test: {"stdout": "count=18, total=18, ratio=0.5"}
 start {
@@ -74,7 +74,7 @@ not a way to exit from `start`. A separately imported module may contain
 declarations but no `start` (`module`). The compiler can also compile several
 source files as one compilation unit, with exactly one `start` among them.
 
-```simp
+```cwhip
 // Complete program: executable statements live in start.
 // test: {"stdout": "Cwhip is running"}
 start {
@@ -92,7 +92,7 @@ virtual dispatch, and receiver GC retention. Null/default, equality, unsupported
 dynamic operations, and the installed C bridge are specified in
 [Bound-method callbacks](CALLBACKS.md).
 
-```simp
+```cwhip
 // test: {"stdout": "42"}
 class Worker {
     int answer(int value) { return value + 2 }
@@ -194,7 +194,7 @@ reference values can be null. Use `is Type` to inspect a value's dynamic type;
 `type(value)` returns its type descriptor. See `type-test-name`, `primary`,
 and `relational`.
 
-```simp
+```cwhip
 // Complete program: null locals, casts, and runtime type tests.
 // test: {"stdout": "no integer value"}
 start {
@@ -233,7 +233,7 @@ its target once; for a member target, its receiver is evaluated once. Integer
 overflow and integer division/remainder errors follow the corresponding
 arithmetic operators.
 
-```simp
+```cwhip
 // Complete program: an inner value shadows, rather than changes, the outer value.
 // test: {"stdout": "340"}
 start {
@@ -364,7 +364,7 @@ Dynamic type mismatches and ASCII range violations raise catchable exceptions
 located at the argument expression. Negative values and 128+ never generate
 invalid UTF-8. See `format-expression` and `print-statement` in the grammar.
 
-```simp
+```cwhip
 // Complete program: arithmetic, logical operators, and formatting.
 // test: {"stdout": "answer=42"}
 start {
@@ -391,7 +391,7 @@ block; there is no `else if` production. The `do` body executes at least once.
 iterates dict keys and values. The value variable has type `any`; the key
 variable has type `String`. `break` and `continue` are valid only in loops.
 
-```simp
+```cwhip
 // Complete program: while, continue, and for-each.
 // test: {"stdout": "6"}
 start {
@@ -428,7 +428,7 @@ the class body or declared there and defined out of line. See
 An anonymous class-scoped enum block declares immutable signed 64-bit `int`
 constants, not an enum type:
 
-```simp
+```cwhip
 class Status {
     // test: {"stdout": "12"}
     public:
@@ -516,7 +516,7 @@ exception object, raise location, and stack trace; a replacement `raise`
 creates a new exception. Initializers in handlers, cleanup, branches, loops,
 later statements, or mixed direct/protected sequences are rejected.
 
-```simp
+```cwhip
 class Foo {
     // test: {"stdout": "caught the first timethis is the stringcaught the second time"}
     Foo() { raise(Exception("this is the string")) }
@@ -539,7 +539,7 @@ start {
 }
 ```
 
-```simp
+```cwhip
 // Complete program: inheritance, construction, override, and dispatch.
 // test: {"stdout": "42"}
 class Meter {
@@ -617,7 +617,7 @@ is used when resolving its type and base names. `start`, `import`, and
 be in the same namespace scope as the class they define. See
 `namespace-declaration` and `namespace-item`.
 
-```simp
+```cwhip
 // Complete program: a class in a namespace.
 // test: {"stdout": "7"}
 namespace Geometry {
@@ -658,8 +658,8 @@ The `String` prelude remains implicit and does not need an import.
 Package manifests are documented in [PACKAGES.md](PACKAGES.md) and package
 APIs in [STDLIB.md](STDLIB.md).
 
-New projects use the direct dependency manifest `simpkg.toml` and the generated
-exact graph `simpkg.lock`. `simpkg add OWNER/REPO --yes` resolves and installs
+New projects use the direct dependency manifest `cwhip-pkg.toml` and the generated
+exact graph `cwhip-pkg.lock`. `cwhip-pkg add OWNER/REPO --yes` resolves and installs
 the full graph; compilation then needs no environment activation and never
 fetches code. Compilation validates lock freshness, exact dependencies, and
 package integrity. The lock is discovered from the source project's root and
@@ -667,10 +667,10 @@ cannot be relocated by package storage overrides. See
 [project module search](INSTALLATION.md#project-module-search) for the ordered
 CLI, project, environment, user, and installation package roots. The legacy
 `modules.toml`, tab-separated registry, `--package-path`, and
-`SIMP_PACKAGE_PATH` lookup mechanisms are no longer supported.
+`CWHIP_PACKAGE_PATH` lookup mechanisms are no longer supported.
 See `import-declaration` and `module`.
 
-`include "relative/path.cw"` textually inserts source before parsing. `.simp`
+`include "relative/path.cw"` textually inserts source before parsing.
 include paths remain valid for existing code. It is
 only allowed before the top-level `start`; the including file's directory is
 searched first, followed by configured include paths. Each canonical file is
@@ -678,7 +678,7 @@ included once, and included files cannot define `start`. Unlike imports,
 includes do not create an isolated module namespace. See
 `include-directive` and the source-loader notes in [GRAMMAR.md](GRAMMAR.md).
 
-```simp
+```cwhip
 // Complete program (requires an installed/bundled `system` package).
 // test: {"stdout": ""}
 import system
@@ -687,7 +687,7 @@ start {
 }
 ```
 
-```simp
+```cwhip
 // Fragment (include is expanded before parsing):
 include "shared/definitions.cw"
 start {
@@ -713,7 +713,7 @@ path; loops alone do not guarantee this. See `try-statement` and
 `raise-statement`. Constructors and destructors remain void-only, and `start`
 still cannot return.
 
-```simp
+```cwhip
 // Complete program: raising and catching a typed exception.
 // test: {"stdout": "brokenfinished"}
 class Problem : public Exception {
@@ -746,7 +746,7 @@ UTF-8; byte offsets and character boundaries are not interchangeable.
 Out-of-range indices and invalid conversions can raise exceptions. See
 `STRING` and `postfix` for literal and call syntax.
 
-```simp
+```cwhip
 // Complete program: basic string operations.
 // test: {"stdout": "Hello world11"}
 start {
@@ -776,7 +776,7 @@ define how a handle is created and released. `buffer` and `handle` values can
 be stored in collections and passed through `any`. See `primary`,
 `index-or-slice-suffix`, and `postfix`.
 
-```simp
+```cwhip
 // Complete program: byte-buffer literals, access, and mutation.
 // test: {"stdout": "365"}
 start {
@@ -787,7 +787,7 @@ start {
 }
 ```
 
-```simp
+```cwhip
 // Fragment: native handles are opaque and must be released by their owner.
 handle nativeResource = null
 ```
@@ -832,7 +832,7 @@ dict slicing follow insertion order. These are implementation details, not a
 stable complexity guarantee. See `list-literal`, `dict-literal`,
 `index-or-slice-suffix`, `foreach-statement`, and [STDLIB.md](STDLIB.md).
 
-```simp
+```cwhip
 // Complete program: type-check and extract an indexed collection value.
 // test: {"stdout": "42"}
 start {
@@ -863,7 +863,7 @@ lifetime operations. Guard shared state with the appropriate synchronization
 primitive even though execution is serialized: native calls can block and
 release the global lock.
 
-```simp
+```cwhip
 // Fragment: requires a visible `Thread` base class supplied by declarations
 // or a package. Thread operations are native bindings, not built-in syntax.
 class Worker : Thread {
@@ -890,7 +890,7 @@ flow, exceptions, class construction and methods, inheritance (including
 secondary and virtual bases), virtual dispatch, and native/inline-C bindings.
 Printing accepts a single supported value or a double-quoted positional or
 named format call. For how the source, parser, runtime, and tests are
-organized, see [SIMPLE-LANGUAGE-NOTES.md](SIMPLE-LANGUAGE-NOTES.md) and the
+organized, see [CWHIP-LANGUAGE-NOTES.md](CWHIP-LANGUAGE-NOTES.md) and the
 [test guide](../tests/README.md).
 
 Managed objects and collection values use a precise, non-moving,
@@ -930,7 +930,7 @@ Resources requiring prompt release should be closed explicitly through their
 library API. See `destructor-declaration` and `postfix`, and
 [STDLIB.md](STDLIB.md).
 
-```simp
+```cwhip
 // Fragment: finalizer timing is controlled by garbage collection.
 class Resource {
     destroy {
@@ -944,13 +944,13 @@ class Resource {
 Declare a method in a class and define it outside the class with a `from`
 binding:
 
-```simp
+```cwhip
 // Fragment: declaration and matching external C ABI binding.
 class System {
     String lastError()
 }
 
-String System.lastError() from "simp_system_last_error"
+String System.lastError() from "cwhip_system_last_error"
 ```
 
 The external symbol must be linkable by Clang and use the runtime's expected
@@ -977,19 +977,19 @@ with the same final name are rejected even if their paths differ.
 Captures are mutable references to the actual storage slot, not copies.
 For example, `*count += 1` in C updates the captured Cwhip `int`. Managed
 reference slots remain traced through rooted locals or the rooted receiver;
-buffers use `SimpBuffer **`, other managed references use `void **`.
+buffers use `CwhipBuffer **`, other managed references use `void **`.
 Primary, secondary, repeated nonvirtual, and shared virtual bases use the same
 receiver adjustment as Cwhip field assignments. The declare-and-capture
 sugar below still declares a **local**, never a field.
 
-```simp
+```cwhip
 // Fragment: the declared local is implicitly captured by this inline C block.
 int result inline {
     *result = 42;
 }
 ```
 
-```simp
+```cwhip
 class Counter {
     // test: {"stdout": "101"}
     int count
@@ -1011,7 +1011,7 @@ start {
 
 Application developers do not need runtime implementation source. Prefer the
 Cwhip standard-library class wrappers for ordinary code. Inline C automatically
-receives the installed, supported opaque C facade `simp/Stdlib.h`; it exposes
+receives the installed, supported opaque C facade `cwhip/Stdlib.h`; it exposes
 the existing native implementations of the eight shipped standard packages
 without inspecting private objects. See [the standard library C API](STDLIB.md#inline-c-api)
 for the symbol mapping, errors, lifetime rules, and limitations. This is a real

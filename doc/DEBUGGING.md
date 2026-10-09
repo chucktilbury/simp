@@ -4,7 +4,7 @@ The compiler's `-g`/`--debug` option emits DWARF debug information for the
 generated executable and LLVM IR. Use GDB or LLDB on the executable:
 
 ```sh
-./bin/cwhip -g tests/functional/positive/positive_debug_info.simp \
+./bin/cwhip -g tests/functional/positive/positive_debug_info.cw \
   -o build/positive_debug_info
 gdb -q build/positive_debug_info
 # or:

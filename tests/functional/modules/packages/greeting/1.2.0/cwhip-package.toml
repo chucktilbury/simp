@@ -1,0 +1,5 @@
+[package]
+name = "greeting"
+version = "1.2.0"
+source = "greeting.cw"
+export = "class:Greeter"

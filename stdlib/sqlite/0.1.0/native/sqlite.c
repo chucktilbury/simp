@@ -5,70 +5,70 @@
 #include <string.h>
 #include <sqlite3.h>
 
-#include "simp/RuntimeGc.h"
+#include "cwhip/RuntimeGc.h"
 
-extern const SimpClassMeta simp_string_class_meta __attribute__((weak));
+extern const CwhipClassMeta cwhip_string_class_meta __attribute__((weak));
 
 static _Thread_local char last_error[512];
 
-typedef struct SimpSqliteConnection {
+typedef struct CwhipSqliteConnection {
     sqlite3 *database;
     uint64_t references;
     int owner_open;
-} SimpSqliteConnection;
+} CwhipSqliteConnection;
 
-typedef struct SimpSqliteStatement {
+typedef struct CwhipSqliteStatement {
     sqlite3_stmt *statement;
-    SimpSqliteConnection *connection;
+    CwhipSqliteConnection *connection;
     void *owner_object;
-    struct SimpSqliteStatement *next;
-} SimpSqliteStatement;
+    struct CwhipSqliteStatement *next;
+} CwhipSqliteStatement;
 
-typedef struct SimpSqliteTransaction {
-    SimpSqliteConnection *connection;
+typedef struct CwhipSqliteTransaction {
+    CwhipSqliteConnection *connection;
     void *owner_object;
-    struct SimpSqliteTransaction *next;
-} SimpSqliteTransaction;
+    struct CwhipSqliteTransaction *next;
+} CwhipSqliteTransaction;
 
-static SimpSqliteStatement *statement_registry;
-static SimpSqliteTransaction *transaction_registry;
+static CwhipSqliteStatement *statement_registry;
+static CwhipSqliteTransaction *transaction_registry;
 
 static void set_error(const char *message) {
     if (message == NULL) message = "unknown SQLite error";
     (void)snprintf(last_error, sizeof(last_error), "%s", message);
 }
 
-static SimpSqliteStatement *find_statement(void *owner_object) {
-    for (SimpSqliteStatement *entry = statement_registry;
+static CwhipSqliteStatement *find_statement(void *owner_object) {
+    for (CwhipSqliteStatement *entry = statement_registry;
          entry != NULL; entry = entry->next) {
         if (entry->owner_object == owner_object) return entry;
     }
     return 0;
 }
 
-static void unlink_statement(SimpSqliteStatement *statement) {
-    SimpSqliteStatement **entry = &statement_registry;
+static void unlink_statement(CwhipSqliteStatement *statement) {
+    CwhipSqliteStatement **entry = &statement_registry;
     while (*entry != NULL && *entry != statement) entry = &(*entry)->next;
     if (*entry == statement) *entry = statement->next;
 }
 
-static SimpSqliteTransaction *find_transaction(void *owner_object) {
-    for (SimpSqliteTransaction *entry = transaction_registry;
+static CwhipSqliteTransaction *find_transaction(void *owner_object) {
+    for (CwhipSqliteTransaction *entry = transaction_registry;
          entry != NULL; entry = entry->next) {
         if (entry->owner_object == owner_object) return entry;
     }
     return NULL;
 }
 
-static void unlink_transaction(SimpSqliteTransaction *transaction) {
-    SimpSqliteTransaction **entry = &transaction_registry;
+static void unlink_transaction(CwhipSqliteTransaction *transaction) {
+    CwhipSqliteTransaction **entry = &transaction_registry;
     while (*entry != NULL && *entry != transaction) entry = &(*entry)->next;
     if (*entry == transaction) *entry = transaction->next;
 }
 
 static void *make_string(const char *text, uint64_t length) {
-    if (&simp_string_class_meta == NULL) return NULL;
-    return simp_string_new(&simp_string_class_meta, text, length);
+    if (&cwhip_string_class_meta == NULL) return NULL;
+    return cwhip_string_new(&cwhip_string_class_meta, text, length);
 }
 
 static void *error_string(const char *message) {
@@ -76,7 +76,7 @@ static void *error_string(const char *message) {
     return make_string(message, (uint64_t)strlen(message));
 }
 
-static int connection_retain(SimpSqliteConnection *connection) {
+static int connection_retain(CwhipSqliteConnection *connection) {
     if (connection == NULL || connection->database == NULL ||
         connection->references == UINT64_MAX) {
         set_error("SQLite connection is closed or its reference count is exhausted");
@@ -86,7 +86,7 @@ static int connection_retain(SimpSqliteConnection *connection) {
     return 1;
 }
 
-static void connection_release(SimpSqliteConnection *connection) {
+static void connection_release(CwhipSqliteConnection *connection) {
     if (connection == NULL || connection->references == 0) return;
     --connection->references;
     if (connection->references == 0) {
@@ -97,7 +97,7 @@ static void connection_release(SimpSqliteConnection *connection) {
     }
 }
 
-static int connection_live(SimpSqliteConnection *connection) {
+static int connection_live(CwhipSqliteConnection *connection) {
     if (connection == NULL || connection->database == NULL) {
         set_error("SQLite connection is closed");
         return 0;
@@ -105,7 +105,7 @@ static int connection_live(SimpSqliteConnection *connection) {
     return 1;
 }
 
-void *simp_sqlite_open(void *self, void *path) {
+void *cwhip_sqlite_open(void *self, void *path) {
     (void)self;
     last_error[0] = '\0';
     if (path == NULL) {
@@ -114,7 +114,7 @@ void *simp_sqlite_open(void *self, void *path) {
     }
     const char *bytes = NULL;
     uint64_t length = 0;
-    simp_string_bytes(path, &bytes, &length);
+    cwhip_string_bytes(path, &bytes, &length);
     if (length > INT_MAX ||
         (length != 0 && memchr(bytes, '\0', (size_t)length) != NULL)) {
         set_error("SQLite path is too long or contains a NUL byte");
@@ -136,8 +136,8 @@ void *simp_sqlite_open(void *self, void *path) {
         if (database != NULL) (void)sqlite3_close_v2(database);
         return 0;
     }
-    SimpSqliteConnection *connection =
-        (SimpSqliteConnection *)calloc(1, sizeof(*connection));
+    CwhipSqliteConnection *connection =
+        (CwhipSqliteConnection *)calloc(1, sizeof(*connection));
     if (connection == NULL) {
         set_error("out of memory while allocating SQLite connection");
         (void)sqlite3_close(database);
@@ -149,11 +149,11 @@ void *simp_sqlite_open(void *self, void *path) {
     return connection;
 }
 
-int32_t simp_sqlite_close(void *self, void *connection) {
+int32_t cwhip_sqlite_close(void *self, void *connection) {
     (void)self;
     last_error[0] = '\0';
     if (connection == NULL) return 1;
-    SimpSqliteConnection *owner = (SimpSqliteConnection *)connection;
+    CwhipSqliteConnection *owner = (CwhipSqliteConnection *)connection;
     if (!owner->owner_open) return 1;
     if (owner->references != 1) {
         set_error("cannot close a SQLite connection while statements or transactions are live");
@@ -170,34 +170,34 @@ int32_t simp_sqlite_close(void *self, void *connection) {
     return 1;
 }
 
-void simp_sqlite_release_connection(void *self, void *connection) {
+void cwhip_sqlite_release_connection(void *self, void *connection) {
     (void)self;
-    SimpSqliteConnection *owner = (SimpSqliteConnection *)connection;
+    CwhipSqliteConnection *owner = (CwhipSqliteConnection *)connection;
     if (owner == NULL || !owner->owner_open) return;
     owner->owner_open = 0;
     connection_release(owner);
 }
 
-void *simp_sqlite_connection_error(void *self, void *connection) {
+void *cwhip_sqlite_connection_error(void *self, void *connection) {
     (void)self;
     const char *message = last_error[0] != '\0' ? last_error :
         connection == NULL ? "" :
-        ((SimpSqliteConnection *)connection)->database == NULL ? "" :
-        sqlite3_errmsg(((SimpSqliteConnection *)connection)->database);
+        ((CwhipSqliteConnection *)connection)->database == NULL ? "" :
+        sqlite3_errmsg(((CwhipSqliteConnection *)connection)->database);
     return error_string(message);
 }
 
-int32_t simp_sqlite_execute(void *self, void *connection, void *sql) {
+int32_t cwhip_sqlite_execute(void *self, void *connection, void *sql) {
     (void)self;
     last_error[0] = '\0';
-    SimpSqliteConnection *owner = (SimpSqliteConnection *)connection;
+    CwhipSqliteConnection *owner = (CwhipSqliteConnection *)connection;
     if (!connection_live(owner) || sql == NULL) {
         set_error("SQLite connection and SQL text must not be null");
         return 0;
     }
     const char *bytes = NULL;
     uint64_t length = 0;
-    simp_string_bytes(sql, &bytes, &length);
+    cwhip_string_bytes(sql, &bytes, &length);
     if (length > INT_MAX ||
         (length != 0 && memchr(bytes, '\0', (size_t)length) != NULL)) {
         set_error("SQLite SQL is too long or contains a NUL byte");
@@ -220,11 +220,11 @@ int32_t simp_sqlite_execute(void *self, void *connection, void *sql) {
     return result == SQLITE_OK;
 }
 
-int32_t simp_sqlite_prepare(void *self, void *connection, void *target,
+int32_t cwhip_sqlite_prepare(void *self, void *connection, void *target,
                             void *sql) {
     (void)self;
     last_error[0] = '\0';
-    SimpSqliteConnection *owner = (SimpSqliteConnection *)connection;
+    CwhipSqliteConnection *owner = (CwhipSqliteConnection *)connection;
     if (!connection_live(owner) || target == NULL || sql == NULL) {
         set_error("SQLite connection and SQL text must not be null");
         return 0;
@@ -235,7 +235,7 @@ int32_t simp_sqlite_prepare(void *self, void *connection, void *target,
     }
     const char *bytes = NULL;
     uint64_t length = 0;
-    simp_string_bytes(sql, &bytes, &length);
+    cwhip_string_bytes(sql, &bytes, &length);
     if (length > INT_MAX ||
         (length != 0 && memchr(bytes, '\0', (size_t)length) != NULL)) {
         set_error("SQLite SQL is too long or contains a NUL byte");
@@ -266,8 +266,8 @@ int32_t simp_sqlite_prepare(void *self, void *connection, void *target,
         (void)sqlite3_finalize(statement);
         return 0;
     }
-    SimpSqliteStatement *wrapped =
-        (SimpSqliteStatement *)calloc(1, sizeof(*wrapped));
+    CwhipSqliteStatement *wrapped =
+        (CwhipSqliteStatement *)calloc(1, sizeof(*wrapped));
     if (wrapped == NULL || !connection_retain(owner)) {
         set_error("out of memory while retaining SQLite statement connection");
         free(wrapped);
@@ -282,10 +282,10 @@ int32_t simp_sqlite_prepare(void *self, void *connection, void *target,
     return 1;
 }
 
-int32_t simp_sqlite_busy_timeout(void *self, void *connection, int64_t milliseconds) {
+int32_t cwhip_sqlite_busy_timeout(void *self, void *connection, int64_t milliseconds) {
     (void)self;
     last_error[0] = '\0';
-    SimpSqliteConnection *owner = (SimpSqliteConnection *)connection;
+    CwhipSqliteConnection *owner = (CwhipSqliteConnection *)connection;
     if (!connection_live(owner) || milliseconds < 0 || milliseconds > INT_MAX) {
         set_error("SQLite busy timeout must be between 0 and INT_MAX milliseconds");
         return 0;
@@ -295,13 +295,13 @@ int32_t simp_sqlite_busy_timeout(void *self, void *connection, int64_t milliseco
     return result == SQLITE_OK;
 }
 
-int32_t simp_sqlite_statement_exists(void *self) {
+int32_t cwhip_sqlite_statement_exists(void *self) {
     return find_statement(self) != NULL;
 }
 
-int32_t simp_sqlite_finalize(void *self) {
+int32_t cwhip_sqlite_finalize(void *self) {
     last_error[0] = '\0';
-    SimpSqliteStatement *wrapped = find_statement(self);
+    CwhipSqliteStatement *wrapped = find_statement(self);
     if (wrapped == NULL) return 1;
     unlink_statement(wrapped);
     int result = sqlite3_finalize(wrapped->statement);
@@ -311,9 +311,9 @@ int32_t simp_sqlite_finalize(void *self) {
     return result == SQLITE_OK;
 }
 
-int64_t simp_sqlite_step(void *self) {
+int64_t cwhip_sqlite_step(void *self) {
     last_error[0] = '\0';
-    SimpSqliteStatement *wrapped = find_statement(self);
+    CwhipSqliteStatement *wrapped = find_statement(self);
     if (wrapped == NULL) {
         set_error("SQLite statement is not prepared or has been finalized");
         return -1;
@@ -325,17 +325,17 @@ int64_t simp_sqlite_step(void *self) {
     return -1;
 }
 
-void *simp_sqlite_statement_error(void *self) {
-    SimpSqliteStatement *wrapped = find_statement(self);
+void *cwhip_sqlite_statement_error(void *self) {
+    CwhipSqliteStatement *wrapped = find_statement(self);
     const char *message = last_error[0] != '\0' ? last_error :
         wrapped == NULL ? last_error :
         sqlite3_errmsg(wrapped->connection->database);
     return error_string(message);
 }
 
-static SimpSqliteStatement *checked_statement(void *owner_object,
+static CwhipSqliteStatement *checked_statement(void *owner_object,
                                                int64_t index) {
-    SimpSqliteStatement *wrapped = find_statement(owner_object);
+    CwhipSqliteStatement *wrapped = find_statement(owner_object);
     if (wrapped == NULL) {
         set_error("SQLite statement is not prepared or has been finalized");
         return NULL;
@@ -347,36 +347,36 @@ static SimpSqliteStatement *checked_statement(void *owner_object,
     return wrapped;
 }
 
-int32_t simp_sqlite_bind_null(void *self, int64_t index) {
+int32_t cwhip_sqlite_bind_null(void *self, int64_t index) {
     last_error[0] = '\0';
-    SimpSqliteStatement *wrapped = checked_statement(self, index);
+    CwhipSqliteStatement *wrapped = checked_statement(self, index);
     if (wrapped == NULL) return 0;
     int result = sqlite3_bind_null(wrapped->statement, (int)index);
     if (result != SQLITE_OK) set_error(sqlite3_errmsg(wrapped->connection->database));
     return result == SQLITE_OK;
 }
 
-int32_t simp_sqlite_bind_integer(void *self, int64_t index, int64_t value) {
+int32_t cwhip_sqlite_bind_integer(void *self, int64_t index, int64_t value) {
     last_error[0] = '\0';
-    SimpSqliteStatement *wrapped = checked_statement(self, index);
+    CwhipSqliteStatement *wrapped = checked_statement(self, index);
     if (wrapped == NULL) return 0;
     int result = sqlite3_bind_int64(wrapped->statement, (int)index, value);
     if (result != SQLITE_OK) set_error(sqlite3_errmsg(wrapped->connection->database));
     return result == SQLITE_OK;
 }
 
-int32_t simp_sqlite_bind_real(void *self, int64_t index, double value) {
+int32_t cwhip_sqlite_bind_real(void *self, int64_t index, double value) {
     last_error[0] = '\0';
-    SimpSqliteStatement *wrapped = checked_statement(self, index);
+    CwhipSqliteStatement *wrapped = checked_statement(self, index);
     if (wrapped == NULL) return 0;
     int result = sqlite3_bind_double(wrapped->statement, (int)index, value);
     if (result != SQLITE_OK) set_error(sqlite3_errmsg(wrapped->connection->database));
     return result == SQLITE_OK;
 }
 
-int32_t simp_sqlite_bind_text(void *self, int64_t index, void *value) {
+int32_t cwhip_sqlite_bind_text(void *self, int64_t index, void *value) {
     last_error[0] = '\0';
-    SimpSqliteStatement *wrapped = checked_statement(self, index);
+    CwhipSqliteStatement *wrapped = checked_statement(self, index);
     if (wrapped == NULL) return 0;
     if (value == NULL) {
         set_error("SQLite text binding requires a non-null String");
@@ -384,7 +384,7 @@ int32_t simp_sqlite_bind_text(void *self, int64_t index, void *value) {
     }
     const char *bytes = NULL;
     uint64_t length = 0;
-    simp_string_bytes(value, &bytes, &length);
+    cwhip_string_bytes(value, &bytes, &length);
     if (length > INT_MAX) {
         set_error("SQLite text binding exceeds INT_MAX bytes");
         return 0;
@@ -396,15 +396,15 @@ int32_t simp_sqlite_bind_text(void *self, int64_t index, void *value) {
     return result == SQLITE_OK;
 }
 
-int32_t simp_sqlite_bind_blob(void *self, int64_t index, void *value) {
+int32_t cwhip_sqlite_bind_blob(void *self, int64_t index, void *value) {
     last_error[0] = '\0';
-    SimpSqliteStatement *wrapped = checked_statement(self, index);
+    CwhipSqliteStatement *wrapped = checked_statement(self, index);
     if (wrapped == NULL) return 0;
     if (value == NULL) {
         set_error("SQLite blob binding requires a non-null buffer");
         return 0;
     }
-    const SimpBuffer *buffer = (const SimpBuffer *)value;
+    const CwhipBuffer *buffer = (const CwhipBuffer *)value;
     static const uint8_t empty = 0;
     int result = sqlite3_bind_blob64(wrapped->statement, (int)index,
         buffer->length == 0 ? &empty : buffer->data, buffer->length,
@@ -413,8 +413,8 @@ int32_t simp_sqlite_bind_blob(void *self, int64_t index, void *value) {
     return result == SQLITE_OK;
 }
 
-int64_t simp_sqlite_column_type(void *self, int64_t index) {
-    SimpSqliteStatement *wrapped = find_statement(self);
+int64_t cwhip_sqlite_column_type(void *self, int64_t index) {
+    CwhipSqliteStatement *wrapped = find_statement(self);
     if (wrapped == NULL || index < 0 ||
         index >= sqlite3_column_count(wrapped->statement)) {
         set_error("SQLite result column index is out of range");
@@ -432,22 +432,22 @@ int64_t simp_sqlite_column_type(void *self, int64_t index) {
     }
 }
 
-int64_t simp_sqlite_column_integer(void *self, int64_t index) {
-    SimpSqliteStatement *wrapped = find_statement(self);
+int64_t cwhip_sqlite_column_integer(void *self, int64_t index) {
+    CwhipSqliteStatement *wrapped = find_statement(self);
     if (wrapped == NULL) return 0;
     return sqlite3_column_int64(wrapped->statement,
                                 (int)index);
 }
 
-double simp_sqlite_column_real(void *self, int64_t index) {
-    SimpSqliteStatement *wrapped = find_statement(self);
+double cwhip_sqlite_column_real(void *self, int64_t index) {
+    CwhipSqliteStatement *wrapped = find_statement(self);
     if (wrapped == NULL) return 0.0;
     return sqlite3_column_double(wrapped->statement,
                                  (int)index);
 }
 
-void *simp_sqlite_column_text(void *self, int64_t index) {
-    SimpSqliteStatement *wrapped = find_statement(self);
+void *cwhip_sqlite_column_text(void *self, int64_t index) {
+    CwhipSqliteStatement *wrapped = find_statement(self);
     if (wrapped == NULL) return NULL;
     sqlite3_stmt *stmt = wrapped->statement;
     const unsigned char *bytes = sqlite3_column_text(stmt, (int)index);
@@ -456,16 +456,16 @@ void *simp_sqlite_column_text(void *self, int64_t index) {
     return make_string(bytes == NULL ? "" : (const char *)bytes, (uint64_t)length);
 }
 
-void *simp_sqlite_column_blob(void *self, int64_t index) {
-    SimpSqliteStatement *wrapped = find_statement(self);
+void *cwhip_sqlite_column_blob(void *self, int64_t index) {
+    CwhipSqliteStatement *wrapped = find_statement(self);
     if (wrapped == NULL) return NULL;
     sqlite3_stmt *stmt = wrapped->statement;
     const void *bytes = sqlite3_column_blob(stmt, (int)index);
     int length = sqlite3_column_bytes(stmt, (int)index);
     if (length < 0) return NULL;
-    void *result = simp_buffer_new((int64_t)length, "<sqlite>", 8, 0, 0);
+    void *result = cwhip_buffer_new((int64_t)length, "<sqlite>", 8, 0, 0);
     if (result == NULL) return NULL;
-    SimpBuffer *buffer = (SimpBuffer *)result;
+    CwhipBuffer *buffer = (CwhipBuffer *)result;
     if (length != 0) {
         if (bytes == NULL) return NULL;
         memcpy(buffer->data, bytes, (size_t)length);
@@ -473,18 +473,18 @@ void *simp_sqlite_column_blob(void *self, int64_t index) {
     return result;
 }
 
-int32_t simp_sqlite_begin_transaction(void *self, void *connection,
+int32_t cwhip_sqlite_begin_transaction(void *self, void *connection,
                                       void *target) {
     (void)self;
     last_error[0] = '\0';
-    SimpSqliteConnection *owner = (SimpSqliteConnection *)connection;
+    CwhipSqliteConnection *owner = (CwhipSqliteConnection *)connection;
     if (!connection_live(owner) || target == NULL) return 0;
     if (find_transaction(target) != NULL) {
         set_error("SQLite transaction object is already attached");
         return 0;
     }
-    SimpSqliteTransaction *transaction =
-        (SimpSqliteTransaction *)calloc(1, sizeof(*transaction));
+    CwhipSqliteTransaction *transaction =
+        (CwhipSqliteTransaction *)calloc(1, sizeof(*transaction));
     if (transaction == NULL) {
         set_error("out of memory while beginning SQLite transaction");
         return 0;
@@ -510,18 +510,18 @@ int32_t simp_sqlite_begin_transaction(void *self, void *connection,
     return 1;
 }
 
-int32_t simp_sqlite_transaction_exists(void *self) {
+int32_t cwhip_sqlite_transaction_exists(void *self) {
     return find_transaction(self) != NULL;
 }
 
-int32_t simp_sqlite_transaction_active(void *self) {
-    SimpSqliteTransaction *wrapper = find_transaction(self);
+int32_t cwhip_sqlite_transaction_active(void *self) {
+    CwhipSqliteTransaction *wrapper = find_transaction(self);
     if (wrapper == NULL) return 0;
     return wrapper->connection->database != NULL &&
         !sqlite3_get_autocommit(wrapper->connection->database);
 }
 
-static int transaction_finish(SimpSqliteTransaction *transaction,
+static int transaction_finish(CwhipSqliteTransaction *transaction,
                               const char *sql) {
     if (transaction == NULL || transaction->connection->database == NULL) {
         set_error("SQLite transaction is closed");
@@ -542,19 +542,19 @@ static int transaction_finish(SimpSqliteTransaction *transaction,
     return result == SQLITE_OK;
 }
 
-int32_t simp_sqlite_transaction_commit(void *self) {
+int32_t cwhip_sqlite_transaction_commit(void *self) {
     last_error[0] = '\0';
     return transaction_finish(find_transaction(self), "COMMIT");
 }
 
-int32_t simp_sqlite_transaction_rollback(void *self) {
+int32_t cwhip_sqlite_transaction_rollback(void *self) {
     last_error[0] = '\0';
     return transaction_finish(find_transaction(self), "ROLLBACK");
 }
 
-int32_t simp_sqlite_transaction_close(void *self) {
+int32_t cwhip_sqlite_transaction_close(void *self) {
     last_error[0] = '\0';
-    SimpSqliteTransaction *wrapper = find_transaction(self);
+    CwhipSqliteTransaction *wrapper = find_transaction(self);
     if (wrapper == NULL) return 1;
     int result = 1;
     if (wrapper->connection->database != NULL &&

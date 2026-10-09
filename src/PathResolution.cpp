@@ -2,7 +2,7 @@
  * @file PathResolution.cpp
  * @brief Relocatable resource and module search path resolution.
  */
-#include "simp/PathResolution.hpp"
+#include "cwhip/PathResolution.hpp"
 
 #include <cstdlib>
 #include <set>
@@ -19,26 +19,26 @@
 #include <sys/sysctl.h>
 #endif
 
-#ifndef SIMP_INSTALL_BINDIR
-#error "SIMP_INSTALL_BINDIR must name the relative executable directory"
+#ifndef CWHIP_INSTALL_BINDIR
+#error "CWHIP_INSTALL_BINDIR must name the relative executable directory"
 #endif
-#ifndef SIMP_INSTALL_LIBDIR
-#error "SIMP_INSTALL_LIBDIR must name the relative library directory"
+#ifndef CWHIP_INSTALL_LIBDIR
+#error "CWHIP_INSTALL_LIBDIR must name the relative library directory"
 #endif
-#ifndef SIMP_INSTALL_INCLUDEDIR
-#error "SIMP_INSTALL_INCLUDEDIR must name the relative header directory"
+#ifndef CWHIP_INSTALL_INCLUDEDIR
+#error "CWHIP_INSTALL_INCLUDEDIR must name the relative header directory"
 #endif
-#ifndef SIMP_INSTALL_DATADIR
-#error "SIMP_INSTALL_DATADIR must name the relative data directory"
+#ifndef CWHIP_INSTALL_DATADIR
+#error "CWHIP_INSTALL_DATADIR must name the relative data directory"
 #endif
-#ifndef SIMP_RUNTIME_LIBRARY_NAME
-#error "SIMP_RUNTIME_LIBRARY_NAME must name the runtime library file"
+#ifndef CWHIP_RUNTIME_LIBRARY_NAME
+#error "CWHIP_RUNTIME_LIBRARY_NAME must name the runtime library file"
 #endif
 
-namespace simp {
+namespace cwhip {
 namespace {
 
-constexpr const char* builtinFileName = "String.simp";
+constexpr const char* builtinFileName = "String.cw";
 
 std::filesystem::path normalizedAbsolute(const std::filesystem::path& path) {
     return std::filesystem::absolute(path).lexically_normal();
@@ -119,8 +119,8 @@ std::vector<ResolvedPath> ModuleSearchPaths::packageRoots() const {
 }
 
 InstallLayout configuredInstallLayout() {
-    return {SIMP_INSTALL_BINDIR, SIMP_INSTALL_LIBDIR, SIMP_INSTALL_INCLUDEDIR,
-            SIMP_INSTALL_DATADIR};
+    return {CWHIP_INSTALL_BINDIR, CWHIP_INSTALL_LIBDIR, CWHIP_INSTALL_INCLUDEDIR,
+            CWHIP_INSTALL_DATADIR};
 }
 
 std::optional<std::string> processEnvironment(const std::string& name) {
@@ -172,8 +172,8 @@ ResourcePaths resolveResourcePaths(const std::optional<std::filesystem::path>& e
                                    const EnvironmentLookup& environment) {
     ResourcePaths paths;
     paths.executable = executable;
-    if (const auto home = environment("SIMP_HOME")) {
-        paths.prefix = environmentPath(*home, "SIMP_HOME");
+    if (const auto home = environment("CWHIP_HOME")) {
+        paths.prefix = environmentPath(*home, "CWHIP_HOME");
     } else if (executable) {
         paths.prefix = ResolvedPath{installPrefixForExecutable(*executable, layout),
                                     "executable-relative"};
@@ -183,20 +183,20 @@ ResourcePaths resolveResourcePaths(const std::optional<std::filesystem::path>& e
         if (const auto value = environment(variable)) return environmentPath(*value, variable);
         if (!paths.prefix) {
             throw std::runtime_error(
-                "cannot locate the simp executable to find its resources; set " + variable +
-                " or SIMP_HOME");
+                "cannot locate the cwhip executable to find its resources; set " + variable +
+                " or CWHIP_HOME");
         }
         return {(paths.prefix->path / relative).lexically_normal(),
-                paths.prefix->origin == "SIMP_HOME" ? "SIMP_HOME" : "executable-relative"};
+                paths.prefix->origin == "CWHIP_HOME" ? "CWHIP_HOME" : "executable-relative"};
     };
-    paths.runtimeDirectory = resolve("SIMP_RUNTIME_DIR", layout.libDirectory / "simp");
-    paths.runtimeLibrary = paths.runtimeDirectory.path / SIMP_RUNTIME_LIBRARY_NAME;
-    paths.includeDirectory = resolve("SIMP_INCLUDE_DIR", layout.includeDirectory);
+    paths.runtimeDirectory = resolve("CWHIP_RUNTIME_DIR", layout.libDirectory / "cwhip");
+    paths.runtimeLibrary = paths.runtimeDirectory.path / CWHIP_RUNTIME_LIBRARY_NAME;
+    paths.includeDirectory = resolve("CWHIP_INCLUDE_DIR", layout.includeDirectory);
     paths.builtinDirectory =
-        resolve("SIMP_BUILTIN_DIR", layout.dataDirectory / "simp" / "builtin");
+        resolve("CWHIP_BUILTIN_DIR", layout.dataDirectory / "cwhip" / "builtin");
     paths.builtinSource = paths.builtinDirectory.path / builtinFileName;
     paths.standardModuleDirectory =
-        resolve("SIMP_STDLIB_MODULE_DIR", layout.dataDirectory / "simp" / "modules");
+        resolve("CWHIP_STDLIB_MODULE_DIR", layout.dataDirectory / "cwhip" / "modules");
     return paths;
 }
 
@@ -221,10 +221,10 @@ ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
                              "parent of first source input"};
     }
     for (auto candidate = paths.projectRoot.path; !candidate.empty();) {
-        if (std::filesystem::exists(candidate / "simpkg.toml") ||
+        if (std::filesystem::exists(candidate / "cwhip-pkg.toml") ||
             std::filesystem::is_directory(candidate / "modules")) {
             if (candidate != paths.projectRoot.path) {
-                paths.projectRoot = {candidate, "nearest source ancestor with simpkg.toml or modules"};
+                paths.projectRoot = {candidate, "nearest source ancestor with cwhip-pkg.toml or modules"};
             }
             break;
         }
@@ -232,15 +232,15 @@ ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
         if (parent == candidate) break;
         candidate = parent;
     }
-    if (const auto legacyPackagePath = environment("SIMP_PACKAGE_PATH")) {
+    if (const auto legacyPackagePath = environment("CWHIP_PACKAGE_PATH")) {
         static_cast<void>(legacyPackagePath);
         throw std::runtime_error(
-            "SIMP_PACKAGE_PATH is no longer supported; use SIMP_MODULE_DIR or -M/--module-dir");
+            "CWHIP_PACKAGE_PATH is no longer supported; use CWHIP_MODULE_DIR or -M/--module-dir");
     }
-    if (environment("SIMP_MODULE_REGISTRY")) {
+    if (environment("CWHIP_MODULE_REGISTRY")) {
         throw std::runtime_error(
-            "SIMP_MODULE_REGISTRY is no longer supported; publish packages with "
-            "simp-package.toml and install them with simpkg");
+            "CWHIP_MODULE_REGISTRY is no longer supported; publish packages with "
+            "cwhip-package.toml and install them with cwhip-pkg");
     }
     paths.projectModuleRoot = {paths.projectRoot.path / "modules",
                                "project <project-root>/modules"};
@@ -248,9 +248,9 @@ ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
         paths.commandLineModuleRoot = {
             absoluteFrom(*request.moduleDirectoryOption), "-M/--module-dir"};
     }
-    if (const auto moduleDirectory = environment("SIMP_MODULE_DIR")) {
+    if (const auto moduleDirectory = environment("CWHIP_MODULE_DIR")) {
         paths.environmentModuleRoot =
-            ResolvedPath{absoluteFrom(*moduleDirectory), "SIMP_MODULE_DIR"};
+            ResolvedPath{absoluteFrom(*moduleDirectory), "CWHIP_MODULE_DIR"};
     }
     std::optional<std::filesystem::path> configDirectory;
     std::string userRootOrigin;
@@ -260,39 +260,39 @@ ModuleSearchPaths resolveModuleSearchPaths(const ModuleSearchRequest& request,
             throw std::runtime_error("XDG_CONFIG_HOME must be an absolute path");
         }
         configDirectory = configured;
-        userRootOrigin = "XDG_CONFIG_HOME/simp/modules";
+        userRootOrigin = "XDG_CONFIG_HOME/cwhip/modules";
     } else if (const auto home = environment("HOME")) {
         configDirectory = std::filesystem::path(*home) / ".config";
-        userRootOrigin = "HOME/.config/simp/modules";
+        userRootOrigin = "HOME/.config/cwhip/modules";
     }
     if (configDirectory) {
-        paths.userModuleRoot = ResolvedPath{*configDirectory / "simp" / "modules",
+        paths.userModuleRoot = ResolvedPath{*configDirectory / "cwhip" / "modules",
                                             userRootOrigin};
     }
     paths.standardModuleRoot = resources.standardModuleDirectory;
-    paths.projectLockFile = {paths.projectRoot.path / "simpkg.lock", "project lock"};
-    const auto manifest = paths.projectRoot.path / "simpkg.toml";
+    paths.projectLockFile = {paths.projectRoot.path / "cwhip-pkg.lock", "project lock"};
+    const auto manifest = paths.projectRoot.path / "cwhip-pkg.toml";
     const auto legacyPolicy = paths.projectRoot.path / "modules" / "modules.toml";
     if (std::filesystem::exists(legacyPolicy)) {
         throw std::runtime_error(
-            "legacy modules/modules.toml is no longer supported; migrate the project "
-            "to simpkg.toml and simpkg.lock with 'simpkg init'");
+            "legacy modules/modules.toml is not imported or modified; create a separate "
+            "project with cwhip-pkg.toml and cwhip-pkg.lock, then declare dependencies manually");
     }
-    if (std::filesystem::exists(paths.projectRoot.path / "simpkg.lock") &&
+    if (std::filesystem::exists(paths.projectRoot.path / "cwhip-pkg.lock") &&
         !std::filesystem::exists(manifest)) {
-        throw std::runtime_error("simpkg.lock exists without simpkg.toml in project " +
+        throw std::runtime_error("cwhip-pkg.lock exists without cwhip-pkg.toml in project " +
                                  paths.projectRoot.path.string());
     }
     if (std::filesystem::exists(manifest) &&
         !std::filesystem::is_regular_file(paths.projectLockFile.path)) {
-        throw std::runtime_error("missing simpkg.lock; run 'simpkg install --yes'");
+        throw std::runtime_error("missing cwhip-pkg.lock; run 'cwhip-pkg install --yes'");
     }
-    for (const auto& legacyRegistry : {currentDirectory / "simp-modules.tsv",
-                                       paths.projectRoot.path / "simp-modules.tsv"}) {
+    for (const auto& legacyRegistry : {currentDirectory / "cwhip-modules.tsv",
+                                       paths.projectRoot.path / "cwhip-modules.tsv"}) {
         if (std::filesystem::exists(legacyRegistry)) {
             throw std::runtime_error(
-                "simp-modules.tsv registries are no longer supported; publish packages "
-                "with simp-package.toml and install them with simpkg");
+                "cwhip-modules.tsv registries are no longer supported; publish packages "
+                "with cwhip-package.toml and install them with cwhip-pkg");
         }
     }
     return paths;
@@ -312,4 +312,4 @@ void validateModuleSearchPaths(const ModuleSearchPaths& paths) {
     validate(paths.environmentModuleRoot);
 }
 
-} // namespace simp
+} // namespace cwhip

@@ -1,5 +1,0 @@
-set(CASE_NAME simp_reports_uncaught_any_extraction_mismatch)
-set(CASE_FIXTURE negative_any_extraction_mismatch.simp)
-set(CASE_EXPECTED_OUTPUT_FILE "${CMAKE_CURRENT_LIST_DIR}/simp_reports_uncaught_any_extraction_mismatch.stdout")
-set(CASE_EXPECT_RUNTIME_FAILURE [==[ON]==])
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[uncaught runtime exception at .*negative_any_extraction_mismatch.simp:7:28: 'any' value does not hold the requested type]==])

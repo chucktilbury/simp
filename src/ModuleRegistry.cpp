@@ -1,10 +1,10 @@
-#include "simp/ModuleRegistry.hpp"
+#include "cwhip/ModuleRegistry.hpp"
 
-#include "simp/Diagnostic.hpp"
-#include "simp/Lexer.hpp"
-#include "simp/PackageRegistry.hpp"
-#include "simp/Parser.hpp"
-#include "simp/SourceLoader.hpp"
+#include "cwhip/Diagnostic.hpp"
+#include "cwhip/Lexer.hpp"
+#include "cwhip/PackageRegistry.hpp"
+#include "cwhip/Parser.hpp"
+#include "cwhip/SourceLoader.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -12,7 +12,7 @@
 #include <set>
 #include <unordered_map>
 
-namespace simp {
+namespace cwhip {
 namespace {
 
 struct RegistryEntry {
@@ -38,7 +38,7 @@ std::string missingModuleMessage(const std::string& moduleName,
                                  const ModuleLoadOptions& options) {
     std::string message = "module '" + moduleName +
                            "' was not found in any package module root; expected <module-root>/" +
-                           moduleName + "/<version>/simp-package.toml\nsearched module roots:";
+                           moduleName + "/<version>/cwhip-package.toml\nsearched module roots:";
     for (const auto& root : options.packageSearchRoots) {
         message += "\n" + describeSearchedPath(root, true);
     }
@@ -259,4 +259,4 @@ ModuleLoadResult loadImportedModules(Program& program,
     return result;
 }
 
-} // namespace simp
+} // namespace cwhip

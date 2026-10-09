@@ -1,5 +1,0 @@
-set(CASE_NAME simp_reports_checked_extraction_location)
-set(CASE_FIXTURE negative_checked_extraction_mismatch.simp)
-set(CASE_EXPECTED_OUTPUT "")
-set(CASE_EXPECT_RUNTIME_FAILURE ON)
-set(CASE_EXPECT_RUNTIME_DIAGNOSTIC [==[uncaught runtime exception at .*negative_checked_extraction_mismatch.simp:3:28: 'any' value does not hold the requested type]==])
