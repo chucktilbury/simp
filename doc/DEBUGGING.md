@@ -1,4 +1,4 @@
-# Debugging Simple programs
+# Debugging Cwhip programs
 
 The compiler's `-g`/`--debug` option emits DWARF debug information for the
 generated executable and LLVM IR. Use GDB or LLDB on the executable:
@@ -11,8 +11,8 @@ gdb -q build/positive_debug_info
 lldb build/positive_debug_info
 ```
 
-DWARF maps generated instructions back to Simple source lines and can expose
-in-scope Simple locals when their locations are available. Visibility is not
+DWARF maps generated instructions back to Cwhip source lines and can expose
+in-scope Cwhip locals when their locations are available. Visibility is not
 guaranteed for every value or point in a program: compiler-generated
 temporaries and optimized-out or out-of-scope locals are not inspectable, and
 class fields are not necessarily shown as source-level members. This is
