@@ -164,7 +164,7 @@ function setAccountMode(mode) {
   $('#register-name-wrap').hidden = !registering;
   $('#account-form [name="name"]').required = registering;
   $('#account-form [name="password"]').autocomplete = registering ? 'new-password' : 'current-password';
-  $('#account-form [name="password"]').placeholder = registering ? 'At least 12 characters' : 'Your password';
+  $('#account-form [name="password"]').placeholder = registering ? 'At least 8 characters' : 'Your password';
   $('#account-submit').textContent = registering ? 'Create account →' : 'Sign in →';
   $('#account-switch-copy').textContent = registering ? 'Already have an account?' : 'New to Cwhip?';
   $('#account-switch').textContent = registering ? 'Sign in' : 'Create an account';

@@ -227,7 +227,7 @@ try {
         $email = strtolower(cleanText($data['email'] ?? null, 254, 'Email'));
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) respond(['error'=>'Enter a valid email address.'], 400);
         $password = $data['password'] ?? null;
-        if (!is_string($password) || strlen($password) < 12 || strlen($password) > 200) respond(['error'=>'Password must be between 12 and 200 characters.'], 400);
+        if (!is_string($password) || strlen($password) < 8 || strlen($password) > 200) respond(['error'=>'Password must be between 12 and 200 characters.'], 400);
         $check = $pdo->prepare('SELECT id FROM users WHERE email = ?'); $check->execute([$email]);
         if ($check->fetch()) respond(['error'=>'An account with that email already exists.'], 409);
         $userId = uuid();
