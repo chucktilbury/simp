@@ -248,10 +248,24 @@ $('#account-form').addEventListener('submit', async e => {
 });
 $('#new-thread-open').addEventListener('click',()=>{ if(!currentUser){openAccount('login');return;} $('#thread-message').textContent='';threadDialog.showModal(); });
 $('#thread-form').addEventListener('submit', async e => {
-  e.preventDefault(); const form=new FormData(e.currentTarget),message=$('#thread-message');message.className='form-message';message.textContent='Creating discussion…';
-  try { const result=await api('/api/threads',{method:'POST',body:JSON.stringify({title:form.get('title'),category:form.get('category'),body:form.get('body')})});message.className='form-message success';message.textContent='Discussion created.';e.currentTarget.reset();threadDialog.close();await loadThreads();await openThread(result.item.id); }
+  e.preventDefault();
+  const form=new FormData(e.currentTarget),message=$('#thread-message');
+  message.className='form-message';message.textContent='Creating discussion…';
+  try {
+    const result=await api('/api/threads',{
+      method:'POST',body:JSON.stringify({
+        title:form.get('title'),category:form.get('category'),body:form.get('body')
+      })
+    });
+    message.className='form-message success';
+    message.textContent='Discussion created.';
+    $('#thread-form').reset();
+    threadDialog.close();
+    await loadThreads();await openThread(result.item.id);
+  }
   catch(err){message.textContent=err.message;}
 });
+
 $('#reply-form').addEventListener('submit', async e => {
   e.preventDefault();if(!activeThreadId)return;const form=new FormData(e.currentTarget),message=$('#reply-message');message.className='form-message';message.textContent='Posting reply…';
   try { await api(`/api/threads/${encodeURIComponent(activeThreadId)}/replies`,{method:'POST',body:JSON.stringify({body:form.get('body')})});message.className='form-message success';message.textContent='Reply posted.';e.currentTarget.reset();await loadThreads();await openThread(activeThreadId); }
