@@ -116,8 +116,8 @@ function slugify(string $value): string {
 }
 
 function publishedDocs(): array {
-    $docsDir = dirname(__DIR__, 2) . '/home1/jhgfrgmy/cwhip/doc';
-    $manifestFile = dirname(__DIR__) . '/home1/jhgfrgmy/cwhip/website/docs-published.json';
+    $docsDir = '/home1/jhgfrgmy/cwhip/doc';
+    $manifestFile = '/home1/jhgfrgmy/cwhip/website/docs-published.json';
 
     if (!is_file($manifestFile) || !is_dir($docsDir)) {
     throw new RuntimeException('Documentation source or publication manifest is missing.');
