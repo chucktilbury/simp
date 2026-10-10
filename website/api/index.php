@@ -6,8 +6,7 @@ header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 header('Cache-Control: no-store');
 
-#$configFile = dirname(__DIR__) . '/home1/jhgfrgmy/public_http/cwhip-config.php';
-$configFile = '/home1/jhgfrgmy/cwhip-config.php';
+$configFile = dirname(__DIR__) . '/../cwhip-config.php';
 if (!is_file($configFile)) {
     http_response_code(503);
     echo json_encode(['error' => 'Cwhip is not configured yet. Follow the deployment guide.']);
@@ -115,6 +114,81 @@ function slugify(string $value): string {
     $value = strtolower((string)preg_replace('/[^a-zA-Z0-9]+/', '-', $value));
     return trim(substr($value, 0, 70), '-') ?: 'document';
 }
+
+function publishedDocs(): array {
+    $docsDir = dirname(__DIR__, 2) . '/doc';
+    $manifestFile = dirname(__DIR__) . '/docs-published.json';
+
+    if (!is_file($manifestFile) || !is_file($docsDir . '/CWHIP-LANGUAGE-NOTES.md')) {
+        throw new RuntimeException('Documentation source or publication manifest is missing.');
+    }
+
+    $manifest = json_decode(
+        (string)file_get_contents($manifestFile),
+        true,
+        512,
+        JSON_THROW_ON_ERROR
+    );
+
+    if (!isset($manifest['published']) || !is_array($manifest['published'])) {
+        throw new RuntimeException('Invalid documentation publication manifest.');
+    }
+
+    $items = [];
+
+    foreach ($manifest['published'] as $filename) {
+        if (
+            !is_string($filename) ||
+            !preg_match('/\A[A-Z0-9][A-Z0-9-]*\.md\z/i', $filename)
+        ) {
+            throw new RuntimeException('Invalid filename in documentation manifest.');
+        }
+
+        $file = $docsDir . '/' . $filename;
+        if (!is_file($file)) {
+            throw new RuntimeException('Published documentation file is missing.');
+        }
+
+        $body = file_get_contents($file);
+        if ($body === false) {
+            throw new RuntimeException('Unable to read published documentation.');
+        }
+
+        $title = preg_replace('/\.md$/i', '', $filename);
+        $title = str_replace('-', ' ', $title);
+        $title = ucwords(strtolower($title));
+
+        if (preg_match('/^\#\s+(.+)$/m', $body, $match)) {
+            $title = trim($match[1]);
+        }
+
+        $summary = '';
+        if (preg_match('/^\# .+\R+\s*(.+)$/m', $body, $match)) {
+            $summary = trim($match[1]);
+            $summary = preg_replace('/\s+/', ' ', $summary);
+            $summary = substr($summary, 0, 300);
+        }
+
+        $slug = strtolower(preg_replace('/\.md$/i', '', $filename));
+        $slug = trim(preg_replace('/[^a-z0-9]+/', '-', $slug), '-');
+
+        $items[] = [
+            'id' => $slug,
+            'slug' => $slug,
+            'title' => $title,
+            'summary' => $summary,
+            'category' => 'Language',
+            'body' => $body,
+            'created_at' => '',
+            'updated_at' => date('Y-m-d H:i:s'),
+        ];
+    }
+
+    return $items;
+}
+
+
+
 function seedDocs(PDO $pdo): void {
     $count = (int)$pdo->query('SELECT COUNT(*) FROM documents')->fetchColumn();
     if ($count > 0) return;
@@ -123,24 +197,13 @@ function seedDocs(PDO $pdo): void {
         ['architecture','Architecture','A map of the system components, responsibilities, and contracts.','Engineering',"# Architecture\n\nThis document is a starting point for the Cwhip system architecture.\n\n## Current application\n\n- **Web interface:** static HTML, CSS, and JavaScript.\n- **Application API:** PHP JSON endpoints for documents and discussions.\n- **Persistence:** MySQL database hosted by the site provider.\n- **Identity:** individual accounts for contributors."],
         ['design-decisions','Design decisions','A durable index of decisions, alternatives, and their rationale.','Reference',"# Design decisions\n\nRecord consequential decisions with enough context that future contributors can understand them.\n\n## Decision record template\n\n- **Status:** proposed / accepted / superseded\n- **Context:** what problem needs a decision?\n- **Options:** what alternatives were considered?\n- **Decision:** what was chosen and why?\n- **Consequences:** what becomes easier, harder, or different?"]
     ];
-    #$stmt = $pdo->prepare('INSERT INTO documents (id, slug, title, summary, body, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())');
-    $stmt = $pdo->prepare('INSERT INTO documents (id, slug, title, summary, category, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())');
-    
-    foreach ($docs as $d) {
-        array_unshift($d, uuid());
-        $stmt->execute($d);
-    }
+    $stmt = $pdo->prepare('INSERT INTO documents (id, slug, title, summary, body, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())');
+    foreach ($docs as $d) $stmt->execute([uuid(), ...$d]);
 }
 
-#seedDocs($pdo);
-try {
-    seedDocs($pdo);
-} catch (Throwable $e) {
-    error_log('Cwhip seedDocs failed: ' . $e->getMessage());
-    http_response_code(500);
-    echo json_encode(['error' => 'Document seeding failed']);
-    exit;
-}
+// Public documentation is read from doc/ using docs-published.json.
+// Existing MySQL document rows are left untouched.
+//seedDocs($pdo);
 
 $path = trim((string)($_GET['path'] ?? ''), '/');
 $method = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
@@ -184,6 +247,7 @@ try {
         session_destroy(); respond(['ok'=>true]);
     }
 
+    /*
     if ($path === 'docs' && $method === 'GET') {
         $q = trim(substr((string)($_GET['q'] ?? ''), 0, 120));
         if ($q !== '') { $s = '%'.$q.'%'; $stmt=$pdo->prepare('SELECT id, slug, title, summary, category, created_at, updated_at FROM documents WHERE title LIKE ? OR summary LIKE ? OR body LIKE ? ORDER BY updated_at DESC LIMIT 100'); $stmt->execute([$s,$s,$s]); }
@@ -194,6 +258,50 @@ try {
         $stmt=$pdo->prepare('SELECT * FROM documents WHERE slug = ?'); $stmt->execute([$m[1]]); $item=$stmt->fetch();
         if (!$item) respond(['error'=>'Document not found.'],404); respond(['item'=>$item]);
     }
+    */
+
+    if ($path === 'docs' && $method === 'GET') {
+        try {
+            $items = publishedDocs();
+        } catch (Throwable $e) {
+            error_log('Cwhip documentation read failed: ' . $e->getMessage());
+            respond(['error' => 'Documentation is temporarily unavailable.'], 500);
+        }
+
+        $q = trim(substr((string)($_GET['q'] ?? ''), 0, 120));
+        if ($q !== '') {
+            $items = array_values(array_filter($items, static function (array $item) use ($q): bool {
+                return stripos(
+                    $item['title'] . ' ' . $item['summary'] . ' ' . $item['body'],
+                    $q
+                ) !== false;
+            }));
+        }
+
+        respond(['items' => array_map(static function (array $item): array {
+            unset($item['body']);
+            return $item;
+        }, $items)]);
+    }
+
+    if (preg_match('#^docs/([a-zA-Z0-9-]+)$#', $path, $m) && $method === 'GET') {
+        try {
+            $items = publishedDocs();
+        } catch (Throwable $e) {
+            error_log('Cwhip documentation read failed: ' . $e->getMessage());
+            respond(['error' => 'Documentation is temporarily unavailable.'], 500);
+        }
+
+        foreach ($items as $item) {
+            if ($item['slug'] === $m[1]) {
+                respond(['item' => $item]);
+            }
+        }
+
+        respond(['error' => 'Document not found.'], 404);
+    }
+
+
     if ($path === 'docs' && $method === 'POST') {
         requireCsrf(); requireAdmin($pdo); $d=bodyJson();
         $title=cleanText($d['title']??null,160,'Title'); $summary=cleanText($d['summary']??'',500,'Summary',false); $body=cleanText($d['body']??null,50000,'Body'); $category=cleanText($d['category']??'General',60,'Category');
