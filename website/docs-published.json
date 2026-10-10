@@ -1,5 +1,8 @@
 {
   "published": [
-    "CWHIP-LANGUAGE-NOTES.md"
+    "README.md",
+    "GRAMMAR.md",
+    "INSTALLATION.md",
+    "LANGUAGE-REFERENCE.md",
   ]
 }
