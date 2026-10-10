@@ -1,0 +1,10 @@
+[10-Oct-2026 07:56:38 America/Boise] PHP Warning:  Trying to access array offset on int in /home1/jhgfrgmy/public_html/website_a2dded8b/api/index.php on line 29
+[10-Oct-2026 07:56:38 America/Boise] PHP Warning:  Trying to access array offset on int in /home1/jhgfrgmy/public_html/website_a2dded8b/api/index.php on line 29
+[10-Oct-2026 07:56:38 America/Boise] PHP Warning:  Trying to access array offset on int in /home1/jhgfrgmy/public_html/website_a2dded8b/api/index.php on line 30
+[10-Oct-2026 07:56:38 America/Boise] PHP Warning:  Trying to access array offset on int in /home1/jhgfrgmy/public_html/website_a2dded8b/api/index.php on line 30
+[10-Oct-2026 08:41:38 America/Boise] PHP Fatal error:  Uncaught PDOException: SQLSTATE[22001]: String data, right truncated: 1406 Data too long for column 'category' at row 1 in /home1/jhgfrgmy/public_html/website_a2dded8b/api/index.php:130
+Stack trace:
+#0 /home1/jhgfrgmy/public_html/website_a2dded8b/api/index.php(130): PDOStatement->execute(Array)
+#1 /home1/jhgfrgmy/public_html/website_a2dded8b/api/index.php(134): seedDocs(Object(PDO))
+#2 {main}
+  thrown in /home1/jhgfrgmy/public_html/website_a2dded8b/api/index.php on line 130
