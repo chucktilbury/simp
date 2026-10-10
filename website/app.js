@@ -18,6 +18,22 @@ async function api(url, options = {}) {
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
+
+function renderMarkdown(source) {
+    if (typeof marked === 'undefined' ||
+        typeof DOMPurify === 'undefined') {
+        throw new Error('Markdown renderer or sanitizer failed to load.');
+    }
+
+    return DOMPurify.sanitize(
+        marked.parse(String(source ?? ''), {
+            gfm: true,
+            breaks: false
+        }),
+        { USE_PROFILES: { html: true } }
+    );
+}
+
 function escapeHtml(s='') { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function formatDate(s) { const d = new Date(s); return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'}); }
 function initials(name='Cwhip') { return name.trim().split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase(); }
@@ -65,7 +81,7 @@ function setAccountMode(mode) {
 async function openDoc(slug) {
   try {
     const {item:d} = await api('/api/docs/'+encodeURIComponent(slug)); activeThreadId = null;
-    $('#detail-category').textContent = 'DOCUMENTATION / '+d.category.toUpperCase(); $('#detail-title').textContent = d.title; $('#detail-summary').textContent = d.summary; $('#detail-body').textContent = d.body;
+    $('#detail-category').textContent = 'DOCUMENTATION / '+d.category.toUpperCase(); $('#detail-title').textContent = d.title; $('#detail-summary').textContent = d.summary; $('#detail-body').innerHTML = renderMarkdown(d.body);
     $('#replies').innerHTML = ''; $('#reply-form').hidden = true; $('#reply-signin-prompt').hidden = true; detailDialog.showModal();
   } catch(e) { alert(e.message); }
 }

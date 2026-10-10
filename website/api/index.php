@@ -6,7 +6,7 @@ header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 header('Cache-Control: no-store');
 
-$configFile = dirname(__DIR__) . '/../cwhip-config.php';
+$configFile = '/home1/jhgfrgmy/cwhip-config.php';
 if (!is_file($configFile)) {
     http_response_code(503);
     echo json_encode(['error' => 'Cwhip is not configured yet. Follow the deployment guide.']);
