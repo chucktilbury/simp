@@ -1,8 +1,8 @@
 {
   "published": [
-    "EXAMPLES.md",
     "GRAMMAR.md",
     "INSTALLATION.md",
+    "EXAMPLES.md",
     "LANGUAGE-REFERENCE.md"
   ]
 }
