@@ -6,3 +6,21 @@
 .text-button{border:0;background:none;padding:0;color:#426b34;text-decoration:underline;cursor:pointer;font-size:11px;font-weight:650}.text-button:hover{color:#203b26}button:focus-visible,a:focus-visible{outline:2px solid #719c4f;outline-offset:3px}[hidden]{display:none!important}
 @media(max-width:640px){.contribute{display:inline-flex;max-width:105px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}}
 .contribute{border:0;background:transparent;color:inherit;padding:4px;cursor:pointer;font-family:inherit}
+
+.doc-summary {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.doc-summary > :first-child {
+  margin-top: 0;
+}
+
+.doc-summary > :last-child {
+  margin-bottom: 0;
+}
+
+.doc-summary blockquote {
+  margin: 0;
+}

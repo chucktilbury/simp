@@ -38,7 +38,7 @@ function escapeHtml(s='') { return String(s).replace(/[&<>"']/g, c => ({'&':'&am
 function formatDate(s) { const d = new Date(s); return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'}); }
 function initials(name='Cwhip') { return name.trim().split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase(); }
 function renderDocs(items) {
-  docsList.innerHTML = items.length ? items.map(d => `<a class="doc-card" href="#" data-doc="${escapeHtml(d.slug)}"><span class="tag">${escapeHtml(d.category.toUpperCase())}</span><h3>${escapeHtml(d.title)}</h3><p>${escapeHtml(d.summary)}</p><footer><span>Updated ${escapeHtml(formatDate(d.updated_at))}</span><span>Read →</span></footer></a>`).join('') : '<p class="muted">No documents match that search.</p>';
+  docsList.innerHTML = items.length ? items.map(d => `<a class="doc-card" href="#" data-doc="${escapeHtml(d.slug)}"><span class="tag">${escapeHtml(d.category.toUpperCase())}</span><h3>${escapeHtml(d.title)}</h3><div class="doc-summary">${renderMarkdown(d.summary)}</div><footer><span>Updated ${escapeHtml(formatDate(d.updated_at))}</span><span>Read →</span></footer></a>`).join('') : '<p class="muted">No documents match that search.</p>';
   docsList.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('click', async e => { e.preventDefault(); await openDoc(el.dataset.doc); }));
 }
 function renderThreads(items) {
