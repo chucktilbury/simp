@@ -37,10 +37,52 @@ function renderMarkdown(source) {
 function escapeHtml(s='') { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function formatDate(s) { const d = new Date(s); return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'}); }
 function initials(name='Cwhip') { return name.trim().split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase(); }
+
+/*
 function renderDocs(items) {
   docsList.innerHTML = items.length ? items.map(d => `<a class="doc-card" href="#" data-doc="${escapeHtml(d.slug)}"><span class="tag">${escapeHtml(d.category.toUpperCase())}</span><h3>${escapeHtml(d.title)}</h3><div class="doc-summary">${renderMarkdown(d.summary)}</div><footer><span>Updated ${escapeHtml(formatDate(d.updated_at))}</span><span>Read →</span></footer></a>`).join('') : '<p class="muted">No documents match that search.</p>';
   docsList.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('click', async e => { e.preventDefault(); await openDoc(el.dataset.doc); }));
 }
+*/
+
+
+function renderDocs(items) {
+  docsList.innerHTML = items.length
+    ? items.map(d => `
+      <article class="doc-card"
+               tabindex="0"
+               role="button"
+               data-doc="${escapeHtml(d.slug)}">
+        <span class="tag">${escapeHtml(d.category.toUpperCase())}</span>
+        <h3>${escapeHtml(d.title)}</h3>
+        <div class="doc-summary">${renderMarkdown(d.summary)}</div>
+        <footer>
+          <span>Updated ${escapeHtml(formatDate(d.updated_at))}</span>
+          <span>Read →</span>
+        </footer>
+      </article>
+    `).join('')
+    : '<p class="muted">No documents match that search.</p>';
+
+  docsList.querySelectorAll('[data-doc]').forEach(el => {
+    el.addEventListener('click', async e => {
+      // Let real links inside the summary navigate normally.
+      if (e.target.closest('a')) return;
+      await openDoc(el.dataset.doc);
+    });
+
+    el.addEventListener('keydown', async e => {
+      if (e.target.closest('a')) return;
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        await openDoc(el.dataset.doc);
+      }
+    });
+  });
+}
+
+
 function renderThreads(items) {
   threadsList.innerHTML = items.length ? items.map(t => `<article class="thread-card" tabindex="0" role="button" data-thread="${escapeHtml(t.id)}"><div class="thread-avatar">${escapeHtml(initials(t.author))}</div><div class="thread-main"><h3>${escapeHtml(t.title)}</h3><p>${escapeHtml(t.body.length > 180 ? t.body.slice(0,177)+'…' : t.body)}</p><div class="thread-meta"><span>${escapeHtml(t.category)}</span><span>·</span><span>${escapeHtml(t.author)}</span><span>·</span><span>${Number(t.reply_count)||0} replies</span><span>·</span><span>${escapeHtml(formatDate(t.updated_at))}</span></div></div></article>`).join('') : '<p class="muted">No discussions yet. Sign in to start the first conversation.</p>';
   threadsList.querySelectorAll('[data-thread]').forEach(el => { el.addEventListener('click', () => openThread(el.dataset.thread)); el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openThread(el.dataset.thread); } }); });
