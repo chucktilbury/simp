@@ -5,6 +5,7 @@ let activeThreadId = null;
 let currentUser = null;
 let csrfToken = '';
 let accountMode = 'login';
+let publishedDocs = new Set();
 
 async function api(url, options = {}) {
   const method = String(options.method || 'GET').toUpperCase();
@@ -25,26 +26,52 @@ function renderMarkdown(source) {
         throw new Error('Markdown renderer or sanitizer failed to load.');
     }
 
-    return DOMPurify.sanitize(
-        marked.parse(String(source ?? ''), {
-            gfm: true,
-            breaks: false
-        }),
-        { USE_PROFILES: { html: true } }
-    );
+    const html = marked.parse(String(source ?? ''), {
+        gfm: true,
+        breaks: false
+    });
+
+    const template = document.createElement('template');
+    template.innerHTML = html;
+
+    template.content.querySelectorAll('a[href]').forEach(link => {
+        const href = link.getAttribute('href');
+        if (!href) return;
+
+        let pathname;
+        try {
+            pathname = new URL(href, window.location.href).pathname;
+        } catch {
+            return;
+        }
+
+        const filename = pathname.split('/').pop().toLowerCase();
+
+        // Only rewrite relative links to published Markdown files.
+        if (
+            !/^[^/:?#]+\.md(?:[?#].*)?$/i.test(href) ||
+            !publishedDocs.has(filename)
+        ) {
+            return;
+        }
+
+        const slug = filename.replace(/\.md$/i, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        const fragment = new URL(href, window.location.href).hash.slice(1);
+
+        link.setAttribute('href', '#');
+        link.dataset.docSlug = slug;
+        if (fragment)
+            link.dataset.docFragment = fragment;
+    });
+
+    return DOMPurify.sanitize(template.innerHTML, {
+        USE_PROFILES: { html: true }
+    });
 }
 
 function escapeHtml(s='') { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function formatDate(s) { const d = new Date(s); return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(undefined, {year:'numeric',month:'short',day:'numeric'}); }
 function initials(name='Cwhip') { return name.trim().split(/\s+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase(); }
-
-/*
-function renderDocs(items) {
-  docsList.innerHTML = items.length ? items.map(d => `<a class="doc-card" href="#" data-doc="${escapeHtml(d.slug)}"><span class="tag">${escapeHtml(d.category.toUpperCase())}</span><h3>${escapeHtml(d.title)}</h3><div class="doc-summary">${renderMarkdown(d.summary)}</div><footer><span>Updated ${escapeHtml(formatDate(d.updated_at))}</span><span>Read →</span></footer></a>`).join('') : '<p class="muted">No documents match that search.</p>';
-  docsList.querySelectorAll('[data-doc]').forEach(el => el.addEventListener('click', async e => { e.preventDefault(); await openDoc(el.dataset.doc); }));
-}
-*/
-
 
 function renderDocs(items) {
   docsList.innerHTML = items.length
@@ -87,10 +114,33 @@ function renderThreads(items) {
   threadsList.innerHTML = items.length ? items.map(t => `<article class="thread-card" tabindex="0" role="button" data-thread="${escapeHtml(t.id)}"><div class="thread-avatar">${escapeHtml(initials(t.author))}</div><div class="thread-main"><h3>${escapeHtml(t.title)}</h3><p>${escapeHtml(t.body.length > 180 ? t.body.slice(0,177)+'…' : t.body)}</p><div class="thread-meta"><span>${escapeHtml(t.category)}</span><span>·</span><span>${escapeHtml(t.author)}</span><span>·</span><span>${Number(t.reply_count)||0} replies</span><span>·</span><span>${escapeHtml(formatDate(t.updated_at))}</span></div></div></article>`).join('') : '<p class="muted">No discussions yet. Sign in to start the first conversation.</p>';
   threadsList.querySelectorAll('[data-thread]').forEach(el => { el.addEventListener('click', () => openThread(el.dataset.thread)); el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openThread(el.dataset.thread); } }); });
 }
-async function loadDocs(q='') {
-  try { const data = await api('/api/docs'+(q ? '?q='+encodeURIComponent(q):'')); renderDocs(data.items); }
-  catch (e) { docsList.innerHTML = `<p class="muted">Could not load documents: ${escapeHtml(e.message)}</p>`; }
+
+async function loadDocs(q = '') {
+  try {
+    const data = await api(
+      '/api/docs' + (q ? '?q=' + encodeURIComponent(q) : '')
+    );
+
+    publishedDocs = new Set(
+      data.items.map(item => `${item.slug}.md`.toLowerCase())
+    );
+
+    if (q) {
+      // The API filters the returned items, so fetch the full
+      // published list to keep link recognition complete.
+      const allDocs = await api('/api/docs');
+      publishedDocs = new Set(
+        allDocs.items.map(item => `${item.slug}.md`.toLowerCase())
+      );
+    }
+
+    renderDocs(data.items);
+  } catch (e) {
+    docsList.innerHTML =
+      `<p class="muted">Could not load documents: ${escapeHtml(e.message)}</p>`;
+  }
 }
+
 async function loadThreads(q='') {
   try { const data = await api('/api/threads'+(q ? '?q='+encodeURIComponent(q):'')); renderThreads(data.items); }
   catch (e) { threadsList.innerHTML = `<p class="muted">Could not load discussions: ${escapeHtml(e.message)}</p>`; }
@@ -120,6 +170,7 @@ function setAccountMode(mode) {
   $('#account-switch').textContent = registering ? 'Sign in' : 'Create an account';
   $('#account-message').textContent = '';
 }
+/*
 async function openDoc(slug) {
   try {
     const {item:d} = await api('/api/docs/'+encodeURIComponent(slug)); activeThreadId = null;
@@ -127,6 +178,36 @@ async function openDoc(slug) {
     $('#replies').innerHTML = ''; $('#reply-form').hidden = true; $('#reply-signin-prompt').hidden = true; detailDialog.showModal();
   } catch(e) { alert(e.message); }
 }
+*/
+
+async function openDoc(slug, fragment = '') {
+  try {
+    const { item: d } = await api('/api/docs/' + encodeURIComponent(slug));
+    activeThreadId = null;
+
+    $('#detail-category').textContent = 'DOCUMENTATION / ' + d.category.toUpperCase();
+    $('#detail-title').textContent = d.title;
+    $('#detail-summary').textContent = d.summary;
+    $('#detail-body').innerHTML = renderMarkdown(d.body);
+
+    $('#replies').innerHTML = '';
+    $('#reply-form').hidden = true;
+    $('#reply-signin-prompt').hidden = true;
+    detailDialog.showModal();
+
+    if (fragment) {
+      requestAnimationFrame(() => {
+        const heading = $('#detail-body').querySelector('#' + CSS.escape(fragment));
+        if (heading) {
+          heading.scrollIntoView();
+        }
+      });
+    }
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
 async function openThread(id) {
   try {
     const {item:t} = await api('/api/threads/'+encodeURIComponent(id)); activeThreadId = t.id;
@@ -184,3 +265,13 @@ for(const dialog of [searchDialog,detailDialog,threadDialog,accountDialog]) dial
 document.addEventListener('keydown',e=>{if(e.key==='/'&&!['INPUT','TEXTAREA'].includes(document.activeElement.tagName)&&!searchDialog.open&&!detailDialog.open&&!threadDialog.open&&!accountDialog.open){e.preventDefault();searchDialog.showModal();$('#global-search').focus();}if(e.key==='Escape'){for(const d of [detailDialog,threadDialog,accountDialog])if(d.open)d.close();}});
 function debounce(fn,delay){let timer;return(...args)=>{clearTimeout(timer);timer=setTimeout(()=>fn(...args),delay)}}
 loadAuth(); loadDocs(); loadThreads();
+
+document.addEventListener('click', e => {
+  const link = e.target.closest('a[data-doc-slug]');
+  if (!link) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  openDoc(link.dataset.docSlug, link.dataset.docFragment || '');
+});
