@@ -116,12 +116,12 @@ function slugify(string $value): string {
 }
 
 function publishedDocs(): array {
-    $docsDir = dirname(__DIR__, 2) . '/doc';
-    $manifestFile = dirname(__DIR__) . '/docs-published.json';
+    $docsDir = dirname(__DIR__, 2) . '/home1/jhgfrgmy/cwhip/doc';
+    $manifestFile = dirname(__DIR__) . '/home1/jhgfrgmy/cwhip/website/docs-published.json';
 
-    if (!is_file($manifestFile) || !is_file($docsDir . '/CWHIP-LANGUAGE-NOTES.md')) {
-        throw new RuntimeException('Documentation source or publication manifest is missing.');
-    }
+    if (!is_file($manifestFile) || !is_dir($docsDir)) {
+    throw new RuntimeException('Documentation source or publication manifest is missing.');
+    }   
 
     $manifest = json_decode(
         (string)file_get_contents($manifestFile),
@@ -198,7 +198,12 @@ function seedDocs(PDO $pdo): void {
         ['design-decisions','Design decisions','A durable index of decisions, alternatives, and their rationale.','Reference',"# Design decisions\n\nRecord consequential decisions with enough context that future contributors can understand them.\n\n## Decision record template\n\n- **Status:** proposed / accepted / superseded\n- **Context:** what problem needs a decision?\n- **Options:** what alternatives were considered?\n- **Decision:** what was chosen and why?\n- **Consequences:** what becomes easier, harder, or different?"]
     ];
     $stmt = $pdo->prepare('INSERT INTO documents (id, slug, title, summary, body, category, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())');
-    foreach ($docs as $d) $stmt->execute([uuid(), ...$d]);
+    
+    #foreach ($docs as $d) $stmt->execute([uuid(), ...$d]);
+    foreach ($docs as $d) {
+        array_unshift($d, uuid());
+        $stmt->execute($d);
+    }
 }
 
 // Public documentation is read from doc/ using docs-published.json.
